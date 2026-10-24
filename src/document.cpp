@@ -97,6 +97,13 @@ FPDF_PAGE Document::page(int i) {
     return pages_[i];
 }
 
+void Document::resetText(int i) {
+    if (i >= 0 && i < static_cast<int>(texts_.size()) && texts_[i]) {
+        pdfium::api().FPDFText_ClosePage(texts_[i]);
+        texts_[i] = nullptr;
+    }
+}
+
 FPDF_TEXTPAGE Document::text(int i) {
     if (i < 0 || i >= pageCount()) return nullptr;
     if (!texts_[i]) {

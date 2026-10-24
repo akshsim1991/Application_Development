@@ -41,6 +41,7 @@ struct App {
     WNDPROC editProc = nullptr;
     int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
     Viewer::Tool tool = Viewer::Tool::None;
+    pageobj::TextStyle textStyle{pageobj::Family::Sans, false, false, 14, RGB(0x20, 0x20, 0x20)};
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
     HFONT font = nullptr, fontBold = nullptr;
@@ -133,7 +134,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -444,7 +445,39 @@ void onViewerEvent(const Viewer::Event& e) {
                 default: break;
             }
             break;
-        case Viewer::Event::Click: {   // comment tool: place a note
+        case Viewer::Event::Click: {
+            if (e.tool == Viewer::Tool::AddText) {
+                std::wstring text;
+                if (askText(L"Add text", L"Type the text to put on the page. Press Enter for a new line.", false, text, L"", true)) {
+                    text = fromEdit(text);
+                    if (!text.empty()) {
+                        if (!pageobj::isLatin(text)) MessageBoxW(app.wnd, L"New text can use letters, numbers and common symbols of Western languages. Please remove other characters.", kAppName, MB_OK | MB_ICONINFORMATION);
+                        else if (pageobj::addTextBox(*d, e.page, e.pts.front().x, e.pts.front().y, text, app.textStyle)) { d->resetText(e.page); afterChange(e.page); }
+                        else MessageBoxW(app.wnd, L"The text could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+                    }
+                }
+                setTool(Viewer::Tool::AddText);   // one text box at a time
+                break;
+            }
+            if (e.tool == Viewer::Tool::EditText) {
+                pageobj::TextHit hit = pageobj::textAt(*d, e.page, e.pts.front().x, e.pts.front().y);
+                if (hit.index < 0) {
+                    MessageBoxW(app.wnd, L"No editable text was found there. Click directly on a line of text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
+                    break;
+                }
+                std::wstring text;
+                if (askText(L"Edit text", L"Change this text. Leave it empty to delete it.", false, text, toEdit(hit.text).c_str(), true)) {
+                    text = fromEdit(text);
+                    if (text != hit.text) {
+                        // an edited line stays one object: line breaks are not kept
+                        std::wstring flat;
+                        for (wchar_t ch : text) flat += (ch == L'\r' || ch == L'\n') ? L' ' : ch;
+                        if (pageobj::replaceText(*d, e.page, hit.index, flat)) afterChange(e.page);
+                        else MessageBoxW(app.wnd, L"The text could not be changed. It may use a font that cannot show those characters. Try letters and numbers of Western languages.", kAppName, MB_OK | MB_ICONWARNING);
+                    }
+                }
+                break;
+            }
             std::wstring text;
             if (askText(L"Comment", L"Type your comment.", false, text, L"", true)) {
                 text = fromEdit(text);
@@ -1110,10 +1143,35 @@ void doCompress(Document& d) {
     MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
 }
 
+
+void textStyleDialog() {
+    std::vector<FormField> f(5);
+    f[0] = {FormField::Choice, L"Font:", {L"Sans-serif (Helvetica)", L"Serif (Times)", L"Monospaced (Courier)"}, L"", static_cast<int>(app.textStyle.family)};
+    int si = 3;
+    static const double sizes[] = {8, 10, 12, 14, 18, 24, 36, 48, 72};
+    for (int i = 0; i < 9; ++i) if (sizes[i] == app.textStyle.sizePt) si = i;
+    f[1] = {FormField::Choice, L"Size:", {L"8 pt", L"10 pt", L"12 pt", L"14 pt", L"18 pt", L"24 pt", L"36 pt", L"48 pt", L"72 pt"}, L"", si};
+    int ci = 6;
+    for (int i = 0; i < 7; ++i) if (kPalette[i] == app.textStyle.color) ci = i;
+    f[2] = {FormField::Choice, L"Colour:", {kPaletteNames[0], kPaletteNames[1], kPaletteNames[2], kPaletteNames[3], kPaletteNames[4], kPaletteNames[5], kPaletteNames[6]}, L"", ci};
+    f[3] = {FormField::Check, L"Bold"}; f[3].checked = app.textStyle.bold;
+    f[4] = {FormField::Check, L"Italic"}; f[4].checked = app.textStyle.italic;
+    if (!showForm(app.wnd, app.inst, L"Style of new text", f, L"OK")) return;
+    app.textStyle.family = static_cast<pageobj::Family>(f[0].choice);
+    app.textStyle.sizePt = sizes[std::clamp(f[1].choice, 0, 8)];
+    app.textStyle.color = kPalette[std::clamp(f[2].choice, 0, 6)];
+    app.textStyle.bold = f[3].checked;
+    app.textStyle.italic = f[4].checked;
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
     HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::EditText ? MF_CHECKED : 0), T_EDIT_TEXT, L"Edit text (click on a line)\tCtrl+E");
+    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::AddText ? MF_CHECKED : 0), T_ADD_TEXT, L"Add a text box (click on the page)");
+    AppendMenuW(m, MF_STRING, T_TEXT_STYLE, L"Style of new text...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
@@ -1153,6 +1211,9 @@ void showToolsMenu(const RECT& anchor) {
         case T_NUMBERS: doPageNumbers(*d); break;
         case T_EXPORT: doExport(*d); break;
         case T_COMPRESS: doCompress(*d); break;
+        case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
+        case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
+        case T_TEXT_STYLE: textStyleDialog(); break;
         case T_READ: readAloud(); break;
         case T_PRINT: printDocument(); break;
         case T_PROPS: showProperties(); break;
@@ -1487,6 +1548,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
                     case 'P': printDocument(); return 0;
                     case 'D': showProperties(); return 0;
                     case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;

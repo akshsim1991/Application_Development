@@ -89,6 +89,15 @@
     X(FPDFBitmap_GetHeight)      \
     X(FPDFBitmap_GetStride)      \
     X(FPDFBitmap_GetFormat)      \
+    X(FPDFTextObj_GetText)       \
+    X(FPDFTextObj_GetFont)       \
+    X(FPDFTextObj_GetFontSize)   \
+    X(FPDFFont_GetBaseFontName)  \
+    X(FPDFFont_GetIsEmbedded)    \
+    X(FPDFFont_GetFlags)         \
+    X(FPDFPageObj_GetMatrix)     \
+    X(FPDFPageObj_SetMatrix)     \
+    X(FPDFPageObj_GetFillColor)  \
     X(FPDFPage_CountObjects)     \
     X(FPDFPage_GetObject)        \
     X(FPDFPage_RemoveObject)     \

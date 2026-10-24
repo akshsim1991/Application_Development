@@ -17,12 +17,22 @@ cmake --build build                            # produces build/FeatherPDF.exe +
 
 ## Status of the rebuild
 
-Done (milestone 1): tabs, open (dialog, drag and drop, command line, one window for all launches),
-continuous view, zoom (buttons, Ctrl+wheel, Ctrl +/-/0/1/2), fit width / fit page, page navigation,
-password-protected files, clear error messages. The toolbar uses text labels, so it does not depend on
-icon fonts.
+Done:
+- **Milestone 1:** tabs, open (dialog, drag and drop, command line, one window for all launches),
+  continuous view, zoom, fit width / fit page, page navigation, password-protected files, clear error
+  messages, and a text-labelled toolbar that does not depend on icon fonts.
+- **Milestone 2 (step 1):** text selection (drag, double-click a word, Ctrl+A) and copy; search with all
+  matches highlighted, Enter / F3 for next, Shift+Enter / Shift+F3 for previous, match case, "n of N";
+  bookmarks panel (Ctrl+B) and page thumbnails (Ctrl+Shift+B); Go to page (Ctrl+G or click the page
+  number); application manifest (visual styles, per-monitor DPI, no UAC prompt).
 
-Next: search, bookmarks and thumbnails, annotations, saving, then the editing, export and security
-features of 2.12, with the fixes found in testing 2.12 (watermark resources, text-export watermark
-pollution, unsaved-changes flag after Compress, small file sizes shown as 0.0 MB, clear errors when OCR
-or voices are missing).
+Next: annotations (highlight, comments, shapes) and Save / Save As, page operations, edit text, export,
+compress / password / watermark / page numbers, signing, redaction, OCR, read aloud, installer.
+The fixes found in testing 2.12 (watermark resources, text-export watermark pollution, unsaved-changes
+flag after Compress, small file sizes shown as 0.0 MB, clear errors when OCR or voices are missing)
+land together with the features they belong to.
+
+## Shortcuts
+Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+F find · F3 / Shift+F3 next / previous match ·
+Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all · Ctrl+B bookmarks · Ctrl+Shift+B thumbnails ·
+Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl +/- zoom · PgUp/PgDn/Home/End · Esc.

@@ -28,26 +28,17 @@ bool load(std::wstring& error) {
         return false;
     }
     Api a{};
-    bool ok = bind(dll, "FPDF_InitLibrary", a.InitLibrary) &&
-              bind(dll, "FPDF_DestroyLibrary", a.DestroyLibrary) &&
-              bind(dll, "FPDF_GetLastError", a.GetLastError) &&
-              bind(dll, "FPDF_LoadMemDocument64", a.LoadMemDocument64) &&
-              bind(dll, "FPDF_CloseDocument", a.CloseDocument) &&
-              bind(dll, "FPDF_GetPageCount", a.GetPageCount) &&
-              bind(dll, "FPDF_GetPageSizeByIndexF", a.GetPageSizeByIndexF) &&
-              bind(dll, "FPDF_LoadPage", a.LoadPage) &&
-              bind(dll, "FPDF_ClosePage", a.ClosePage) &&
-              bind(dll, "FPDF_RenderPageBitmap", a.RenderPageBitmap) &&
-              bind(dll, "FPDFBitmap_CreateEx", a.BitmapCreateEx) &&
-              bind(dll, "FPDFBitmap_FillRect", a.BitmapFillRect) &&
-              bind(dll, "FPDFBitmap_Destroy", a.BitmapDestroy);
+    bool ok = true;
+#define PDFIUM_BIND(name) ok = bind(dll, #name, a.name) && ok;
+    PDFIUM_FUNCS(PDFIUM_BIND)
+#undef PDFIUM_BIND
     if (!ok) {
         error = L"pdfium.dll is not the version Feather PDF expects (functions are missing).\n"
                 L"Reinstall Feather PDF to restore the right file.";
         return false;
     }
     g_api = a;
-    g_api.InitLibrary();
+    g_api.FPDF_InitLibrary();
     return true;
 }
 

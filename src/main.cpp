@@ -10,25 +10,32 @@
 #include <vector>
 #include "document.hpp"
 #include "viewer.hpp"
+#include "sidebar.hpp"
 
 namespace {
 
-constexpr int kTabH = 34, kToolH = 40;
+constexpr int kTabH = 34, kToolH = 40, kFindH = 38, kSideW = 230;
+enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL };
+enum Cmd { C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
 
 struct App {
     HINSTANCE inst = nullptr;
     HWND wnd = nullptr;
     Viewer viewer;
+    Sidebar sidebar;
+    bool sidebarVisible = false, findVisible = false;
+    HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr;
+    int curMatch = -1, matchTotal = 0;
+    WNDPROC editProc = nullptr;
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
     HFONT font = nullptr, fontBold = nullptr;
     std::vector<Button> buttons;
     std::vector<RECT> tabRects, closeRects;
-    RECT plusRect{};
+    RECT plusRect{}, pageRect{};
     int hover = -1;
 } app;
 
@@ -36,7 +43,31 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
-    MoveWindow(app.viewer.hwnd(), 0, kTabH + kToolH, rc.right, std::max<LONG>(0, rc.bottom - kTabH - kToolH), TRUE);
+    int top = kTabH + kToolH;
+    if (app.findVisible) {
+        int x = 8;
+        MoveWindow(app.findEdit, x, top + 6, 260, 26, TRUE); x += 268;
+        MoveWindow(app.findPrev, x, top + 6, 56, 26, TRUE); x += 60;
+        MoveWindow(app.findNext, x, top + 6, 56, 26, TRUE); x += 64;
+        MoveWindow(app.findCase, x, top + 6, 100, 26, TRUE); x += 108;
+        MoveWindow(app.findCount, x, top + 11, 160, 20, TRUE); x += 164;
+        MoveWindow(app.findClose, std::max(x, static_cast<int>(rc.right) - 64), top + 6, 56, 26, TRUE);
+        top += kFindH;
+    }
+    int left = 0;
+    if (app.sidebarVisible) {
+        MoveWindow(app.sidebar.hwnd(), 0, top, kSideW, std::max<LONG>(0, rc.bottom - top), TRUE);
+        left = kSideW;
+    }
+    MoveWindow(app.viewer.hwnd(), left, top, std::max<LONG>(0, rc.right - left), std::max<LONG>(0, rc.bottom - top), TRUE);
+}
+
+void showControls() {
+    const int f = app.findVisible ? SW_SHOW : SW_HIDE;
+    for (HWND h : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose}) ShowWindow(h, f);
+    ShowWindow(app.sidebar.hwnd(), app.sidebarVisible ? SW_SHOW : SW_HIDE);
+    relayoutChildren();
+    InvalidateRect(app.wnd, nullptr, FALSE);
 }
 
 void updateTitle() {
@@ -50,21 +81,31 @@ void refresh() {
     InvalidateRect(app.wnd, nullptr, FALSE);
 }
 
+void runSearch(bool keepPosition);
+
+void setActiveDocument(Document* d) {
+    app.viewer.setDocument(d);
+    app.sidebar.setDocument(d);
+    app.curMatch = -1; app.matchTotal = 0;
+    SetWindowTextW(app.findCount, L"");
+    if (d && app.findVisible && GetWindowTextLengthW(app.findEdit) > 0) runSearch(false);
+}
+
 void switchTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     app.active = i;
-    app.viewer.setDocument(app.tabs[i].get());
+    setActiveDocument(app.tabs[i].get());
     refresh();
 }
 
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
-    if (i == app.active) app.viewer.setDocument(nullptr);   // viewer must let go before the document dies
+    if (i == app.active) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
-    if (app.tabs.empty()) { app.active = -1; app.viewer.setDocument(nullptr); }
+    if (app.tabs.empty()) { app.active = -1; setActiveDocument(nullptr); }
     else {
         app.active = std::min(i, static_cast<int>(app.tabs.size()) - 1);
-        app.viewer.setDocument(app.tabs[app.active].get());
+        setActiveDocument(app.tabs[app.active].get());
     }
     refresh();
 }
@@ -80,6 +121,7 @@ INT_PTR CALLBACK pwProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             st = reinterpret_cast<PwState*>(l);
             SetDlgItemTextW(h, 100, st->prompt.c_str());
             SetFocus(GetDlgItem(h, 101));
+            SendDlgItemMessageW(h, 101, EM_SETSEL, 0, -1);   // typing replaces the suggested text
             return FALSE;
         case WM_COMMAND:
             if (LOWORD(w) == IDOK) {
@@ -114,16 +156,16 @@ void item(std::vector<BYTE>& b, WORD cls, DWORD style, short x, short y, short c
     put<WORD>(b, 0);
 }
 
-bool askPassword(const std::wstring& prompt, std::string& out) {
+bool askText(const wchar_t* title, const std::wstring& prompt, bool password, std::wstring& out, const wchar_t* initial = L"") {
     std::vector<BYTE> b;
     put<DWORD>(b, DS_MODALFRAME | DS_SETFONT | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU);
     put<DWORD>(b, 0); put<WORD>(b, 4);
     put<short>(b, 0); put<short>(b, 0); put<short>(b, 200); put<short>(b, 78);
     put<WORD>(b, 0); put<WORD>(b, 0);
-    putStr(b, L"Password required");
+    putStr(b, title);
     put<WORD>(b, 9); putStr(b, L"Segoe UI");
     item(b, 0x0082, SS_LEFT, 8, 8, 184, 22, 100, L"");
-    item(b, 0x0081, WS_BORDER | WS_TABSTOP | ES_PASSWORD | ES_AUTOHSCROLL, 8, 34, 184, 13, 101, L"");
+    item(b, 0x0081, WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | (password ? ES_PASSWORD : 0), 8, 34, 184, 13, 101, initial);
     item(b, 0x0080, BS_DEFPUSHBUTTON | WS_TABSTOP, 88, 56, 50, 14, IDOK, L"OK");
     item(b, 0x0080, BS_PUSHBUTTON | WS_TABSTOP, 142, 56, 50, 14, IDCANCEL, L"Cancel");
     b[8] = 4;   // cdit = 4 items (offset of the item count in DLGTEMPLATE)
@@ -131,9 +173,16 @@ bool askPassword(const std::wstring& prompt, std::string& out) {
     DialogBoxIndirectParamW(app.inst, reinterpret_cast<LPCDLGTEMPLATEW>(b.data()), app.wnd, pwProc,
                             reinterpret_cast<LPARAM>(&st));
     if (!st.ok) return false;
-    int n = WideCharToMultiByte(CP_UTF8, 0, st.text.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    out = st.text;
+    return true;
+}
+
+bool askPassword(const std::wstring& prompt, std::string& out) {
+    std::wstring w;
+    if (!askText(L"Password required", prompt, true, w)) return false;
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, nullptr, 0, nullptr, nullptr);
     out.assign(n > 0 ? n - 1 : 0, '\0');
-    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, st.text.c_str(), -1, out.data(), n, nullptr, nullptr);
+    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, out.data(), n, nullptr, nullptr);
     return true;
 }
 
@@ -171,6 +220,87 @@ void openDialog() {
     if (GetOpenFileNameW(&ofn)) openFile(buf);
 }
 
+void updateFindCount() {
+    wchar_t t[64] = L"";
+    if (GetWindowTextLengthW(app.findEdit) > 0) {
+        if (app.matchTotal == 0) wcscpy_s(t, L"No results");
+        else swprintf(t, 64, L"%d of %d", app.curMatch + 1, app.matchTotal);
+    }
+    SetWindowTextW(app.findCount, t);
+}
+
+void runSearch(bool keepPosition) {
+    Document* d = activeDoc();
+    wchar_t q[512];
+    GetWindowTextW(app.findEdit, q, 512);
+    if (!d || !q[0]) {
+        app.viewer.setMatches({}, -1);
+        app.curMatch = -1; app.matchTotal = 0;
+        updateFindCount();
+        return;
+    }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    std::vector<TextHit> hits = d->find(q, SendMessageW(app.findCase, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    SetCursor(old);
+    app.matchTotal = static_cast<int>(hits.size());
+    int first = 0;   // first match on or after the page being read
+    int page = app.viewer.currentPage();
+    for (size_t i = 0; i < hits.size(); ++i) if (hits[i].page >= page) { first = static_cast<int>(i); break; }
+    if (keepPosition && app.curMatch >= 0 && app.curMatch < app.matchTotal) first = app.curMatch;
+    app.curMatch = hits.empty() ? -1 : first;
+    app.viewer.setMatches(std::move(hits), app.curMatch);
+    updateFindCount();
+}
+
+void stepMatch(int dir) {
+    if (app.matchTotal == 0) {
+        if (!app.findVisible) return;
+        runSearch(false);
+        return;
+    }
+    app.curMatch = (app.curMatch + dir + app.matchTotal) % app.matchTotal;
+    app.viewer.setCurrentMatch(app.curMatch);
+    updateFindCount();
+}
+
+void toggleFind(bool show) {
+    app.findVisible = show;
+    showControls();
+    if (show) {
+        SetFocus(app.findEdit);
+        SendMessageW(app.findEdit, EM_SETSEL, 0, -1);
+        if (GetWindowTextLengthW(app.findEdit) > 0) runSearch(true);
+    } else {
+        app.viewer.setMatches({}, -1);
+        app.curMatch = -1; app.matchTotal = 0;
+        SetFocus(app.viewer.hwnd());
+    }
+}
+
+void showSidebar(Sidebar::Mode m) {
+    if (app.sidebarVisible && app.sidebar.mode() == m) app.sidebarVisible = false;
+    else { app.sidebarVisible = true; app.sidebar.setMode(m); }
+    showControls();
+    app.viewer.fitWidth();   // keep fit-width tabs filling the narrower view
+    if (activeDoc()) app.sidebar.setCurrentPage(app.viewer.currentPage());
+}
+
+void goToPageDialog() {
+    Document* d = activeDoc();
+    if (!d) return;
+    wchar_t prompt[96];
+    swprintf(prompt, 96, L"Type a page number from 1 to %d.", d->pageCount());
+    wchar_t cur[16];
+    swprintf(cur, 16, L"%d", app.viewer.currentPage() + 1);
+    std::wstring in;
+    while (askText(L"Go to page", prompt, false, in, cur)) {
+        wchar_t* end = nullptr;
+        long n = wcstol(in.c_str(), &end, 10);
+        if (end != in.c_str() && *end == 0 && n >= 1 && n <= d->pageCount()) { app.viewer.goToPage(static_cast<int>(n) - 1); return; }
+        MessageBoxW(app.wnd, prompt, kAppName, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 void runCommand(int id) {
     Document* d = activeDoc();
     switch (id) {
@@ -182,6 +312,9 @@ void runCommand(int id) {
         case C_ACTUAL: if (d) app.viewer.setZoom(1.0); break;
         case C_FITW: app.viewer.fitWidth(); break;
         case C_FITP: app.viewer.fitPage(); break;
+        case C_FIND: if (d) toggleFind(!app.findVisible); break;
+        case C_PANEL: showSidebar(Sidebar::Mode::Bookmarks); break;
+        case C_GOTO: goToPageDialog(); break;
     }
 }
 
@@ -222,6 +355,9 @@ void layoutHeader(HDC dc, int width) {
     add(L"Fit width", C_FITW, d != nullptr);
     add(L"Fit page", C_FITP, d != nullptr);
     add(L"100%", C_ACTUAL, d != nullptr);
+    x += 10;
+    add(L"Find", C_FIND, d != nullptr);
+    add(L"Panel", C_PANEL, d != nullptr);
     (void)width;
 }
 
@@ -268,6 +404,7 @@ void paintHeader(HDC dc, const RECT& client) {
         wchar_t s[64];
         swprintf(s, 64, L"Page %d / %d", app.viewer.currentPage() + 1, d->pageCount());
         RECT pr{prev->rc.right + 2, prev->rc.top, prev->rc.right + 88, prev->rc.bottom};
+        app.pageRect = pr;
         DrawTextW(dc, s, -1, &pr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         swprintf(s, 64, L"%d%%", static_cast<int>(d->zoom * 100 + 0.5));
         RECT zr{zo->rc.right + 2, zo->rc.top, zo->rc.right + 50, zo->rc.bottom};
@@ -282,6 +419,17 @@ void paintHeader(HDC dc, const RECT& client) {
 void onViewerChange(void*) {
     RECT r{0, 0, 4000, kTabH + kToolH};
     InvalidateRect(app.wnd, &r, FALSE);
+    if (activeDoc() && app.sidebarVisible) app.sidebar.setCurrentPage(app.viewer.currentPage());
+}
+
+void onSidebarNavigate(void*, int page) { app.viewer.goToPage(page); }
+
+// The search box: Enter = next match, Shift+Enter = previous, Esc = close the bar.
+LRESULT CALLBACK findEditProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_KEYDOWN && w == VK_RETURN) { stepMatch(GetKeyState(VK_SHIFT) < 0 ? -1 : 1); return 0; }
+    if (m == WM_KEYDOWN && w == VK_ESCAPE) { toggleFind(false); return 0; }
+    if (m == WM_CHAR && (w == VK_RETURN || w == VK_ESCAPE)) return 0;
+    return CallWindowProcW(app.editProc, h, m, w, l);
 }
 
 bool hit(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
@@ -298,10 +446,35 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.fontBold = CreateFontIndirectW(&lf);
             app.viewer.create(h, app.inst);
             app.viewer.setOnChange(onViewerChange, nullptr);
+            app.sidebar.create(h, app.inst);
+            app.sidebar.setOnNavigate(onSidebarNavigate, nullptr);
+            app.findEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_EDIT), app.inst, nullptr);
+            app.findPrev = CreateWindowExW(0, L"BUTTON", L"Prev", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_PREV), app.inst, nullptr);
+            app.findNext = CreateWindowExW(0, L"BUTTON", L"Next", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NEXT), app.inst, nullptr);
+            app.findCase = CreateWindowExW(0, L"BUTTON", L"Match case", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_CASE), app.inst, nullptr);
+            app.findCount = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_COUNT), app.inst, nullptr);
+            app.findClose = CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_CLOSE), app.inst, nullptr);
+            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose})
+                SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+            app.editProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(app.findEdit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(findEditProc)));
             DragAcceptFiles(h, TRUE);
             return 0;
         }
         case WM_SIZE: relayoutChildren(); InvalidateRect(h, nullptr, FALSE); return 0;
+        case WM_COMMAND:
+            switch (LOWORD(w)) {
+                case ID_FIND_EDIT:
+                    if (HIWORD(w) == EN_CHANGE) SetTimer(h, TIMER_FIND, 300, nullptr);   // search once typing pauses
+                    break;
+                case ID_FIND_PREV: stepMatch(-1); break;
+                case ID_FIND_NEXT: stepMatch(1); break;
+                case ID_FIND_CASE: runSearch(false); break;
+                case ID_FIND_CLOSE: toggleFind(false); break;
+            }
+            return 0;
+        case WM_TIMER:
+            if (w == TIMER_FIND) { KillTimer(h, TIMER_FIND); runSearch(false); }
+            return 0;
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
             PAINTSTRUCT ps;
@@ -318,6 +491,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             for (size_t i = 0; i < app.tabRects.size(); ++i)
                 if (hit(app.tabRects[i], x, y)) { switchTab(static_cast<int>(i)); return 0; }
             if (!app.tabs.empty() && hit(app.plusRect, x, y)) { runCommand(C_NEWTAB); return 0; }
+            if (activeDoc() && hit(app.pageRect, x, y)) { runCommand(C_GOTO); return 0; }
             for (const Button& b : app.buttons)
                 if (b.enabled && hit(b.rc, x, y)) { runCommand(b.id); return 0; }
             return 0;
@@ -350,6 +524,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'F': runCommand(C_FIND); return 0;
+                    case 'G': runCommand(C_GOTO); return 0;
+                    case 'C': app.viewer.copySelection(); return 0;
+                    case 'A': app.viewer.selectAll(); return 0;
+                    case 'B': showSidebar(shift ? Sidebar::Mode::Pages : Sidebar::Mode::Bookmarks); return 0;
                     case 'W': closeTab(app.active); return 0;
                     case '0': runCommand(C_FITP); return 0;
                     case '1': runCommand(C_ACTUAL); return 0;
@@ -366,6 +545,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             if (!d) return 0;
             switch (w) {
+                case VK_F3: stepMatch(shift ? -1 : 1); return 0;
+                case VK_ESCAPE:
+                    if (app.findVisible) toggleFind(false); else app.viewer.clearSelection();
+                    return 0;
                 case VK_NEXT: app.viewer.goToPage(app.viewer.currentPage() + 1); return 0;
                 case VK_PRIOR: app.viewer.goToPage(app.viewer.currentPage() - 1); return 0;
                 case VK_HOME: app.viewer.goToPage(0); return 0;
@@ -377,8 +560,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_SETFOCUS: return 0;
+        case WM_SYSKEYDOWN:
+            if (GetKeyState(VK_MENU) < 0 && (w == VK_LEFT || w == VK_RIGHT)) return 0;
+            break;
         case WM_DESTROY:
-            app.viewer.setDocument(nullptr);
+            setActiveDocument(nullptr);
             app.tabs.clear();
             PostQuitMessage(0);
             return 0;
@@ -416,9 +602,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         return 0;
     }
 
-    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES};
+    INITCOMMONCONTROLSEX icc{sizeof(icc), ICC_STANDARD_CLASSES | ICC_TREEVIEW_CLASSES};
     InitCommonControlsEx(&icc);
     Viewer::registerClass(inst);
+    Sidebar::registerClasses(inst);
 
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = wndProc;

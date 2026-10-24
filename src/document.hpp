@@ -28,6 +28,8 @@ public:
     Document& operator=(const Document&) = delete;
 
     OpenResult open(const std::wstring& path, const std::string& password = {});
+    // Same, keeping the password the document was opened with.
+    OpenResult reload(std::vector<unsigned char>&& bytes) { return load(std::move(bytes), password_); }
     // Replaces the content with `bytes` (used by undo/redo). View state and path are kept.
     OpenResult load(std::vector<unsigned char>&& bytes, const std::string& password);
     static std::wstring describe(OpenResult r, const std::wstring& path);

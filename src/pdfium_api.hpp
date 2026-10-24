@@ -81,6 +81,14 @@
     X(FPDFText_GetCharBox)       \
     X(FPDFText_GetFontSize)      \
     X(FPDFText_GetFontWeight)    \
+    X(FPDFPageObj_GetType)       \
+    X(FPDFImageObj_GetBitmap)    \
+    X(FPDFImageObj_LoadJpegFileInline) \
+    X(FPDFBitmap_GetBuffer)      \
+    X(FPDFBitmap_GetWidth)       \
+    X(FPDFBitmap_GetHeight)      \
+    X(FPDFBitmap_GetStride)      \
+    X(FPDFBitmap_GetFormat)      \
     X(FPDFPage_CountObjects)     \
     X(FPDFPage_GetObject)        \
     X(FPDFPage_RemoveObject)     \

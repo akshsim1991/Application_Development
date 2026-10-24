@@ -19,6 +19,7 @@
 #include "exporter.hpp"
 #include "speech.hpp"
 #include "redact.hpp"
+#include "compress.hpp"
 
 namespace {
 
@@ -132,7 +133,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -1077,12 +1078,45 @@ void redactionMenuAction(Document& d, int cmd) {
     }
 }
 
+
+void doCompress(Document& d) {
+    std::vector<FormField> f(4);
+    f[0] = {FormField::Note, L"", {}, L"Makes the file smaller by storing large pictures at a lower resolution as JPEG. Text and drawings stay sharp."};
+    f[1] = {FormField::Choice, L"Quality:", {L"Balanced (150 dpi) - recommended", L"High quality (220 dpi)", L"Smallest file (96 dpi)", L"Make it smaller than..."}, L"", 0};
+    f[2] = {FormField::Text, L"Target size (MB):", {}, L"2"};
+    f[3] = {FormField::Check, L"Black and white / greyscale (smallest for scans)"};
+    if (!showForm(app.wnd, app.inst, L"Compress", f, L"Compress", [](const std::vector<FormField>& v) -> std::wstring {
+            if (v[1].choice != 3) return L"";
+            wchar_t* end = nullptr;
+            double mb = wcstod(v[2].text.c_str(), &end);
+            return (end == v[2].text.c_str() || *end || mb < 0.05 || mb > 10000) ? L"Type the size in megabytes, for example 2 or 0.5." : L""; })) return;
+    compress::Options o;
+    static const int dpis[] = {150, 220, 96};
+    static const int qual[] = {80, 88, 70};
+    if (f[1].choice == 3) o.targetMB = wcstod(f[2].text.c_str(), nullptr);
+    else { o.dpi = dpis[f[1].choice]; o.jpegQuality = qual[f[1].choice]; }
+    o.greyscale = f[3].checked;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    compress::Result r = compress::run(d, o);
+    SetCursor(old);
+    auto mb = [](size_t b) { wchar_t t[32]; if (b >= (1u << 20)) swprintf(t, 32, L"%.1f MB", b / 1048576.0); else swprintf(t, 32, L"%.0f KB", b / 1024.0); return std::wstring(t); };
+    if (!r.changed) {
+        MessageBoxW(app.wnd, L"No pictures could be made smaller: they are already at or below this resolution, have transparent parts, or the file has no pictures. The document is unchanged.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    afterPagesChanged();
+    std::wstring msg = L"The file is now about " + mb(r.after) + L" (it was " + mb(r.before) + L"). Pictures made smaller: " + std::to_wstring(r.pictures) + L".\n\nUndo (Ctrl+Z) takes the change back; Save keeps it.";
+    if (o.targetMB > 0 && !r.reachedTarget) msg = L"The file could not get under " + mb(static_cast<size_t>(o.targetMB * 1048576.0)) + L"; the smallest result is " + mb(r.after) + L" (it was " + mb(r.before) + L").\n\nUndo (Ctrl+Z) takes the change back; Save keeps it.";
+    MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
+    AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -1118,6 +1152,7 @@ void showToolsMenu(const RECT& anchor) {
         case T_WATERMARK: doWatermark(*d); break;
         case T_NUMBERS: doPageNumbers(*d); break;
         case T_EXPORT: doExport(*d); break;
+        case T_COMPRESS: doCompress(*d); break;
         case T_READ: readAloud(); break;
         case T_PRINT: printDocument(); break;
         case T_PROPS: showProperties(); break;
@@ -1557,6 +1592,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         for (int i = 0; i < doc.pageCount(); ++i) all[i] = i;
         exporter::Result r = exporter::run(doc, all, names[fi].f, files[3], files.size() > 4 ? _wtoi(files[4].c_str()) : 150);
         return r.ok ? 0 : 4;
+    }
+
+    // Command line compression: FeatherPDF.exe --compress <in.pdf> <out.pdf> [dpi]   (exit code 0 ok, 5 nothing to reduce)
+    if (!files.empty() && files[0] == L"--compress") {
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        compress::Options o;
+        if (files.size() > 3) o.dpi = std::max(30, _wtoi(files[3].c_str()));
+        if (!compress::run(doc, o).changed) return 5;
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
 
     // One window: if Feather PDF is already running, give it the files and quit.

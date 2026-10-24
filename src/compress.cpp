@@ -1,0 +1,201 @@
+#include "compress.hpp"
+#include <windows.h>
+#include <objbase.h>
+#include <propidl.h>
+#include <algorithm>
+using std::min; using std::max;
+#include <gdiplus.h>
+#include <cmath>
+
+namespace compress {
+namespace {
+
+bool jpegEncoder(CLSID& out) {
+    UINT n = 0, size = 0;
+    Gdiplus::GetImageEncodersSize(&n, &size);
+    if (!size) return false;
+    std::vector<unsigned char> buf(size);
+    auto* info = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
+    Gdiplus::GetImageEncoders(n, size, info);
+    for (UINT i = 0; i < n; ++i) if (wcscmp(info[i].MimeType, L"image/jpeg") == 0) { out = info[i].Clsid; return true; }
+    return false;
+}
+
+struct MemAccess : FPDF_FILEACCESS {
+    std::vector<unsigned char> data;
+};
+
+int readBlock(void* param, unsigned long pos, unsigned char* buf, unsigned long size) {
+    auto* m = static_cast<MemAccess*>(param);
+    if (pos + size > m->data.size()) return 0;
+    memcpy(buf, m->data.data() + pos, size);
+    return 1;
+}
+
+// Encodes BGR/BGRA/gray pixels as a JPEG of w2 x h2 pixels (scaled down).
+bool encode(const unsigned char* src, int w, int h, int stride, int channels, int w2, int h2, int quality, bool grey,
+            const CLSID& clsid, std::vector<unsigned char>& out) {
+    // Build a 32-bit BGRA copy (GDI+ needs a known layout), expanding gray.
+    std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4);
+    for (int y = 0; y < h; ++y) {
+        const unsigned char* s = src + static_cast<size_t>(y) * stride;
+        unsigned char* d = px.data() + static_cast<size_t>(y) * w * 4;
+        for (int x = 0; x < w; ++x, d += 4) {
+            if (channels == 1) { d[0] = d[1] = d[2] = s[x]; }
+            else { d[0] = s[x * channels]; d[1] = s[x * channels + 1]; d[2] = s[x * channels + 2]; }
+            d[3] = 255;
+        }
+    }
+    Gdiplus::Bitmap in(w, h, w * 4, PixelFormat32bppRGB, px.data());
+    Gdiplus::Bitmap scaled(w2, h2, PixelFormat24bppRGB);
+    {
+        Gdiplus::Graphics g(&scaled);
+        g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
+        g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
+        g.DrawImage(&in, Gdiplus::Rect(0, 0, w2, h2), 0, 0, w, h, Gdiplus::UnitPixel);
+    }
+    if (grey) {
+        Gdiplus::BitmapData bd;
+        Gdiplus::Rect all(0, 0, w2, h2);
+        if (scaled.LockBits(&all, Gdiplus::ImageLockModeRead | Gdiplus::ImageLockModeWrite, PixelFormat24bppRGB, &bd) == Gdiplus::Ok) {
+            for (int y = 0; y < h2; ++y) {
+                unsigned char* p = static_cast<unsigned char*>(bd.Scan0) + static_cast<size_t>(y) * bd.Stride;
+                for (int x = 0; x < w2; ++x, p += 3) { unsigned char g8 = static_cast<unsigned char>((p[0] * 29 + p[1] * 150 + p[2] * 77) >> 8); p[0] = p[1] = p[2] = g8; }
+            }
+            scaled.UnlockBits(&bd);
+        }
+    }
+    IStream* st = nullptr;
+    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, &st))) return false;
+    Gdiplus::EncoderParameters params{};
+    ULONG q = static_cast<ULONG>(quality);
+    params.Count = 1;
+    params.Parameter[0].Guid = Gdiplus::EncoderQuality;
+    params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
+    params.Parameter[0].NumberOfValues = 1;
+    params.Parameter[0].Value = &q;
+    bool ok = scaled.Save(st, &clsid, &params) == Gdiplus::Ok;
+    if (ok) {
+        STATSTG stat{};
+        st->Stat(&stat, STATFLAG_NONAME);
+        LARGE_INTEGER z{};
+        st->Seek(z, STREAM_SEEK_SET, nullptr);
+        out.resize(static_cast<size_t>(stat.cbSize.QuadPart));
+        ULONG got = 0;
+        ok = SUCCEEDED(st->Read(out.data(), static_cast<ULONG>(out.size()), &got)) && got == out.size();
+    }
+    st->Release();
+    return ok;
+}
+
+// One pass over all pictures with the given settings. Returns the number replaced.
+int pass(Document& d, int dpi, int quality, bool grey, const CLSID& clsid) {
+    const auto& api = pdfium::api();
+    int replaced = 0;
+    for (int p = 0; p < d.pageCount(); ++p) {
+        FPDF_PAGE pg = d.page(p);
+        if (!pg) continue;
+        bool pageChanged = false;
+        const int n = api.FPDFPage_CountObjects(pg);
+        for (int i = 0; i < n; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE) continue;
+            float l, b, r, t;
+            if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+            const double wpt = std::fabs(r - l), hpt = std::fabs(t - b);
+            if (wpt < 1 || hpt < 1) continue;
+            FPDF_BITMAP bmp = api.FPDFImageObj_GetBitmap(o);
+            if (!bmp) continue;
+            const int w = api.FPDFBitmap_GetWidth(bmp), h = api.FPDFBitmap_GetHeight(bmp), stride = api.FPDFBitmap_GetStride(bmp);
+            const int fmt = api.FPDFBitmap_GetFormat(bmp);
+            const unsigned char* buf = static_cast<const unsigned char*>(api.FPDFBitmap_GetBuffer(bmp));
+            int ch = fmt == FPDFBitmap_Gray ? 1 : fmt == FPDFBitmap_BGR ? 3 : (fmt == FPDFBitmap_BGRx || fmt == FPDFBitmap_BGRA) ? 4 : 0;
+            bool skip = ch == 0 || !buf || w < 16 || h < 16;
+            if (!skip && fmt == FPDFBitmap_BGRA) {   // transparent parts cannot be kept in a JPEG
+                for (int y = 0; y < h && !skip; ++y)
+                    for (int x = 0; x < w; ++x) if (buf[static_cast<size_t>(y) * stride + x * 4 + 3] != 255) { skip = true; break; }
+            }
+            const double eff = std::max(w / (wpt / 72.0), h / (hpt / 72.0));   // pixels per inch as placed on the page
+            const double ratio = eff > dpi ? dpi / eff : 1.0;
+            if (!skip && (ratio < 0.92 || grey)) {
+                const int w2 = std::max(8, static_cast<int>(std::lround(w * ratio))), h2 = std::max(8, static_cast<int>(std::lround(h * ratio)));
+                MemAccess ma;
+                if (encode(buf, w, h, stride, ch, w2, h2, quality, grey, clsid, ma.data)) {
+                    // Only worth it when the new data is clearly smaller than the raw picture would be at this size.
+                    ma.m_FileLen = static_cast<unsigned long>(ma.data.size());
+                    ma.m_GetBlock = readBlock;
+                    ma.m_Param = &ma;
+                    if (api.FPDFImageObj_LoadJpegFileInline(&pg, 1, o, &ma)) { ++replaced; pageChanged = true; }
+                }
+            }
+            api.FPDFBitmap_Destroy(bmp);
+        }
+        if (pageChanged) api.FPDFPage_GenerateContent(pg);
+    }
+    return replaced;
+}
+
+size_t sizeNow(const Document& d) {
+    std::vector<unsigned char> v;
+    return d.serialize(v) ? v.size() : 0;
+}
+
+} // namespace
+
+Result run(Document& d, const Options& o) {
+    Result res;
+    Gdiplus::GdiplusStartupInput in;
+    ULONG_PTR token = 0;
+    CLSID clsid;
+    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return res;
+    if (!jpegEncoder(clsid)) { Gdiplus::GdiplusShutdown(token); return res; }
+
+    std::vector<unsigned char> original;
+    if (!d.serialize(original)) { Gdiplus::GdiplusShutdown(token); return res; }
+    res.before = original.size();
+    d.beginChange();   // the undo step for everything below
+
+    struct Step { int dpi, q; };
+    std::vector<Step> steps;
+    if (o.targetMB > 0) steps = {{220, 82}, {150, 78}, {120, 72}, {96, 68}, {72, 60}, {60, 50}};
+    else steps = {{o.dpi, o.jpegQuality}};
+
+    size_t bestSize = 0;
+    int bestIdx = -1, bestCount = 0;
+    for (size_t k = 0; k < steps.size(); ++k) {
+        if (k > 0) {   // go back to the original before trying stronger settings
+            std::vector<unsigned char> copy = original;
+            if (d.reload(std::move(copy)) != OpenResult::Ok) break;   // see note in main: encrypted files keep their password inside Document
+        }
+        int n = pass(d, steps[k].dpi, steps[k].q, o.greyscale, clsid);
+        size_t sz = n ? sizeNow(d) : res.before;
+        if (n && (bestIdx < 0 || sz < bestSize)) { bestSize = sz; bestIdx = static_cast<int>(k); bestCount = n; }
+        if (o.targetMB > 0 && sz <= o.targetMB * 1048576.0) { bestSize = sz; bestIdx = static_cast<int>(k); bestCount = n; res.reachedTarget = true; break; }
+        if (o.targetMB > 0) res.reachedTarget = false;
+        if (o.targetMB <= 0) break;
+    }
+    // Make the document hold the best result found (the last attempt is not always the smallest).
+    if (bestIdx < 0 || bestSize >= res.before) {
+        std::vector<unsigned char> copy = original;
+        d.reload(std::move(copy));
+        d.cancelChange();
+        Gdiplus::GdiplusShutdown(token);
+        res.changed = false;
+        res.after = res.before;
+        return res;
+    }
+    if (static_cast<size_t>(bestIdx) != steps.size() - 1 || o.targetMB > 0) {
+        std::vector<unsigned char> copy = original;
+        d.reload(std::move(copy));
+        bestCount = pass(d, steps[bestIdx].dpi, steps[bestIdx].q, o.greyscale, clsid);
+        bestSize = sizeNow(d);
+    }
+    d.refreshPages();
+    res.changed = true;
+    res.pictures = bestCount;
+    res.after = bestSize;
+    Gdiplus::GdiplusShutdown(token);
+    return res;
+}
+
+} // namespace compress

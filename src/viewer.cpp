@@ -606,8 +606,10 @@ void Viewer::drawPreview(HDC dc) {
 
 void Viewer::onPaint() {
     PAINTSTRUCT ps;
-    HDC dc = BeginPaint(hwnd_, &ps);
+    HDC screenDc = BeginPaint(hwnd_, &ps);
     RECT rc; GetClientRect(hwnd_, &rc);
+    PaintBuf buf(screenDc, rc, ps.rcPaint);
+    HDC dc = buf.dc;
 
     HBRUSH bg = CreateSolidBrush(pal().dark || colours_ == Colours::Dark ? pal().view : RGB(0xE8, 0xE8, 0xE8));
     FillRect(dc, &ps.rcPaint, bg);
@@ -649,6 +651,7 @@ void Viewer::onPaint() {
         }
         drawPreview(dc);
     }
+    buf.done();
     EndPaint(hwnd_, &ps);
 }
 

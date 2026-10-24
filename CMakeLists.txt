@@ -39,7 +39,7 @@ if(EXISTS "${TESS_DIR}/lib/libtesseract.a")
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${TESS_DIR}/licenses" "$<TARGET_FILE_DIR:FeatherPDF>/licenses")
 endif()
 
-target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt crypt32 ncrypt cryptui comdlg32 shell32 comctl32 ole32 uxtheme dwmapi)
+target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt crypt32 ncrypt cryptui comdlg32 shell32 comctl32 ole32 uxtheme dwmapi winspool)
 
 if(MINGW)
   target_link_options(FeatherPDF PRIVATE -municode -static -static-libgcc -static-libstdc++)

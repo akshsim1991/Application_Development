@@ -18,6 +18,7 @@
 #include "sidebar.hpp"
 #include "theme.hpp"
 #include <dwmapi.h>
+#include <winspool.h>
 #include <uxtheme.h>
 #include "formdialog.hpp"
 #include "pageobjects.hpp"
@@ -1102,43 +1103,119 @@ void readAloud() {
 void printDocument() {
     Document* d = activeDoc();
     if (!d) return;
-    PRINTDLGW pd{sizeof(pd)};
-    pd.hwndOwner = app.wnd;
-    pd.Flags = PD_RETURNDC | PD_USEDEVMODECOPIESANDCOLLATE | PD_NOSELECTION | PD_ALLPAGES;
-    pd.nMinPage = 1; pd.nMaxPage = static_cast<WORD>(std::min(d->pageCount(), 65535));
-    pd.nFromPage = 1; pd.nToPage = pd.nMaxPage;
-    pd.nCopies = 1;
-    if (!PrintDlgW(&pd)) {
-        if (CommDlgExtendedError() == PDERR_NODEFAULTPRN || CommDlgExtendedError() == PDERR_PRINTERNOTFOUND)
-            MessageBoxW(app.wnd, L"No printer is installed. Add one in Windows Settings > Bluetooth & devices > Printers & scanners, then try again.", kAppName, MB_OK | MB_ICONINFORMATION);
+    // printers installed on this PC
+    std::vector<std::wstring> printers;
+    {
+        DWORD need = 0, n = 0;
+        EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, nullptr, 0, &need, &n);
+        std::vector<BYTE> buf(need ? need : 1);
+        if (need && EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, buf.data(), need, &need, &n))
+            for (DWORD i = 0; i < n; ++i) printers.push_back(reinterpret_cast<PRINTER_INFO_4W*>(buf.data())[i].pPrinterName);
+    }
+    if (printers.empty()) {
+        MessageBoxW(app.wnd, L"No printer is installed. Add one in Windows Settings > Bluetooth & devices > Printers & scanners, then try again.", kAppName, MB_OK | MB_ICONINFORMATION);
         return;
     }
-    HDC dc = pd.hDC;
-    int from = 1, to = d->pageCount();
-    if (pd.Flags & PD_PAGENUMS) { from = std::max<int>(1, pd.nFromPage); to = std::min<int>(d->pageCount(), pd.nToPage); }
+    wchar_t def[256] = L"";
+    DWORD defLen = 256;
+    GetDefaultPrinterW(def, &defLen);
+    int defIdx = 0;
+    for (size_t i = 0; i < printers.size(); ++i) if (printers[i] == def) defIdx = static_cast<int>(i);
+
+    std::vector<FormField> f(7);
+    f[0] = {FormField::Choice, L"Printer:", printers, L"", defIdx};
+    f[1] = {FormField::Choice, L"Pages:", {L"All pages", L"Current page", L"Page range"}, L"", 0};
+    f[2] = {FormField::Text, L"Range (such as 1-3, 5, 8-):", {}, L""};
+    f[3] = {FormField::Text, L"Copies:", {}, L"1"};
+    f[4] = {FormField::Choice, L"Layout:", {L"1 page per sheet", L"2 pages per sheet", L"4 pages per sheet", L"6 pages per sheet", L"9 pages per sheet"}, L"", 0};
+    f[5] = {FormField::Choice, L"Size:", {L"Fit to the paper", L"Actual size"}, L"", 0};
+    f[6] = {FormField::Choice, L"Orientation:", {L"Automatic (as the pages)", L"Portrait", L"Landscape"}, L"", 0};
+    g_formDoc = d;
+    bool ok = showForm(app.wnd, app.inst, L"Print", f, L"Print", [](const std::vector<FormField>& v) -> std::wstring {
+        wchar_t* end = nullptr;
+        long c = wcstol(v[3].text.c_str(), &end, 10);
+        if (end == v[3].text.c_str() || *end || c < 1 || c > 999) return L"Copies must be a number from 1 to 999.";
+        if (v[1].choice == 2 && (!g_formDoc || g_formDoc->parseRange(v[2].text).empty())) return L"Type the pages to print, such as 1-3, 5, 8-.";
+        return L"";
+    });
+    g_formDoc = nullptr;
+    if (!ok) return;
+
+    std::vector<int> pages;
+    if (f[1].choice == 0) { for (int i = 0; i < d->pageCount(); ++i) pages.push_back(i); }
+    else if (f[1].choice == 1) pages.push_back(app.viewer.currentPage());
+    else pages = d->parseRange(f[2].text);
+    const int copies = static_cast<int>(wcstol(f[3].text.c_str(), nullptr, 10));
+    static const int perSheet[] = {1, 2, 4, 6, 9}, cols[] = {1, 2, 2, 2, 3}, rowsN[] = {1, 1, 2, 3, 3};
+    const int nup = perSheet[f[4].choice], gc = cols[f[4].choice], gr = rowsN[f[4].choice];
+    const bool actual = f[5].choice == 1;
+    const std::wstring& pname = printers[f[0].choice];
+
+    // orientation: choose from the first page when automatic
+    int orient = f[6].choice == 1 ? DMORIENT_PORTRAIT : f[6].choice == 2 ? DMORIENT_LANDSCAPE : 0;
+    if (!orient) {
+        const PageSize& ps0 = d->pageSize(pages.front());
+        bool land = ps0.w > ps0.h;
+        if (nup == 2) land = !land;   // two portrait pages sit side by side on a landscape sheet
+        orient = land ? DMORIENT_LANDSCAPE : DMORIENT_PORTRAIT;
+    }
+    HDC dc = nullptr;
+    HANDLE hp = nullptr;
+    std::vector<BYTE> dm;
+    if (OpenPrinterW(const_cast<wchar_t*>(pname.c_str()), &hp, nullptr)) {
+        LONG sz = DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), nullptr, nullptr, 0);
+        if (sz > 0) {
+            dm.resize(sz);
+            auto* dev = reinterpret_cast<DEVMODEW*>(dm.data());
+            if (DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, nullptr, DM_OUT_BUFFER) == IDOK) {
+                dev->dmFields |= DM_ORIENTATION;
+                dev->dmOrientation = static_cast<short>(orient);
+                DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, dev, DM_IN_BUFFER | DM_OUT_BUFFER);
+                dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, dev);
+            }
+        }
+        ClosePrinter(hp);
+    }
+    if (!dc) dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, nullptr);
+    if (!dc) { MessageBoxW(app.wnd, L"The printer could not be opened. Check that it is on and connected.", kAppName, MB_OK | MB_ICONWARNING); return; }
+
     DOCINFOW di{sizeof(di)};
     std::wstring name = d->title();
     di.lpszDocName = name.c_str();
-    bool ok = StartDocW(dc, &di) > 0;
+    bool good = StartDocW(dc, &di) > 0;
     const int areaW = GetDeviceCaps(dc, HORZRES), areaH = GetDeviceCaps(dc, VERTRES);
-    for (int p = from - 1; ok && p < to; ++p) {
-        if (StartPage(dc) <= 0) { ok = false; break; }
-        FPDF_PAGE pg = d->page(p);
-        if (pg) {
-            const PageSize& ps = d->pageSize(p);
-            const bool rotate = (ps.w > ps.h) != (areaW > areaH);       // turn landscape pages on portrait paper
-            const double pw = rotate ? ps.h : ps.w, ph = rotate ? ps.w : ps.h;
-            const double sc = std::min(areaW / pw, areaH / ph);
-            const int w = static_cast<int>(pw * sc), h = static_cast<int>(ph * sc);
-            pdfium::api().FPDF_RenderPage(dc, pg, (areaW - w) / 2, (areaH - h) / 2, w, h, rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
+    const double ppp = GetDeviceCaps(dc, LOGPIXELSX) / 72.0;   // device pixels per point
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    for (int c = 0; good && c < copies; ++c) {
+        for (size_t k = 0; good && k < pages.size(); k += nup) {
+            if (StartPage(dc) <= 0) { good = false; break; }
+            const int cw = areaW / gc, ch = areaH / gr, pad = nup > 1 ? 12 : 0;
+            for (int s = 0; s < nup && k + s < pages.size(); ++s) {
+                FPDF_PAGE pg = d->page(pages[k + s]);
+                if (!pg) continue;
+                const PageSize& ps = d->pageSize(pages[k + s]);
+                const int cx = (s % gc) * cw + pad, cy = (s / gc) * ch + pad, aw = cw - 2 * pad, ah = ch - 2 * pad;
+                bool rotate = false;
+                double pw = ps.w, ph = ps.h;
+                if (nup == 1 && f[6].choice == 0 && (ps.w > ps.h) != (aw > ah)) { rotate = true; std::swap(pw, ph); }
+                double sc = actual && nup == 1 ? ppp : std::min(aw / pw, ah / ph);
+                int w = static_cast<int>(pw * sc), h = static_cast<int>(ph * sc);
+                int x = cx + (aw - w) / 2, y = cy + (ah - h) / 2;
+                if (actual && nup == 1) { x = std::max(0, x); y = std::max(0, y); }
+                pdfium::api().FPDF_RenderPage(dc, pg, x, y, w, h, rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
+                if (nup > 1) {   // thin frame so the sheets are easy to tell apart
+                    HGDIOBJ op = SelectObject(dc, GetStockObject(BLACK_PEN)), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+                    Rectangle(dc, x, y, x + w, y + h);
+                    SelectObject(dc, ob); SelectObject(dc, op);
+                }
+            }
+            if (EndPage(dc) <= 0) good = false;
         }
-        if (EndPage(dc) <= 0) ok = false;
     }
-    if (ok) EndDoc(dc); else AbortDoc(dc);
+    SetCursor(old);
+    if (good) EndDoc(dc); else AbortDoc(dc);
     DeleteDC(dc);
-    if (pd.hDevMode) GlobalFree(pd.hDevMode);
-    if (pd.hDevNames) GlobalFree(pd.hDevNames);
-    if (!ok) MessageBoxW(app.wnd, L"The document could not be printed. Check that the printer is on and connected, then try again.", kAppName, MB_OK | MB_ICONWARNING);
+    if (!good) MessageBoxW(app.wnd, L"The document could not be printed. Check that the printer is on and connected, then try again.", kAppName, MB_OK | MB_ICONWARNING);
 }
 
 std::wstring metaText(FPDF_DOCUMENT doc, const char* tag) {
@@ -2300,9 +2377,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
             PAINTSTRUCT ps;
-            HDC dc = BeginPaint(h, &ps);
+            HDC screenDc = BeginPaint(h, &ps);
             RECT rc; GetClientRect(h, &rc);
-            if (!app.fullscreen) paintHeader(dc, rc);
+            PaintBuf buf(screenDc, rc, ps.rcPaint);
+            if (!app.fullscreen) paintHeader(buf.dc, rc);
+            buf.done();
             EndPaint(h, &ps);
             return 0;
         }
@@ -2581,6 +2660,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     wc.lpfnWndProc = wndProc;
     wc.hInstance = inst;
     wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.hIcon = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(101), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), 0));
+    wc.hIconSm = static_cast<HICON>(LoadImageW(inst, MAKEINTRESOURCEW(101), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), 0));
     wc.lpszClassName = L"FeatherPdfMain";
     RegisterClassExW(&wc);
 

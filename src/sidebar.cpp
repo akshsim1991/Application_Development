@@ -143,9 +143,11 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
             PAINTSTRUCT ps;
-            HDC dc = BeginPaint(hwnd_, &ps);
+            HDC screenDc = BeginPaint(hwnd_, &ps);
             RECT rc; GetClientRect(hwnd_, &rc);
-            RECT hr{0, 0, rc.right, kHeaderH};
+            PaintBuf buf(screenDc, rc, ps.rcPaint);
+            HDC dc = buf.dc;
+            RECT hr = rc;
             HBRUSH bg = CreateSolidBrush(pal().panel);
             FillRect(dc, &hr, bg);
             DeleteObject(bg);
@@ -169,6 +171,7 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
                 SetTextColor(dc, pal().textDim);
                 DrawTextW(dc, L"This document has no bookmarks.", -1, &r, DT_CENTER | DT_WORDBREAK);
             }
+            buf.done();
             EndPaint(hwnd_, &ps);
             return 0;
         }
@@ -238,8 +241,10 @@ void Sidebar::thumbLayout() {
 
 void Sidebar::thumbPaint() {
     PAINTSTRUCT ps;
-    HDC dc = BeginPaint(thumbs_, &ps);
+    HDC screenDc = BeginPaint(thumbs_, &ps);
     RECT rc; GetClientRect(thumbs_, &rc);
+    PaintBuf buf(screenDc, rc, ps.rcPaint);
+    HDC dc = buf.dc;
     HBRUSH bg = CreateSolidBrush(pal().panelDark);
     FillRect(dc, &ps.rcPaint, bg);
     DeleteObject(bg);
@@ -301,6 +306,7 @@ void Sidebar::thumbPaint() {
         FillRect(dc, &line, lb);
         DeleteObject(lb);
     }
+    buf.done();
     EndPaint(thumbs_, &ps);
 }
 

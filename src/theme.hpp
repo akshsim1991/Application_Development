@@ -18,3 +18,22 @@ inline Palette darkPalette() {
             RGB(0x2E, 0x4F, 0x86), RGB(0x2B, 0x2B, 0x2B), RGB(0xB0, 0xB0, 0xB0), RGB(0xD0, 0xD0, 0xD0), true};
 }
 inline Palette& pal() { static Palette p = lightPalette(); return p; }
+
+// Paints into an off-screen bitmap and copies it to the window in one go, so nothing flickers.
+struct PaintBuf {
+    HDC target, dc;
+    HBITMAP bmp, old;
+    RECT clip;
+    PaintBuf(HDC t, const RECT& client, const RECT& clipRect) : target(t), clip(clipRect) {
+        dc = CreateCompatibleDC(t);
+        bmp = CreateCompatibleBitmap(t, client.right > 0 ? client.right : 1, client.bottom > 0 ? client.bottom : 1);
+        old = static_cast<HBITMAP>(SelectObject(dc, bmp));
+        SelectClipRgn(dc, nullptr);
+    }
+    void done() {
+        BitBlt(target, clip.left, clip.top, clip.right - clip.left, clip.bottom - clip.top, dc, clip.left, clip.top, SRCCOPY);
+        SelectObject(dc, old);
+        DeleteObject(bmp);
+        DeleteDC(dc);
+    }
+};

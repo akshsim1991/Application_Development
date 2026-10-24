@@ -14,6 +14,7 @@
 #include "sidebar.hpp"
 #include "formdialog.hpp"
 #include "pageobjects.hpp"
+#include "exporter.hpp"
 
 namespace {
 
@@ -126,7 +127,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -826,12 +827,70 @@ void doPageNumbers(Document& d) {
     else MessageBoxW(app.wnd, L"The page numbers could not be added.", kAppName, MB_OK | MB_ICONWARNING);
 }
 
+
+void doExport(Document& d) {
+    std::vector<FormField> f(3);
+    f[0] = {FormField::Choice, L"Export as:", {L"PNG pictures (best for text and drawings)", L"JPEG pictures (smaller, for photos)", L"Plain text (.txt)",
+                                               L"Markdown (.md)", L"Word document (.docx)", L"Excel workbook, tables only (.xlsx)", L"CSV, tables only (.csv)"}, L"", 4};
+    f[1] = {FormField::Choice, L"Picture resolution:", {L"72 dpi (screen)", L"150 dpi (good quality)", L"220 dpi (high quality)", L"300 dpi (print)"}, L"", 1};
+    f[2] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+    g_formDoc = &d;
+    bool ok = showForm(app.wnd, app.inst, L"Export", f, L"Export...", [](const std::vector<FormField>& v) { return badPages(v[2].text); });
+    g_formDoc = nullptr;
+    if (!ok) return;
+    static const exporter::Format fmts[] = {exporter::Format::Png, exporter::Format::Jpeg, exporter::Format::Text, exporter::Format::Markdown,
+                                            exporter::Format::Word, exporter::Format::ExcelXlsx, exporter::Format::Csv};
+    static const int dpis[] = {72, 150, 220, 300};
+    const exporter::Format fmt = fmts[std::clamp(f[0].choice, 0, 6)];
+    const bool pics = fmt == exporter::Format::Png || fmt == exporter::Format::Jpeg;
+    std::vector<int> pages = pagesFromText(d, f[2].text);
+
+    static const wchar_t* filters[] = {L"PNG pictures (*.png)\0*.png\0", L"JPEG pictures (*.jpg)\0*.jpg\0", L"Text files (*.txt)\0*.txt\0",
+                                       L"Markdown files (*.md)\0*.md\0", L"Word documents (*.docx)\0*.docx\0", L"Excel workbooks (*.xlsx)\0*.xlsx\0",
+                                       L"CSV files (*.csv)\0*.csv\0"};
+    wchar_t buf[MAX_PATH * 2] = L"";
+    std::wstring base = d.title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(buf, (base + L"." + exporter::extension(fmt)).c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = pics ? L"Export as (each page gets its number added)" : L"Export as";
+    ofn.lpstrFilter = filters[std::clamp(f[0].choice, 0, 6)];
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = MAX_PATH * 2;
+    ofn.lpstrDefExt = exporter::extension(fmt);
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    for (const auto& t : app.tabs)
+        if (_wcsicmp(t->path().c_str(), buf) == 0) {
+            MessageBoxW(app.wnd, L"That file is open in a tab. Choose another name.", kAppName, MB_OK | MB_ICONWARNING);
+            return;
+        }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    exporter::Result r = exporter::run(d, pages, fmt, buf, dpis[std::clamp(f[1].choice, 0, 3)]);
+    SetCursor(old);
+    if (!r.ok) {
+        MessageBoxW(app.wnd, (r.error.empty() ? L"The export could not be completed." : r.error).c_str(), kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    wchar_t msg[600];
+    if (pics) swprintf(msg, 600, L"%d picture%ls saved next to \"%ls\". Show them in the folder?", r.items, r.items == 1 ? L"" : L"s", r.firstFile.substr(r.firstFile.find_last_of(L"\\/") + 1).c_str());
+    else swprintf(msg, 600, L"Saved \"%ls\". Open it?", r.firstFile.substr(r.firstFile.find_last_of(L"\\/") + 1).c_str());
+    if (MessageBoxW(app.wnd, msg, kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) {
+        if (pics) { std::wstring a = L"/select,\"" + r.firstFile + L"\""; ShellExecuteW(app.wnd, nullptr, L"explorer.exe", a.c_str(), nullptr, SW_SHOWNORMAL); }
+        else ShellExecuteW(app.wnd, L"open", r.firstFile.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    }
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
@@ -839,6 +898,7 @@ void showToolsMenu(const RECT& anchor) {
     switch (cmd) {
         case T_WATERMARK: doWatermark(*d); break;
         case T_NUMBERS: doPageNumbers(*d); break;
+        case T_EXPORT: doExport(*d); break;
     }
 }
 
@@ -1250,6 +1310,24 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     std::vector<std::wstring> files;
     for (int i = 1; i < argc; ++i) files.push_back(argv[i]);
     LocalFree(argv);
+
+    // Command line export, without a window: FeatherPDF.exe --export png|jpg|txt|md|docx|xlsx|csv <pdf> <output> [dpi]
+    // The exit code is 0 on success, 2 for bad arguments, 3 when the PDF cannot be opened, 4 when the export fails.
+    if (!files.empty() && files[0] == L"--export") {
+        if (files.size() < 4) return 2;
+        static const struct { const wchar_t* name; exporter::Format f; } names[] = {
+            {L"png", exporter::Format::Png}, {L"jpg", exporter::Format::Jpeg}, {L"txt", exporter::Format::Text}, {L"md", exporter::Format::Markdown},
+            {L"docx", exporter::Format::Word}, {L"xlsx", exporter::Format::ExcelXlsx}, {L"csv", exporter::Format::Csv}};
+        int fi = -1;
+        for (int i = 0; i < 7; ++i) if (files[1] == names[i].name) fi = i;
+        if (fi < 0) return 2;
+        Document doc;
+        if (doc.open(files[2]) != OpenResult::Ok) return 3;
+        std::vector<int> all(doc.pageCount());
+        for (int i = 0; i < doc.pageCount(); ++i) all[i] = i;
+        exporter::Result r = exporter::run(doc, all, names[fi].f, files[3], files.size() > 4 ? _wtoi(files[4].c_str()) : 150);
+        return r.ok ? 0 : 4;
+    }
 
     // One window: if Feather PDF is already running, give it the files and quit.
     HWND existing = FindWindowW(L"FeatherPdfMain", nullptr);

@@ -15,12 +15,13 @@ add_executable(FeatherPDF WIN32
   src/annot.cpp
   src/formdialog.cpp
   src/pageobjects.cpp
+  src/exporter.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include")
 target_compile_definitions(FeatherPDF PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
   FEATHER_VERSION="${PROJECT_VERSION}")
-target_link_libraries(FeatherPDF PRIVATE user32 gdi32 msimg32 comdlg32 shell32 comctl32 ole32)
+target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 comdlg32 shell32 comctl32 ole32)
 
 if(MINGW)
   target_link_options(FeatherPDF PRIVATE -municode -static -static-libgcc -static-libstdc++)

@@ -74,6 +74,10 @@
     X(FPDFPage_GetMediaBox)      \
     X(FPDFPage_GetCropBox)       \
     X(FPDFPage_SetCropBox)       \
+    X(FPDFText_GetUnicode)       \
+    X(FPDFText_GetCharBox)       \
+    X(FPDFText_GetFontSize)      \
+    X(FPDFText_GetFontWeight)    \
     X(FPDFPageObj_NewTextObj)    \
     X(FPDFText_SetText)          \
     X(FPDFPageObj_SetFillColor)  \

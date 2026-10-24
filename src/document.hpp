@@ -106,6 +106,8 @@ public:
     static SaveResult writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes);
     // Writes the given pages to a new PDF file (the document itself is not changed).
     SaveResult extractPages(const std::vector<int>& pages, const std::wstring& path) const;
+    // The same pages as a complete PDF in memory (used to copy, cut and paste pages between documents).
+    bool pagesToBytes(const std::vector<int>& pages, std::vector<unsigned char>& out) const;
     // Parses "1-3, 5, 8-" into 0-based page numbers (sorted, no duplicates). Empty on error.
     std::vector<int> parseRange(const std::wstring& text) const;         // bumps on every change, undo and redo
 

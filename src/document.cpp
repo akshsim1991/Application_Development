@@ -564,20 +564,26 @@ bool Document::importPages(Document& src, const std::vector<int>& srcPages, int 
     return true;
 }
 
-SaveResult Document::extractPages(const std::vector<int>& pages, const std::wstring& path) const {
-    if (pages.empty() || !doc_) return SaveResult::Failed;
+bool Document::pagesToBytes(const std::vector<int>& pages, std::vector<unsigned char>& out) const {
+    out.clear();
+    if (pages.empty() || !doc_) return false;
     const auto& api = pdfium::api();
-    FPDF_DOCUMENT out = api.FPDF_CreateNewDocument();
-    if (!out) return SaveResult::Failed;
-    SaveResult res = SaveResult::Failed;
-    if (api.FPDF_ImportPagesByIndex(out, doc_, pages.data(), static_cast<unsigned long>(pages.size()), 0)) {
-        std::vector<unsigned char> bytes;
+    FPDF_DOCUMENT tmp = api.FPDF_CreateNewDocument();
+    if (!tmp) return false;
+    bool ok = false;
+    if (api.FPDF_ImportPagesByIndex(tmp, doc_, pages.data(), static_cast<unsigned long>(pages.size()), 0)) {
         Sink sink;
-        sink.version = 1; sink.WriteBlock = writeBlock; sink.out = &bytes;
-        if (api.FPDF_SaveAsCopy(out, &sink, 0) && bytes.size() > 8) res = writeFile(path, bytes);
+        sink.version = 1; sink.WriteBlock = writeBlock; sink.out = &out;
+        ok = api.FPDF_SaveAsCopy(tmp, &sink, 0) && out.size() > 8;
     }
-    api.FPDF_CloseDocument(out);
-    return res;
+    api.FPDF_CloseDocument(tmp);
+    return ok;
+}
+
+SaveResult Document::extractPages(const std::vector<int>& pages, const std::wstring& path) const {
+    std::vector<unsigned char> bytes;
+    if (!pagesToBytes(pages, bytes)) return SaveResult::Failed;
+    return writeFile(path, bytes);
 }
 
 std::vector<int> Document::parseRange(const std::wstring& text) const {

@@ -16,6 +16,9 @@
 #include "document.hpp"
 #include "viewer.hpp"
 #include "sidebar.hpp"
+#include "theme.hpp"
+#include <dwmapi.h>
+#include <uxtheme.h>
 #include "formdialog.hpp"
 #include "pageobjects.hpp"
 #include "exporter.hpp"
@@ -33,7 +36,7 @@ enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COU
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
+enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -61,11 +64,15 @@ struct App {
     std::vector<RECT> tabRects, closeRects;
     RECT plusRect{}, pageRect{};
     int hover = -1;
+    int theme = 2;            // 0 light, 1 dark, 2 like Windows
+    HBRUSH ctlBrush = nullptr;
 } app;
 
 Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nullptr; }
 
 std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"") + d.title(); }
+
+void applyTheme();
 
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
@@ -263,6 +270,7 @@ void loadSettings() {
     app.widthIdx = std::clamp(num(L"lineWidth", app.widthIdx), 0, 2);
     app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
     app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
+    app.theme = std::clamp(num(L"theme", 2), 0, 2);
     app.textStyle.family = static_cast<pageobj::Family>(std::clamp(num(L"textFont", 0), 0, 2));
     app.textStyle.bold = num(L"textBold", 0) != 0;
     app.textStyle.italic = num(L"textItalic", 0) != 0;
@@ -285,6 +293,7 @@ void saveSettings() {
     put(L"view", L"lineWidth", app.widthIdx);
     put(L"view", L"readingSpeed", app.readRate);
     put(L"view", L"pageColours", static_cast<int>(app.viewer.colours()));
+    put(L"view", L"theme", app.theme);
     put(L"view", L"textFont", static_cast<int>(app.textStyle.family));
     put(L"view", L"textBold", app.textStyle.bold);
     put(L"view", L"textItalic", app.textStyle.italic);
@@ -763,6 +772,8 @@ std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* 
     return first;
 }
 
+void pagesMenuAction(int cmd, const std::vector<int>& sel);
+
 void showPagesMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -784,8 +795,18 @@ void showPagesMenu(const RECT& anchor) {
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
+    pagesMenuAction(cmd, {});
+}
+
+void pagesMenuAction(int cmd, const std::vector<int>& sel) {
+    Document* d = activeDoc();
+    if (!d) return;
     const int cur = app.viewer.currentPage();
-    const std::wstring curText = std::to_wstring(cur + 1);
+    std::wstring curText = std::to_wstring(cur + 1);
+    if (!sel.empty()) {
+        curText.clear();
+        for (int p : sel) curText += (curText.empty() ? L"" : L",") + std::to_wstring(p + 1);
+    }
     switch (cmd) {
         case P_DELETE: {
             auto pages = askPages(*d, L"Delete pages", L"Which pages should be deleted?", curText);
@@ -1852,6 +1873,241 @@ void runCommand(int id) {
     }
 }
 
+// ---- theme ----
+bool systemUsesDark() {
+    DWORD v = 1, sz = sizeof(v);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize", L"AppsUseLightTheme", RRF_RT_REG_DWORD, nullptr, &v, &sz);
+    return v == 0;
+}
+
+void applyTheme() {
+    const bool dark = app.theme == 1 || (app.theme == 2 && systemUsesDark());
+    pal() = dark ? darkPalette() : lightPalette();
+    if (app.ctlBrush) DeleteObject(app.ctlBrush);
+    app.ctlBrush = CreateSolidBrush(pal().toolbar);
+    BOOL on = dark;
+    DwmSetWindowAttribute(app.wnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &on, sizeof(on));
+    const wchar_t* cls = dark ? L"DarkMode_Explorer" : L"Explorer";
+    for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findClose, app.findCase}) if (c) SetWindowTheme(c, cls, nullptr);
+    app.sidebar.applyTheme();
+    RedrawWindow(app.wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE);
+}
+
+// ---- About and Settings ----
+void showAbout() {
+    std::vector<FormField> f(1);
+    f[0] = {FormField::Note, L"", {}, L"Feather PDF\nLightweight PDF viewer and editor\nVersion 2.13.0\n\nCreated by: Akshaya Simha\n"
+            L"Built with care for a faster, simpler document experience.\n\nFree to use and share, always. No subscription, no trial, no licence key.\n\n"
+            L"PDF rendering by PDFium; text recognition by Tesseract. See the licenses folder."};
+    showForm(app.wnd, app.inst, L"About Feather PDF", f, L"Close");
+}
+
+void showSettings() {
+    std::vector<FormField> f(6);
+    f[0] = {FormField::Choice, L"Window theme:", {L"Light", L"Dark", L"Like Windows"}, L"", app.theme};
+    f[1] = {FormField::Choice, L"Page colours:", {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"}, L"", static_cast<int>(app.viewer.colours())};
+    f[2] = {FormField::Choice, L"Highlight colour:", {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"}, L"", app.hlColour};
+    f[3] = {FormField::Choice, L"Drawing colour:", {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"}, L"", app.drawColour};
+    f[4] = {FormField::Choice, L"Line width:", {L"Thin", L"Medium", L"Thick"}, L"", app.widthIdx};
+    f[5] = {FormField::Choice, L"Reading speed:", {L"Slow", L"Normal", L"Fast", L"Very fast"}, L"", app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3};
+    if (!showForm(app.wnd, app.inst, L"Settings", f, L"Save")) return;
+    static const int rates[] = {-4, 0, 3, 6};
+    app.theme = f[0].choice;
+    app.viewer.setColours(static_cast<Viewer::Colours>(f[1].choice));
+    app.hlColour = f[2].choice; app.drawColour = f[3].choice; app.widthIdx = f[4].choice; app.readRate = rates[f[5].choice];
+    applyTheme();
+    saveSettings();
+}
+
+// ---- page clipboard and the thumbnail menu ----
+std::vector<unsigned char> g_pageClip;
+
+void copyPagesToClip(Document& d, const std::vector<int>& pages) {
+    std::vector<unsigned char> b;
+    if (d.pagesToBytes(pages, b)) g_pageClip = std::move(b);
+    else MessageBoxW(app.wnd, L"The pages could not be copied.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+void pastePages(Document& d, int at) {
+    if (g_pageClip.empty()) return;
+    Document src;
+    std::vector<unsigned char> copy = g_pageClip;
+    if (src.load(std::move(copy), {}) != OpenResult::Ok) return;
+    std::vector<int> all(src.pageCount());
+    for (int i = 0; i < src.pageCount(); ++i) all[i] = i;
+    if (d.importPages(src, all, at)) { afterPagesChanged(); app.viewer.goToPage(at); }
+    else MessageBoxW(app.wnd, L"The pages could not be pasted.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+void deleteThumbPages(Document& d, const std::vector<int>& pages) {
+    if (pages.empty()) return;
+    if (static_cast<int>(pages.size()) >= d.pageCount()) {
+        MessageBoxW(app.wnd, L"A document needs at least one page, so not every page can be deleted.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (d.deletePages(pages)) afterPagesChanged();
+}
+
+void showThumbMenu(int clicked, POINT pt) {
+    Document* d = activeDoc();
+    if (!d) return;
+    std::vector<int> pages = app.sidebar.selectedPages();
+    if (pages.empty()) pages = {clicked};
+    const bool many = pages.size() > 1;
+    const bool clip = !g_pageClip.empty();
+    enum { M_DEL = 1, M_ROTR, M_ROTL, M_COPY, M_CUT, M_PBEFORE, M_PAFTER, M_PSTART, M_PEND, M_BLANK, M_BLANKB, M_INSERT, M_MERGE, M_CROP, M_EXTRACT, M_ALL };
+    HMENU m = CreatePopupMenu();
+    auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
+    auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
+    add(M_DEL, many ? L"Delete pages\tDel" : L"Delete page\tDel", static_cast<int>(pages.size()) < d->pageCount());
+    add(M_ROTR, L"Rotate clockwise");
+    add(M_ROTL, L"Rotate counterclockwise");
+    sep();
+    add(M_COPY, many ? L"Copy pages\tCtrl+C" : L"Copy page\tCtrl+C");
+    add(M_CUT, many ? L"Cut pages\tCtrl+X" : L"Cut page\tCtrl+X", static_cast<int>(pages.size()) < d->pageCount());
+    add(M_PAFTER, L"Paste pages after\tCtrl+V", clip);
+    add(M_PBEFORE, L"Paste pages before", clip);
+    add(M_PSTART, L"Paste pages at the start", clip);
+    add(M_PEND, L"Paste pages at the end", clip);
+    sep();
+    add(M_BLANK, L"Insert blank page after");
+    add(M_BLANKB, L"Insert blank page before");
+    add(M_INSERT, L"Insert pages from file...");
+    add(M_MERGE, L"Merge PDFs into this document...");
+    sep();
+    add(M_CROP, L"Crop pages...");
+    sep();
+    add(M_EXTRACT, L"Extract pages...");
+    add(M_ALL, L"Select all pages\tCtrl+A");
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    const int first = pages.front(), last = pages.back();
+    switch (cmd) {
+        case M_DEL: deleteThumbPages(*d, pages); break;
+        case M_ROTR: if (d->rotatePages(pages, 1)) afterPagesChanged(); break;
+        case M_ROTL: if (d->rotatePages(pages, -1)) afterPagesChanged(); break;
+        case M_COPY: copyPagesToClip(*d, pages); break;
+        case M_CUT: copyPagesToClip(*d, pages); deleteThumbPages(*d, pages); break;
+        case M_PAFTER: pastePages(*d, last + 1); break;
+        case M_PBEFORE: pastePages(*d, first); break;
+        case M_PSTART: pastePages(*d, 0); break;
+        case M_PEND: pastePages(*d, d->pageCount()); break;
+        case M_BLANK: if (d->insertBlankPage(last, last)) { afterPagesChanged(); app.viewer.goToPage(last + 1); } break;
+        case M_BLANKB: if (d->insertBlankPage(first - 1, first)) { afterPagesChanged(); app.viewer.goToPage(first); } break;
+        case M_INSERT: case M_MERGE: case M_CROP: case M_EXTRACT: {
+            // reuse the dialogs of the Pages menu with the selection as the default
+            app.viewer.goToPage(first);
+            pagesMenuAction(cmd == M_INSERT ? P_INSERT : cmd == M_MERGE ? P_MERGE : cmd == M_CROP ? P_CROP : P_EXTRACT, pages);
+            break;
+        }
+        case M_ALL: app.sidebar.selectAll(); break;
+    }
+}
+
+void onThumbReorder(const std::vector<int>& pages, int before) {
+    Document* d = activeDoc();
+    if (d && d->movePages(pages, before)) afterPagesChanged();
+}
+
+// ---- the main ("...") menu ----
+void showMainMenu(const RECT& anchor) {
+    Document* d = activeDoc();
+    enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
+           MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_RECENT = 100 };
+    HMENU m = CreatePopupMenu();
+    auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
+        AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
+    auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
+    const bool has = d != nullptr;
+    add(MM_OPEN, L"Open...\tCtrl+O");
+    HMENU rec = CreatePopupMenu();
+    for (size_t i = 0; i < app.recent.size(); ++i) {
+        size_t s = app.recent[i].find_last_of(L"\\/");
+        AppendMenuW(rec, MF_STRING, MM_RECENT + i, (s == std::wstring::npos ? app.recent[i] : app.recent[i].substr(s + 1)).c_str());
+    }
+    if (app.recent.empty()) AppendMenuW(rec, MF_STRING | MF_GRAYED, 0, L"(none)");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rec), L"Open recent");
+    add(MM_SAVE, L"Save\tCtrl+S", has && d->dirty());
+    add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
+    add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
+    add(MM_CLOSE, L"Close tab\tCtrl+W", has);
+    sep();
+    add(MM_UNDO, L"Undo\tCtrl+Z", has && d->canUndo());
+    add(MM_REDO, L"Redo\tCtrl+Y", has && d->canRedo());
+    sep();
+    add(MM_PRINT, L"Print...\tCtrl+P", has);
+    add(MM_PROPS, L"Document properties...\tCtrl+D", has);
+    add(MM_READ, L"Read aloud\tCtrl+Shift+U", has);
+    add(MM_SELALL, L"Select all\tCtrl+A", has);
+    add(MM_COPYPAGE, L"Copy page as image", has);
+    sep();
+    add(MM_FIRST, L"First page\tHome", has);
+    add(MM_LAST, L"Last page\tEnd", has);
+    add(MM_GOTO, L"Go to page...\tCtrl+G", has);
+    sep();
+    add(MM_BM, L"Bookmarks panel\tCtrl+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Bookmarks);
+    add(MM_THUMBS, L"Thumbnails panel\tCtrl+Shift+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Pages);
+    sep();
+    add(MM_FITW, L"Fit width\tCtrl+2", has);
+    add(MM_FITP, L"Fit page\tCtrl+0", has);
+    add(MM_ACTUAL, L"Actual size\tCtrl+1", has);
+    add(MM_FULL, L"Full screen\tF11", has);
+    add(MM_PRESENT, L"Presentation\tF5", has);
+    HMENU col = CreatePopupMenu();
+    static const wchar_t* colNames[] = {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"};
+    for (int i = 0; i < 3; ++i) AppendMenuW(col, MF_STRING | (static_cast<int>(app.viewer.colours()) == i ? MF_CHECKED : 0), MM_COL + i, colNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(col), L"Page colours");
+    HMENU th = CreatePopupMenu();
+    static const wchar_t* thNames[] = {L"Light", L"Dark", L"Like Windows"};
+    for (int i = 0; i < 3; ++i) AppendMenuW(th, MF_STRING | (app.theme == i ? MF_CHECKED : 0), MM_THEME + i, thNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(th), L"Theme");
+    sep();
+    add(MM_SETTINGS, L"Settings...");
+    add(MM_DEFAULT, L"Set as default PDF viewer...");
+    add(MM_ABOUT, L"About Feather PDF");
+    add(MM_EXIT, L"Exit\tCtrl+Q");
+    POINT pt{anchor.right, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    switch (cmd) {
+        case MM_OPEN: runCommand(C_OPEN); break;
+        case MM_SAVE: saveActive(); break;
+        case MM_SAVEAS: if (d) saveAsDialog(*d); break;
+        case MM_EXPORT: if (d) doExport(*d); break;
+        case MM_CLOSE: closeTab(app.active); break;
+        case MM_UNDO: undoRedo(false); break;
+        case MM_REDO: undoRedo(true); break;
+        case MM_PRINT: printDocument(); break;
+        case MM_PROPS: showProperties(); break;
+        case MM_READ: readAloud(); break;
+        case MM_SELALL: app.viewer.selectAll(); break;
+        case MM_COPYPAGE:
+            if (d && !pageobj::copyPageToClipboard(*d, app.viewer.currentPage(), app.wnd))
+                MessageBoxW(app.wnd, L"The page could not be copied as a picture (it may be too large).", kAppName, MB_OK | MB_ICONWARNING);
+            break;
+        case MM_FIRST: app.viewer.goToPage(0); break;
+        case MM_LAST: if (d) app.viewer.goToPage(d->pageCount() - 1); break;
+        case MM_GOTO: runCommand(C_GOTO); break;
+        case MM_BM: showSidebar(Sidebar::Mode::Bookmarks); break;
+        case MM_THUMBS: showSidebar(Sidebar::Mode::Pages); break;
+        case MM_FITW: runCommand(C_FITW); break;
+        case MM_FITP: runCommand(C_FITP); break;
+        case MM_ACTUAL: runCommand(C_ACTUAL); break;
+        case MM_FULL: setFullscreen(true, false); break;
+        case MM_PRESENT: setFullscreen(true, true); break;
+        case MM_SETTINGS: showSettings(); break;
+        case MM_DEFAULT: registerAsViewer(); break;
+        case MM_ABOUT: showAbout(); break;
+        case MM_EXIT: PostMessageW(app.wnd, WM_CLOSE, 0, 0); break;
+        default:
+            if (cmd >= MM_COL && cmd < MM_COL + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - MM_COL));
+            else if (cmd >= MM_THEME && cmd < MM_THEME + 3) { app.theme = cmd - MM_THEME; applyTheme(); saveSettings(); }
+            else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100 && static_cast<size_t>(cmd - MM_RECENT) < app.recent.size()) openFile(app.recent[cmd - MM_RECENT]);
+    }
+}
+
 // ---- header drawing: tabs + toolbar. Text labels only, so nothing depends on icon fonts. ----
 void layoutHeader(HDC dc, int width) {
     app.buttons.clear(); app.tabRects.clear(); app.closeRects.clear();
@@ -1900,13 +2156,18 @@ void layoutHeader(HDC dc, int width) {
     add(L"Annotate", C_ANNOT, d != nullptr);
     add(L"Pages", C_PAGES, d != nullptr);
     add(L"Tools", C_TOOLS, d != nullptr);
-    (void)width;
+    {
+        SIZE sz; GetTextExtentPoint32W(dc, L"Menu", 4, &sz);
+        int w = sz.cx + 24;
+        app.buttons.push_back({L"Menu", {width - w - 8, kTabH + 6, width - 8, kTabH + kToolH - 6}, C_MENU, true});
+    }
 }
 
 void paintHeader(HDC dc, const RECT& client) {
     layoutHeader(dc, client.right);
-    HBRUSH tabBg = CreateSolidBrush(RGB(0xE9, 0xE9, 0xE9));
-    HBRUSH toolBg = CreateSolidBrush(RGB(0xF7, 0xF7, 0xF7));
+    const Palette& P = pal();
+    HBRUSH tabBg = CreateSolidBrush(P.tabBar);
+    HBRUSH toolBg = CreateSolidBrush(P.toolbar);
     RECT tr{0, 0, client.right, kTabH}, br{0, kTabH, client.right, kTabH + kToolH};
     FillRect(dc, &tr, tabBg); FillRect(dc, &br, toolBg);
     if (app.findVisible) {   // the find bar sits between the toolbar and the page area
@@ -1919,32 +2180,32 @@ void paintHeader(HDC dc, const RECT& client) {
 
     if (app.tabs.empty()) {
         RECT r{8, 4, 128, kTabH};
-        HBRUSH w = CreateSolidBrush(RGB(0xFA, 0xFA, 0xFA)); FillRect(dc, &r, w); DeleteObject(w);
-        SetTextColor(dc, RGB(0x20, 0x20, 0x20));
+        HBRUSH w = CreateSolidBrush(P.tabActive); FillRect(dc, &r, w); DeleteObject(w);
+        SetTextColor(dc, P.text);
         DrawTextW(dc, L"New tab", -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
     for (size_t i = 0; i < app.tabRects.size(); ++i) {
         bool act = static_cast<int>(i) == app.active;
-        HBRUSH w = CreateSolidBrush(act ? RGB(0xFA, 0xFA, 0xFA) : RGB(0xDD, 0xDD, 0xDD));
+        HBRUSH w = CreateSolidBrush(act ? P.tabActive : P.tabIdle);
         FillRect(dc, &app.tabRects[i], w); DeleteObject(w);
         RECT t = app.tabRects[i]; t.left += 12; t.right -= 30;
-        SetTextColor(dc, RGB(0x20, 0x20, 0x20));
+        SetTextColor(dc, P.text);
         DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SetTextColor(dc, RGB(0x60, 0x60, 0x60));
+        SetTextColor(dc, P.textDim);
         DrawTextW(dc, L"x", -1, &app.closeRects[i], DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
     if (!app.tabs.empty()) {
-        SetTextColor(dc, RGB(0x40, 0x40, 0x40));
+        SetTextColor(dc, P.textDim);
         DrawTextW(dc, L"+", -1, &app.plusRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
     for (const Button& b : app.buttons) {
-        SetTextColor(dc, b.enabled ? RGB(0x20, 0x20, 0x20) : RGB(0xA0, 0xA0, 0xA0));
+        SetTextColor(dc, b.enabled ? P.text : P.textOff);
         DrawTextW(dc, b.label.c_str(), -1, const_cast<RECT*>(&b.rc), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
     Document* d = activeDoc();
     if (d) {
-        SetTextColor(dc, RGB(0x30, 0x30, 0x30));
+        SetTextColor(dc, P.text);
         const Button* prev = nullptr; const Button* zo = nullptr;
         for (const Button& b : app.buttons) { if (b.id == C_PREV) prev = &b; if (b.id == C_ZOOMOUT) zo = &b; }
         wchar_t s[64];
@@ -1956,7 +2217,7 @@ void paintHeader(HDC dc, const RECT& client) {
         RECT zr{zo->rc.right + 2, zo->rc.top, zo->rc.right + 50, zo->rc.bottom};
         DrawTextW(dc, s, -1, &zr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
-    HPEN pen = CreatePen(PS_SOLID, 1, RGB(0xD0, 0xD0, 0xD0));
+    HPEN pen = CreatePen(PS_SOLID, 1, P.line);
     HGDIOBJ old = SelectObject(dc, pen);
     MoveToEx(dc, 0, kTabH + kToolH - 1, nullptr); LineTo(dc, client.right, kTabH + kToolH - 1);
     SelectObject(dc, old); DeleteObject(pen);
@@ -1997,6 +2258,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.viewer.setStyle(drawColor(), lineWidth());
             app.sidebar.create(h, app.inst);
             app.sidebar.setOnNavigate(onSidebarNavigate, nullptr);
+            app.sidebar.onContext = showThumbMenu;
+            app.sidebar.onReorder = onThumbReorder;
             app.findEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_EDIT), app.inst, nullptr);
             app.findPrev = CreateWindowExW(0, L"BUTTON", L"Prev", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_PREV), app.inst, nullptr);
             app.findNext = CreateWindowExW(0, L"BUTTON", L"Next", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NEXT), app.inst, nullptr);
@@ -2024,6 +2287,16 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_TIMER:
             if (w == TIMER_FIND) { KillTimer(h, TIMER_FIND); runSearch(false); }
             return 0;
+        case WM_CTLCOLOREDIT: case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: {
+            HDC cdc = reinterpret_cast<HDC>(w);
+            SetTextColor(cdc, pal().text);
+            SetBkColor(cdc, m == WM_CTLCOLOREDIT ? (pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)) : pal().toolbar);
+            if (m == WM_CTLCOLOREDIT) { static HBRUSH eb = nullptr; if (eb) DeleteObject(eb); eb = CreateSolidBrush(pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)); return reinterpret_cast<LRESULT>(eb); }
+            return reinterpret_cast<LRESULT>(app.ctlBrush);
+        }
+        case WM_SETTINGCHANGE:
+            if (app.theme == 2 && l && wcscmp(reinterpret_cast<const wchar_t*>(l), L"ImmersiveColorSet") == 0) applyTheme();
+            break;
         case WM_ERASEBKGND: return 1;
         case WM_PAINT: {
             PAINTSTRUCT ps;
@@ -2046,6 +2319,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
                     else if (b.id == C_PAGES) showPagesMenu(b.rc);
                     else if (b.id == C_TOOLS) showToolsMenu(b.rc);
+                    else if (b.id == C_MENU) showMainMenu(b.rc);
                     else runCommand(b.id);
                     return 0;
                 }
@@ -2095,8 +2369,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                         return 0;
                     case 'F': runCommand(C_FIND); return 0;
                     case 'G': runCommand(C_GOTO); return 0;
-                    case 'C': app.viewer.copySelection(); return 0;
-                    case 'A': app.viewer.selectAll(); return 0;
+                    case 'C': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) copyPagesToClip(*d, app.sidebar.selectedPages()); else app.viewer.copySelection(); return 0;
+                    case 'X': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) { auto p = app.sidebar.selectedPages(); copyPagesToClip(*d, p); deleteThumbPages(*d, p); } return 0;
+                    case 'V': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) pastePages(*d, app.sidebar.selectedPages().back() + 1); return 0;
+                    case 'A': if (app.sidebar.thumbsFocused()) app.sidebar.selectAll(); else app.viewer.selectAll(); return 0;
                     case 'B': showSidebar(shift ? Sidebar::Mode::Pages : Sidebar::Mode::Bookmarks); return 0;
                     case 'W': closeTab(app.active); return 0;
                     case '0': runCommand(C_FITP); return 0;
@@ -2117,7 +2393,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case VK_F11: setFullscreen(!app.fullscreen, false); return 0;
                 case VK_F5: setFullscreen(true, true); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
-                case VK_DELETE: deleteSelectedAnnotation(); return 0;
+                case VK_DELETE:
+                    if (app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) deleteThumbPages(*d, app.sidebar.selectedPages());
+                    else deleteSelectedAnnotation();
+                    return 0;
                 case VK_ESCAPE:
                     if (app.fullscreen) setFullscreen(false, false);
                     else if (app.findVisible) toggleFind(false);
@@ -2308,6 +2587,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     HWND w = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1200, 780, nullptr, nullptr, inst, nullptr);
     loadSettings();
+    applyTheme();
     updateEmptyText();
     ShowWindow(w, show);
     UpdateWindow(w);

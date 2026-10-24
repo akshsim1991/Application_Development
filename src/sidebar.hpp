@@ -1,7 +1,9 @@
 #pragma once
 #include <windows.h>
 #include <commctrl.h>
+#include <functional>
 #include <map>
+#include <set>
 #include "document.hpp"
 
 // Left-hand panel with two views of the open document: bookmarks (outline) and page thumbnails.
@@ -19,8 +21,16 @@ public:
     void setDocument(Document* d);
     void setMode(Mode m);
     Mode mode() const { return mode_; }
+    void applyTheme();                                   // re-read the palette (tree colours, repaint)
     void refresh();                                      // the document changed: redraw thumbnails and bookmarks
-    void setCurrentPage(int page);                       // highlights it in the thumbnails
+    void setCurrentPage(int page);
+    // Selection of thumbnails (Ctrl+click adds, Shift+click selects a range).
+    const std::set<int>& selection() const { return sel_; }
+    std::vector<int> selectedPages() const { return std::vector<int>(sel_.begin(), sel_.end()); }
+    void selectAll();
+    bool thumbsFocused() const { return GetFocus() == thumbs_; }
+    std::function<void(int page, POINT screen)> onContext;                     // right-click on a thumbnail
+    std::function<void(const std::vector<int>& pages, int before)> onReorder; // dropped: move `pages` before page index `before`                       // highlights it in the thumbnails
     void setOnNavigate(void (*cb)(void*, int), void* ctx) { onNav_ = cb; onNavCtx_ = ctx; }
 
 private:
@@ -41,6 +51,13 @@ private:
     Mode mode_ = Mode::Bookmarks;
     int hasBookmarks_ = 0;
     int current_ = 0;
+    std::set<int> sel_;
+    int anchor_ = 0;
+    bool pressed_ = false, dragging_ = false;
+    POINT pressPt_{};
+    int pressIdx_ = -1, dropBefore_ = -1;
+    int thumbAt(int y) const;
+    int dropIndexAt(int y) const;
     // thumbnails
     std::vector<int> tops_, heights_;
     int totalH_ = 0, scroll_ = 0;

@@ -1,4 +1,5 @@
 #include "viewer.hpp"
+#include "theme.hpp"
 #include <windowsx.h>
 #include <cstdlib>
 #include <algorithm>
@@ -608,13 +609,13 @@ void Viewer::onPaint() {
     HDC dc = BeginPaint(hwnd_, &ps);
     RECT rc; GetClientRect(hwnd_, &rc);
 
-    HBRUSH bg = CreateSolidBrush(colours_ == Colours::Dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xE8, 0xE8, 0xE8));
+    HBRUSH bg = CreateSolidBrush(pal().dark || colours_ == Colours::Dark ? pal().view : RGB(0xE8, 0xE8, 0xE8));
     FillRect(dc, &ps.rcPaint, bg);
     DeleteObject(bg);
 
     if (!doc_) {
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, colours_ == Colours::Dark ? RGB(0xB0, 0xB0, 0xB0) : RGB(0x55, 0x55, 0x55));
+        SetTextColor(dc, pal().viewText);
         SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
         RECT box{rc.left + 20, 0, rc.right - 20, 0};
         DrawTextW(dc, emptyText_.c_str(), -1, &box, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX | DT_CALCRECT);   // measure, then centre the block

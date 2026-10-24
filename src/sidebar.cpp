@@ -1,5 +1,7 @@
 #include "sidebar.hpp"
+#include "theme.hpp"
 #include <windowsx.h>
+#include <uxtheme.h>
 #include <algorithm>
 #include <cmath>
 
@@ -144,7 +146,7 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
             HDC dc = BeginPaint(hwnd_, &ps);
             RECT rc; GetClientRect(hwnd_, &rc);
             RECT hr{0, 0, rc.right, kHeaderH};
-            HBRUSH bg = CreateSolidBrush(RGB(0xF2, 0xF2, 0xF2));
+            HBRUSH bg = CreateSolidBrush(pal().panel);
             FillRect(dc, &hr, bg);
             DeleteObject(bg);
             SetBkMode(dc, TRANSPARENT);
@@ -153,7 +155,7 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
             for (int i = 0; i < 2; ++i) {
                 RECT r{i * rc.right / 2, 0, (i + 1) * rc.right / 2, kHeaderH};
                 bool act = (i == 0) == (mode_ == Mode::Bookmarks);
-                SetTextColor(dc, act ? RGB(0x10, 0x10, 0x10) : RGB(0x70, 0x70, 0x70));
+                SetTextColor(dc, act ? pal().text : pal().textDim);
                 DrawTextW(dc, names[i], -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                 if (act) {
                     RECT u{r.left + 12, kHeaderH - 3, r.right - 12, kHeaderH};
@@ -164,7 +166,7 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
             }
             if (mode_ == Mode::Bookmarks && doc_ && hasBookmarks_ == 0) {
                 RECT r{10, kHeaderH + 20, rc.right - 10, kHeaderH + 80};
-                SetTextColor(dc, RGB(0x70, 0x70, 0x70));
+                SetTextColor(dc, pal().textDim);
                 DrawTextW(dc, L"This document has no bookmarks.", -1, &r, DT_CENTER | DT_WORDBREAK);
             }
             EndPaint(hwnd_, &ps);
@@ -192,6 +194,27 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
 
 // ---- thumbnails ----
 
+int Sidebar::thumbAt(int y) const {
+    const int cy = y + scroll_;
+    for (size_t i = 0; i < tops_.size(); ++i)
+        if (cy >= tops_[i] - 4 && cy <= tops_[i] + heights_[i] + kLabelH) return static_cast<int>(i);
+    return -1;
+}
+
+// The gap between thumbnails nearest to y: the page index the dragged pages would go before.
+int Sidebar::dropIndexAt(int y) const {
+    const int cy = y + scroll_;
+    for (size_t i = 0; i < tops_.size(); ++i)
+        if (cy < tops_[i] + heights_[i] / 2) return static_cast<int>(i);
+    return static_cast<int>(tops_.size());
+}
+
+void Sidebar::selectAll() {
+    sel_.clear();
+    for (size_t i = 0; i < tops_.size(); ++i) sel_.insert(static_cast<int>(i));
+    InvalidateRect(thumbs_, nullptr, FALSE);
+}
+
 void Sidebar::thumbLayout() {
     tops_.clear(); heights_.clear();
     totalH_ = 0;
@@ -204,6 +227,7 @@ void Sidebar::thumbLayout() {
         y += h + kLabelH + kPad;
     }
     totalH_ = y;
+    for (auto it = sel_.begin(); it != sel_.end();) it = (*it >= static_cast<int>(tops_.size())) ? sel_.erase(it) : std::next(it);
     RECT rc; GetClientRect(thumbs_, &rc);
     SCROLLINFO si{sizeof(si), SIF_RANGE | SIF_PAGE | SIF_POS};
     si.nMin = 0; si.nMax = std::max(0, totalH_ - 1); si.nPage = rc.bottom;
@@ -216,7 +240,7 @@ void Sidebar::thumbPaint() {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(thumbs_, &ps);
     RECT rc; GetClientRect(thumbs_, &rc);
-    HBRUSH bg = CreateSolidBrush(RGB(0xE8, 0xE8, 0xE8));
+    HBRUSH bg = CreateSolidBrush(pal().panelDark);
     FillRect(dc, &ps.rcPaint, bg);
     DeleteObject(bg);
     SetBkMode(dc, TRANSPARENT);
@@ -249,9 +273,10 @@ void Sidebar::thumbPaint() {
                     it = thumbCache_.emplace(static_cast<int>(i), bmp).first;
                 }
             }
-            if (static_cast<int>(i) == current_) {
+            const bool selected = sel_.count(static_cast<int>(i)) != 0;
+            if (selected || static_cast<int>(i) == current_) {
                 RECT sel{x - 5, y - 5, x + kThumbW + 5, y + h + kLabelH + 2};
-                HBRUSH sb = CreateSolidBrush(RGB(0x30, 0x80, 0xFF));
+                HBRUSH sb = CreateSolidBrush(selected ? pal().accent : pal().accentSoft);
                 FillRect(dc, &sel, sb);
                 DeleteObject(sb);
             }
@@ -265,9 +290,16 @@ void Sidebar::thumbPaint() {
             wchar_t num[16];
             swprintf(num, 16, L"%d", static_cast<int>(i) + 1);
             RECT lr{x, y + h + 1, x + kThumbW, y + h + kLabelH};
-            SetTextColor(dc, static_cast<int>(i) == current_ ? RGB(0xFF, 0xFF, 0xFF) : RGB(0x30, 0x30, 0x30));
+            SetTextColor(dc, selected ? RGB(0xFF, 0xFF, 0xFF) : pal().thumbText);
             DrawTextW(dc, num, -1, &lr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         }
+    }
+    if (dragging_ && dropBefore_ >= 0 && !tops_.empty()) {   // where the dragged pages would land
+        int y = dropBefore_ < static_cast<int>(tops_.size()) ? tops_[dropBefore_] - kPad / 2 - scroll_ : totalH_ - kPad / 2 - scroll_;
+        RECT line{6, y - 1, rc.right - 6, y + 2};
+        HBRUSH lb = CreateSolidBrush(RGB(0x30, 0x80, 0xFF));
+        FillRect(dc, &line, lb);
+        DeleteObject(lb);
     }
     EndPaint(thumbs_, &ps);
 }
@@ -303,12 +335,75 @@ LRESULT Sidebar::handleThumbs(UINT m, WPARAM w, LPARAM l) {
         }
         case WM_LBUTTONDOWN: {
             SetFocus(thumbs_);
-            int y = GET_Y_LPARAM(l) + scroll_;
-            for (size_t i = 0; i < tops_.size(); ++i)
-                if (y >= tops_[i] - 4 && y <= tops_[i] + heights_[i] + kLabelH) { navigate(static_cast<int>(i)); break; }
+            const int idx = thumbAt(GET_Y_LPARAM(l));
+            if (idx < 0) { sel_.clear(); InvalidateRect(thumbs_, nullptr, FALSE); return 0; }
+            const bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0;
+            pressed_ = true; dragging_ = false; pressIdx_ = idx;
+            pressPt_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            SetCapture(thumbs_);
+            if (ctrl) { if (!sel_.erase(idx)) sel_.insert(idx); anchor_ = idx; pressed_ = false; ReleaseCapture(); }
+            else if (shift) {
+                sel_.clear();
+                for (int i = std::min(anchor_, idx); i <= std::max(anchor_, idx); ++i) sel_.insert(i);
+                pressed_ = false; ReleaseCapture();
+            } else if (!sel_.count(idx)) { sel_ = {idx}; anchor_ = idx; navigate(idx); }
+            // pressing on an already selected page keeps the selection, so the group can be dragged
+            InvalidateRect(thumbs_, nullptr, FALSE);
             return 0;
         }
+        case WM_MOUSEMOVE:
+            if (pressed_ && (w & MK_LBUTTON)) {
+                const int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+                if (!dragging_ && (std::abs(x - pressPt_.x) > 6 || std::abs(y - pressPt_.y) > 6)) dragging_ = true;
+                if (dragging_) {
+                    RECT rc; GetClientRect(thumbs_, &rc);
+                    if (y < 20) scroll_ = std::max(0, scroll_ - 20); else if (y > rc.bottom - 20) scroll_ = std::min(std::max(0, totalH_ - static_cast<int>(rc.bottom)), scroll_ + 20);
+                    SetScrollPos(thumbs_, SB_VERT, scroll_, TRUE);
+                    dropBefore_ = dropIndexAt(y);
+                    InvalidateRect(thumbs_, nullptr, FALSE);
+                }
+            }
+            return 0;
+        case WM_LBUTTONUP:
+            if (pressed_) {
+                pressed_ = false;
+                ReleaseCapture();
+                if (dragging_) {
+                    dragging_ = false;
+                    const int before = dropBefore_;
+                    dropBefore_ = -1;
+                    InvalidateRect(thumbs_, nullptr, FALSE);
+                    if (before >= 0 && onReorder && !sel_.empty()) onReorder(selectedPages(), before);
+                } else if (sel_.size() > 1 && sel_.count(pressIdx_)) {   // a plain click inside a group selects just that page
+                    sel_ = {pressIdx_}; anchor_ = pressIdx_;
+                    navigate(pressIdx_);
+                    InvalidateRect(thumbs_, nullptr, FALSE);
+                }
+            }
+            return 0;
+        case WM_RBUTTONUP: {
+            const int idx = thumbAt(GET_Y_LPARAM(l));
+            if (idx >= 0 && !sel_.count(idx)) { sel_ = {idx}; anchor_ = idx; InvalidateRect(thumbs_, nullptr, FALSE); }
+            POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            ClientToScreen(thumbs_, &p);
+            if (onContext) onContext(idx, p);
+            return 0;
+        }
+        case WM_CHAR:
+            if (w == 1) { selectAll(); return 0; }   // Ctrl+A
+            break;
         case WM_KEYDOWN: case WM_SYSKEYDOWN: return SendMessageW(GetParent(GetParent(thumbs_)), m, w, l);
     }
     return DefWindowProcW(thumbs_, m, w, l);
+}
+
+void Sidebar::applyTheme() {
+    if (tree_) {
+        TreeView_SetBkColor(tree_, pal().panel);
+        TreeView_SetTextColor(tree_, pal().text);
+        TreeView_SetLineColor(tree_, pal().line);
+        SetWindowTheme(tree_, pal().dark ? L"DarkMode_Explorer" : L"Explorer", nullptr);
+    }
+    if (hwnd_) InvalidateRect(hwnd_, nullptr, TRUE);
+    if (thumbs_) InvalidateRect(thumbs_, nullptr, TRUE);
 }

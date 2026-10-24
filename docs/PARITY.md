@@ -8,15 +8,15 @@ Status: **done** = works like 2.12 · **partial** = exists but differs · **miss
 | 2.12 | 2.13 | Status |
 |---|---|---|
 | Tabs, new tab, close tab, merge open tabs | tabs, new tab, close tab | partial (no merge of tabs, no move to new window) |
-| Main menu (open, recent, save, export, compare, side by side, print ...) | toolbar buttons + Tools menu | **missing** (different structure) |
+| Main menu ("..." at the right) | "Menu" button: open, recent, save, export, print, panels, view, page colours, theme, settings, about, exit | partial (no compare / side by side / command palette entries) |
 | Toolbar groups: Edit PDF · Annotate · Comment · Geometry · Side by side | Annotate · Pages · Tools | partial (different grouping) |
 | Page layout: continuous / single page / two pages | continuous only | **missing** |
 | Rotate view left / right (Ctrl+L / Ctrl+R) | – | **missing** |
 | Back / Forward (Alt+Left / Alt+Right) | – | **missing** |
 | Reload from disk, "file changed by another program" | – | **missing** |
 | Command palette (Ctrl+K) | – | **missing** |
-| Theme: light / dark / like Windows (the window itself) | dark/dimmed **page** colours only | partial |
-| Thumbnails drag to reorder, select several pages, cut / copy / paste pages between tabs | click to go to page | **missing** |
+| Theme: light / dark / like Windows (the window itself) | Light / Dark / Like Windows, plus Settings dialog and About | done |
+| Thumbnails drag to reorder, select several pages, cut / copy / paste pages between tabs, right-click menu | all (right-click menu, Ctrl/Shift select, drag, Del, Ctrl+C/X/V, paste between tabs) | done |
 | Zoom, fit width / page, actual size, full screen, presentation | all | done |
 | Go to page, first / last page, bookmarks panel, thumbnails | all | done |
 | Find with match case, all tabs, results across tabs | find, match case, current tab | partial (no "all tabs") |

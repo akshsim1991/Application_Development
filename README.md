@@ -73,6 +73,12 @@ wine "C:\InnoSetup\ISCC.exe" installer\FeatherPDF.iss      # or ISCC on Windows 
 Installs for the current user without an administrator prompt (or for all users on request), adds Start menu / optional
 desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
 
+## Testing
+
+`tests/smoke.sh` runs the command line features (export, compress, protect, OCR, sign / check) under Wine against freshly
+generated sample files and checks the results with independent tools (Poppler, pikepdf, python-docx, openpyxl).
+`tests/make_samples.py` creates the samples.
+
 ## Code map
 
 `src/main.cpp` window, tabs, toolbar, menus, commands · `viewer.*` page view, selection, tools, form input ·

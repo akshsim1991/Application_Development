@@ -1,6 +1,7 @@
 #include "annot.hpp"
 #include <algorithm>
 #include <ctime>
+#include <cwchar>
 
 namespace annot {
 namespace {
@@ -208,6 +209,39 @@ const wchar_t* typeName(int st) {
 bool hasComment(int st) {
     return st == FPDF_ANNOT_TEXT || st == FPDF_ANNOT_HIGHLIGHT || st == FPDF_ANNOT_UNDERLINE ||
            st == FPDF_ANNOT_STRIKEOUT || st == FPDF_ANNOT_SQUIGGLY;
+}
+
+std::wstring notesSummary(Document& d) {
+    std::wstring out;
+    int total = 0;
+    const auto& api = pdfium::api();
+    for (int p = 0; p < d.pageCount(); ++p) {
+        std::wstring block;
+        FPDF_TEXTPAGE tp = d.text(p);
+        for (const Info& a : list(d, p)) {
+            const bool markup = a.subtype == FPDF_ANNOT_HIGHLIGHT || a.subtype == FPDF_ANNOT_UNDERLINE || a.subtype == FPDF_ANNOT_STRIKEOUT || a.subtype == FPDF_ANNOT_SQUIGGLY;
+            if (!markup && a.subtype != FPDF_ANNOT_TEXT) continue;
+            std::wstring marked;
+            if (markup && tp) {   // the words under the markup
+                std::vector<unsigned short> buf(2048);
+                int n = api.FPDFText_GetBoundedText(tp, a.rect.left, a.rect.top, a.rect.right, a.rect.bottom, buf.data(), 2047);
+                if (n > 0) { marked.assign(buf.begin(), buf.begin() + n); marked.resize(wcslen(marked.c_str())); }   // the count may include the terminator
+                while (!marked.empty() && (marked.back() == L'\r' || marked.back() == L'\n' || marked.back() == L' ')) marked.pop_back();
+                for (auto& ch : marked) if (ch == L'\r' || ch == L'\n') ch = L' ';
+            }
+            if (a.contents.empty() && marked.empty()) continue;
+            std::wstring c = a.contents;
+            for (auto& ch : c) if (ch == L'\r') ch = L'\n';
+            block += L"* **" + std::wstring(markup ? (a.subtype == FPDF_ANNOT_HIGHLIGHT ? L"Highlight" : a.subtype == FPDF_ANNOT_UNDERLINE ? L"Underline" : a.subtype == FPDF_ANNOT_STRIKEOUT ? L"Strikethrough" : L"Squiggly underline") : L"Note") + L"**";
+            if (!marked.empty()) block += L" \"" + marked + L"\"";
+            if (!c.empty()) block += L"\n  *Comment:* " + c;
+            block += L"\n";
+            ++total;
+        }
+        if (!block.empty()) out += L"## Page " + std::to_wstring(p + 1) + L"\n\n" + block + L"\n";
+    }
+    if (!total) return L"";
+    return L"# Notes on " + d.title() + L"\n\n" + out;
 }
 
 } // namespace annot

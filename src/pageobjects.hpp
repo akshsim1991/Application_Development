@@ -65,4 +65,7 @@ bool placeScaled(FPDF_PAGE page, FPDF_PAGEOBJECT obj, double visW, double visH, 
 // A text object with a standard font (for measuring or adding); the caller owns it until it is inserted.
 FPDF_PAGEOBJECT newText(Document& d, const char* font, double size, const std::wstring& text, COLORREF color, int alphaPercent);
 
+// A boxed stamp (for example APPROVED) centred on a page point, drawn in bold with a border of the same colour.
+bool addStamp(Document& d, int page, double centreX, double centreY, const std::wstring& text, COLORREF color);
+
 } // namespace pageobj

@@ -37,4 +37,7 @@ bool setContents(Document& d, int page, int index, const std::wstring& text);
 const wchar_t* typeName(int subtype);
 bool hasComment(int subtype);                         // can carry a comment (note, markup)
 
+// A Markdown summary of every comment and highlight in the document (empty when there are none).
+std::wstring notesSummary(Document& d);
+
 } // namespace annot

@@ -47,7 +47,11 @@ struct App {
     int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
     Viewer::Tool tool = Viewer::Tool::None;
     std::vector<std::wstring> recent;
-    std::wstring pendingPicture;
+    std::wstring pendingPicture, pendingStamp;
+    COLORREF pendingStampColour = RGB(0xE5, 0x39, 0x35);
+    bool fullscreen = false;
+    WINDOWPLACEMENT savedPlace{sizeof(WINDOWPLACEMENT)};
+    LONG savedStyle = 0;
     bool pictureHintShown = false;
     pageobj::TextStyle textStyle{pageobj::Family::Sans, false, false, 14, RGB(0x20, 0x20, 0x20)};
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
@@ -65,6 +69,11 @@ std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"")
 
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
+    if (app.fullscreen) {   // only the pages, edge to edge
+        MoveWindow(app.viewer.hwnd(), 0, 0, rc.right, rc.bottom, TRUE);
+        MoveWindow(app.sidebar.hwnd(), 0, 0, 0, 0, FALSE);
+        return;
+    }
     int top = kTabH + kToolH;
     if (app.findVisible) {
         int x = 8;
@@ -142,7 +151,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -547,6 +556,12 @@ void onViewerEvent(const Viewer::Event& e) {
                     }
                 }
                 setTool(Viewer::Tool::AddText);   // one text box at a time
+                break;
+            }
+            if (e.tool == Viewer::Tool::Stamp) {
+                if (pageobj::addStamp(*d, e.page, e.pts.front().x, e.pts.front().y, app.pendingStamp, app.pendingStampColour)) afterChange(e.page);
+                else MessageBoxW(app.wnd, L"The stamp could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+                setTool(Viewer::Tool::Stamp);
                 break;
             }
             if (e.tool == Viewer::Tool::Picture) {
@@ -1558,6 +1573,69 @@ void signDocument(Document& d) {
     if (MessageBoxW(app.wnd, L"The document was signed and saved. Open the signed copy in a new tab?", kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) openFile(out);
 }
 
+
+void setFullscreen(bool on, bool presentation) {
+    if (on == app.fullscreen) { if (on && presentation) app.viewer.fitPage(); return; }
+    if (on) {
+        GetWindowPlacement(app.wnd, &app.savedPlace);
+        app.savedStyle = GetWindowLong(app.wnd, GWL_STYLE);
+        MONITORINFO mi{sizeof(mi)};
+        GetMonitorInfoW(MonitorFromWindow(app.wnd, MONITOR_DEFAULTTONEAREST), &mi);
+        app.fullscreen = true;
+        SetWindowLong(app.wnd, GWL_STYLE, app.savedStyle & ~WS_OVERLAPPEDWINDOW);
+        SetWindowPos(app.wnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left,
+                     mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
+        ShowWindow(app.sidebar.hwnd(), SW_HIDE);
+        for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose}) ShowWindow(c, SW_HIDE);
+    } else {
+        app.fullscreen = false;
+        SetWindowLong(app.wnd, GWL_STYLE, app.savedStyle);
+        SetWindowPlacement(app.wnd, &app.savedPlace);
+        SetWindowPos(app.wnd, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_FRAMECHANGED);
+        showControls();
+    }
+    relayoutChildren();
+    InvalidateRect(app.wnd, nullptr, TRUE);
+    if (on) { if (presentation) app.viewer.fitPage(); else app.viewer.fitWidth(); }
+    else if (activeDoc()) app.viewer.fitWidth();
+}
+
+void startStamp(const std::wstring& text, COLORREF col) {
+    app.pendingStamp = text;
+    app.pendingStampColour = col;
+    if (app.tool != Viewer::Tool::Stamp) setTool(Viewer::Tool::Stamp);
+    MessageBoxW(app.wnd, L"Now click on the page where the stamp should go (its centre lands on the click). Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void notesSummary(Document& d) {
+    std::wstring md = annot::notesSummary(d);
+    if (md.empty()) { MessageBoxW(app.wnd, L"This document has no highlights or comments yet.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    wchar_t buf[MAX_PATH * 2] = L"";
+    std::wstring base = d.title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(buf, (base + L" (notes).md").c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Save the notes as";
+    ofn.lpstrFilter = L"Markdown files (*.md)\0*.md\0Text files (*.txt)\0*.txt\0";
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = MAX_PATH * 2;
+    ofn.lpstrDefExt = L"md";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    int n = WideCharToMultiByte(CP_UTF8, 0, md.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, md.c_str(), -1, u.data(), n, nullptr, nullptr);
+    std::vector<unsigned char> bytes{0xEF, 0xBB, 0xBF};
+    bytes.insert(bytes.end(), u.begin(), u.end());
+    if (Document::writeFile(buf, bytes) != SaveResult::Ok) {
+        MessageBoxW(app.wnd, L"The notes could not be saved. The folder may be read-only, or the disk may be full.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (MessageBoxW(app.wnd, L"The notes were saved. Open the file?", kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES) ShellExecuteW(app.wnd, L"open", buf, nullptr, nullptr, SW_SHOWNORMAL);
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1567,6 +1645,17 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_TEXT_STYLE, L"Style of new text...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_PICTURE, L"Insert a picture...");
+    {
+        HMENU st = CreatePopupMenu();
+        static const struct { const wchar_t* name; COLORREF col; } stamps[] = {
+            {L"APPROVED", RGB(0x2E, 0x9E, 0x4A)}, {L"FINAL", RGB(0x25, 0x6F, 0xD1)}, {L"DRAFT", RGB(0xE0, 0x8A, 0x00)}, {L"CONFIDENTIAL", RGB(0xD0, 0x2B, 0x2B)},
+            {L"NOT APPROVED", RGB(0xD0, 0x2B, 0x2B)}, {L"FOR COMMENT", RGB(0x25, 0x6F, 0xD1)}, {L"REVIEWED", RGB(0x2E, 0x9E, 0x4A)}};
+        for (int i = 0; i < 7; ++i) AppendMenuW(st, MF_STRING, T_STAMP + i, stamps[i].name);
+        AppendMenuW(st, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(st, MF_STRING, T_STAMP_CUSTOM, L"Custom stamp...");
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(st), L"Stamp");
+    }
+    AppendMenuW(m, MF_STRING, T_NOTES, L"Notes summary (highlights and comments)...");
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_STRING, T_OCR, L"Recognise text in scanned pages (OCR)...");
@@ -1609,6 +1698,10 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_PRINT, L"Print...\tCtrl+P");
     AppendMenuW(m, MF_STRING, T_PROPS, L"Document properties...\tCtrl+D");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_FULLSCREEN, L"Full screen\tF11");
+    AppendMenuW(m, MF_STRING, T_PRESENT, L"Presentation\tF5");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_DEFAULT_VIEWER, L"Set as the default PDF viewer...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
@@ -1620,6 +1713,17 @@ void showToolsMenu(const RECT& anchor) {
         case T_EXPORT: doExport(*d); break;
         case T_COMPRESS: doCompress(*d); break;
         case T_OCR: doOcr(*d); break;
+        case T_NOTES: notesSummary(*d); break;
+        case T_FULLSCREEN: setFullscreen(true, false); break;
+        case T_PRESENT: setFullscreen(true, true); break;
+        case T_STAMP_CUSTOM: {
+            std::wstring t;
+            if (askText(L"Custom stamp", L"The word or words on the stamp (for example PAID).", false, t, L"") && !t.empty()) {
+                if (!pageobj::isLatin(t)) MessageBoxW(app.wnd, L"A stamp can use letters, numbers and common symbols of Western languages.", kAppName, MB_OK | MB_ICONINFORMATION);
+                else startStamp(t, RGB(0x25, 0x6F, 0xD1));
+            }
+            break;
+        }
         case T_SIGN: signDocument(*d); break;
         case T_OWNCERT: makeOwnCertificate(); break;
         case T_SHOWSIGS: showSignatures(*d); break;
@@ -1634,6 +1738,12 @@ void showToolsMenu(const RECT& anchor) {
         case T_PICTURE: startPicture(); break;
         case T_DEFAULT_VIEWER: registerAsViewer(); break;
         default:
+            if (cmd >= T_STAMP && cmd < T_STAMP + 7) {
+                static const wchar_t* names[] = {L"APPROVED", L"FINAL", L"DRAFT", L"CONFIDENTIAL", L"NOT APPROVED", L"FOR COMMENT", L"REVIEWED"};
+                static const COLORREF cols[] = {RGB(0x2E, 0x9E, 0x4A), RGB(0x25, 0x6F, 0xD1), RGB(0xE0, 0x8A, 0x00), RGB(0xD0, 0x2B, 0x2B), RGB(0xD0, 0x2B, 0x2B), RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A)};
+                startStamp(names[cmd - T_STAMP], cols[cmd - T_STAMP]);
+                break;
+            }
             if (cmd >= T_RED_AREA && cmd <= T_RED_APPLY) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = rates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } }
             else if (cmd >= T_COLOURS && cmd < T_COLOURS + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - T_COLOURS));
@@ -1919,7 +2029,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             PAINTSTRUCT ps;
             HDC dc = BeginPaint(h, &ps);
             RECT rc; GetClientRect(h, &rc);
-            paintHeader(dc, rc);
+            if (!app.fullscreen) paintHeader(dc, rc);
             EndPaint(h, &ps);
             return 0;
         }
@@ -2004,10 +2114,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             if (!d) return 0;
             switch (w) {
+                case VK_F11: setFullscreen(!app.fullscreen, false); return 0;
+                case VK_F5: setFullscreen(true, true); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
                 case VK_DELETE: deleteSelectedAnnotation(); return 0;
                 case VK_ESCAPE:
-                    if (app.findVisible) toggleFind(false);
+                    if (app.fullscreen) setFullscreen(false, false);
+                    else if (app.findVisible) toggleFind(false);
                     else if (app.tool != Viewer::Tool::None) setTool(app.tool);
                     else { app.viewer.clearSelection(); app.viewer.clearAnnotSelection(); }
                     return 0;

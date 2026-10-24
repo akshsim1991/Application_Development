@@ -119,6 +119,11 @@
     X(FORM_GetSelectedText)      \
     X(FPDF_SetFormFieldHighlightColor) \
     X(FPDF_SetFormFieldHighlightAlpha) \
+    X(FPDFText_GetBoundedText)   \
+    X(FPDFPageObj_CreateNewRect) \
+    X(FPDFPath_SetDrawMode)      \
+    X(FPDFPageObj_SetStrokeColor) \
+    X(FPDFPageObj_SetStrokeWidth) \
     X(FPDFPage_CountObjects)     \
     X(FPDFPage_GetObject)        \
     X(FPDFPage_RemoveObject)     \

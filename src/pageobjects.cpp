@@ -13,11 +13,18 @@ struct Vec { double x, y; };
 // Where a text object (created at the origin) must go so that its centre lands at (cx, cy) measured in
 // points from the top-left of the page AS DISPLAYED, turned `angle` radians anticlockwise on screen.
 // PDFium converts display positions to page space, so /Rotate and crop boxes are handled for us.
-bool place(FPDF_PAGE page, FPDF_PAGEOBJECT obj, double visW, double visH, double cx, double cy, double angle) {
+// `localCentre`, when given, is the point of the object (in its own coordinates) that lands on (cx, cy); new path objects
+// do not know their bounds yet, so shapes drawn around a text pass the text's centre here.
+bool place(FPDF_PAGE page, FPDF_PAGEOBJECT obj, double visW, double visH, double cx, double cy, double angle,
+           const double* localCentre = nullptr) {
     const auto& api = pdfium::api();
-    float l, b, r, t;
-    if (!api.FPDFPageObj_GetBounds(obj, &l, &b, &r, &t)) return false;
-    const double tcx = (l + r) / 2.0, tcy = (b + t) / 2.0;
+    double tcx = 0, tcy = 0;
+    if (localCentre) { tcx = localCentre[0]; tcy = localCentre[1]; }
+    else {
+        float l, b, r, t;
+        if (!api.FPDFPageObj_GetBounds(obj, &l, &b, &r, &t)) return false;
+        tcx = (l + r) / 2.0; tcy = (b + t) / 2.0;
+    }
     const double S = 100.0;   // device units per point, for sub-pixel accuracy
     const int dw = static_cast<int>(visW * S), dh = static_cast<int>(visH * S);
     auto toPage = [&](double vx, double vy) {
@@ -324,6 +331,41 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text) {
     api.FPDFPage_InsertObjectAtIndex(pg, n, static_cast<size_t>(idx));
     api.FPDFPage_GenerateContent(pg);
     d.resetText(page);
+    return true;
+}
+
+bool addStamp(Document& d, int page, double cx, double cy, const std::wstring& text, COLORREF color) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg || text.empty()) return false;
+    const auto& api = pdfium::api();
+    const double vw = d.pageSize(page).w, vh = d.pageSize(page).h, S = 100.0;
+    int dx = 0, dy = 0;
+    api.FPDF_PageToDevice(pg, 0, 0, static_cast<int>(vw * S), static_cast<int>(vh * S), 0, cx, cy, &dx, &dy);
+    const double vx = dx / S, vy = dy / S;
+    d.beginChange();
+    FPDF_PAGEOBJECT t = makeText(d, "Helvetica-Bold", 24, text, color, 100);
+    if (!t) { d.cancelChange(); return false; }
+    float l, b, r, tp;
+    api.FPDFPageObj_GetBounds(t, &l, &b, &r, &tp);
+    // the border is built around the text's own bounds, so both objects share one centre
+    FPDF_PAGEOBJECT box = api.FPDFPageObj_CreateNewRect(l - 9, b - 6, (r - l) + 18, (tp - b) + 12);
+    bool ok = box != nullptr;
+    if (ok) {
+        api.FPDFPath_SetDrawMode(box, 0, 1);   // outline only
+        api.FPDFPageObj_SetStrokeColor(box, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+        api.FPDFPageObj_SetStrokeWidth(box, 2.5f);
+        const double centre[2] = {(l + r) / 2.0, (b + tp) / 2.0};   // the text's centre, shared by the border
+        ok = place(pg, box, vw, vh, vx, vy, 0, centre) && place(pg, t, vw, vh, vx, vy, 0, centre);
+    }
+    if (!ok) {
+        api.FPDFPageObj_Destroy(t);
+        if (box) api.FPDFPageObj_Destroy(box);
+        d.cancelChange();
+        return false;
+    }
+    api.FPDFPage_InsertObject(pg, box);
+    api.FPDFPage_InsertObject(pg, t);
+    api.FPDFPage_GenerateContent(pg);
     return true;
 }
 

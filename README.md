@@ -23,7 +23,8 @@ for everything (30 steps), safe saving (temp file, then replace), unsaved-change
 
 **Pages** · delete, insert blank, rotate, move, crop, insert pages from a file, merge PDFs, extract pages to a new file.
 
-**Tools** · watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
+**Tools** · stamps (Approved, Draft, Confidential, custom), notes summary (all comments and highlights as Markdown), full screen
+and presentation mode, watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
 OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print, document properties,
@@ -47,7 +48,7 @@ Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+S save · Ctrl+Shif
 Ctrl+F find · F3 / Shift+F3 next / previous match · Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all ·
 Ctrl+B bookmarks · Ctrl+Shift+B thumbnails · Ctrl+H highlight · Ctrl+U underline · Ctrl+Shift+K strikethrough ·
 Ctrl+M comment · Ctrl+E edit text · Del delete selected annotation · Ctrl+P print · Ctrl+D properties ·
-Ctrl+Shift+U read aloud · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
+Ctrl+Shift+U read aloud · F11 full screen · F5 presentation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
 
 ## Building
 

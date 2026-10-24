@@ -852,7 +852,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (toPage(cx, cy, drawPage_, end) && onEvent) {
                     Event e; e.page = drawPage_; e.tool = tool_;
                     const bool moved = std::abs(cx - drawStart_.x) + std::abs(cy - drawStart_.y) > 3;
-                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
+                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture || tool_ == Tool::Stamp) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
                     else if (moved) {
                         e.kind = Event::Draw;
                         e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};

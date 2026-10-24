@@ -1,45 +1,89 @@
 # Feather PDF
 
-A free, lightweight PDF viewer and editor for Windows. Free forever: no subscriptions, no trials,
-no license keys, and you may share it with anyone.
+A free, lightweight PDF viewer and editor for Windows. Free forever: no subscriptions, no trials, no license keys,
+no nag screens, and you may share it with anyone.
 
-`FeatherPDF-Setup-2.12.0.exe` is the previous release (its source was lost). The code in `src/` is the
-rebuild, which is being brought back to feature parity and then extended (see the roadmap below).
+Version **2.13.0** is a rebuild from scratch (the 2.12 source was lost; the old installer is kept in the repo root for
+reference). It is a native C++ Win32 application on top of [PDFium](https://pdfium.googlesource.com/pdfium/): one
+`FeatherPDF.exe` (about 9 MB including the OCR engine) plus `pdfium.dll`, with no runtime other than Windows itself.
 
-## Build (Windows or cross-compile from Linux)
+## Features
+
+**Reading** · tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
+Go to page, bookmarks panel, page thumbnails, search with all matches highlighted, text selection and copy, dark and
+dimmed page colours, password-protected files, drag and drop, recent files, one window for every launch.
+
+**Annotating** · highlight, underline, strikethrough, squiggly underline, comments on text or placed as notes, rectangle,
+ellipse, line, arrow, freehand pen, colours and line widths, select / edit / delete annotations, right-click menu.
+
+**Forms** · fill in text fields, check boxes, radio buttons and drop-down lists; values are saved into the file.
+
+**Editing** · edit existing text lines, add text boxes (sans / serif / mono, size, colour), insert pictures, undo / redo
+for everything (30 steps), safe saving (temp file, then replace), unsaved-changes prompts.
+
+**Pages** · delete, insert blank, rotate, move, crop, insert pages from a file, merge PDFs, extract pages to a new file.
+
+**Tools** · watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
+permission limits (written by Feather PDF itself), redaction (mark areas / selected text / search results, then apply),
+OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print, document properties,
+export as PNG / JPEG pictures, plain text, Markdown, Word (.docx) and Excel (.xlsx / .csv, tables only).
+
+**Command line** (no window; exit code 0 means success)
 
 ```
-scripts/fetch-pdfium.sh                       # PDFium chromium/8066 (same as 2.12), into third_party/pdfium
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-      -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake      # omit the toolchain file when building with MSVC
-cmake --build build                            # produces build/FeatherPDF.exe + pdfium.dll + licenses/
+FeatherPDF.exe file.pdf [more.pdf]                          open in the running window
+FeatherPDF.exe --export png|jpg|txt|md|docx|xlsx|csv in.pdf out [dpi]
+FeatherPDF.exe --compress in.pdf out.pdf [dpi]
+FeatherPDF.exe --protect in.pdf out.pdf open-password [owner-password]
+FeatherPDF.exe --ocr in.pdf out.pdf [language]
 ```
-
-## Status of the rebuild
-
-Done:
-- **Milestone 1:** tabs, open (dialog, drag and drop, command line, one window for all launches),
-  continuous view, zoom, fit width / fit page, page navigation, password-protected files, clear error
-  messages, and a text-labelled toolbar that does not depend on icon fonts.
-- **Milestone 2 (step 1):** text selection (drag, double-click a word, Ctrl+A) and copy; search with all
-  matches highlighted, Enter / F3 for next, Shift+Enter / Shift+F3 for previous, match case, "n of N";
-  bookmarks panel (Ctrl+B) and page thumbnails (Ctrl+Shift+B); Go to page (Ctrl+G or click the page
-  number); application manifest (visual styles, per-monitor DPI, no UAC prompt).
-
-- **Milestone 3:** Save (Ctrl+S) and Save As (Ctrl+Shift+S) with a safe write (temp file, then replace),
-  encryption kept on password-protected files, undo / redo (Ctrl+Z, Ctrl+Y) for every change, unsaved-changes
-  marker and prompts on closing, and annotations: highlight, underline, strikethrough, squiggly underline,
-  comments on selected text or placed as notes, rectangle, ellipse, line, arrow and freehand pen, with colour
-  and width choices, click-to-select and Delete, double-click to edit a comment, and a right-click menu.
-
-Next: page operations (delete, insert, rotate, merge, extract, crop), edit text, export,
-compress / password / watermark / page numbers, signing, redaction, OCR, read aloud, installer.
-The fixes found in testing 2.12 (watermark resources, text-export watermark pollution, unsaved-changes
-flag after Compress, small file sizes shown as 0.0 MB, clear errors when OCR or voices are missing)
-land together with the features they belong to.
 
 ## Shortcuts
-Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+F find · F3 / Shift+F3 next / previous match ·
-Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all · Ctrl+B bookmarks · Ctrl+Shift+B thumbnails ·
-Ctrl+S save · Ctrl+Shift+S save as · Ctrl+Z / Ctrl+Y undo / redo · Ctrl+H highlight · Ctrl+U underline ·
-Ctrl+Shift+K strikethrough · Ctrl+M comment · Del delete selected annotation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl +/- zoom · PgUp/PgDn/Home/End · Esc.
+
+Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+S save · Ctrl+Shift+S save as · Ctrl+Z / Ctrl+Y undo / redo ·
+Ctrl+F find · F3 / Shift+F3 next / previous match · Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all ·
+Ctrl+B bookmarks · Ctrl+Shift+B thumbnails · Ctrl+H highlight · Ctrl+U underline · Ctrl+Shift+K strikethrough ·
+Ctrl+M comment · Ctrl+E edit text · Del delete selected annotation · Ctrl+P print · Ctrl+D properties ·
+Ctrl+Shift+U read aloud · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
+
+## Building
+
+Builds on Windows (MSVC or MinGW) or cross-compiles from Linux with mingw-w64.
+
+```
+scripts/fetch-pdfium.sh          # PDFium chromium/8066 into third_party/pdfium (same release as 2.12)
+scripts/build-tesseract.sh       # optional: OCR engine + English data into third_party/tesseract
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+      -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake      # omit the toolchain file when building with MSVC
+cmake --build build              # build/FeatherPDF.exe + pdfium.dll + licenses/ (+ tessdata/ when OCR is built)
+```
+
+Without `third_party/tesseract` the app still builds; "Recognise text (OCR)" then says it is unavailable.
+
+### Installer
+
+```
+wine "C:\InnoSetup\ISCC.exe" installer\FeatherPDF.iss      # or ISCC on Windows → dist/FeatherPDF-Setup-2.13.0.exe
+```
+
+Installs for the current user without an administrator prompt (or for all users on request), adds Start menu / optional
+desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
+
+## Code map
+
+`src/main.cpp` window, tabs, toolbar, menus, commands · `viewer.*` page view, selection, tools, form input ·
+`document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
+page numbers, text boxes, text editing · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
+`protect.*` AES-256 writer · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
+`formdialog.*` reusable dialogs · `pdfium_api.*` run-time binding to pdfium.dll.
+
+## Not in 2.13 yet
+
+Digital signatures (signing and checking), comparing two PDFs, side-by-side view, editing tables, adding bookmarks and links,
+find and replace, measuring tools, booklet / pages-per-sheet printing, editing document properties. Text edited or added
+uses the built-in Latin fonts; other scripts are not supported for new text. Pages made by Redact become pictures.
+
+## Third-party software
+
+PDFium and its libraries, Tesseract and Leptonica, and the tessdata_fast English model: see `THIRD_PARTY_NOTICES.md`
+(all permissive licenses; the license texts ship in the `licenses/` folder).

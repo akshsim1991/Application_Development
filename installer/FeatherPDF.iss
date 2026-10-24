@@ -10,7 +10,7 @@ AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
 AppPublisher=Akshaya Simha
-DefaultDirName={autopf}\{#AppName}
+DefaultDirName={code:DefaultDir}
 DefaultGroupName={#AppName}
 DisableProgramGroupPage=yes
 OutputDir=..\dist
@@ -56,3 +56,14 @@ Root: HKA; Subkey: "Software\Classes\.pdf\OpenWithProgids"; ValueType: string; V
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "Launch {#AppName}"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// Per-user installs go to %LOCALAPPDATA%\Programs, installs for all users to Program Files (what {autopf} resolves to,
+// spelled out so it also works on systems that cannot resolve that constant).
+function DefaultDir(Param: String): String;
+begin
+  if IsAdminInstallMode then
+    Result := ExpandConstant('{commonpf}\{#AppName}')
+  else
+    Result := ExpandConstant('{localappdata}\Programs\{#AppName}');
+end;

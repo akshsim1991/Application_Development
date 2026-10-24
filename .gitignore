@@ -1,4 +1,7 @@
 build/
+dist/
 third_party/pdfium/
+third_party/tesseract/
 *.exe
 !FeatherPDF-Setup-2.12.0.exe
+!releases/*.exe

@@ -98,6 +98,7 @@
     X(FPDFPageObj_GetMatrix)     \
     X(FPDFPageObj_SetMatrix)     \
     X(FPDFPageObj_GetFillColor)  \
+    X(FPDFTextObj_SetTextRenderMode) \
     X(FPDFPage_CountObjects)     \
     X(FPDFPage_GetObject)        \
     X(FPDFPage_RemoveObject)     \

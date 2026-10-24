@@ -59,4 +59,10 @@ TextHit textAt(Document& d, int page, double x, double y);
 // similar standard font instead, at the same place and size. An empty `text` deletes the object.
 bool replaceText(Document& d, int page, int objectIndex, const std::wstring& text);
 
+// Puts the baseline-left origin of a text object at (originX, originY) measured in points from the top-left of the
+// page as displayed, stretching it horizontally by `sx`. Used for the invisible text layer of recognised text.
+bool placeScaled(FPDF_PAGE page, FPDF_PAGEOBJECT obj, double visW, double visH, double originX, double originY, double sx);
+// A text object with a standard font (for measuring or adding); the caller owns it until it is inserted.
+FPDF_PAGEOBJECT newText(Document& d, const char* font, double size, const std::wstring& text, COLORREF color, int alphaPercent);
+
 } // namespace pageobj

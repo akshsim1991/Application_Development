@@ -20,11 +20,23 @@ add_executable(FeatherPDF WIN32
   src/redact.cpp
   src/compress.cpp
   src/protect.cpp
+  src/ocr.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include")
 target_compile_definitions(FeatherPDF PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
   FEATHER_VERSION="${PROJECT_VERSION}")
+# Optional OCR engine (scripts/build-tesseract.sh). Without it the app builds and OCR reports that it is unavailable.
+set(TESS_DIR "${CMAKE_SOURCE_DIR}/third_party/tesseract")
+if(EXISTS "${TESS_DIR}/lib/libtesseract.a")
+  target_compile_definitions(FeatherPDF PRIVATE FEATHER_OCR=1)
+  target_include_directories(FeatherPDF PRIVATE "${TESS_DIR}/include")
+  target_link_libraries(FeatherPDF PRIVATE "${TESS_DIR}/lib/libtesseract.a" "${TESS_DIR}/lib/libleptonica.a" ws2_32)
+  add_custom_command(TARGET FeatherPDF POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${TESS_DIR}/tessdata" "$<TARGET_FILE_DIR:FeatherPDF>/tessdata"
+    COMMAND ${CMAKE_COMMAND} -E copy_directory "${TESS_DIR}/licenses" "$<TARGET_FILE_DIR:FeatherPDF>/licenses")
+endif()
+
 target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt comdlg32 shell32 comctl32 ole32)
 
 if(MINGW)

@@ -59,6 +59,24 @@ double textWidth(Document& d, const char* font, const std::wstring& text) {
 
 } // namespace
 
+bool placeScaled(FPDF_PAGE page, FPDF_PAGEOBJECT obj, double visW, double visH, double ox, double oy, double sx) {
+    const auto& api = pdfium::api();
+    const double S = 100.0;
+    const int dw = static_cast<int>(visW * S), dh = static_cast<int>(visH * S);
+    auto toPage = [&](double vx, double vy) {
+        double px = 0, py = 0;
+        api.FPDF_DeviceToPage(page, 0, 0, dw, dh, 0, static_cast<int>(vx * S), static_cast<int>(vy * S), &px, &py);
+        return Vec{px, py};
+    };
+    const Vec p0 = toPage(ox, oy), px = toPage(ox + 1, oy), py = toPage(ox, oy - 1);
+    api.FPDFPageObj_Transform(obj, (px.x - p0.x) * sx, (px.y - p0.y) * sx, py.x - p0.x, py.y - p0.y, p0.x, p0.y);
+    return true;
+}
+
+FPDF_PAGEOBJECT newText(Document& d, const char* font, double size, const std::wstring& text, COLORREF color, int alphaPercent) {
+    return makeText(d, font, size, text, color, alphaPercent);
+}
+
 bool isLatin(const std::wstring& text) {
     for (wchar_t c : text) if (c > 0xFF || (c < 0x20 && c != L'\t' && c != L'\r' && c != L'\n')) return false;
     return true;

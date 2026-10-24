@@ -20,6 +20,7 @@
 #include "speech.hpp"
 #include "redact.hpp"
 #include "compress.hpp"
+#include "ocr.hpp"
 
 namespace {
 
@@ -134,7 +135,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -1207,6 +1208,63 @@ void doUnprotect(Document& d) {
     }
 }
 
+
+// A small always-on-top box that shows progress of a long task and lets Esc stop it.
+struct Progress {
+    HWND box = nullptr;
+    explicit Progress(const wchar_t* text) {
+        RECT pr; GetWindowRect(app.wnd, &pr);
+        const int w = 420, h = 80;
+        box = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", text, WS_POPUP | WS_BORDER | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+                              pr.left + (pr.right - pr.left - w) / 2, pr.top + (pr.bottom - pr.top - h) / 3, w, h, app.wnd, nullptr, app.inst, nullptr);
+        SendMessageW(box, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+        EnableWindow(app.wnd, FALSE);
+        pump();
+    }
+    ~Progress() { EnableWindow(app.wnd, TRUE); if (box) DestroyWindow(box); SetForegroundWindow(app.wnd); }
+    void set(const std::wstring& t) { SetWindowTextW(box, t.c_str()); pump(); }
+    bool stopRequested() { pump(); return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0; }
+    static void pump() {
+        MSG m;
+        while (PeekMessageW(&m, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&m); DispatchMessageW(&m); }
+    }
+};
+
+void doOcr(Document& d) {
+    std::wstring why;
+    if (!ocr::available(why)) { MessageBoxW(app.wnd, why.c_str(), kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    auto langs = ocr::languages();
+    std::vector<FormField> f(4);
+    f[0] = {FormField::Note, L"", {}, L"Finds the words on scanned pages and adds them invisibly, so the pages can be searched, selected and copied. The pages look exactly the same."};
+    f[1] = {FormField::Choice, L"Language:", {}, L"", 0};
+    for (auto& l : langs) f[1].choices.push_back(l);
+    f[2] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+    f[3] = {FormField::Check, L"Skip pages that already have text"}; f[3].checked = true;
+    g_formDoc = &d;
+    bool ok = showForm(app.wnd, app.inst, L"Recognise text (OCR)", f, L"Recognise", [](const std::vector<FormField>& v) { return badPages(v[2].text); });
+    g_formDoc = nullptr;
+    if (!ok) return;
+    std::vector<int> pages = pagesFromText(d, f[2].text);
+    ocr::Result r;
+    {
+        Progress progress(L"Starting text recognition...");
+        r = ocr::run(d, pages, langs[std::clamp(f[1].choice, 0, static_cast<int>(langs.size()) - 1)], f[3].checked,
+                     [&](int done, int total) {
+                         progress.set(L"Recognising text: page " + std::to_wstring(done + 1) + L" of " + std::to_wstring(total) + L"\nPress Esc to stop.");
+                         return !progress.stopRequested();
+                     });
+    }
+    if (r.words > 0) afterPagesChanged();
+    std::wstring msg;
+    if (!r.error.empty()) msg = r.error + L"\n\n";
+    if (r.words > 0) msg += L"Text was recognised on " + std::to_wstring(r.pagesDone) + L" page" + (r.pagesDone == 1 ? L"" : L"s") + L" (" + std::to_wstring(r.words) + L" words). Save the document to keep the text; Undo (Ctrl+Z) takes it back.";
+    else if (r.pagesSkipped == static_cast<int>(pages.size())) msg += L"The pages already have text, so there was nothing to recognise.";
+    else if (r.cancelled) msg += L"Text recognition was stopped.";
+    else msg += L"No text was found on those pages.";
+    if (r.pagesSkipped && r.words > 0) msg += L"\n" + std::to_wstring(r.pagesSkipped) + L" page(s) already had text and were skipped.";
+    MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | (r.error.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1217,6 +1275,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
+    AppendMenuW(m, MF_STRING, T_OCR, L"Recognise text in scanned pages (OCR)...");
     AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
     AppendMenuW(m, MF_STRING, T_PROTECT, L"Password protection...");
     if (d->isProtected()) AppendMenuW(m, MF_STRING, T_UNPROTECT, L"Remove password protection");
@@ -1256,6 +1315,7 @@ void showToolsMenu(const RECT& anchor) {
         case T_NUMBERS: doPageNumbers(*d); break;
         case T_EXPORT: doExport(*d); break;
         case T_COMPRESS: doCompress(*d); break;
+        case T_OCR: doOcr(*d); break;
         case T_PROTECT: doProtect(*d); break;
         case T_UNPROTECT: doUnprotect(*d); break;
         case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
@@ -1430,6 +1490,10 @@ void paintHeader(HDC dc, const RECT& client) {
     HBRUSH toolBg = CreateSolidBrush(RGB(0xF7, 0xF7, 0xF7));
     RECT tr{0, 0, client.right, kTabH}, br{0, kTabH, client.right, kTabH + kToolH};
     FillRect(dc, &tr, tabBg); FillRect(dc, &br, toolBg);
+    if (app.findVisible) {   // the find bar sits between the toolbar and the page area
+        RECT fr{0, kTabH + kToolH, client.right, kTabH + kToolH + kFindH};
+        FillRect(dc, &fr, toolBg);
+    }
     DeleteObject(tabBg); DeleteObject(toolBg);
     SetBkMode(dc, TRANSPARENT);
     SelectObject(dc, app.font);
@@ -1724,6 +1788,21 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         o.userPassword = files[3];
         if (files.size() > 4) { o.ownerPassword = files[4]; o.allowPrint = o.allowCopy = o.allowModify = false; }
         if (!doc.setProtection(o)) return 4;
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
+    }
+
+    // Command line text recognition: FeatherPDF.exe --ocr <in.pdf> <out.pdf> [language]   (exit code 0 ok, 5 not available, 6 no text found)
+    if (!files.empty() && files[0] == L"--ocr") {
+        if (files.size() < 3) return 2;
+        std::wstring why;
+        if (!ocr::available(why)) return 5;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<int> all(doc.pageCount());
+        for (int i = 0; i < doc.pageCount(); ++i) all[i] = i;
+        ocr::Result r = ocr::run(doc, all, files.size() > 3 ? files[3] : L"eng", true, nullptr);
+        if (!r.error.empty()) return 4;
+        if (r.words == 0) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
 

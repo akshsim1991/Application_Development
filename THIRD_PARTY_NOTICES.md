@@ -31,3 +31,17 @@ are shipped with it.
 The application itself uses only Windows system libraries (user32, gdi32,
 comctl32, comdlg32, shell32, ole32, gdiplus, winhttp and others) and the C++
 standard library, which is statically linked.
+
+## Text recognition (OCR)
+
+Feather PDF recognises text in scanned pages with **Tesseract** and **Leptonica**, linked into `FeatherPDF.exe`,
+and the English language data (`tessdata/eng.traineddata`, "tessdata_fast").
+
+| Component | Used for | License |
+|---|---|---|
+| Tesseract OCR | Text recognition | Apache-2.0 |
+| Leptonica | Image processing for Tesseract | BSD-2-Clause |
+| tessdata_fast language data | Recognition models | Apache-2.0 |
+
+Their license texts are in the `licenses/` folder (`tesseract-APACHE-2.0.txt`, `leptonica.txt`). More languages can be added by
+placing further `<language>.traineddata` files in the `tessdata` folder next to `FeatherPDF.exe`.

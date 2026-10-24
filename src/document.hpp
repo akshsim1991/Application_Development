@@ -2,6 +2,7 @@
 #include <string>
 #include <vector>
 #include "pdfium_api.hpp"
+#include "protect.hpp"
 
 struct PageSize { float w = 612, h = 792; };   // in points
 
@@ -50,10 +51,15 @@ public:
     std::vector<Bookmark> bookmarks() const;
 
     // Saving. The document keeps encryption when it was opened with a password.
-    bool serialize(std::vector<unsigned char>& out) const;
+    bool serialize(std::vector<unsigned char>& out, int flags = 0) const;
     SaveResult saveAs(const std::wstring& path);       // writes a temp file, then replaces `path`
     void setPath(const std::wstring& p) { path_ = p; }
-    bool isEncrypted() const { return !password_.empty(); }
+    // Password protection is applied when the document is saved. Set/Remove are one undo step each.
+    enum class Protection { Keep, Set, Remove };
+    bool isProtected() const { return protMode_ == Protection::Set || (protMode_ == Protection::Keep && !password_.empty()); }
+    bool setProtection(const protect::Options& opt);
+    bool removeProtection();
+    Protection protectionMode() const { return protMode_; }
 
     // Change tracking. Call beginChange() BEFORE modifying the document: it stores an undo step.
     // A change that turns out to be a no-op can be dropped with cancelChange().
@@ -96,9 +102,12 @@ private:
     std::string password_;
     bool dirty_ = false;
     int revision_ = 0;
-    std::vector<std::vector<unsigned char>> undo_, redo_;
+    struct Snapshot { std::vector<unsigned char> bytes; Protection mode; protect::Options opt; };
+    Protection protMode_ = Protection::Keep;
+    protect::Options protOpt_;
+    std::vector<Snapshot> undo_, redo_;
     size_t undoBytes_ = 0;
-    bool restoreFrom(const std::vector<unsigned char>& snap);
+    bool restoreFrom(const Snapshot& snap);
     void trimUndo();
     std::vector<FPDF_PAGE> pages_;
     std::vector<FPDF_TEXTPAGE> texts_;

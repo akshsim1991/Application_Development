@@ -206,14 +206,14 @@ int writeBlock(FPDF_FILEWRITE* self, const void* data, unsigned long size) {
 }
 }
 
-bool Document::serialize(std::vector<unsigned char>& out) const {
+bool Document::serialize(std::vector<unsigned char>& out, int flags) const {
     if (!doc_) return false;
     out.clear();
     Sink sink;
     sink.version = 1;
     sink.WriteBlock = writeBlock;
     sink.out = &out;
-    return pdfium::api().FPDF_SaveAsCopy(doc_, &sink, 0) != 0 && out.size() > 8;
+    return pdfium::api().FPDF_SaveAsCopy(doc_, &sink, static_cast<FPDF_DWORD>(flags)) != 0 && out.size() > 8;
 }
 
 SaveResult Document::writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes) {
@@ -246,7 +246,18 @@ SaveResult Document::writeFile(const std::wstring& path, const std::vector<unsig
 
 SaveResult Document::saveAs(const std::wstring& path) {
     std::vector<unsigned char> bytes;
-    if (!serialize(bytes)) return SaveResult::Failed;
+    if (protMode_ == Protection::Keep) {
+        if (!serialize(bytes)) return SaveResult::Failed;
+    } else {
+        // Write the plain document first (PDFium would otherwise carry the old protection over), then protect it ourselves.
+        if (!serialize(bytes, FPDF_REMOVE_SECURITY)) return SaveResult::Failed;
+        if (protMode_ == Protection::Set) {
+            std::vector<unsigned char> enc;
+            std::wstring err;
+            if (!protect::encrypt(bytes, protOpt_, enc, err)) return SaveResult::Failed;
+            bytes = std::move(enc);
+        }
+    }
     SaveResult r = writeFile(path, bytes);
     if (r == SaveResult::Ok) { path_ = path; dirty_ = false; }
     return r;
@@ -255,7 +266,7 @@ SaveResult Document::saveAs(const std::wstring& path) {
 void Document::trimUndo() {
     constexpr size_t kMaxSteps = 30, kMaxBytes = 300u << 20;
     while (!undo_.empty() && (undo_.size() > kMaxSteps || undoBytes_ > kMaxBytes)) {
-        undoBytes_ -= undo_.front().size();
+        undoBytes_ -= undo_.front().bytes.size();
         undo_.erase(undo_.begin());
     }
 }
@@ -264,7 +275,7 @@ void Document::beginChange() {
     std::vector<unsigned char> snap;
     if (serialize(snap)) {
         undoBytes_ += snap.size();
-        undo_.push_back(std::move(snap));
+        undo_.push_back({std::move(snap), protMode_, protOpt_});
         trimUndo();
     }
     redo_.clear();
@@ -273,24 +284,28 @@ void Document::beginChange() {
 }
 
 void Document::cancelChange() {
-    if (!undo_.empty()) { undoBytes_ -= undo_.back().size(); undo_.pop_back(); }
+    if (!undo_.empty()) { undoBytes_ -= undo_.back().bytes.size(); undo_.pop_back(); }
     if (undo_.empty() && redo_.empty()) dirty_ = false;   // nothing else was changed in this session
 }
 
-bool Document::restoreFrom(const std::vector<unsigned char>& snap) {
-    std::vector<unsigned char> copy = snap;
-    return load(std::move(copy), password_) == OpenResult::Ok;
+bool Document::restoreFrom(const Snapshot& snap) {
+    std::vector<unsigned char> copy = snap.bytes;
+    if (load(std::move(copy), password_) != OpenResult::Ok) return false;
+    protMode_ = snap.mode;
+    protOpt_ = snap.opt;
+    return true;
 }
 
 bool Document::undo() {
     if (undo_.empty()) return false;
     std::vector<unsigned char> cur;
     if (!serialize(cur)) return false;
-    std::vector<unsigned char> snap = std::move(undo_.back());
+    Snapshot snap = std::move(undo_.back());
     undo_.pop_back();
-    undoBytes_ -= snap.size();
-    if (!restoreFrom(snap)) { undo_.push_back(std::move(snap)); undoBytes_ += undo_.back().size(); return false; }
-    redo_.push_back(std::move(cur));
+    undoBytes_ -= snap.bytes.size();
+    const Snapshot now{std::move(cur), protMode_, protOpt_};
+    if (!restoreFrom(snap)) { undoBytes_ += snap.bytes.size(); undo_.push_back(std::move(snap)); return false; }
+    redo_.push_back(now);
     dirty_ = true;
     return true;
 }
@@ -299,11 +314,12 @@ bool Document::redo() {
     if (redo_.empty()) return false;
     std::vector<unsigned char> cur;
     if (!serialize(cur)) return false;
-    std::vector<unsigned char> snap = std::move(redo_.back());
+    Snapshot snap = std::move(redo_.back());
     redo_.pop_back();
+    const Snapshot now{std::move(cur), protMode_, protOpt_};
     if (!restoreFrom(snap)) { redo_.push_back(std::move(snap)); return false; }
-    undoBytes_ += cur.size();
-    undo_.push_back(std::move(cur));
+    undoBytes_ += now.bytes.size();
+    undo_.push_back(now);
     dirty_ = true;
     return true;
 }
@@ -463,4 +479,19 @@ std::vector<int> Document::parseRange(const std::wstring& text) const {
     std::sort(out.begin(), out.end());
     out.erase(std::unique(out.begin(), out.end()), out.end());
     return out;
+}
+
+bool Document::setProtection(const protect::Options& opt) {
+    if (!doc_) return false;
+    beginChange();
+    protMode_ = Protection::Set;
+    protOpt_ = opt;
+    return true;
+}
+
+bool Document::removeProtection() {
+    if (!doc_ || !isProtected()) return false;
+    beginChange();
+    protMode_ = Protection::Remove;
+    return true;
 }

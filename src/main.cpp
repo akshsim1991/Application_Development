@@ -134,7 +134,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -1040,7 +1040,7 @@ void showProperties() {
     text += line(L"File size:", size);
     text += line(L"Pages:", pg);
     text += line(L"PDF version:", ver ? std::to_wstring(ver / 10) + L"." + std::to_wstring(ver % 10) : L"");
-    text += line(L"Protected by a password:", d->isEncrypted() ? L"yes" : L"no");
+    text += line(L"Protected by a password:", d->isProtected() ? L"yes" : L"no");
     text += L"\n";
     text += line(L"Title:", metaText(d->handle(), "Title"));
     text += line(L"Author:", metaText(d->handle(), "Author"));
@@ -1164,6 +1164,49 @@ void textStyleDialog() {
     app.textStyle.italic = f[4].checked;
 }
 
+
+void doProtect(Document& d) {
+    std::vector<FormField> f(8);
+    f[0] = {FormField::Note, L"", {}, L"Protect the document with a password (AES-256). Keep the passwords safe: they cannot be recovered.\nThe protection is applied when you save the document."};
+    f[1] = {FormField::Password, L"Password to open it:", {}, L""};
+    f[2] = {FormField::Password, L"Type it again:", {}, L""};
+    f[3] = {FormField::Check, L"Limit what others can do with it"};
+    f[4] = {FormField::Password, L"Owner password:", {}, L""};
+    f[5] = {FormField::Password, L"Type it again:", {}, L""};
+    f[6] = {FormField::Check, L"Allow printing"}; f[6].checked = true;
+    f[7] = {FormField::Check, L"Allow copying text and pictures"}; f[7].checked = true;
+    std::vector<FormField> g = f;
+    g.push_back({FormField::Check, L"Allow changes (editing, comments, filling in forms)"});
+    g.back().checked = true;
+    if (!showForm(app.wnd, app.inst, L"Password protection", g, L"Protect", [](const std::vector<FormField>& v) -> std::wstring {
+            if (v[1].text != v[2].text) return L"The two passwords to open the document are not the same. Type them again.";
+            const bool limit = v[3].checked;
+            if (limit) {
+                if (v[4].text.empty()) return L"Type an owner password: it is needed to lift the limits later.";
+                if (v[4].text != v[5].text) return L"The two owner passwords are not the same. Type them again.";
+                if (v[4].text == v[1].text) return L"The owner password must be different from the password to open the document.";
+            } else if (v[1].text.empty()) return L"Type a password to open the document, choose limits, or both.";
+            return L""; })) return;
+    protect::Options o;
+    o.userPassword = g[1].text;
+    o.ownerPassword = g[3].checked ? g[4].text : L"";
+    o.allowPrint = !g[3].checked || g[6].checked;
+    o.allowCopy = !g[3].checked || g[7].checked;
+    o.allowModify = !g[3].checked || g[8].checked;
+    if (d.setProtection(o)) {
+        refresh();
+        MessageBoxW(app.wnd, L"New protection is set. It is applied when you save the document (Ctrl+S).", kAppName, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
+void doUnprotect(Document& d) {
+    if (MessageBoxW(app.wnd, L"Remove the password protection? The saved file will open without a password and without limits.", kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    if (d.removeProtection()) {
+        refresh();
+        MessageBoxW(app.wnd, L"The protection will be removed when you save the document (Ctrl+S).", kAppName, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1175,6 +1218,8 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
+    AppendMenuW(m, MF_STRING, T_PROTECT, L"Password protection...");
+    if (d->isProtected()) AppendMenuW(m, MF_STRING, T_UNPROTECT, L"Remove password protection");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
@@ -1211,6 +1256,8 @@ void showToolsMenu(const RECT& anchor) {
         case T_NUMBERS: doPageNumbers(*d); break;
         case T_EXPORT: doExport(*d); break;
         case T_COMPRESS: doCompress(*d); break;
+        case T_PROTECT: doProtect(*d); break;
+        case T_UNPROTECT: doUnprotect(*d); break;
         case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
         case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case T_TEXT_STYLE: textStyleDialog(); break;
@@ -1664,6 +1711,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         compress::Options o;
         if (files.size() > 3) o.dpi = std::max(30, _wtoi(files[3].c_str()));
         if (!compress::run(doc, o).changed) return 5;
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
+    }
+
+    // Command line protection: FeatherPDF.exe --protect <in.pdf> <out.pdf> <open-password> [owner-password]
+    // With an owner password the file is also limited: no printing, copying or changes. Exit code 0 ok.
+    if (!files.empty() && files[0] == L"--protect") {
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        protect::Options o;
+        o.userPassword = files[3];
+        if (files.size() > 4) { o.ownerPassword = files[4]; o.allowPrint = o.allowCopy = o.allowModify = false; }
+        if (!doc.setProtection(o)) return 4;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
 

@@ -1,6 +1,7 @@
 #include "document.hpp"
 #include <windows.h>
 #include <algorithm>
+#include <cwctype>
 
 Document::~Document() {
     closePages();
@@ -208,9 +209,7 @@ bool Document::serialize(std::vector<unsigned char>& out) const {
     return pdfium::api().FPDF_SaveAsCopy(doc_, &sink, 0) != 0 && out.size() > 8;
 }
 
-SaveResult Document::saveAs(const std::wstring& path) {
-    std::vector<unsigned char> bytes;
-    if (!serialize(bytes)) return SaveResult::Failed;
+SaveResult Document::writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes) {
     const std::wstring tmp = path + L".feather-tmp";
     HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (f == INVALID_HANDLE_VALUE) return SaveResult::CannotWrite;
@@ -235,9 +234,15 @@ SaveResult Document::saveAs(const std::wstring& path) {
         DeleteFileW(tmp.c_str());
         return SaveResult::CannotWrite;
     }
-    path_ = path;
-    dirty_ = false;
     return SaveResult::Ok;
+}
+
+SaveResult Document::saveAs(const std::wstring& path) {
+    std::vector<unsigned char> bytes;
+    if (!serialize(bytes)) return SaveResult::Failed;
+    SaveResult r = writeFile(path, bytes);
+    if (r == SaveResult::Ok) { path_ = path; dirty_ = false; }
+    return r;
 }
 
 void Document::trimUndo() {
@@ -294,4 +299,161 @@ bool Document::redo() {
     undo_.push_back(std::move(cur));
     dirty_ = true;
     return true;
+}
+
+// ---- page operations ----
+
+void Document::rebuildPages() {
+    const auto& api = pdfium::api();
+    int n = api.FPDF_GetPageCount(doc_);
+    sizes_.assign(std::max(n, 0), PageSize{});
+    for (int i = 0; i < n; ++i) {
+        FS_SIZEF s{};
+        if (api.FPDF_GetPageSizeByIndexF(doc_, i, &s) && s.width > 0 && s.height > 0) sizes_[i] = {s.width, s.height};
+    }
+    pages_.assign(std::max(n, 0), nullptr);
+    texts_.assign(std::max(n, 0), nullptr);
+    ++revision_;
+}
+
+bool Document::deletePages(std::vector<int> pages) {
+    std::sort(pages.begin(), pages.end());
+    pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+    if (pages.empty() || static_cast<int>(pages.size()) >= pageCount()) return false;
+    if (pages.front() < 0 || pages.back() >= pageCount()) return false;
+    beginChange();
+    closePages();
+    for (auto it = pages.rbegin(); it != pages.rend(); ++it) pdfium::api().FPDFPage_Delete(doc_, *it);
+    rebuildPages();
+    return true;
+}
+
+bool Document::insertBlankPage(int after, int templatePage) {
+    if (after < -1 || after >= pageCount()) return false;
+    PageSize ps = pageSize(std::clamp(templatePage, 0, pageCount() - 1));
+    beginChange();
+    closePages();
+    FPDF_PAGE p = pdfium::api().FPDFPage_New(doc_, after + 1, ps.w, ps.h);
+    if (!p) { rebuildPages(); cancelChange(); return false; }
+    pdfium::api().FPDF_ClosePage(p);
+    rebuildPages();
+    return true;
+}
+
+bool Document::rotatePages(const std::vector<int>& pages, int turns) {
+    if (pages.empty()) return false;
+    beginChange();
+    closePages();
+    const auto& api = pdfium::api();
+    for (int i : pages) {
+        if (i < 0 || i >= pageCount()) continue;
+        FPDF_PAGE p = api.FPDF_LoadPage(doc_, i);
+        if (!p) continue;
+        int r = ((api.FPDFPage_GetRotation(p) + turns) % 4 + 4) % 4;
+        api.FPDFPage_SetRotation(p, r);
+        api.FPDF_ClosePage(p);
+    }
+    rebuildPages();
+    return true;
+}
+
+bool Document::movePages(std::vector<int> pages, int destination) {
+    std::sort(pages.begin(), pages.end());
+    pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
+    if (pages.empty() || pages.front() < 0 || pages.back() >= pageCount()) return false;
+    destination = std::clamp(destination, 0, pageCount());
+    beginChange();
+    closePages();
+    // FPDF_MovePages places the moved pages so that the first one ends at index `dest` of the result.
+    int before = 0;
+    for (int p : pages) if (p < destination) ++before;
+    bool ok = pdfium::api().FPDF_MovePages(doc_, pages.data(), static_cast<unsigned long>(pages.size()), destination - before) != 0;
+    rebuildPages();
+    if (!ok) { cancelChange(); return false; }
+    return true;
+}
+
+bool Document::cropPages(const std::vector<int>& pages, double l, double b, double r, double t) {
+    if (pages.empty()) return false;
+    beginChange();
+    closePages();
+    const auto& api = pdfium::api();
+    bool any = false;
+    for (int i : pages) {
+        FPDF_PAGE p = api.FPDF_LoadPage(doc_, i);
+        if (!p) continue;
+        float ml, mb, mr, mt;
+        if (!api.FPDFPage_GetMediaBox(p, &ml, &mb, &mr, &mt)) { ml = 0; mb = 0; mr = pageSize(i).w; mt = pageSize(i).h; }
+        float cl, cb, cr, ct;
+        if (!api.FPDFPage_GetCropBox(p, &cl, &cb, &cr, &ct)) { cl = ml; cb = mb; cr = mr; ct = mt; }
+        float nl = cl + static_cast<float>(l), nb = cb + static_cast<float>(b), nr = cr - static_cast<float>(r), nt = ct - static_cast<float>(t);
+        if (nr - nl >= 36 && nt - nb >= 36) { api.FPDFPage_SetCropBox(p, nl, nb, nr, nt); any = true; }
+        api.FPDF_ClosePage(p);
+    }
+    rebuildPages();
+    if (!any) { cancelChange(); return false; }
+    return true;
+}
+
+bool Document::importPages(Document& src, const std::vector<int>& srcPages, int at) {
+    if (srcPages.empty() || !src.handle() || at < 0 || at > pageCount()) return false;
+    beginChange();
+    closePages();
+    bool ok = pdfium::api().FPDF_ImportPagesByIndex(doc_, src.handle(), srcPages.data(),
+                                                    static_cast<unsigned long>(srcPages.size()), at) != 0;
+    rebuildPages();
+    if (!ok) { cancelChange(); return false; }
+    return true;
+}
+
+SaveResult Document::extractPages(const std::vector<int>& pages, const std::wstring& path) const {
+    if (pages.empty() || !doc_) return SaveResult::Failed;
+    const auto& api = pdfium::api();
+    FPDF_DOCUMENT out = api.FPDF_CreateNewDocument();
+    if (!out) return SaveResult::Failed;
+    SaveResult res = SaveResult::Failed;
+    if (api.FPDF_ImportPagesByIndex(out, doc_, pages.data(), static_cast<unsigned long>(pages.size()), 0)) {
+        std::vector<unsigned char> bytes;
+        Sink sink;
+        sink.version = 1; sink.WriteBlock = writeBlock; sink.out = &bytes;
+        if (api.FPDF_SaveAsCopy(out, &sink, 0) && bytes.size() > 8) res = writeFile(path, bytes);
+    }
+    api.FPDF_CloseDocument(out);
+    return res;
+}
+
+std::vector<int> Document::parseRange(const std::wstring& text) const {
+    std::vector<int> out;
+    const int n = pageCount();
+    size_t i = 0;
+    auto skip = [&] { while (i < text.size() && (text[i] == L' ' || text[i] == L'\t')) ++i; };
+    auto number = [&](int& v) {
+        skip();
+        if (i >= text.size() || !iswdigit(text[i])) return false;
+        long long x = 0;
+        while (i < text.size() && iswdigit(text[i])) { x = x * 10 + (text[i] - L'0'); if (x > 1000000) return false; ++i; }
+        v = static_cast<int>(x);
+        return true;
+    };
+    for (;;) {
+        int a = 0, b = 0;
+        skip();
+        bool openStart = false;
+        if (i < text.size() && text[i] == L'-') openStart = true; else if (!number(a)) return {};
+        if (openStart) a = 1;
+        skip();
+        if (i < text.size() && text[i] == L'-') {
+            ++i; skip();
+            if (i >= text.size() || text[i] == L',' || text[i] == L';') b = n; else if (!number(b)) return {};
+        } else b = a;
+        if (a < 1 || b < a || b > n) return {};
+        for (int p = a; p <= b; ++p) out.push_back(p - 1);
+        skip();
+        if (i >= text.size()) break;
+        if (text[i] == L',' || text[i] == L';') { ++i; continue; }
+        return {};
+    }
+    std::sort(out.begin(), out.end());
+    out.erase(std::unique(out.begin(), out.end()), out.end());
+    return out;
 }

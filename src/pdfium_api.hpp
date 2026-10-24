@@ -7,6 +7,9 @@
 #include "fpdf_doc.h"
 #include "fpdf_annot.h"
 #include "fpdf_save.h"
+#include "fpdf_edit.h"
+#include "fpdf_ppo.h"
+#include "fpdf_transformpage.h"
 
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
@@ -60,7 +63,17 @@
     X(FPDFAnnot_SetFlags)        \
     X(FPDFAnnot_SetStringValue)  \
     X(FPDFAnnot_GetStringValue)  \
-    X(FPDFAnnot_AddInkStroke)
+    X(FPDFAnnot_AddInkStroke)    \
+    X(FPDF_CreateNewDocument)    \
+    X(FPDFPage_New)              \
+    X(FPDFPage_Delete)           \
+    X(FPDFPage_GetRotation)      \
+    X(FPDFPage_SetRotation)      \
+    X(FPDF_MovePages)            \
+    X(FPDF_ImportPagesByIndex)   \
+    X(FPDFPage_GetMediaBox)      \
+    X(FPDFPage_GetCropBox)       \
+    X(FPDFPage_SetCropBox)
 
 namespace pdfium {
 

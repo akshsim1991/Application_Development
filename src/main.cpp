@@ -20,7 +20,7 @@ enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COU
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
+enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -123,7 +123,8 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
-              M_DELETE, M_EDIT_COMMENT, M_COPY, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+              M_DELETE, M_EDIT_COMMENT, M_COPY,
+              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
 constexpr const wchar_t* kPaletteNames[] = {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Black"};
@@ -528,6 +529,221 @@ void showAnnotateMenu(const RECT& anchor) {
     }
 }
 
+
+// ---- page operations ----
+
+std::unique_ptr<Document> openForImport(const std::wstring& path) {
+    auto doc = std::make_unique<Document>();
+    std::string pw;
+    OpenResult r = doc->open(path);
+    while (r == OpenResult::PasswordNeeded || r == OpenResult::WrongPassword) {
+        if (!askPassword(Document::describe(r, path), pw)) return nullptr;
+        r = doc->open(path, pw);
+    }
+    if (r != OpenResult::Ok) {
+        MessageBoxW(app.wnd, Document::describe(r, path).c_str(), kAppName, MB_OK | MB_ICONWARNING);
+        return nullptr;
+    }
+    return doc;
+}
+
+// Asks for pages like "1-3, 5". `initial` is shown first. Returns empty when cancelled or invalid (after telling the user).
+std::vector<int> askPages(Document& d, const wchar_t* title, const wchar_t* what, const std::wstring& initial) {
+    std::wstring in;
+    wchar_t prompt[160];
+    swprintf(prompt, 160, L"%ls Type page numbers or ranges between 1 and %d, such as 1-3, 5, 8-.", what, d.pageCount());
+    while (askText(title, prompt, false, in, initial.c_str())) {
+        auto pages = d.parseRange(in);
+        if (!pages.empty()) return pages;
+        MessageBoxW(app.wnd, L"That is not a valid page list. Use numbers and ranges such as 1-3, 5, 8-.", kAppName, MB_OK | MB_ICONINFORMATION);
+    }
+    return {};
+}
+
+void afterPagesChanged() {
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    app.viewer.setMatches({}, -1);
+    app.curMatch = -1; app.matchTotal = 0;
+    if (app.findVisible && GetWindowTextLengthW(app.findEdit) > 0) runSearch(false);
+    refresh();
+}
+
+std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title) {
+    std::vector<wchar_t> buf(MAX_PATH * 16, 0);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = title;
+    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+    ofn.lpstrFile = buf.data();
+    ofn.nMaxFile = static_cast<DWORD>(buf.size());
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | (multi ? (OFN_ALLOWMULTISELECT | OFN_EXPLORER) : 0);
+    out.clear();
+    if (!GetOpenFileNameW(&ofn)) return L"";
+    const wchar_t* p = buf.data();
+    std::wstring first = p;
+    p += first.size() + 1;
+    if (!*p) out.push_back(first);                       // a single file
+    else for (; *p; p += wcslen(p) + 1) out.push_back(first + L"\\" + p);   // folder, then names
+    return first;
+}
+
+void showPagesMenu(const RECT& anchor) {
+    Document* d = activeDoc();
+    if (!d) return;
+    HMENU m = CreatePopupMenu();
+    auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
+    add(P_DELETE, L"Delete pages...", d->pageCount() > 1);
+    add(P_BLANK, L"Insert a blank page after this one");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    add(P_ROT_R, L"Rotate this page right");
+    add(P_ROT_L, L"Rotate this page left");
+    add(P_ROT_ALL, L"Rotate all pages right");
+    add(P_MOVE, L"Move pages...", d->pageCount() > 1);
+    add(P_CROP, L"Crop pages...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    add(P_INSERT, L"Insert pages from a file...");
+    add(P_MERGE, L"Merge PDFs into the end of this document...");
+    add(P_EXTRACT, L"Extract pages into a new file...");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    const int cur = app.viewer.currentPage();
+    const std::wstring curText = std::to_wstring(cur + 1);
+    switch (cmd) {
+        case P_DELETE: {
+            auto pages = askPages(*d, L"Delete pages", L"Which pages should be deleted?", curText);
+            if (pages.empty()) break;
+            if (static_cast<int>(pages.size()) >= d->pageCount()) {
+                MessageBoxW(app.wnd, L"A document needs at least one page, so not every page can be deleted.", kAppName, MB_OK | MB_ICONINFORMATION);
+                break;
+            }
+            if (d->deletePages(pages)) afterPagesChanged();
+            break;
+        }
+        case P_BLANK: if (d->insertBlankPage(cur, cur)) { afterPagesChanged(); app.viewer.goToPage(cur + 1); } break;
+        case P_ROT_R: if (d->rotatePages({cur}, 1)) afterPagesChanged(); break;
+        case P_ROT_L: if (d->rotatePages({cur}, -1)) afterPagesChanged(); break;
+        case P_ROT_ALL: {
+            std::vector<int> all(d->pageCount());
+            for (int i = 0; i < d->pageCount(); ++i) all[i] = i;
+            if (d->rotatePages(all, 1)) afterPagesChanged();
+            break;
+        }
+        case P_MOVE: {
+            auto pages = askPages(*d, L"Move pages", L"Which pages should be moved?", curText);
+            if (pages.empty()) break;
+            std::wstring in;
+            wchar_t prompt[128];
+            swprintf(prompt, 128, L"Move them before which page? Type 1 to %d, or %d to move them to the end.", d->pageCount(), d->pageCount() + 1);
+            while (askText(L"Move pages", prompt, false, in, L"1")) {
+                wchar_t* end = nullptr;
+                long n = wcstol(in.c_str(), &end, 10);
+                if (end != in.c_str() && *end == 0 && n >= 1 && n <= d->pageCount() + 1) {
+                    if (d->movePages(pages, static_cast<int>(n) - 1)) afterPagesChanged();
+                    break;
+                }
+                MessageBoxW(app.wnd, prompt, kAppName, MB_OK | MB_ICONINFORMATION);
+            }
+            break;
+        }
+        case P_CROP: {
+            std::wstring in;
+            while (askText(L"Crop pages", L"Cut this much off every edge of every page (in millimetres, 0 to 100).", false, in, L"10")) {
+                wchar_t* end = nullptr;
+                double mm = wcstod(in.c_str(), &end);
+                if (end != in.c_str() && *end == 0 && mm > 0 && mm <= 100) {
+                    std::vector<int> all(d->pageCount());
+                    for (int i = 0; i < d->pageCount(); ++i) all[i] = i;
+                    const double pt = mm * 72.0 / 25.4;
+                    if (d->cropPages(all, pt, pt, pt, pt)) afterPagesChanged();
+                    else MessageBoxW(app.wnd, L"That would leave the pages too small. Choose a smaller amount.", kAppName, MB_OK | MB_ICONINFORMATION);
+                    break;
+                }
+                MessageBoxW(app.wnd, L"Type a number of millimetres greater than 0 and up to 100.", kAppName, MB_OK | MB_ICONINFORMATION);
+            }
+            break;
+        }
+        case P_INSERT: {
+            std::vector<std::wstring> files;
+            pickPdf(false, files, L"Insert pages from");
+            if (files.empty()) break;
+            auto src = openForImport(files[0]);
+            if (!src) break;
+            std::wstring in;
+            wchar_t prompt[160];
+            swprintf(prompt, 160, L"Which pages of \"%ls\" (it has %d)? Leave as it is for all of them.", src->title().c_str(), src->pageCount());
+            std::wstring all = L"1-" + std::to_wstring(src->pageCount());
+            std::vector<int> pages;
+            while (askText(L"Insert pages", prompt, false, in, all.c_str())) {
+                pages = src->parseRange(in);
+                if (!pages.empty()) break;
+                MessageBoxW(app.wnd, L"That is not a valid page list.", kAppName, MB_OK | MB_ICONINFORMATION);
+            }
+            if (pages.empty()) break;
+            swprintf(prompt, 160, L"Insert them after which page? Type 0 for the start, or 1 to %d.", d->pageCount());
+            std::wstring where;
+            while (askText(L"Insert pages", prompt, false, where, curText.c_str())) {
+                wchar_t* end = nullptr;
+                long n = wcstol(where.c_str(), &end, 10);
+                if (end != where.c_str() && *end == 0 && n >= 0 && n <= d->pageCount()) {
+                    if (d->importPages(*src, pages, static_cast<int>(n))) { afterPagesChanged(); app.viewer.goToPage(static_cast<int>(n)); }
+                    else MessageBoxW(app.wnd, L"The pages could not be copied.", kAppName, MB_OK | MB_ICONWARNING);
+                    break;
+                }
+                MessageBoxW(app.wnd, prompt, kAppName, MB_OK | MB_ICONINFORMATION);
+            }
+            break;
+        }
+        case P_MERGE: {
+            std::vector<std::wstring> files;
+            pickPdf(true, files, L"Choose the PDFs to add (they are added in the order shown)");
+            if (files.empty()) break;
+            std::sort(files.begin(), files.end());
+            int added = 0;
+            for (const auto& f : files) {
+                auto src = openForImport(f);
+                if (!src) continue;
+                std::vector<int> all(src->pageCount());
+                for (int i = 0; i < src->pageCount(); ++i) all[i] = i;
+                if (d->importPages(*src, all, d->pageCount())) ++added;
+                else MessageBoxW(app.wnd, (L"The pages of \"" + src->title() + L"\" could not be added.").c_str(), kAppName, MB_OK | MB_ICONWARNING);
+            }
+            if (added) { afterPagesChanged(); app.viewer.goToPage(d->pageCount() - 1); }
+            break;
+        }
+        case P_EXTRACT: {
+            auto pages = askPages(*d, L"Extract pages", L"Which pages should go into the new file?", curText);
+            if (pages.empty()) break;
+            wchar_t buf[MAX_PATH * 2] = L"";
+            std::wstring base = d->title();
+            size_t dot = base.find_last_of(L'.');
+            if (dot != std::wstring::npos) base.resize(dot);
+            wcsncpy_s(buf, (base + L" (extract).pdf").c_str(), _TRUNCATE);
+            OPENFILENAMEW ofn{sizeof(ofn)};
+            ofn.hwndOwner = app.wnd;
+            ofn.lpstrTitle = L"Save the extracted pages as";
+            ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+            ofn.lpstrFile = buf;
+            ofn.nMaxFile = MAX_PATH * 2;
+            ofn.lpstrDefExt = L"pdf";
+            ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+            if (!GetSaveFileNameW(&ofn)) break;
+            bool openTab = false;
+            for (const auto& t : app.tabs) if (_wcsicmp(t->path().c_str(), buf) == 0) openTab = true;
+            if (openTab) { MessageBoxW(app.wnd, L"That file is open in a tab. Close it first, or choose another name.", kAppName, MB_OK | MB_ICONWARNING); break; }
+            SaveResult r = d->extractPages(pages, buf);
+            if (r != SaveResult::Ok)
+                MessageBoxW(app.wnd, r == SaveResult::DiskFull ? L"The file could not be saved because the disk is full."
+                                                               : L"The pages could not be saved. The folder may be read-only, or the file may be open in another program.",
+                            kAppName, MB_OK | MB_ICONWARNING);
+            else if (MessageBoxW(app.wnd, L"The pages were saved. Open the new file in a tab?", kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES) openFile(buf);
+            break;
+        }
+    }
+}
+
 void updateFindCount() {
     wchar_t t[64] = L"";
     if (GetWindowTextLengthW(app.findEdit) > 0) {
@@ -675,6 +891,7 @@ void layoutHeader(HDC dc, int width) {
     add(L"Panel", C_PANEL, d != nullptr);
     x += 10;
     add(L"Annotate", C_ANNOT, d != nullptr);
+    add(L"Pages", C_PAGES, d != nullptr);
     (void)width;
 }
 
@@ -813,7 +1030,9 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (activeDoc() && hit(app.pageRect, x, y)) { runCommand(C_GOTO); return 0; }
             for (const Button& b : app.buttons)
                 if (b.enabled && hit(b.rc, x, y)) {
-                    if (b.id == C_ANNOT) showAnnotateMenu(b.rc); else runCommand(b.id);
+                    if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
+                    else if (b.id == C_PAGES) showPagesMenu(b.rc);
+                    else runCommand(b.id);
                     return 0;
                 }
             return 0;
@@ -899,7 +1118,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (GetKeyState(VK_MENU) < 0 && (w == VK_LEFT || w == VK_RIGHT)) return 0;
             break;
         case WM_GETMINMAXINFO:
-            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {980, 420};   // the toolbar needs this much room
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {1060, 420};   // the toolbar needs this much room
             return 0;
         case WM_CLOSE:
             for (auto& t : app.tabs) if (!confirmClose(*t)) return 0;

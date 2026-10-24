@@ -59,7 +59,20 @@ public:
     bool canRedo() const { return !redo_.empty(); }
     bool undo();
     bool redo();
-    int revision() const { return revision_; }         // bumps on every change, undo and redo
+    int revision() const { return revision_; }
+
+    // ---- page operations (each one is a single undo step; page numbers are 0-based) ----
+    bool deletePages(std::vector<int> pages);          // refuses to delete every page
+    bool insertBlankPage(int after, int templatePage); // `after` = -1 inserts at the start
+    bool rotatePages(const std::vector<int>& pages, int quarterTurnsClockwise);
+    bool movePages(std::vector<int> pages, int destination);   // destination is the index before the move
+    bool cropPages(const std::vector<int>& pages, double leftPt, double bottomPt, double rightPt, double topPt);
+    // Copies pages of `src` into this document, so that the first copy lands at index `at`.
+    bool importPages(Document& src, const std::vector<int>& srcPages, int at);
+    // Writes the given pages to a new PDF file (the document itself is not changed).
+    SaveResult extractPages(const std::vector<int>& pages, const std::wstring& path) const;
+    // Parses "1-3, 5, 8-" into 0-based page numbers (sorted, no duplicates). Empty on error.
+    std::vector<int> parseRange(const std::wstring& text) const;         // bumps on every change, undo and redo
 
     // View state, kept per tab.
     double zoom = 1.0;       // 1.0 == 100 % (96 dpi)
@@ -82,4 +95,6 @@ private:
     std::vector<FPDF_TEXTPAGE> texts_;
 
     void closePages();
+    void rebuildPages();      // after pages were added, removed or resized
+    static SaveResult writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes);
 };

@@ -1,0 +1,4 @@
+build/
+third_party/pdfium/
+*.exe
+!FeatherPDF-Setup-2.12.0.exe

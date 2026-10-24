@@ -2,6 +2,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <commdlg.h>
+#include <cderr.h>
 #include <shellapi.h>
 #include <commctrl.h>
 #include <algorithm>
@@ -15,6 +16,7 @@
 #include "formdialog.hpp"
 #include "pageobjects.hpp"
 #include "exporter.hpp"
+#include "speech.hpp"
 
 namespace {
 
@@ -34,7 +36,7 @@ struct App {
     HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr;
     int curMatch = -1, matchTotal = 0;
     WNDPROC editProc = nullptr;
-    int hlColour = 0, drawColour = 5, widthIdx = 1;
+    int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
     Viewer::Tool tool = Viewer::Tool::None;
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
@@ -127,7 +129,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -883,6 +885,123 @@ void doExport(Document& d) {
     }
 }
 
+
+// ---- read aloud, print, properties ----
+
+void stopReading() { speech::stop(); }
+
+void readAloud() {
+    Document* d = activeDoc();
+    if (!d) return;
+    if (speech::speaking()) { stopReading(); return; }
+    std::wstring text = app.viewer.selectedText();
+    if (text.empty()) {   // from the page being read to the end of the document
+        for (int p = app.viewer.currentPage(); p < d->pageCount() && text.size() < 200000; ++p) {
+            std::wstring t = d->textRange(p, 0, d->charCount(p));
+            if (!t.empty()) text += t + L"\r\n";
+        }
+    }
+    if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) {
+        MessageBoxW(app.wnd, L"There is no text to read here. Scanned pages are pictures; they need text recognition (OCR) first.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring err;
+    if (!speech::start(text, app.readRate, err)) MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void printDocument() {
+    Document* d = activeDoc();
+    if (!d) return;
+    PRINTDLGW pd{sizeof(pd)};
+    pd.hwndOwner = app.wnd;
+    pd.Flags = PD_RETURNDC | PD_USEDEVMODECOPIESANDCOLLATE | PD_NOSELECTION | PD_ALLPAGES;
+    pd.nMinPage = 1; pd.nMaxPage = static_cast<WORD>(std::min(d->pageCount(), 65535));
+    pd.nFromPage = 1; pd.nToPage = pd.nMaxPage;
+    pd.nCopies = 1;
+    if (!PrintDlgW(&pd)) {
+        if (CommDlgExtendedError() == PDERR_NODEFAULTPRN || CommDlgExtendedError() == PDERR_PRINTERNOTFOUND)
+            MessageBoxW(app.wnd, L"No printer is installed. Add one in Windows Settings > Bluetooth & devices > Printers & scanners, then try again.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    HDC dc = pd.hDC;
+    int from = 1, to = d->pageCount();
+    if (pd.Flags & PD_PAGENUMS) { from = std::max<int>(1, pd.nFromPage); to = std::min<int>(d->pageCount(), pd.nToPage); }
+    DOCINFOW di{sizeof(di)};
+    std::wstring name = d->title();
+    di.lpszDocName = name.c_str();
+    bool ok = StartDocW(dc, &di) > 0;
+    const int areaW = GetDeviceCaps(dc, HORZRES), areaH = GetDeviceCaps(dc, VERTRES);
+    for (int p = from - 1; ok && p < to; ++p) {
+        if (StartPage(dc) <= 0) { ok = false; break; }
+        FPDF_PAGE pg = d->page(p);
+        if (pg) {
+            const PageSize& ps = d->pageSize(p);
+            const bool rotate = (ps.w > ps.h) != (areaW > areaH);       // turn landscape pages on portrait paper
+            const double pw = rotate ? ps.h : ps.w, ph = rotate ? ps.w : ps.h;
+            const double sc = std::min(areaW / pw, areaH / ph);
+            const int w = static_cast<int>(pw * sc), h = static_cast<int>(ph * sc);
+            pdfium::api().FPDF_RenderPage(dc, pg, (areaW - w) / 2, (areaH - h) / 2, w, h, rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
+        }
+        if (EndPage(dc) <= 0) ok = false;
+    }
+    if (ok) EndDoc(dc); else AbortDoc(dc);
+    DeleteDC(dc);
+    if (pd.hDevMode) GlobalFree(pd.hDevMode);
+    if (pd.hDevNames) GlobalFree(pd.hDevNames);
+    if (!ok) MessageBoxW(app.wnd, L"The document could not be printed. Check that the printer is on and connected, then try again.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+std::wstring metaText(FPDF_DOCUMENT doc, const char* tag) {
+    unsigned long bytes = pdfium::api().FPDF_GetMetaText(doc, tag, nullptr, 0);
+    if (bytes < 4) return L"";
+    std::vector<unsigned short> buf(bytes / 2 + 1);
+    pdfium::api().FPDF_GetMetaText(doc, tag, buf.data(), bytes);
+    return std::wstring(buf.begin(), buf.begin() + (bytes / 2 - 1));
+}
+
+std::wstring prettyDate(const std::wstring& s) {   // "D:20260102150405+01'00'" -> "2026-01-02 15:04"
+    if (s.size() < 10 || s.compare(0, 2, L"D:") != 0) return s;
+    std::wstring o = s.substr(2, 4) + L"-" + s.substr(6, 2) + L"-" + s.substr(8, 2);
+    if (s.size() >= 14) o += L" " + s.substr(10, 2) + L":" + s.substr(12, 2);
+    return o;
+}
+
+void showProperties() {
+    Document* d = activeDoc();
+    if (!d) return;
+    auto line = [&](const wchar_t* label, const std::wstring& v) { return std::wstring(label) + L"  " + (v.empty() ? L"-" : v) + L"\n"; };
+    WIN32_FILE_ATTRIBUTE_DATA fa{};
+    std::wstring size;
+    if (GetFileAttributesExW(d->path().c_str(), GetFileExInfoStandard, &fa)) {
+        unsigned long long b = (static_cast<unsigned long long>(fa.nFileSizeHigh) << 32) | fa.nFileSizeLow;
+        wchar_t t[64];
+        if (b >= (1ull << 20)) swprintf(t, 64, L"%.1f MB (%llu bytes)", b / 1048576.0, b); else swprintf(t, 64, L"%.1f KB (%llu bytes)", b / 1024.0, b);
+        size = t;
+    }
+    int ver = 0;
+    pdfium::api().FPDF_GetFileVersion(d->handle(), &ver);
+    wchar_t pg[96];
+    swprintf(pg, 96, L"%d (first page %.0f x %.0f mm)", d->pageCount(), d->pageSize(0).w * 25.4 / 72, d->pageSize(0).h * 25.4 / 72);
+    std::wstring text;
+    text += line(L"File:", d->path());
+    text += line(L"File size:", size);
+    text += line(L"Pages:", pg);
+    text += line(L"PDF version:", ver ? std::to_wstring(ver / 10) + L"." + std::to_wstring(ver % 10) : L"");
+    text += line(L"Protected by a password:", d->isEncrypted() ? L"yes" : L"no");
+    text += L"\n";
+    text += line(L"Title:", metaText(d->handle(), "Title"));
+    text += line(L"Author:", metaText(d->handle(), "Author"));
+    text += line(L"Subject:", metaText(d->handle(), "Subject"));
+    text += line(L"Keywords:", metaText(d->handle(), "Keywords"));
+    text += line(L"Created with:", metaText(d->handle(), "Creator"));
+    text += line(L"PDF producer:", metaText(d->handle(), "Producer"));
+    text += line(L"Created:", prettyDate(metaText(d->handle(), "CreationDate")));
+    text += line(L"Modified:", prettyDate(metaText(d->handle(), "ModDate")));
+    std::vector<FormField> f(1);
+    f[0].kind = FormField::Note; f[0].text = text;
+    showForm(app.wnd, app.inst, L"Document properties", f, L"Close");
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -891,6 +1010,22 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_READ, speech::speaking() ? L"Stop reading aloud\tCtrl+Shift+U" : L"Read aloud\tCtrl+Shift+U");
+    HMENU rate = CreatePopupMenu();
+    static const wchar_t* rateNames[] = {L"Slow", L"Normal", L"Fast", L"Very fast"};
+    static const int rates[] = {-4, 0, 3, 6};
+    for (int i = 0; i < 4; ++i) AppendMenuW(rate, MF_STRING | (app.readRate == rates[i] ? MF_CHECKED : 0), T_RATE + i, rateNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rate), L"Reading speed");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU col = CreatePopupMenu();
+    const Viewer::Colours cur = app.viewer.colours();
+    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Normal ? MF_CHECKED : 0), T_COLOURS, L"Normal");
+    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Dark ? MF_CHECKED : 0), T_COLOURS + 1, L"Dark (night mode)");
+    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Dimmed ? MF_CHECKED : 0), T_COLOURS + 2, L"Dimmed (softer white)");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(col), L"Page colours");
+    AppendMenuW(m, MF_STRING, T_PRINT, L"Print...\tCtrl+P");
+    AppendMenuW(m, MF_STRING, T_PROPS, L"Document properties...\tCtrl+D");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
@@ -899,6 +1034,13 @@ void showToolsMenu(const RECT& anchor) {
         case T_WATERMARK: doWatermark(*d); break;
         case T_NUMBERS: doPageNumbers(*d); break;
         case T_EXPORT: doExport(*d); break;
+        case T_READ: readAloud(); break;
+        case T_PRINT: printDocument(); break;
+        case T_PROPS: showProperties(); break;
+        default:
+            if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = rates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } }
+            else if (cmd >= T_COLOURS && cmd < T_COLOURS + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - T_COLOURS));
+            break;
     }
 }
 
@@ -1225,11 +1367,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'P': printDocument(); return 0;
+                    case 'D': showProperties(); return 0;
+                    case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;
                     case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;
                     case 'Z': undoRedo(shift); return 0;
                     case 'Y': undoRedo(true); return 0;
                     case 'H': markupSelection(annot::Markup::Highlight, false); return 0;
-                    case 'U': markupSelection(annot::Markup::Underline, false); return 0;
                     case 'K': if (shift) markupSelection(annot::Markup::Strikethrough, false); return 0;
                     case 'M':
                         if (app.viewer.hasSelection()) markupSelection(annot::Markup::Highlight, true);
@@ -1285,6 +1429,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DestroyWindow(h);
             return 0;
         case WM_DESTROY:
+            speech::stop();
             setActiveDocument(nullptr);
             app.tabs.clear();
             PostQuitMessage(0);

@@ -28,8 +28,11 @@ void layout(HWND h, State* st) {
         FormField& f = (*st->fields)[i];
         HWND ctl = nullptr;
         if (f.kind == FormField::Note) {
-            ctl = CreateWindowExW(0, L"STATIC", f.text.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT, pad, y, w - 2 * pad, unit * 3, h, nullptr, st->inst, nullptr);
-            y += unit * 3 + unit / 2;
+            int lines = 1;
+            for (wchar_t c : f.text) if (c == L'\n') ++lines;
+            const int nh = unit * (lines + 1) + unit / 2;
+            ctl = CreateWindowExW(0, L"STATIC", f.text.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT, pad, y, w - 2 * pad, nh, h, nullptr, st->inst, nullptr);
+            y += nh + unit / 2;
         } else if (f.kind == FormField::Check) {
             ctl = CreateWindowExW(0, L"BUTTON", f.label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, pad, y, w - 2 * pad, unit + 6, h,
                                   reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_FIRST + i)), st->inst, nullptr);

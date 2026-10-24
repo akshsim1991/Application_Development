@@ -74,6 +74,9 @@
     X(FPDFPage_GetMediaBox)      \
     X(FPDFPage_GetCropBox)       \
     X(FPDFPage_SetCropBox)       \
+    X(FPDF_RenderPage)           \
+    X(FPDF_GetMetaText)          \
+    X(FPDF_GetFileVersion)       \
     X(FPDFText_GetUnicode)       \
     X(FPDFText_GetCharBox)       \
     X(FPDFText_GetFontSize)      \

@@ -50,6 +50,10 @@ public:
     Tool tool() const { return tool_; }
     void setStyle(COLORREF c, double widthPt) { penColor_ = c; penWidth_ = widthPt; }
 
+    enum class Colours { Normal, Dark, Dimmed };
+    void setColours(Colours c);          // page colour filter: normal, night mode, or softened
+    Colours colours() const { return colours_; }
+
     void invalidatePage(int page);       // a page's content changed: redraw it
     void documentChanged();              // the document was replaced (undo/redo): keep position, redraw all
     // The selected text as rectangles per page, in page coordinates (for markup annotations).
@@ -98,6 +102,8 @@ private:
     Selection sel_;
     bool dragging_ = false;
     Tool tool_ = Tool::None;
+    Colours colours_ = Colours::Normal;
+    void filterPixels(void* bits, int w, int h) const;
     COLORREF penColor_ = RGB(0xE5, 0x39, 0x35);
     double penWidth_ = 2;
     bool drawing_ = false;

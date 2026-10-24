@@ -200,6 +200,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
             if (pg) api.FPDF_RenderPageBitmap(fb, pg, 0, 0, w, h, 0, FPDF_ANNOT);
             api.FPDFBitmap_Destroy(fb);
+            filterPixels(bits, w, h);
             it = cache_.emplace(page, Cached{bmp, w, h, doc_->zoom, doc_->revision()}).first;
         }
         HDC mem = CreateCompatibleDC(dc);
@@ -220,6 +221,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
         api.FPDFBitmap_FillRect(fb, 0, 0, sw, sh, 0xFFFFFFFF);
         if (pg) api.FPDF_RenderPageBitmap(fb, pg, x - vis.left, y - vis.top, w, h, 0, FPDF_ANNOT);
         api.FPDFBitmap_Destroy(fb);
+        filterPixels(bits, sw, sh);
         HDC mem = CreateCompatibleDC(dc);
         HGDIOBJ old = SelectObject(mem, bmp);
         BitBlt(dc, vis.left, vis.top, sw, sh, mem, 0, 0, SRCCOPY);
@@ -424,6 +426,31 @@ bool Viewer::copySelection() {
 
 // ---- annotation tools ----
 
+void Viewer::setColours(Colours cl) {
+    if (cl == colours_) return;
+    colours_ = cl;
+    clearCache();
+    InvalidateRect(hwnd_, nullptr, TRUE);
+}
+
+// Night mode inverts the page into soft light-on-dark; dimmed mode turns the white into a warm light grey.
+void Viewer::filterPixels(void* bits, int w, int h) const {
+    if (colours_ == Colours::Normal) return;
+    auto* p = static_cast<unsigned char*>(bits);
+    const size_t n = static_cast<size_t>(w) * h;
+    if (colours_ == Colours::Dark) {
+        for (size_t i = 0; i < n; ++i, p += 4) {
+            for (int k = 0; k < 3; ++k) p[k] = static_cast<unsigned char>(0x1C + (255 - p[k]) * (0xE4 - 0x1C) / 255);
+        }
+    } else {
+        for (size_t i = 0; i < n; ++i, p += 4) {
+            p[0] = static_cast<unsigned char>(p[0] * 205 / 255);   // blue
+            p[1] = static_cast<unsigned char>(p[1] * 232 / 255);   // green
+            p[2] = static_cast<unsigned char>(p[2] * 240 / 255);   // red
+        }
+    }
+}
+
 void Viewer::setTool(Tool t) {
     tool_ = t;
     drawing_ = false;
@@ -556,7 +583,7 @@ void Viewer::onPaint() {
     HDC dc = BeginPaint(hwnd_, &ps);
     RECT rc; GetClientRect(hwnd_, &rc);
 
-    HBRUSH bg = CreateSolidBrush(RGB(0xE8, 0xE8, 0xE8));
+    HBRUSH bg = CreateSolidBrush(colours_ == Colours::Dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xE8, 0xE8, 0xE8));
     FillRect(dc, &ps.rcPaint, bg);
     DeleteObject(bg);
 

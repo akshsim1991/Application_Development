@@ -73,7 +73,16 @@
     X(FPDF_ImportPagesByIndex)   \
     X(FPDFPage_GetMediaBox)      \
     X(FPDFPage_GetCropBox)       \
-    X(FPDFPage_SetCropBox)
+    X(FPDFPage_SetCropBox)       \
+    X(FPDFPageObj_NewTextObj)    \
+    X(FPDFText_SetText)          \
+    X(FPDFPageObj_SetFillColor)  \
+    X(FPDFPageObj_Transform)     \
+    X(FPDFPageObj_GetBounds)     \
+    X(FPDFPageObj_Destroy)       \
+    X(FPDFPage_InsertObject)     \
+    X(FPDFPage_InsertObjectAtIndex) \
+    X(FPDFPage_GenerateContent)
 
 namespace pdfium {
 

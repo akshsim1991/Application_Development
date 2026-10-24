@@ -12,6 +12,8 @@
 #include "document.hpp"
 #include "viewer.hpp"
 #include "sidebar.hpp"
+#include "formdialog.hpp"
+#include "pageobjects.hpp"
 
 namespace {
 
@@ -20,7 +22,7 @@ enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COU
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
+enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -124,6 +126,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
+              T_WATERMARK = 500, T_NUMBERS,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -744,6 +747,101 @@ void showPagesMenu(const RECT& anchor) {
     }
 }
 
+
+// ---- tools: watermark, page numbers ----
+
+Document* g_formDoc = nullptr;   // the document the open form works on (for validating page lists)
+
+std::vector<int> pagesFromText(Document& d, const std::wstring& t) {
+    bool blank = true;
+    for (wchar_t c : t) if (c != L' ') blank = false;
+    if (blank) {
+        std::vector<int> all(d.pageCount());
+        for (int i = 0; i < d.pageCount(); ++i) all[i] = i;
+        return all;
+    }
+    return d.parseRange(t);
+}
+
+std::wstring badPages(const std::wstring& t) {
+    if (!g_formDoc || !pagesFromText(*g_formDoc, t).empty()) return L"";
+    return L"The pages are not valid. Leave the box empty for all pages, or type page numbers and ranges such as 1-3, 5, 8-.";
+}
+
+std::wstring validateWatermark(const std::vector<FormField>& f) {
+    if (f[0].text.empty()) return L"Type the text of the watermark.";
+    if (!pageobj::isLatin(f[0].text)) return L"The watermark can use letters, numbers and common symbols of Western languages. Please remove other characters.";
+    return badPages(f[6].text);
+}
+
+std::wstring validateNumbers(const std::vector<FormField>& f) {
+    wchar_t* end = nullptr;
+    long n = wcstol(f[2].text.c_str(), &end, 10);
+    if (end == f[2].text.c_str() || *end || n < 0 || n > 1000000) return L"Enter a whole number from 0 to 1000000 for the first page number.";
+    return badPages(f[4].text);
+}
+
+void doWatermark(Document& d) {
+    std::vector<FormField> f(7);
+    f[0] = {FormField::Text, L"Text:", {}, L"CONFIDENTIAL"};
+    f[1] = {FormField::Choice, L"Colour:", {kPaletteNames[0], kPaletteNames[1], kPaletteNames[2], kPaletteNames[3], kPaletteNames[4], kPaletteNames[5], kPaletteNames[6]}, L"", 5};
+    f[2] = {FormField::Choice, L"Opacity:", {L"10%", L"20%", L"30%", L"40%", L"50%", L"70%", L"100%"}, L"", 2};
+    f[3] = {FormField::Choice, L"Size:", {L"Fit the page", L"Small", L"Medium", L"Large"}, L"", 0};
+    f[4] = {FormField::Choice, L"Direction:", {L"Diagonal", L"Horizontal"}, L"", 0};
+    f[5] = {FormField::Check, L"Put it behind the page content (hidden by pictures and scans)"};
+    f[6] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+    g_formDoc = &d;
+    bool ok = showForm(app.wnd, app.inst, L"Watermark", f, L"Add", validateWatermark);
+    g_formDoc = nullptr;
+    if (!ok) return;
+    static const int pct[] = {10, 20, 30, 40, 50, 70, 100};
+    pageobj::WatermarkStyle st;
+    st.color = kPalette[f[1].choice];
+    st.opacityPercent = pct[std::clamp(f[2].choice, 0, 6)];
+    st.sizeMode = f[3].choice;
+    st.diagonal = f[4].choice == 0;
+    st.behind = f[5].checked;
+    if (pageobj::addWatermark(d, pagesFromText(d, f[6].text), f[0].text, st)) afterPagesChanged();
+    else MessageBoxW(app.wnd, L"The watermark could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+void doPageNumbers(Document& d) {
+    std::vector<FormField> f(5);
+    f[0] = {FormField::Choice, L"Format:", {L"1", L"Page 1", L"Page 1 of N", L"1 / N"}, L"", 1};
+    f[1] = {FormField::Choice, L"Position:", {L"Bottom centre", L"Bottom left", L"Bottom right", L"Top centre", L"Top left", L"Top right"}, L"", 0};
+    f[2] = {FormField::Text, L"Start at:", {}, L"1"};
+    f[3] = {FormField::Choice, L"Size:", {L"8 pt", L"10 pt", L"12 pt", L"14 pt"}, L"", 1};
+    f[4] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+    g_formDoc = &d;
+    bool ok = showForm(app.wnd, app.inst, L"Page numbers", f, L"Add", validateNumbers);
+    g_formDoc = nullptr;
+    if (!ok) return;
+    pageobj::NumberStyle st;
+    st.format = f[0].choice;
+    st.position = f[1].choice;
+    st.startAt = static_cast<int>(wcstol(f[2].text.c_str(), nullptr, 10));
+    static const double sizes[] = {8, 10, 12, 14};
+    st.sizePt = sizes[std::clamp(f[3].choice, 0, 3)];
+    if (pageobj::addPageNumbers(d, pagesFromText(d, f[4].text), st)) afterPagesChanged();
+    else MessageBoxW(app.wnd, L"The page numbers could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+void showToolsMenu(const RECT& anchor) {
+    Document* d = activeDoc();
+    if (!d) return;
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
+    AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    switch (cmd) {
+        case T_WATERMARK: doWatermark(*d); break;
+        case T_NUMBERS: doPageNumbers(*d); break;
+    }
+}
+
 void updateFindCount() {
     wchar_t t[64] = L"";
     if (GetWindowTextLengthW(app.findEdit) > 0) {
@@ -892,6 +990,7 @@ void layoutHeader(HDC dc, int width) {
     x += 10;
     add(L"Annotate", C_ANNOT, d != nullptr);
     add(L"Pages", C_PAGES, d != nullptr);
+    add(L"Tools", C_TOOLS, d != nullptr);
     (void)width;
 }
 
@@ -1032,6 +1131,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (b.enabled && hit(b.rc, x, y)) {
                     if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
                     else if (b.id == C_PAGES) showPagesMenu(b.rc);
+                    else if (b.id == C_TOOLS) showToolsMenu(b.rc);
                     else runCommand(b.id);
                     return 0;
                 }
@@ -1118,7 +1218,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (GetKeyState(VK_MENU) < 0 && (w == VK_LEFT || w == VK_RIGHT)) return 0;
             break;
         case WM_GETMINMAXINFO:
-            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {1060, 420};   // the toolbar needs this much room
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {1130, 420};   // the toolbar needs this much room
             return 0;
         case WM_CLOSE:
             for (auto& t : app.tabs) if (!confirmClose(*t)) return 0;
@@ -1176,7 +1276,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     RegisterClassExW(&wc);
 
     HWND w = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-                             CW_USEDEFAULT, CW_USEDEFAULT, 1100, 780, nullptr, nullptr, inst, nullptr);
+                             CW_USEDEFAULT, CW_USEDEFAULT, 1200, 780, nullptr, nullptr, inst, nullptr);
     ShowWindow(w, show);
     UpdateWindow(w);
     relayoutChildren();

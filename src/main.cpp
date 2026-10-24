@@ -4,6 +4,7 @@
 #include <commdlg.h>
 #include <cderr.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <commctrl.h>
 #include <algorithm>
 #include <cmath>
@@ -21,6 +22,7 @@
 #include "redact.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
+#include "picture.hpp"
 
 namespace {
 
@@ -42,6 +44,9 @@ struct App {
     WNDPROC editProc = nullptr;
     int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
     Viewer::Tool tool = Viewer::Tool::None;
+    std::vector<std::wstring> recent;
+    std::wstring pendingPicture;
+    bool pictureHintShown = false;
     pageobj::TextStyle textStyle{pageobj::Family::Sans, false, false, 14, RGB(0x20, 0x20, 0x20)};
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
@@ -135,7 +140,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -221,6 +226,73 @@ bool askPassword(const std::wstring& prompt, std::string& out) {
     return true;
 }
 
+
+// ---- settings: recent files and preferences, kept in %APPDATA%\FeatherPDF\settings.ini ----
+
+std::wstring settingsPath() {
+    wchar_t base[MAX_PATH];
+    if (GetEnvironmentVariableW(L"APPDATA", base, MAX_PATH) == 0) return L"";
+    std::wstring dir = std::wstring(base) + L"\\FeatherPDF";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    return dir + L"\\settings.ini";
+}
+
+void updateEmptyText() {
+    std::wstring t = L"Open a PDF with Ctrl+O, or drop a file here.";
+    if (!app.recent.empty()) t += L"\n\nRight-click here to open one of your recent files.";
+    app.viewer.setEmptyText(t);
+}
+
+void loadSettings() {
+    const std::wstring p = settingsPath();
+    if (p.empty()) return;
+    auto num = [&](const wchar_t* key, int def) { return static_cast<int>(GetPrivateProfileIntW(L"view", key, def, p.c_str())); };
+    app.hlColour = std::clamp(num(L"highlightColour", app.hlColour), 0, 6);
+    app.drawColour = std::clamp(num(L"drawingColour", app.drawColour), 0, 6);
+    app.widthIdx = std::clamp(num(L"lineWidth", app.widthIdx), 0, 2);
+    app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
+    app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
+    app.textStyle.family = static_cast<pageobj::Family>(std::clamp(num(L"textFont", 0), 0, 2));
+    app.textStyle.bold = num(L"textBold", 0) != 0;
+    app.textStyle.italic = num(L"textItalic", 0) != 0;
+    app.textStyle.sizePt = std::clamp(num(L"textSize", 14), 6, 144);
+    app.recent.clear();
+    for (int i = 0; i < 10; ++i) {
+        wchar_t key[16], buf[MAX_PATH * 2];
+        swprintf(key, 16, L"file%d", i);
+        GetPrivateProfileStringW(L"recent", key, L"", buf, MAX_PATH * 2, p.c_str());
+        if (buf[0]) app.recent.push_back(buf);
+    }
+}
+
+void saveSettings() {
+    const std::wstring p = settingsPath();
+    if (p.empty()) return;
+    auto put = [&](const wchar_t* sec, const wchar_t* key, int v) { WritePrivateProfileStringW(sec, key, std::to_wstring(v).c_str(), p.c_str()); };
+    put(L"view", L"highlightColour", app.hlColour);
+    put(L"view", L"drawingColour", app.drawColour);
+    put(L"view", L"lineWidth", app.widthIdx);
+    put(L"view", L"readingSpeed", app.readRate);
+    put(L"view", L"pageColours", static_cast<int>(app.viewer.colours()));
+    put(L"view", L"textFont", static_cast<int>(app.textStyle.family));
+    put(L"view", L"textBold", app.textStyle.bold);
+    put(L"view", L"textItalic", app.textStyle.italic);
+    put(L"view", L"textSize", static_cast<int>(app.textStyle.sizePt));
+    WritePrivateProfileStringW(L"recent", nullptr, nullptr, p.c_str());   // rewrite the whole section
+    for (size_t i = 0; i < app.recent.size() && i < 10; ++i) {
+        wchar_t key[16];
+        swprintf(key, 16, L"file%d", static_cast<int>(i));
+        WritePrivateProfileStringW(L"recent", key, app.recent[i].c_str(), p.c_str());
+    }
+}
+
+void addRecent(const std::wstring& path) {
+    app.recent.erase(std::remove_if(app.recent.begin(), app.recent.end(), [&](const std::wstring& r) { return _wcsicmp(r.c_str(), path.c_str()) == 0; }), app.recent.end());
+    app.recent.insert(app.recent.begin(), path);
+    if (app.recent.size() > 10) app.recent.resize(10);
+    updateEmptyText();
+}
+
 // ---- opening files ----
 void openFile(const std::wstring& pathIn) {
     wchar_t full[MAX_PATH * 2];
@@ -245,6 +317,7 @@ void openFile(const std::wstring& pathIn) {
         doc->onFormInvalidate = [raw](int page) { if (activeDoc() == raw) app.viewer.invalidatePage(page); };
         doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
     }
+    addRecent(path);
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
 }
@@ -424,9 +497,14 @@ void deleteAnnotation(Document& d, int page, int index) {
     if (annot::remove(d, page, index)) { app.viewer.clearAnnotSelection(); afterChange(page); }
 }
 
+void openRecentMenu(POINT screenPt);
+
 void onViewerEvent(const Viewer::Event& e) {
     Document* d = activeDoc();
-    if (!d) return;
+    if (!d) {
+        if (e.kind == Viewer::Event::ContextMenu) openRecentMenu(e.screen);
+        return;
+    }
     switch (e.kind) {
         case Viewer::Event::Draw:
             switch (e.tool) {
@@ -463,6 +541,13 @@ void onViewerEvent(const Viewer::Event& e) {
                     }
                 }
                 setTool(Viewer::Tool::AddText);   // one text box at a time
+                break;
+            }
+            if (e.tool == Viewer::Tool::Picture) {
+                std::wstring err;
+                if (pageobj::addPicture(*d, e.page, e.pts.front().x, e.pts.front().y, app.pendingPicture, err)) afterChange(e.page);
+                else MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING);
+                setTool(Viewer::Tool::Picture);   // one picture at a time
                 break;
             }
             if (e.tool == Viewer::Tool::EditText) {
@@ -519,6 +604,7 @@ void onViewerEvent(const Viewer::Event& e) {
             AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_UNDERLINE, L"Underline\tCtrl+U");
             AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_STRIKE, L"Strikethrough\tCtrl+Shift+K");
             AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COMMENT, L"Comment on selected text...\tCtrl+M");
+            if (e.page >= 0) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, M_COPY_PAGE, L"Copy this page as a picture"); }
             int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, e.screen.x, e.screen.y, 0, app.wnd, nullptr);
             DestroyMenu(m);
             switch (cmd) {
@@ -530,6 +616,9 @@ void onViewerEvent(const Viewer::Event& e) {
                 case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
                 case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
                 case M_COMMENT: markupSelection(annot::Markup::Highlight, true); break;
+                case M_COPY_PAGE:
+                    if (!pageobj::copyPageToClipboard(*d, e.page, app.wnd)) MessageBoxW(app.wnd, L"The page could not be copied as a picture (it may be too large).", kAppName, MB_OK | MB_ICONWARNING);
+                    break;
             }
             break;
         }
@@ -1270,6 +1359,69 @@ void doOcr(Document& d) {
     MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | (r.error.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));
 }
 
+
+void openRecentMenu(POINT screenPt) {
+    HMENU m = CreatePopupMenu();
+    if (app.recent.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No recent files");
+    for (size_t i = 0; i < app.recent.size(); ++i) {
+        std::wstring name = app.recent[i].substr(app.recent[i].find_last_of(L"\\/") + 1);
+        std::wstring label = name + L"    " + app.recent[i].substr(0, app.recent[i].size() - name.size());
+        if (label.size() > 90) label = name;
+        AppendMenuW(m, MF_STRING, T_RECENT + i, label.c_str());
+    }
+    if (!app.recent.empty()) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, T_RECENT_CLEAR, L"Clear the list"); }
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, screenPt.x, screenPt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd == T_RECENT_CLEAR) { app.recent.clear(); updateEmptyText(); saveSettings(); }
+    else if (cmd >= T_RECENT && cmd < T_RECENT + 10 && cmd - T_RECENT < static_cast<int>(app.recent.size())) {
+        std::wstring p = app.recent[static_cast<size_t>(cmd - T_RECENT)];
+        if (GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            MessageBoxW(app.wnd, (L"\"" + p + L"\" no longer exists, so it was removed from the list.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+            app.recent.erase(app.recent.begin() + (cmd - T_RECENT));
+            updateEmptyText();
+        } else openFile(p);
+    }
+}
+
+void registerAsViewer() {
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    auto set = [](const std::wstring& key, const wchar_t* name, const std::wstring& value) {
+        HKEY k;
+        if (RegCreateKeyExW(HKEY_CURRENT_USER, key.c_str(), 0, nullptr, 0, KEY_SET_VALUE, nullptr, &k, nullptr) != ERROR_SUCCESS) return false;
+        bool ok = RegSetValueExW(k, name, 0, REG_SZ, reinterpret_cast<const BYTE*>(value.c_str()), static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t))) == ERROR_SUCCESS;
+        RegCloseKey(k);
+        return ok;
+    };
+    bool ok = set(L"Software\\Classes\\FeatherPDF.Document", nullptr, L"PDF document");
+    ok = set(L"Software\\Classes\\FeatherPDF.Document\\DefaultIcon", nullptr, std::wstring(exe) + L",0") && ok;
+    ok = set(L"Software\\Classes\\FeatherPDF.Document\\shell\\open\\command", nullptr, L"\"" + std::wstring(exe) + L"\" \"%1\"") && ok;
+    ok = set(L"Software\\Classes\\.pdf\\OpenWithProgids", L"FeatherPDF.Document", L"") && ok;
+    if (!ok) { MessageBoxW(app.wnd, L"The file association could not be registered.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
+    if (MessageBoxW(app.wnd, L"Feather PDF now appears in the \"Open with\" list for PDF files.\n\nWindows only lets you choose the default app yourself. "
+                             L"Open the Windows settings to choose Feather PDF for .pdf files?", kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES)
+        ShellExecuteW(app.wnd, L"open", L"ms-settings:defaultapps", nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void startPicture() {
+    std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Choose a picture to put on the page";
+    ofn.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0All files (*.*)\0*.*\0";
+    ofn.lpstrFile = buf.data();
+    ofn.nMaxFile = static_cast<DWORD>(buf.size());
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetOpenFileNameW(&ofn)) return;
+    app.pendingPicture = buf.data();
+    if (app.tool != Viewer::Tool::Picture) setTool(Viewer::Tool::Picture);
+    if (!app.pictureHintShown) {
+        app.pictureHintShown = true;
+        MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the picture should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+    }
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1278,6 +1430,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::AddText ? MF_CHECKED : 0), T_ADD_TEXT, L"Add a text box (click on the page)");
     AppendMenuW(m, MF_STRING, T_TEXT_STYLE, L"Style of new text...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_PICTURE, L"Insert a picture...");
     AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_STRING, T_OCR, L"Recognise text in scanned pages (OCR)...");
@@ -1311,6 +1464,8 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(col), L"Page colours");
     AppendMenuW(m, MF_STRING, T_PRINT, L"Print...\tCtrl+P");
     AppendMenuW(m, MF_STRING, T_PROPS, L"Document properties...\tCtrl+D");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_DEFAULT_VIEWER, L"Set as the default PDF viewer...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
@@ -1329,6 +1484,8 @@ void showToolsMenu(const RECT& anchor) {
         case T_READ: readAloud(); break;
         case T_PRINT: printDocument(); break;
         case T_PROPS: showProperties(); break;
+        case T_PICTURE: startPicture(); break;
+        case T_DEFAULT_VIEWER: registerAsViewer(); break;
         default:
             if (cmd >= T_RED_AREA && cmd <= T_RED_APPLY) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = rates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } }
@@ -1666,6 +1823,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
                     case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
+                    case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
                     case 'P': printDocument(); return 0;
                     case 'D': showProperties(); return 0;
                     case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;
@@ -1728,6 +1886,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DestroyWindow(h);
             return 0;
         case WM_DESTROY:
+            saveSettings();
             speech::stop();
             setActiveDocument(nullptr);
             app.tabs.clear();
@@ -1838,6 +1997,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
 
     HWND w = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1200, 780, nullptr, nullptr, inst, nullptr);
+    loadSettings();
+    updateEmptyText();
     ShowWindow(w, show);
     UpdateWindow(w);
     relayoutChildren();

@@ -36,7 +36,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -52,6 +52,7 @@ public:
 
     enum class Colours { Normal, Dark, Dimmed };
     void setMarks(const std::vector<RedactMark>* marks);   // pending redaction marks to show (not owned)
+    void setEmptyText(const std::wstring& t) { emptyText_ = t; InvalidateRect(hwnd_, nullptr, TRUE); }   // shown when no document is open
     void setColours(Colours c);          // page colour filter: normal, night mode, or softened
     Colours colours() const { return colours_; }
 
@@ -105,6 +106,7 @@ private:
     bool dragging_ = false;
     Tool tool_ = Tool::None;
     Colours colours_ = Colours::Normal;
+    std::wstring emptyText_ = L"Open a PDF with Ctrl+O, or drop a file here.";
     const std::vector<RedactMark>* marks_ = nullptr;
     void filterPixels(void* bits, int w, int h) const;
     COLORREF penColor_ = RGB(0xE5, 0x39, 0x35);

@@ -614,9 +614,14 @@ void Viewer::onPaint() {
 
     if (!doc_) {
         SetBkMode(dc, TRANSPARENT);
-        SetTextColor(dc, RGB(0x55, 0x55, 0x55));
+        SetTextColor(dc, colours_ == Colours::Dark ? RGB(0xB0, 0xB0, 0xB0) : RGB(0x55, 0x55, 0x55));
         SelectObject(dc, GetStockObject(DEFAULT_GUI_FONT));
-        DrawTextW(dc, L"Open a PDF with Ctrl+O, or drop a file here.", -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        RECT box{rc.left + 20, 0, rc.right - 20, 0};
+        DrawTextW(dc, emptyText_.c_str(), -1, &box, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX | DT_CALCRECT);   // measure, then centre the block
+        const int hgt = box.bottom - box.top;
+        box.left = rc.left + 20; box.right = rc.right - 20;   // measuring shrinks the width: restore it so the text is centred
+        box.top = (rc.bottom - hgt) / 2; box.bottom = box.top + hgt;
+        DrawTextW(dc, emptyText_.c_str(), -1, &box, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
     } else {
         for (size_t i = 0; i < tops_.size(); ++i) {
             int x = pageX(static_cast<int>(i));
@@ -784,8 +789,15 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_RBUTTONUP: {
-            if (!doc_ || !onEvent) return 0;
+            if (!onEvent) return 0;
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+            if (!doc_) {   // nothing open: the main window offers the recent files
+                Event e; e.kind = Event::ContextMenu; e.page = -1;
+                e.screen = {cx, cy};
+                ClientToScreen(hwnd_, &e.screen);
+                onEvent(e);
+                return 0;
+            }
             int page; annot::PointD pt;
             Event e; e.kind = Event::ContextMenu; e.tool = tool_;
             if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) { e.page = page; e.pts = {pt}; e.annot = annot::hitTest(*doc_, page, pt); }
@@ -840,7 +852,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (toPage(cx, cy, drawPage_, end) && onEvent) {
                     Event e; e.page = drawPage_; e.tool = tool_;
                     const bool moved = std::abs(cx - drawStart_.x) + std::abs(cy - drawStart_.y) > 3;
-                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
+                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
                     else if (moved) {
                         e.kind = Event::Draw;
                         e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};

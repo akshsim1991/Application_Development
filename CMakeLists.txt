@@ -21,6 +21,7 @@ add_executable(FeatherPDF WIN32
   src/compress.cpp
   src/protect.cpp
   src/ocr.cpp
+  src/sign.cpp
   src/picture.cpp
   resources/FeatherPDF.rc)
 
@@ -38,7 +39,7 @@ if(EXISTS "${TESS_DIR}/lib/libtesseract.a")
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${TESS_DIR}/licenses" "$<TARGET_FILE_DIR:FeatherPDF>/licenses")
 endif()
 
-target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt comdlg32 shell32 comctl32 ole32)
+target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt crypt32 ncrypt cryptui comdlg32 shell32 comctl32 ole32)
 
 if(MINGW)
   target_link_options(FeatherPDF PRIVATE -municode -static -static-libgcc -static-libstdc++)

@@ -5,6 +5,7 @@
 #include <vector>
 #include "pdfium_api.hpp"
 #include "protect.hpp"
+#include "sign.hpp"
 
 struct PageSize { float w = 612, h = 792; };   // in points
 
@@ -77,6 +78,9 @@ public:
     bool removeProtection();
     Protection protectionMode() const { return protMode_; }
 
+    // Digital signatures found in the file when it was opened (checked against the bytes on disk).
+    const std::vector<sign::Status>& signatures() const { return signatures_; }
+
     // Change tracking. Call beginChange() BEFORE modifying the document: it stores an undo step.
     // A change that turns out to be a no-op can be dropped with cancelChange().
     bool dirty() const { return dirty_; }
@@ -98,6 +102,8 @@ public:
     bool cropPages(const std::vector<int>& pages, double leftPt, double bottomPt, double rightPt, double topPt);
     // Copies pages of `src` into this document, so that the first copy lands at index `at`.
     bool importPages(Document& src, const std::vector<int>& srcPages, int at);
+    // Writes bytes to a file safely (temp file, then replace).
+    static SaveResult writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes);
     // Writes the given pages to a new PDF file (the document itself is not changed).
     SaveResult extractPages(const std::vector<int>& pages, const std::wstring& path) const;
     // Parses "1-3, 5, 8-" into 0-based page numbers (sorted, no duplicates). Empty on error.
@@ -116,6 +122,7 @@ private:
     FPDF_DOCUMENT doc_ = nullptr;
     std::vector<PageSize> sizes_;
     std::string password_;
+    std::vector<sign::Status> signatures_;
     bool dirty_ = false;
     int revision_ = 0;
     struct Snapshot { std::vector<unsigned char> bytes; Protection mode; protect::Options opt; };
@@ -139,5 +146,4 @@ private:
     friend struct FormCallbacks;
     void closePages();
     void rebuildPages();      // after pages were added, removed or resized
-    static SaveResult writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes);
 };

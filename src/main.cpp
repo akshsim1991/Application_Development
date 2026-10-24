@@ -5,6 +5,7 @@
 #include <cderr.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <cryptuiapi.h>
 #include <commctrl.h>
 #include <algorithm>
 #include <cmath>
@@ -22,6 +23,7 @@
 #include "redact.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
+#include "sign.hpp"
 #include "picture.hpp"
 
 namespace {
@@ -140,7 +142,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -318,8 +320,12 @@ void openFile(const std::wstring& pathIn) {
         doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
     }
     addRecent(path);
+    const bool badSig = std::any_of(doc->signatures().begin(), doc->signatures().end(),
+                                    [](const sign::Status& s) { return s.kind == sign::Status::Changed || s.kind == sign::Status::Unreadable; });
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
+    if (badSig) MessageBoxW(app.wnd, L"A digital signature in this document does not match: the document was changed after it was signed (or the signature is damaged). "
+                                     L"Do not trust its content. Tools > Digital signatures shows the details.", kAppName, MB_OK | MB_ICONWARNING);
 }
 
 void openDialog() {
@@ -1422,6 +1428,136 @@ void startPicture() {
     }
 }
 
+
+// ---- digital signatures ----
+
+std::wstring sigSummary(const std::vector<sign::Status>& v) {
+    std::wstring t;
+    int n = 0;
+    for (const auto& st : v) {
+        ++n;
+        const wchar_t* head = st.kind == sign::Status::Valid ? L"Valid" : st.kind == sign::Status::ValidUntrusted ? L"Signed, but not confirmed" :
+                              st.kind == sign::Status::Changed ? L"NOT VALID: changed after signing" : L"Could not be checked";
+        t += L"Signature " + std::to_wstring(n) + L": " + head + L"\n";
+        t += L"  Signed by: " + (st.signer.empty() ? L"(unknown)" : st.signer) + L"\n";
+        if (!st.time.empty()) t += L"  Time: " + st.time + L"\n";
+        if (!st.reason.empty()) t += L"  Reason: " + st.reason + L"\n";
+        t += L"  " + st.note + L"\n\n";
+    }
+    return t;
+}
+
+void showSignatures(Document& d) {
+    std::vector<FormField> f(1);
+    f[0].kind = FormField::Note;
+    f[0].text = d.signatures().empty() ? L"This document has no digital signatures." : sigSummary(d.signatures());
+    showForm(app.wnd, app.inst, L"Digital signatures", f, L"Close");
+}
+
+void makeOwnCertificate() {
+    wchar_t user[256] = L""; DWORD n = 256;
+    GetUserNameW(user, &n);
+    std::vector<FormField> f(3);
+    f[0] = {FormField::Note, L"", {}, L"Makes a certificate for signing, kept in your personal Windows certificates.\\nOther people see your signature as valid, but they must choose to trust it,\\nbecause no authority vouches for it."};
+    f[1] = {FormField::Text, L"Your name:", {}, user};
+    f[2] = {FormField::Text, L"E-mail (optional):", {}, L""};
+    if (!showForm(app.wnd, app.inst, L"Make my own certificate", f, L"Make", [](const std::vector<FormField>& v) -> std::wstring {
+            return v[1].text.empty() ? L"Type your name as it should appear in your signatures." : L""; })) return;
+    std::wstring err;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    PCCERT_CONTEXT c = sign::makeOwnCertificate(f[1].text, f[2].text, err);
+    SetCursor(old);
+    if (!c) { MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    CertFreeCertificateContext(c);
+    MessageBoxW(app.wnd, (err.empty() ? L"The certificate was made and kept in your personal certificates. You can choose it when you sign." : err.c_str()), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void signDocument(Document& d) {
+    if (d.isProtected()) {
+        MessageBoxW(app.wnd, L"Remove the password protection first (Tools > Password protection), then sign. A signed file cannot be changed afterwards.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::vector<FormField> f(4);
+    f[0] = {FormField::Note, L"", {}, L"Signs the document with a certificate. The signed copy is saved as a new file, and any change made to it afterwards shows up as an invalid signature."};
+    f[1] = {FormField::Choice, L"Certificate:", {L"One of my Windows certificates", L"A certificate file (.pfx / .p12)"}, L"", 0};
+    f[2] = {FormField::Text, L"Reason (optional):", {}, L""};
+    f[3] = {FormField::Text, L"Place (optional):", {}, L""};
+    if (!showForm(app.wnd, app.inst, L"Sign with a certificate", f, L"Choose certificate...")) return;
+
+    PCCERT_CONTEXT cert = nullptr;
+    HCERTSTORE fileStore = nullptr, myStore = nullptr;
+    std::wstring err;
+    if (f[1].choice == 0) {
+        myStore = CertOpenSystemStoreW(0, L"MY");
+        bool any = false;
+        for (PCCERT_CONTEXT c = nullptr; myStore && (c = CertEnumCertificatesInStore(myStore, c)) != nullptr;) {
+            DWORD sz = 0;
+            if (CertGetCertificateContextProperty(c, CERT_KEY_PROV_INFO_PROP_ID, nullptr, &sz)) { any = true; CertFreeCertificateContext(c); break; }
+        }
+        if (!any) {
+            if (myStore) CertCloseStore(myStore, 0);
+            MessageBoxW(app.wnd, L"You have no certificates with a private key yet. Use \"Make my own certificate\" first, or sign with a certificate file.", kAppName, MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        cert = CryptUIDlgSelectCertificateFromStore(myStore, app.wnd, L"Sign with a certificate", L"Choose the certificate to sign with.", 0, 0, nullptr);
+        if (!cert) { CertCloseStore(myStore, 0); return; }
+    } else {
+        wchar_t buf[MAX_PATH * 2] = L"";
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner = app.wnd;
+        ofn.lpstrTitle = L"Certificate with key";
+        ofn.lpstrFilter = L"Certificate with key (*.pfx;*.p12)\0*.pfx;*.p12\0";
+        ofn.lpstrFile = buf;
+        ofn.nMaxFile = MAX_PATH * 2;
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+        if (!GetOpenFileNameW(&ofn)) return;
+        std::wstring pw;
+        if (!askText(L"Certificate password", L"Type the password of the certificate file.", true, pw)) return;
+        cert = sign::certFromPfx(buf, pw, fileStore, err);
+        if (!cert) { MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    }
+    auto cleanup = [&] {
+        if (cert) CertFreeCertificateContext(cert);
+        if (fileStore) CertCloseStore(fileStore, 0);
+        if (myStore) CertCloseStore(myStore, 0);
+    };
+
+    wchar_t out[MAX_PATH * 2] = L"";
+    std::wstring base = d.title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(out, (base + L" (signed).pdf").c_str(), _TRUNCATE);
+    OPENFILENAMEW so{sizeof(so)};
+    so.hwndOwner = app.wnd;
+    so.lpstrTitle = L"Save the signed document as";
+    so.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+    so.lpstrFile = out;
+    so.nMaxFile = MAX_PATH * 2;
+    so.lpstrDefExt = L"pdf";
+    so.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&so)) { cleanup(); return; }
+    for (const auto& t : app.tabs)
+        if (_wcsicmp(t->path().c_str(), out) == 0) {
+            cleanup();
+            MessageBoxW(app.wnd, L"That file is open in a tab. Close it first, or choose another name.", kAppName, MB_OK | MB_ICONWARNING);
+            return;
+        }
+    std::vector<unsigned char> plain, signedBytes;
+    sign::Options opt;
+    opt.reason = f[2].text;
+    opt.location = f[3].text;
+    bool ok = d.serialize(plain, FPDF_REMOVE_SECURITY) && sign::signPdf(plain, cert, opt, signedBytes, err);
+    cleanup();
+    if (!ok) { MessageBoxW(app.wnd, (err.empty() ? L"The document could not be signed." : err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    SaveResult r = Document::writeFile(out, signedBytes);
+    if (r != SaveResult::Ok) {
+        MessageBoxW(app.wnd, r == SaveResult::DiskFull ? L"The signed document could not be saved because the disk is full."
+                                                       : L"The signed document could not be saved. The folder may be read-only, or the file may be open in another program.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (MessageBoxW(app.wnd, L"The document was signed and saved. Open the signed copy in a new tab?", kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) openFile(out);
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1436,6 +1572,14 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_OCR, L"Recognise text in scanned pages (OCR)...");
     AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
     AppendMenuW(m, MF_STRING, T_PROTECT, L"Password protection...");
+    {
+        HMENU sg = CreatePopupMenu();
+        AppendMenuW(sg, MF_STRING, T_SIGN, L"Sign with a certificate...");
+        AppendMenuW(sg, MF_STRING, T_OWNCERT, L"Make my own certificate...");
+        std::wstring label = d->signatures().empty() ? L"Show signatures (none in this document)" : L"Show the " + std::to_wstring(d->signatures().size()) + L" signature(s) of this document";
+        AppendMenuW(sg, d->signatures().empty() ? MF_GRAYED : MF_STRING, T_SHOWSIGS, label.c_str());
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Digital signatures");
+    }
     if (d->isProtected()) AppendMenuW(m, MF_STRING, T_UNPROTECT, L"Remove password protection");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
@@ -1476,6 +1620,9 @@ void showToolsMenu(const RECT& anchor) {
         case T_EXPORT: doExport(*d); break;
         case T_COMPRESS: doCompress(*d); break;
         case T_OCR: doOcr(*d); break;
+        case T_SIGN: signDocument(*d); break;
+        case T_OWNCERT: makeOwnCertificate(); break;
+        case T_SHOWSIGS: showSignatures(*d); break;
         case T_PROTECT: doProtect(*d); break;
         case T_UNPROTECT: doUnprotect(*d); break;
         case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
@@ -1969,6 +2116,56 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (!r.error.empty()) return 4;
         if (r.words == 0) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
+    }
+
+    // Command line signing: FeatherPDF.exe --sign <in.pdf> <out.pdf> <certificate.pfx> <password>
+    // and checking:         FeatherPDF.exe --checksig <file.pdf> <report.txt>   (exit code 0 ok; the report lists each signature)
+    if (!files.empty() && files[0] == L"--sign") {
+        if (files.size() < 5) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<unsigned char> plain;
+        if (!doc.serialize(plain, FPDF_REMOVE_SECURITY)) return 4;
+        HCERTSTORE store = nullptr;
+        std::wstring err;
+        PCCERT_CONTEXT cert = sign::certFromPfx(files[3], files[4], store, err);
+        if (!cert) return 5;
+        std::vector<unsigned char> out;
+        sign::Options so;
+        so.reason = L"Approved";
+        bool ok = sign::signPdf(plain, cert, so, out, err);
+        CertFreeCertificateContext(cert);
+        if (store) CertCloseStore(store, 0);
+        if (!ok) {   // leave the reason next to the output file so scripts can show it
+            int n = WideCharToMultiByte(CP_UTF8, 0, err.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+            if (n > 1) WideCharToMultiByte(CP_UTF8, 0, err.c_str(), -1, u.data(), n, nullptr, nullptr);
+            std::vector<unsigned char> eb(u.begin(), u.end());
+            Document::writeFile(files[2] + L".error.txt", eb);
+            return 6;
+        }
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--checksig") {
+        if (files.size() < 3) return 2;
+        Document doc;
+        std::vector<unsigned char> bytes;
+        HANDLE h = CreateFileW(files[1].c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h == INVALID_HANDLE_VALUE) return 3;
+        LARGE_INTEGER sz{}; GetFileSizeEx(h, &sz);
+        bytes.resize(static_cast<size_t>(sz.QuadPart));
+        DWORD got = 0; ReadFile(h, bytes.data(), static_cast<DWORD>(bytes.size()), &got, nullptr); CloseHandle(h);
+        std::string report;
+        for (const auto& st : sign::check(bytes)) {
+            static const char* kinds[] = {"VALID", "VALID-UNTRUSTED", "CHANGED", "UNREADABLE"};
+            std::wstring line = L"; signer=" + st.signer + L"; time=" + st.time + L"; reason=" + st.reason;
+            int n = WideCharToMultiByte(CP_UTF8, 0, line.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+            if (n > 1) WideCharToMultiByte(CP_UTF8, 0, line.c_str(), -1, u.data(), n, nullptr, nullptr);
+            report += std::string(kinds[st.kind]) + u + "\n";
+        }
+        std::vector<unsigned char> rb(report.begin(), report.end());
+        return Document::writeFile(files[2], rb) == SaveResult::Ok ? 0 : 4;
     }
 
     // One window: if Feather PDF is already running, give it the files and quit.

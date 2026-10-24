@@ -161,8 +161,13 @@ OpenResult Document::open(const std::wstring& path, const std::string& password)
     }
     CloseHandle(f);
     if (got != buf.size()) return OpenResult::FileUnreadable;
+    // Signatures are checked against the file exactly as it is on disk, before PDFium takes the buffer.
+    static const char kMarker[] = "/ByteRange";
+    std::vector<sign::Status> sigs;
+    if (std::search(buf.begin(), buf.end(), kMarker, kMarker + 10) != buf.end()) sigs = sign::check(buf);
     OpenResult r = load(std::move(buf), password);
-    if (r == OpenResult::Ok) { path_ = path; dirty_ = false; undo_.clear(); redo_.clear(); undoBytes_ = 0; }
+    if (r == OpenResult::Ok) {
+        signatures_ = std::move(sigs); path_ = path; dirty_ = false; undo_.clear(); redo_.clear(); undoBytes_ = 0; }
     return r;
 }
 

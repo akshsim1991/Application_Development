@@ -24,7 +24,8 @@ for everything (30 steps), safe saving (temp file, then replace), unsaved-change
 **Pages** · delete, insert blank, rotate, move, crop, insert pages from a file, merge PDFs, extract pages to a new file.
 
 **Tools** · watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
-permission limits (written by Feather PDF itself), redaction (mark areas / selected text / search results, then apply),
+permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
+own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
 OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print, document properties,
 export as PNG / JPEG pictures, plain text, Markdown, Word (.docx) and Excel (.xlsx / .csv, tables only).
 
@@ -36,6 +37,8 @@ FeatherPDF.exe --export png|jpg|txt|md|docx|xlsx|csv in.pdf out [dpi]
 FeatherPDF.exe --compress in.pdf out.pdf [dpi]
 FeatherPDF.exe --protect in.pdf out.pdf open-password [owner-password]
 FeatherPDF.exe --ocr in.pdf out.pdf [language]
+FeatherPDF.exe --sign in.pdf out.pdf certificate.pfx password
+FeatherPDF.exe --checksig file.pdf report.txt
 ```
 
 ## Shortcuts
@@ -74,12 +77,12 @@ desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
 `src/main.cpp` window, tabs, toolbar, menus, commands · `viewer.*` page view, selection, tools, form input ·
 `document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
 page numbers, text boxes, text editing · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
-`protect.*` AES-256 writer · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
+`protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
 `formdialog.*` reusable dialogs · `pdfium_api.*` run-time binding to pdfium.dll.
 
 ## Not in 2.13 yet
 
-Digital signatures (signing and checking), comparing two PDFs, side-by-side view, editing tables, adding bookmarks and links,
+Visible signature stamps, comparing two PDFs, side-by-side view, editing tables, adding bookmarks and links,
 find and replace, measuring tools, booklet / pages-per-sheet printing, editing document properties. Text edited or added
 uses the built-in Latin fonts; other scripts are not supported for new text. Pages made by Redact become pictures.
 

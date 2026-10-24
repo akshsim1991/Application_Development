@@ -240,6 +240,11 @@ void openFile(const std::wstring& pathIn) {
         MessageBoxW(app.wnd, Document::describe(r, path).c_str(), kAppName, MB_OK | MB_ICONWARNING);
         return;
     }
+    {   // form fields repaint the page and mark the document as modified
+        Document* raw = doc.get();
+        doc->onFormInvalidate = [raw](int page) { if (activeDoc() == raw) app.viewer.invalidatePage(page); };
+        doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
+    }
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
 }
@@ -1572,6 +1577,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             lf.lfWeight = FW_BOLD;
             app.fontBold = CreateFontIndirectW(&lf);
             app.viewer.create(h, app.inst);
+            Document::setTimerWindow(app.viewer.hwnd());
             app.viewer.setOnChange(onViewerChange, nullptr);
             app.viewer.onEvent = onViewerEvent;
             app.viewer.setStyle(drawColor(), lineWidth());

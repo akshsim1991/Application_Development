@@ -8,6 +8,7 @@
 #include "fpdf_annot.h"
 #include "fpdf_save.h"
 #include "fpdf_edit.h"
+#include "fpdf_formfill.h"
 #include "fpdf_ppo.h"
 #include "fpdf_transformpage.h"
 
@@ -99,6 +100,25 @@
     X(FPDFPageObj_SetMatrix)     \
     X(FPDFPageObj_GetFillColor)  \
     X(FPDFTextObj_SetTextRenderMode) \
+    X(FPDF_GetFormType)          \
+    X(FPDFDOC_InitFormFillEnvironment) \
+    X(FPDFDOC_ExitFormFillEnvironment) \
+    X(FORM_OnAfterLoadPage)      \
+    X(FORM_OnBeforeClosePage)    \
+    X(FPDF_FFLDraw)              \
+    X(FPDFPage_HasFormFieldAtPoint) \
+    X(FORM_OnLButtonDown)        \
+    X(FORM_OnLButtonUp)          \
+    X(FORM_OnMouseMove)          \
+    X(FORM_OnChar)               \
+    X(FORM_OnKeyDown)            \
+    X(FORM_OnKeyUp)              \
+    X(FORM_ForceToKillFocus)     \
+    X(FORM_SelectAllText)        \
+    X(FORM_ReplaceSelection)     \
+    X(FORM_GetSelectedText)      \
+    X(FPDF_SetFormFieldHighlightColor) \
+    X(FPDF_SetFormFieldHighlightAlpha) \
     X(FPDFPage_CountObjects)     \
     X(FPDFPage_GetObject)        \
     X(FPDFPage_RemoveObject)     \

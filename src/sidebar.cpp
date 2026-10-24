@@ -244,7 +244,7 @@ void Sidebar::thumbPaint() {
                     FPDF_PAGE pg = doc_->page(static_cast<int>(i));
                     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(kThumbW, h, FPDFBitmap_BGRx, bits, kThumbW * 4);
                     api.FPDFBitmap_FillRect(fb, 0, 0, kThumbW, h, 0xFFFFFFFF);
-                    if (pg) api.FPDF_RenderPageBitmap(fb, pg, 0, 0, kThumbW, h, 0, FPDF_ANNOT);
+                    if (pg) doc_->renderPage(static_cast<int>(i), fb, 0, 0, kThumbW, h);
                     api.FPDFBitmap_Destroy(fb);
                     it = thumbCache_.emplace(static_cast<int>(i), bmp).first;
                 }

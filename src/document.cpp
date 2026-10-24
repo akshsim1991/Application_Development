@@ -1,17 +1,141 @@
 #include "document.hpp"
 #include <windows.h>
 #include <algorithm>
+#include <cstring>
+#include <map>
 #include <cwctype>
+
+struct Document::FormInfo : FPDF_FORMFILLINFO {
+    Document* doc = nullptr;
+};
+
+namespace {
+std::map<int, TimerCallback> g_timers;
+HWND g_timerWnd = nullptr;
+int g_nextTimer = 1000;
+}
+
+struct FormCallbacks {
+    static Document* doc(FPDF_FORMFILLINFO* self) { return static_cast<Document::FormInfo*>(self)->doc; }
+    static void invalidate(FPDF_FORMFILLINFO* self, FPDF_PAGE page, double, double, double, double) {
+        Document* d = doc(self);
+        int i = d->indexOfPage(page);
+        if (i >= 0 && d->onFormInvalidate) d->onFormInvalidate(i);
+    }
+    static void setCursor(FPDF_FORMFILLINFO*, int type) {
+        LPCWSTR id = type == FXCT_VBEAM || type == FXCT_HBEAM ? IDC_IBEAM : type == FXCT_HAND ? IDC_HAND : IDC_ARROW;
+        SetCursor(LoadCursor(nullptr, id));
+    }
+    static int setTimer(FPDF_FORMFILLINFO*, int ms, TimerCallback cb) {
+        if (!g_timerWnd) return 0;
+        const int id = g_nextTimer++;
+        if (!SetTimer(g_timerWnd, static_cast<UINT_PTR>(id), static_cast<UINT>(ms), nullptr)) return 0;
+        g_timers[id] = cb;
+        return id;
+    }
+    static void killTimer(FPDF_FORMFILLINFO*, int id) {
+        if (g_timerWnd) KillTimer(g_timerWnd, static_cast<UINT_PTR>(id));
+        g_timers.erase(id);
+    }
+    static FPDF_SYSTEMTIME localTime(FPDF_FORMFILLINFO*) {
+        SYSTEMTIME t; GetLocalTime(&t);
+        FPDF_SYSTEMTIME o{};
+        o.wYear = t.wYear; o.wMonth = t.wMonth; o.wDayOfWeek = t.wDayOfWeek; o.wDay = t.wDay;
+        o.wHour = t.wHour; o.wMinute = t.wMinute; o.wSecond = t.wSecond; o.wMilliseconds = t.wMilliseconds;
+        return o;
+    }
+    static void onChange(FPDF_FORMFILLINFO* self) { doc(self)->formCommitted(); }
+    static FPDF_PAGE getPage(FPDF_FORMFILLINFO* self, FPDF_DOCUMENT, int index) { return doc(self)->page(index); }
+    static FPDF_PAGE getCurrentPage(FPDF_FORMFILLINFO* self, FPDF_DOCUMENT) { return doc(self)->page(doc(self)->currentPageForForm); }
+    static int getRotation(FPDF_FORMFILLINFO*, FPDF_PAGE) { return 0; }
+};
+
+void Document::setTimerWindow(void* hwnd) { g_timerWnd = static_cast<HWND>(hwnd); }
+
+void Document::fireTimer(int id) {
+    auto it = g_timers.find(id);
+    if (it != g_timers.end()) it->second(id);
+}
+
+int Document::indexOfPage(FPDF_PAGE p) const {
+    for (size_t i = 0; i < pages_.size(); ++i) if (pages_[i] == p) return static_cast<int>(i);
+    return -1;
+}
+
+void Document::initForm() {
+    const auto& api = pdfium::api();
+    if (!doc_) return;
+    const int type = api.FPDF_GetFormType(doc_);
+    if (type != FORMTYPE_ACRO_FORM) return;   // XFA forms are not supported (this PDFium build has no XFA)
+    formInfo_ = std::make_unique<FormInfo>();
+    std::memset(static_cast<FPDF_FORMFILLINFO*>(formInfo_.get()), 0, sizeof(FPDF_FORMFILLINFO));
+    formInfo_->version = 1;
+    formInfo_->doc = this;
+    formInfo_->FFI_Invalidate = FormCallbacks::invalidate;
+    formInfo_->FFI_SetCursor = FormCallbacks::setCursor;
+    formInfo_->FFI_SetTimer = FormCallbacks::setTimer;
+    formInfo_->FFI_KillTimer = FormCallbacks::killTimer;
+    formInfo_->FFI_GetLocalTime = FormCallbacks::localTime;
+    formInfo_->FFI_OnChange = FormCallbacks::onChange;
+    formInfo_->FFI_GetPage = FormCallbacks::getPage;
+    formInfo_->FFI_GetCurrentPage = FormCallbacks::getCurrentPage;
+    formInfo_->FFI_GetRotation = FormCallbacks::getRotation;
+    form_ = api.FPDFDOC_InitFormFillEnvironment(doc_, formInfo_.get());
+    if (!form_) { formInfo_.reset(); return; }
+    api.FPDF_SetFormFieldHighlightColor(form_, 0, 0xFFE4DD);   // light blue behind fields, so they can be found
+    api.FPDF_SetFormFieldHighlightAlpha(form_, 100);
+}
+
+void Document::exitForm() {
+    if (form_) {
+        pdfium::api().FPDFDOC_ExitFormFillEnvironment(form_);
+        form_ = nullptr;
+    }
+    formInfo_.reset();
+    formSnapValid_ = false;
+}
+
+void Document::formBeforeInput() {
+    formSnapValid_ = serialize(formSnap_);
+}
+
+void Document::formCommitted() {
+    if (formSnapValid_) {
+        undoBytes_ += formSnap_.size();
+        undo_.push_back({std::move(formSnap_), protMode_, protOpt_});
+        formSnap_.clear();
+        formSnapValid_ = false;
+        trimUndo();
+        redo_.clear();
+    }
+    dirty_ = true;
+    ++revision_;
+    if (onFormChanged) onFormChanged();
+}
+
+void Document::renderPage(int page, FPDF_BITMAP bmp, int x, int y, int w, int h, bool annotations) {
+    const auto& api = pdfium::api();
+    FPDF_PAGE pg = this->page(page);
+    if (!pg || !bmp) return;
+    api.FPDF_RenderPageBitmap(bmp, pg, x, y, w, h, 0, annotations ? FPDF_ANNOT : 0);
+    if (form_ && annotations) api.FPDF_FFLDraw(form_, bmp, pg, x, y, w, h, 0, FPDF_ANNOT);
+}
+
+Document::Document() = default;
 
 Document::~Document() {
     closePages();
+    exitForm();
     if (doc_) pdfium::api().FPDF_CloseDocument(doc_);
 }
 
 void Document::closePages() {
     const auto& api = pdfium::api();
     for (auto& t : texts_) if (t) api.FPDFText_ClosePage(t);
-    for (auto& p : pages_) if (p) api.FPDF_ClosePage(p);
+    for (auto& p : pages_) if (p) {
+        if (form_) api.FORM_OnBeforeClosePage(p, form_);
+        api.FPDF_ClosePage(p);
+    }
     texts_.clear();
     pages_.clear();
 }
@@ -66,10 +190,12 @@ OpenResult Document::load(std::vector<unsigned char>&& buf, const std::string& p
         if (api.FPDF_GetPageSizeByIndexF(d, i, &s) && s.width > 0 && s.height > 0) sizes_[i] = {s.width, s.height};
     }
     closePages();
+    exitForm();
     if (doc_) api.FPDF_CloseDocument(doc_);
     doc_ = d;
     pages_.assign(n, nullptr);
     texts_.assign(n, nullptr);
+    initForm();
     data_ = std::move(buf);   // the buffer must outlive doc_, and moving a vector keeps its storage
     password_ = password;
     ++revision_;
@@ -93,7 +219,10 @@ std::wstring Document::describe(OpenResult r, const std::wstring& path) {
 
 FPDF_PAGE Document::page(int i) {
     if (i < 0 || i >= pageCount()) return nullptr;
-    if (!pages_[i]) pages_[i] = pdfium::api().FPDF_LoadPage(doc_, i);
+    if (!pages_[i]) {
+        pages_[i] = pdfium::api().FPDF_LoadPage(doc_, i);
+        if (pages_[i] && form_) pdfium::api().FORM_OnAfterLoadPage(pages_[i], form_);
+    }
     return pages_[i];
 }
 
@@ -272,6 +401,7 @@ void Document::trimUndo() {
 }
 
 void Document::beginChange() {
+    formSnapValid_ = false;   // an ordinary change replaces any pending field snapshot
     std::vector<unsigned char> snap;
     if (serialize(snap)) {
         undoBytes_ += snap.size();

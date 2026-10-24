@@ -1,4 +1,6 @@
 #pragma once
+#include <functional>
+#include <memory>
 #include <string>
 #include <vector>
 #include "pdfium_api.hpp"
@@ -24,7 +26,7 @@ enum class OpenResult { Ok, FileUnreadable, TooLarge, NotPdf, PasswordNeeded, Wr
 class Document {
 public:
     ~Document();
-    Document() = default;
+    Document();
     Document(const Document&) = delete;
     Document& operator=(const Document&) = delete;
 
@@ -40,6 +42,20 @@ public:
     int pageCount() const { return static_cast<int>(sizes_.size()); }
     const PageSize& pageSize(int i) const { return sizes_[i]; }
     FPDF_DOCUMENT handle() const { return doc_; }
+
+    // ---- fillable forms ----
+    FPDF_FORMHANDLE form() const { return form_; }
+    bool hasForm() const { return form_ != nullptr; }
+    // Draws a page into a bitmap as shown on screen: content, annotations, and form fields when the document has them.
+    void renderPage(int page, FPDF_BITMAP bmp, int x, int y, int w, int h, bool annotations = true);
+    // Call when the user starts interacting with a field (mouse press): remembers the state so the edit can be undone.
+    void formBeforeInput();
+    std::function<void(int page)> onFormInvalidate;   // a field changed how it looks
+    std::function<void()> onFormChanged;              // a field value was committed (the document is now modified)
+    int currentPageForForm = 0;
+    static void setTimerWindow(void* hwnd);
+    static void fireTimer(int id);
+    int indexOfPage(FPDF_PAGE p) const;
 
     // Text. The page and its text layer are loaded on first use and kept until the document closes.
     FPDF_PAGE page(int i);
@@ -112,6 +128,15 @@ private:
     std::vector<FPDF_PAGE> pages_;
     std::vector<FPDF_TEXTPAGE> texts_;
 
+    FPDF_FORMHANDLE form_ = nullptr;
+    struct FormInfo;
+    std::unique_ptr<FormInfo> formInfo_;
+    std::vector<unsigned char> formSnap_;     // state before the current field interaction
+    bool formSnapValid_ = false;
+    void initForm();
+    void exitForm();
+    void formCommitted();
+    friend struct FormCallbacks;
     void closePages();
     void rebuildPages();      // after pages were added, removed or resized
     static SaveResult writeFile(const std::wstring& path, const std::vector<unsigned char>& bytes);

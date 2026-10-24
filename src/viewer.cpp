@@ -54,6 +54,7 @@ void Viewer::notify() { if (onChange_) onChange_(onChangeCtx_); }
 void Viewer::setDocument(Document* d) {
     doc_ = d;
     sel_ = Selection{};
+    formFocus_ = formCapture_ = false;
     matches_.clear();
     currentMatch_ = -1;
     clearCache();
@@ -198,7 +199,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
             FPDF_PAGE pg = doc_->page(page);
             FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, bits, w * 4);
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-            if (pg) api.FPDF_RenderPageBitmap(fb, pg, 0, 0, w, h, 0, FPDF_ANNOT);
+            if (pg) doc_->renderPage(page, fb, 0, 0, w, h);
             api.FPDFBitmap_Destroy(fb);
             filterPixels(bits, w, h);
             it = cache_.emplace(page, Cached{bmp, w, h, doc_->zoom, doc_->revision()}).first;
@@ -219,7 +220,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
         FPDF_PAGE pg = doc_->page(page);
         FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(sw, sh, FPDFBitmap_BGRx, bits, sw * 4);
         api.FPDFBitmap_FillRect(fb, 0, 0, sw, sh, 0xFFFFFFFF);
-        if (pg) api.FPDF_RenderPageBitmap(fb, pg, x - vis.left, y - vis.top, w, h, 0, FPDF_ANNOT);
+        if (pg) doc_->renderPage(page, fb, x - vis.left, y - vis.top, w, h);
         api.FPDFBitmap_Destroy(fb);
         filterPixels(bits, sw, sh);
         HDC mem = CreateCompatibleDC(dc);
@@ -530,6 +531,12 @@ RECT Viewer::annotScreenRect(int page, const annot::RectD& r) const {
     return {std::min(x1, x2) + ox, std::min(y1, y2) + oy, std::max(x1, x2) + ox + 1, std::max(y1, y2) + oy + 1};
 }
 
+int Viewer::formFieldAt(int cx, int cy, int& page, annot::PointD& pt) const {
+    if (!doc_ || !doc_->hasForm() || !pageAt(cx, cy, page) || !toPage(cx, cy, page, pt)) return -1;
+    FPDF_PAGE pg = doc_->page(page);
+    return pg ? pdfium::api().FPDFPage_HasFormFieldAtPoint(doc_->form(), pg, pt.x, pt.y) : -1;
+}
+
 bool Viewer::selectedAnnot(int& page, int& index) const {
     if (selAnnotPage_ < 0) return false;
     page = selAnnotPage_; index = selAnnotIndex_;
@@ -683,7 +690,15 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
         }
         case WM_SETCURSOR:
             if (LOWORD(l) == HTCLIENT && doc_) {
-                SetCursor(LoadCursor(nullptr, tool_ == Tool::None ? IDC_IBEAM : IDC_CROSS));
+                LPCWSTR cur = tool_ == Tool::None ? IDC_IBEAM : IDC_CROSS;
+                if (tool_ == Tool::None && doc_->hasForm()) {
+                    POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
+                    int pg; annot::PointD pt;
+                    int ft = formFieldAt(p.x, p.y, pg, pt);
+                    if (ft == FPDF_FORMFIELD_TEXTFIELD) cur = IDC_IBEAM;
+                    else if (ft >= 0) cur = IDC_HAND;
+                }
+                SetCursor(LoadCursor(nullptr, cur));
                 return TRUE;
             }
             break;
@@ -704,6 +719,30 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             clearSelection();
             clearAnnotSelection();
+            if (doc_->hasForm()) {   // a form field under the pointer (or an open drop-down list) takes the click
+                annot::PointD fp; int fpage = formPage_;
+                const int ft = formFieldAt(cx, cy, fpage, fp);
+                if (ft >= 0 || formFocus_) {
+                    if (ft < 0) {   // a click inside an open list is outside the field's own box: use the last field's page
+                        int pg;
+                        if (pageAt(cx, cy, pg)) fpage = pg;
+                        toPage(cx, cy, fpage, fp);
+                    }
+                    doc_->currentPageForForm = fpage;
+                    doc_->formBeforeInput();
+                    formPage_ = fpage;
+                    const bool handled = pdfium::api().FORM_OnLButtonDown(doc_->form(), doc_->page(fpage), 0, fp.x, fp.y) != 0;
+                    if (ft >= 0 || handled) {
+                        formFocus_ = true;
+                        formCapture_ = true;
+                        SetCapture(hwnd_);
+                        InvalidateRect(hwnd_, nullptr, FALSE);
+                        return 0;
+                    }
+                    pdfium::api().FORM_ForceToKillFocus(doc_->form());   // an ordinary click elsewhere
+                    formFocus_ = false;
+                }
+            }
             if (pageAt(cx, cy, page)) {
                 annot::PointD pt;
                 if (toPage(cx, cy, page, pt)) {
@@ -757,6 +796,18 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_MOUSEMOVE:
+            if (formCapture_ && doc_) {
+                annot::PointD fp;
+                if (toPage(GET_X_LPARAM(l), GET_Y_LPARAM(l), formPage_, fp))
+                    pdfium::api().FORM_OnMouseMove(doc_->form(), doc_->page(formPage_), 0, fp.x, fp.y);
+                return 0;
+            }
+            if (!formCapture_ && !drawing_ && !dragging_ && doc_ && doc_->hasForm() && tool_ == Tool::None) {
+                // Keep PDFium's idea of "which field is the mouse over" current: check boxes and radio buttons depend on it.
+                int pg; annot::PointD pt;
+                if (pageAt(GET_X_LPARAM(l), GET_Y_LPARAM(l), pg) && toPage(GET_X_LPARAM(l), GET_Y_LPARAM(l), pg, pt))
+                    pdfium::api().FORM_OnMouseMove(doc_->form(), doc_->page(pg), 0, pt.x, pt.y);
+            }
             if (drawing_) {
                 int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
                 drawNow_ = {cx, cy};
@@ -772,6 +823,15 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         case WM_LBUTTONUP:
+            if (formCapture_ && doc_) {
+                annot::PointD fp;
+                formCapture_ = false;
+                ReleaseCapture();
+                if (toPage(GET_X_LPARAM(l), GET_Y_LPARAM(l), formPage_, fp))
+                    pdfium::api().FORM_OnLButtonUp(doc_->form(), doc_->page(formPage_), 0, fp.x, fp.y);
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return 0;
+            }
             if (drawing_) {
                 drawing_ = false;
                 ReleaseCapture();
@@ -791,7 +851,63 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             if (dragging_) { dragging_ = false; ReleaseCapture(); }
             return 0;
+        case WM_CHAR:
+            if (formFocus_ && doc_ && w >= 0x20) {
+                pdfium::api().FORM_OnChar(doc_->form(), doc_->page(formPage_), static_cast<int>(w), 0);
+                return 0;
+            }
+            break;
+        case WM_TIMER:
+            Document::fireTimer(static_cast<int>(w));
+            return 0;
+        case WM_KILLFOCUS:
+            if (formFocus_ && doc_ && doc_->hasForm() && !formCapture_) { pdfium::api().FORM_ForceToKillFocus(doc_->form()); formFocus_ = false; }
+            break;
+        case WM_KEYUP:
+            if (formFocus_ && doc_) {
+                pdfium::api().FORM_OnKeyUp(doc_->form(), doc_->page(formPage_), static_cast<int>(w), 0);
+                return 0;
+            }
+            break;
         case WM_KEYDOWN: case WM_SYSKEYDOWN:
+            if (formFocus_ && doc_ && m == WM_KEYDOWN) {
+                const bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0;
+                const auto& api = pdfium::api();
+                FPDF_FORMHANDLE fh = doc_->form();
+                FPDF_PAGE pg = doc_->page(formPage_);
+                if (w == VK_ESCAPE) { api.FORM_ForceToKillFocus(fh); formFocus_ = false; InvalidateRect(hwnd_, nullptr, FALSE); return 0; }
+                if (ctrl) {
+                    if (w == 'A') { api.FORM_SelectAllText(fh, pg); return 0; }
+                    if (w == 'C' || w == 'X') {
+                        unsigned long bytes = api.FORM_GetSelectedText(fh, pg, nullptr, 0);
+                        if (bytes >= 4) {
+                            std::vector<unsigned short> buf(bytes / 2 + 1);
+                            api.FORM_GetSelectedText(fh, pg, buf.data(), bytes);
+                            std::wstring t(buf.begin(), buf.begin() + (bytes / 2 - 1));
+                            if (OpenClipboard(hwnd_)) {
+                                EmptyClipboard();
+                                HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, (t.size() + 1) * sizeof(wchar_t));
+                                if (g) { memcpy(GlobalLock(g), t.c_str(), (t.size() + 1) * sizeof(wchar_t)); GlobalUnlock(g); if (!SetClipboardData(CF_UNICODETEXT, g)) GlobalFree(g); }
+                                CloseClipboard();
+                            }
+                            if (w == 'X') api.FORM_ReplaceSelection(fh, pg, reinterpret_cast<FPDF_WIDESTRING>(L""));
+                        }
+                        return 0;
+                    }
+                    if (w == 'V') {
+                        if (OpenClipboard(hwnd_)) {
+                            HANDLE g = GetClipboardData(CF_UNICODETEXT);
+                            if (g) { const wchar_t* t = static_cast<const wchar_t*>(GlobalLock(g)); if (t) { std::wstring s(t); GlobalUnlock(g); api.FORM_ReplaceSelection(fh, pg, reinterpret_cast<FPDF_WIDESTRING>(s.c_str())); } }
+                            CloseClipboard();
+                        }
+                        return 0;
+                    }
+                    return SendMessageW(GetParent(hwnd_), m, w, l);   // other shortcuts (save, find, ...) still work
+                }
+                int mod = (shift ? 1 : 0);
+                api.FORM_OnKeyDown(fh, pg, static_cast<int>(w), mod);
+                return 0;   // while a field has the keyboard, its keys do not scroll or trigger shortcuts
+            }
             return SendMessageW(GetParent(hwnd_), m, w, l);   // shortcuts live in the main window
     }
     return DefWindowProcW(hwnd_, m, w, l);

@@ -567,7 +567,7 @@ Result run(Document& d, const std::vector<int>& pages, Format f, const std::wstr
             FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), w * 4);
             if (!pg || !fb) { res.error = L"Page " + std::to_wstring(p + 1) + L" could not be rendered."; break; }
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-            api.FPDF_RenderPageBitmap(fb, pg, 0, 0, w, h, 0, FPDF_ANNOT);
+            d.renderPage(p, fb, 0, 0, w, h);
             api.FPDFBitmap_Destroy(fb);
             Gdiplus::Bitmap bmp(w, h, w * 4, PixelFormat32bppRGB, px.data());
             std::wstring file = base + L"-" + std::to_wstring(p + 1) + L"." + extension(f);

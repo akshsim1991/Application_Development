@@ -61,6 +61,7 @@ public:
     struct PageRects { int page; std::vector<annot::RectD> rects; };
     std::vector<PageRects> selectionRects();
     bool selectedAnnot(int& page, int& index) const;
+    bool formFocused() const { return formFocus_; }
     void clearAnnotSelection();
 
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
@@ -113,6 +114,9 @@ private:
     std::vector<annot::PointD> drawPts_;
     POINT drawStart_{}, drawNow_{};
     int selAnnotPage_ = -1, selAnnotIndex_ = -1;
+    bool formFocus_ = false, formCapture_ = false;   // a form field has the keyboard / is being pressed
+    int formPage_ = 0;
+    int formFieldAt(int cx, int cy, int& page, annot::PointD& pt) const;   // field type under the point, or -1
     int anchorPage_ = 0, anchorChar_ = 0;
     void (*onChange_)(void*) = nullptr;
     void* onChangeCtx_ = nullptr;

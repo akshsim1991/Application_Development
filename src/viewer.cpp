@@ -281,6 +281,19 @@ void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip
             if (IntersectRect(&v, &r, &clip)) fillAlpha(dc, v, col, alpha);
         }
     };
+    if (marks_) {
+        for (const RedactMark& m : *marks_) {
+            if (m.page != page) continue;
+            RECT r = annotScreenRect(page, {m.left, m.bottom, m.right, m.top});
+            RECT v;
+            if (!IntersectRect(&v, &r, &clip)) continue;
+            fillAlpha(dc, r, RGB(0xD0, 0x10, 0x10), 70);
+            HPEN pen = CreatePen(PS_DASH, 1, RGB(0xD0, 0x10, 0x10));
+            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+            Rectangle(dc, r.left, r.top, r.right, r.bottom);
+            SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
+        }
+    }
     // Only search hits on this page are examined; matches_ is sorted by page.
     if (!matches_.empty()) {
         auto lo = std::lower_bound(matches_.begin(), matches_.end(), page,
@@ -426,6 +439,11 @@ bool Viewer::copySelection() {
 
 // ---- annotation tools ----
 
+void Viewer::setMarks(const std::vector<RedactMark>* m) {
+    marks_ = m;
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void Viewer::setColours(Colours cl) {
     if (cl == colours_) return;
     colours_ = cl;
@@ -550,11 +568,11 @@ std::vector<Viewer::PageRects> Viewer::selectionRects() {
 void Viewer::drawPreview(HDC dc) {
     if (!drawing_) return;
     const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
-    HPEN pen = CreatePen(PS_SOLID, w, penColor_);
+    HPEN pen = CreatePen(tool_ == Tool::Redact ? PS_DASH : PS_SOLID, tool_ == Tool::Redact ? 1 : w, tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : penColor_);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
     switch (tool_) {
-        case Tool::Rectangle: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Rectangle: case Tool::Redact: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Line: case Tool::Arrow:
             MoveToEx(dc, drawStart_.x, drawStart_.y, nullptr); LineTo(dc, drawNow_.x, drawNow_.y); break;

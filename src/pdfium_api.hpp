@@ -81,6 +81,13 @@
     X(FPDFText_GetCharBox)       \
     X(FPDFText_GetFontSize)      \
     X(FPDFText_GetFontWeight)    \
+    X(FPDFPage_CountObjects)     \
+    X(FPDFPage_GetObject)        \
+    X(FPDFPage_RemoveObject)     \
+    X(FPDFPageObj_NewImageObj)   \
+    X(FPDFImageObj_SetBitmap)    \
+    X(FPDFImageObj_SetMatrix)    \
+    X(FPDFPage_SetMediaBox)      \
     X(FPDFPageObj_NewTextObj)    \
     X(FPDFText_SetText)          \
     X(FPDFPageObj_SetFillColor)  \

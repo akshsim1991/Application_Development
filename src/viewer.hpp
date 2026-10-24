@@ -36,7 +36,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -51,6 +51,7 @@ public:
     void setStyle(COLORREF c, double widthPt) { penColor_ = c; penWidth_ = widthPt; }
 
     enum class Colours { Normal, Dark, Dimmed };
+    void setMarks(const std::vector<RedactMark>* marks);   // pending redaction marks to show (not owned)
     void setColours(Colours c);          // page colour filter: normal, night mode, or softened
     Colours colours() const { return colours_; }
 
@@ -103,6 +104,7 @@ private:
     bool dragging_ = false;
     Tool tool_ = Tool::None;
     Colours colours_ = Colours::Normal;
+    const std::vector<RedactMark>* marks_ = nullptr;
     void filterPixels(void* bits, int w, int h) const;
     COLORREF penColor_ = RGB(0xE5, 0x39, 0x35);
     double penWidth_ = 2;

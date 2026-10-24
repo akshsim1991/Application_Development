@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 #include "document.hpp"
@@ -17,6 +18,7 @@
 #include "pageobjects.hpp"
 #include "exporter.hpp"
 #include "speech.hpp"
+#include "redact.hpp"
 
 namespace {
 
@@ -95,6 +97,7 @@ void runSearch(bool keepPosition);
 
 void setActiveDocument(Document* d) {
     app.viewer.setDocument(d);
+    app.viewer.setMarks(d ? &d->redactions : nullptr);
     app.sidebar.setDocument(d);
     app.curMatch = -1; app.matchTotal = 0;
     SetWindowTextW(app.findCount, L"");
@@ -129,7 +132,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
-              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS,
+              T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
@@ -259,6 +262,7 @@ void afterChange(int page) {   // page < 0: everything may have changed
 }
 
 void afterDocReplaced() {
+    if (Document* cd = activeDoc()) cd->redactions.clear();
     app.viewer.documentChanged();
     app.sidebar.refresh();
     app.viewer.setMatches({}, -1);
@@ -425,6 +429,12 @@ void onViewerEvent(const Viewer::Event& e) {
                                         r, drawColor(), lineWidth())) afterChange(e.page);
                     break;
                 }
+                case Viewer::Tool::Redact: {
+                    d->redactions.push_back({e.page, std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y),
+                                             std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)});
+                    app.viewer.setMarks(&d->redactions);
+                    break;
+                }
                 case Viewer::Tool::Line: addArrowOrLine(*d, e, false); break;
                 case Viewer::Tool::Arrow: addArrowOrLine(*d, e, true); break;
                 case Viewer::Tool::Pen:
@@ -456,6 +466,13 @@ void onViewerEvent(const Viewer::Event& e) {
                 AppendMenuW(m, MF_STRING, M_DELETE, (std::wstring(L"Delete this ") + annot::typeName(subtype)).c_str());
                 AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
             }
+            int markIdx = -1;
+            if (e.page >= 0 && !e.pts.empty())
+                for (size_t i = 0; i < d->redactions.size(); ++i) {
+                    const RedactMark& mk = d->redactions[i];
+                    if (mk.page == e.page && e.pts[0].x >= mk.left && e.pts[0].x <= mk.right && e.pts[0].y >= mk.bottom && e.pts[0].y <= mk.top) markIdx = static_cast<int>(i);
+                }
+            if (markIdx >= 0) { AppendMenuW(m, MF_STRING, M_RED_REMOVE, L"Remove this redaction mark"); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
             const bool hasSel = app.viewer.hasSelection();
             AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COPY, L"Copy\tCtrl+C");
             AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_HIGHLIGHT, L"Highlight\tCtrl+H");
@@ -468,6 +485,7 @@ void onViewerEvent(const Viewer::Event& e) {
                 case M_EDIT_COMMENT: editComment(*d, e.page, e.annot); break;
                 case M_DELETE: deleteAnnotation(*d, e.page, e.annot); break;
                 case M_COPY: app.viewer.copySelection(); break;
+                case M_RED_REMOVE: d->redactions.erase(d->redactions.begin() + markIdx); app.viewer.setMarks(&d->redactions); break;
                 case M_HIGHLIGHT: markupSelection(annot::Markup::Highlight, false); break;
                 case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
                 case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
@@ -567,6 +585,7 @@ std::vector<int> askPages(Document& d, const wchar_t* title, const wchar_t* what
 }
 
 void afterPagesChanged() {
+    if (Document* cd = activeDoc()) cd->redactions.clear();
     app.viewer.documentChanged();
     app.sidebar.refresh();
     app.viewer.setMatches({}, -1);
@@ -1002,6 +1021,62 @@ void showProperties() {
     showForm(app.wnd, app.inst, L"Document properties", f, L"Close");
 }
 
+
+// ---- redaction ----
+
+void redactionMenuAction(Document& d, int cmd) {
+    switch (cmd) {
+        case T_RED_AREA:
+            setTool(Viewer::Tool::Redact);
+            break;
+        case T_RED_SEL: {
+            auto sel = app.viewer.selectionRects();
+            if (sel.empty()) { MessageBoxW(app.wnd, L"Select some text first (drag over it), then choose this again.", kAppName, MB_OK | MB_ICONINFORMATION); break; }
+            for (const auto& pr : sel) for (const auto& r : pr.rects) d.redactions.push_back({pr.page, r.left, r.bottom, r.right, r.top});
+            app.viewer.clearSelection();
+            app.viewer.setMarks(&d.redactions);
+            break;
+        }
+        case T_RED_FIND: {
+            std::vector<FormField> f(2);
+            f[0] = {FormField::Text, L"Text to find:", {}, L""};
+            f[1] = {FormField::Check, L"Match case"};
+            if (!showForm(app.wnd, app.inst, L"Find and mark for redaction", f, L"Mark all", [](const std::vector<FormField>& v) -> std::wstring {
+                    return v[0].text.empty() ? L"Type the text to find. Every occurrence in the document will be marked." : L""; })) break;
+            HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            int n = redact::markText(d, f[0].text, f[1].checked);
+            SetCursor(old);
+            app.viewer.setMarks(&d.redactions);
+            if (!n) MessageBoxW(app.wnd, L"Nothing was found to mark.", kAppName, MB_OK | MB_ICONINFORMATION);
+            break;
+        }
+        case T_RED_CLEAR:
+            d.redactions.clear();
+            app.viewer.setMarks(&d.redactions);
+            break;
+        case T_RED_APPLY: {
+            if (d.redactions.empty()) {
+                MessageBoxW(app.wnd, L"Mark what to redact first: use Mark areas, Mark selected text, or Find and mark.", kAppName, MB_OK | MB_ICONINFORMATION);
+                break;
+            }
+            std::set<int> pages;
+            for (auto& m : d.redactions) pages.insert(m.page);
+            wchar_t q[600];
+            swprintf(q, 600, L"Remove everything under the %d marked area%ls (on %d page%ls) for good?\n\n"
+                             L"Those pages become pictures: their text can no longer be selected or searched, and their comments are removed. "
+                             L"You can undo this (Ctrl+Z) until you save the file.",
+                     static_cast<int>(d.redactions.size()), d.redactions.size() == 1 ? L"" : L"s", static_cast<int>(pages.size()), pages.size() == 1 ? L"" : L"s");
+            if (MessageBoxW(app.wnd, q, L"Apply redactions", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) break;
+            HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            int n = redact::apply(d);
+            SetCursor(old);
+            if (n) afterPagesChanged();
+            else MessageBoxW(app.wnd, L"The redactions could not be applied.", kAppName, MB_OK | MB_ICONWARNING);
+            break;
+        }
+    }
+}
+
 void showToolsMenu(const RECT& anchor) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1010,6 +1085,15 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU red = CreatePopupMenu();
+    AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
+    AppendMenuW(red, MF_STRING, T_RED_SEL, L"Mark selected text");
+    AppendMenuW(red, MF_STRING, T_RED_FIND, L"Find and mark...");
+    AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_APPLY, L"Apply redactions...");
+    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_CLEAR, L"Clear marks");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(red), L"Redact (remove sensitive content)");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_READ, speech::speaking() ? L"Stop reading aloud\tCtrl+Shift+U" : L"Read aloud\tCtrl+Shift+U");
     HMENU rate = CreatePopupMenu();
@@ -1038,6 +1122,7 @@ void showToolsMenu(const RECT& anchor) {
         case T_PRINT: printDocument(); break;
         case T_PROPS: showProperties(); break;
         default:
+            if (cmd >= T_RED_AREA && cmd <= T_RED_APPLY) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = rates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } }
             else if (cmd >= T_COLOURS && cmd < T_COLOURS + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - T_COLOURS));
             break;

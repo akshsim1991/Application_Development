@@ -5,6 +5,9 @@
 
 struct PageSize { float w = 612, h = 792; };   // in points
 
+// An area marked for redaction, in page coordinates (points, origin bottom-left). Not part of the file until applied.
+struct RedactMark { int page; double left, bottom, right, top; };
+
 struct TextHit { int page = 0, start = 0, count = 0; };   // a run of characters on one page
 
 struct Bookmark {
@@ -62,6 +65,7 @@ public:
     int revision() const { return revision_; }
 
     // ---- page operations (each one is a single undo step; page numbers are 0-based) ----
+    void refreshPages() { closePages(); rebuildPages(); }   // drop cached pages and text after content changed
     bool deletePages(std::vector<int> pages);          // refuses to delete every page
     bool insertBlankPage(int after, int templatePage); // `after` = -1 inserts at the start
     bool rotatePages(const std::vector<int>& pages, int quarterTurnsClockwise);
@@ -73,6 +77,8 @@ public:
     SaveResult extractPages(const std::vector<int>& pages, const std::wstring& path) const;
     // Parses "1-3, 5, 8-" into 0-based page numbers (sorted, no duplicates). Empty on error.
     std::vector<int> parseRange(const std::wstring& text) const;         // bumps on every change, undo and redo
+
+    std::vector<RedactMark> redactions;   // pending marks; cleared whenever the pages change
 
     // View state, kept per tab.
     double zoom = 1.0;       // 1.0 == 100 % (96 dpi)

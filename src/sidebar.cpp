@@ -114,6 +114,14 @@ void Sidebar::setDocument(Document* d) {
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
+void Sidebar::refresh() {
+    clearThumbs();
+    fillTree();
+    thumbLayout();
+    InvalidateRect(thumbs_, nullptr, TRUE);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void Sidebar::setCurrentPage(int page) {
     if (page == current_) return;
     current_ = page;
@@ -233,10 +241,10 @@ void Sidebar::thumbPaint() {
                 void* bits = nullptr;
                 HBITMAP bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
                 if (bmp) {
-                    FPDF_PAGE pg = api.FPDF_LoadPage(doc_->handle(), static_cast<int>(i));
+                    FPDF_PAGE pg = doc_->page(static_cast<int>(i));
                     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(kThumbW, h, FPDFBitmap_BGRx, bits, kThumbW * 4);
                     api.FPDFBitmap_FillRect(fb, 0, 0, kThumbW, h, 0xFFFFFFFF);
-                    if (pg) { api.FPDF_RenderPageBitmap(fb, pg, 0, 0, kThumbW, h, 0, FPDF_ANNOT); api.FPDF_ClosePage(pg); }
+                    if (pg) api.FPDF_RenderPageBitmap(fb, pg, 0, 0, kThumbW, h, 0, FPDF_ANNOT);
                     api.FPDFBitmap_Destroy(fb);
                     it = thumbCache_.emplace(static_cast<int>(i), bmp).first;
                 }

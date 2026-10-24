@@ -5,6 +5,7 @@
 #include <shellapi.h>
 #include <commctrl.h>
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <string>
 #include <vector>
@@ -19,7 +20,7 @@ enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COU
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
+enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -30,6 +31,8 @@ struct App {
     HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr;
     int curMatch = -1, matchTotal = 0;
     WNDPROC editProc = nullptr;
+    int hlColour = 0, drawColour = 5, widthIdx = 1;
+    Viewer::Tool tool = Viewer::Tool::None;
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
     HFONT font = nullptr, fontBold = nullptr;
@@ -40,6 +43,8 @@ struct App {
 } app;
 
 Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nullptr; }
+
+std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"") + d.title(); }
 
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
@@ -72,7 +77,7 @@ void showControls() {
 
 void updateTitle() {
     Document* d = activeDoc();
-    std::wstring t = d ? d->title() + L" - " + kAppName : kAppName;
+    std::wstring t = d ? tabLabel(*d) + L" - " + kAppName : kAppName;
     SetWindowTextW(app.wnd, t.c_str());
 }
 
@@ -98,8 +103,11 @@ void switchTab(int i) {
     refresh();
 }
 
+bool confirmClose(Document& d);
+
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
+    if (!confirmClose(*app.tabs[i])) return;
     if (i == app.active) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
     if (app.tabs.empty()) { app.active = -1; setActiveDocument(nullptr); }
@@ -113,6 +121,15 @@ void closeTab(int i) {
 // ---- password prompt: a small modal dialog built in memory (no resource file needed) ----
 struct PwState { std::wstring prompt, text; bool ok = false; };
 
+// Annotate menu command ids (kept apart from toolbar command ids).
+enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
+              M_DELETE, M_EDIT_COMMENT, M_COPY, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
+                                 RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
+constexpr const wchar_t* kPaletteNames[] = {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Black"};
+constexpr double kWidths[] = {1, 2, 4};
+constexpr const wchar_t* kWidthNames[] = {L"Thin (1 pt)", L"Medium (2 pt)", L"Thick (4 pt)"};
+
 INT_PTR CALLBACK pwProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto* st = reinterpret_cast<PwState*>(GetWindowLongPtrW(h, GWLP_USERDATA));
     switch (m) {
@@ -125,8 +142,10 @@ INT_PTR CALLBACK pwProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return FALSE;
         case WM_COMMAND:
             if (LOWORD(w) == IDOK) {
-                wchar_t buf[256]{};
-                GetDlgItemTextW(h, 101, buf, 256);
+                int len = GetWindowTextLengthW(GetDlgItem(h, 101));
+                std::wstring buf(static_cast<size_t>(len) + 1, L'\0');
+                GetDlgItemTextW(h, 101, buf.data(), len + 1);
+                buf.resize(static_cast<size_t>(len));
                 st->text = buf; st->ok = true;
                 EndDialog(h, IDOK);
             } else if (LOWORD(w) == IDCANCEL) {
@@ -156,18 +175,21 @@ void item(std::vector<BYTE>& b, WORD cls, DWORD style, short x, short y, short c
     put<WORD>(b, 0);
 }
 
-bool askText(const wchar_t* title, const std::wstring& prompt, bool password, std::wstring& out, const wchar_t* initial = L"") {
+bool askText(const wchar_t* title, const std::wstring& prompt, bool password, std::wstring& out, const wchar_t* initial = L"", bool multiline = false) {
     std::vector<BYTE> b;
     put<DWORD>(b, DS_MODALFRAME | DS_SETFONT | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU);
     put<DWORD>(b, 0); put<WORD>(b, 4);
-    put<short>(b, 0); put<short>(b, 0); put<short>(b, 200); put<short>(b, 78);
+    const short boxH = multiline ? 70 : 13;
+    put<short>(b, 0); put<short>(b, 0); put<short>(b, 200); put<short>(b, static_cast<short>(65 + boxH));
     put<WORD>(b, 0); put<WORD>(b, 0);
     putStr(b, title);
     put<WORD>(b, 9); putStr(b, L"Segoe UI");
     item(b, 0x0082, SS_LEFT, 8, 8, 184, 22, 100, L"");
-    item(b, 0x0081, WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL | (password ? ES_PASSWORD : 0), 8, 34, 184, 13, 101, initial);
-    item(b, 0x0080, BS_DEFPUSHBUTTON | WS_TABSTOP, 88, 56, 50, 14, IDOK, L"OK");
-    item(b, 0x0080, BS_PUSHBUTTON | WS_TABSTOP, 142, 56, 50, 14, IDCANCEL, L"Cancel");
+    item(b, 0x0081, WS_BORDER | WS_TABSTOP | (password ? ES_PASSWORD : 0) |
+                    (multiline ? (ES_MULTILINE | ES_WANTRETURN | ES_AUTOVSCROLL | WS_VSCROLL) : ES_AUTOHSCROLL),
+         8, 34, 184, boxH, 101, initial);
+    item(b, 0x0080, (multiline ? BS_PUSHBUTTON : BS_DEFPUSHBUTTON) | WS_TABSTOP, 88, static_cast<short>(34 + boxH + 9), 50, 14, IDOK, L"OK");
+    item(b, 0x0080, BS_PUSHBUTTON | WS_TABSTOP, 142, static_cast<short>(34 + boxH + 9), 50, 14, IDCANCEL, L"Cancel");
     b[8] = 4;   // cdit = 4 items (offset of the item count in DLGTEMPLATE)
     PwState st{prompt, {}, false};
     DialogBoxIndirectParamW(app.inst, reinterpret_cast<LPCDLGTEMPLATEW>(b.data()), app.wnd, pwProc,
@@ -218,6 +240,292 @@ void openDialog() {
     ofn.nMaxFile = MAX_PATH * 2;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
     if (GetOpenFileNameW(&ofn)) openFile(buf);
+}
+
+
+// ---- saving, closing, undo ----
+
+void afterChange(int page) {   // page < 0: everything may have changed
+    if (page >= 0) app.viewer.invalidatePage(page); else app.viewer.documentChanged();
+    app.sidebar.refresh();
+    refresh();
+}
+
+void afterDocReplaced() {
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    app.viewer.setMatches({}, -1);
+    app.curMatch = -1; app.matchTotal = 0;
+    if (app.findVisible && GetWindowTextLengthW(app.findEdit) > 0) runSearch(false);
+    refresh();
+}
+
+bool saveDocument(Document& d, const std::wstring& path) {
+    SaveResult r = d.saveAs(path);
+    std::wstring name = path.substr(path.find_last_of(L"\\/") + 1);
+    const wchar_t* msg = nullptr;
+    switch (r) {
+        case SaveResult::Ok: refresh(); return true;
+        case SaveResult::CannotWrite:
+            msg = L" could not be saved. The folder may be read-only, you may not have permission, or the file may be open in another program.";
+            break;
+        case SaveResult::DiskFull: msg = L" could not be saved because the disk is full. Free some space and try again."; break;
+        default: msg = L" could not be saved: the document could not be prepared for writing."; break;
+    }
+    MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
+    return false;
+}
+
+bool saveAsDialog(Document& d) {
+    wchar_t buf[MAX_PATH * 2];
+    wcsncpy_s(buf, d.path().c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+    ofn.lpstrFile = buf;
+    ofn.nMaxFile = MAX_PATH * 2;
+    ofn.lpstrDefExt = L"pdf";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return false;
+    for (const auto& t : app.tabs)
+        if (t.get() != &d && _wcsicmp(t->path().c_str(), buf) == 0) {
+            MessageBoxW(app.wnd, L"That file is open in another tab. Close it first, or choose another name.", kAppName, MB_OK | MB_ICONWARNING);
+            return false;
+        }
+    return saveDocument(d, buf);
+}
+
+bool saveActive() {
+    Document* d = activeDoc();
+    if (!d) return false;
+    if (!d->dirty()) return true;
+    return saveDocument(*d, d->path());
+}
+
+// Asks about unsaved changes. Returns false when the user cancels.
+bool confirmClose(Document& d) {
+    if (!d.dirty()) return true;
+    std::wstring q = L"Do you want to save the changes to \"" + d.title() + L"\" before closing?\n\nChoose No to throw the changes away.";
+    switch (MessageBoxW(app.wnd, q.c_str(), kAppName, MB_YESNOCANCEL | MB_ICONQUESTION)) {
+        case IDYES: return saveDocument(d, d.path());
+        case IDNO: return true;
+        default: return false;
+    }
+}
+
+void undoRedo(bool redo) {
+    Document* d = activeDoc();
+    if (!d) return;
+    if (redo ? !d->redo() : !d->undo()) return;
+    afterDocReplaced();
+}
+
+// ---- annotations ----
+
+COLORREF hlColor() { return kPalette[app.hlColour]; }
+COLORREF drawColor() { return kPalette[app.drawColour]; }
+double lineWidth() { return kWidths[app.widthIdx]; }
+
+void applyStyle() { app.viewer.setStyle(drawColor(), lineWidth()); }
+
+void setTool(Viewer::Tool t) {
+    app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
+    app.viewer.setTool(app.tool);
+    applyStyle();
+}
+
+std::wstring toEdit(const std::wstring& s) {   // PDF comments use bare CR or LF; edit boxes want CRLF
+    std::wstring o;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == L'\r' && i + 1 < s.size() && s[i + 1] == L'\n') { o += L"\r\n"; ++i; }
+        else if (s[i] == L'\r' || s[i] == L'\n') o += L"\r\n";
+        else o += s[i];
+    }
+    return o;
+}
+
+std::wstring fromEdit(const std::wstring& s) {
+    std::wstring o;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == L'\r' && i + 1 < s.size() && s[i + 1] == L'\n') ++i;
+        o += (s[i] == L'\n') ? L'\r' : s[i];
+    }
+    return o;
+}
+
+void markupSelection(annot::Markup kind, bool withComment) {
+    Document* d = activeDoc();
+    if (!d) return;
+    auto sel = app.viewer.selectionRects();
+    if (sel.empty()) {
+        MessageBoxW(app.wnd, L"Select some text first (drag over it), then choose this again.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring comment;
+    if (withComment) {
+        if (!askText(L"Comment", L"Type your comment on the selected text.", false, comment, L"", true)) return;
+        comment = fromEdit(comment);
+        if (comment.empty()) return;
+    }
+    const COLORREF col = kind == annot::Markup::Highlight ? hlColor() : drawColor();
+    for (const auto& pr : sel) {
+        if (annot::addMarkup(*d, pr.page, kind, pr.rects, col, comment)) afterChange(pr.page);
+    }
+    app.viewer.clearSelection();
+    refresh();
+}
+
+void addArrowOrLine(Document& d, const Viewer::Event& e, bool arrow) {
+    std::vector<std::vector<annot::PointD>> strokes;
+    const annot::PointD a = e.pts.front(), b = e.pts.back();
+    strokes.push_back({a, b});
+    if (arrow) {
+        const double dx = b.x - a.x, dy = b.y - a.y, len = std::hypot(dx, dy);
+        if (len > 1) {
+            const double head = std::max(8.0, lineWidth() * 5), ang = 0.45;   // ~26 degrees
+            const double base = std::atan2(dy, dx) + 3.14159265358979;
+            for (double s : {-1.0, 1.0})
+                strokes.push_back({b, {b.x + head * std::cos(base + s * ang), b.y + head * std::sin(base + s * ang)}});
+        }
+    }
+    if (annot::addInk(d, e.page, strokes, drawColor(), lineWidth())) afterChange(e.page);
+}
+
+void editComment(Document& d, int page, int index) {
+    std::wstring cur;
+    for (const auto& a : annot::list(d, page)) if (a.index == index) cur = a.contents;
+    std::wstring text;
+    if (!askText(L"Comment", L"Edit the comment.", false, text, toEdit(cur).c_str(), true)) return;
+    text = fromEdit(text);
+    if (text == cur) return;
+    if (annot::setContents(d, page, index, text)) afterChange(page);
+}
+
+void deleteAnnotation(Document& d, int page, int index) {
+    if (annot::remove(d, page, index)) { app.viewer.clearAnnotSelection(); afterChange(page); }
+}
+
+void onViewerEvent(const Viewer::Event& e) {
+    Document* d = activeDoc();
+    if (!d) return;
+    switch (e.kind) {
+        case Viewer::Event::Draw:
+            switch (e.tool) {
+                case Viewer::Tool::Rectangle: case Viewer::Tool::Ellipse: {
+                    annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y),
+                                   std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)};
+                    if (annot::addShape(*d, e.page, e.tool == Viewer::Tool::Rectangle ? annot::Shape::Rectangle : annot::Shape::Ellipse,
+                                        r, drawColor(), lineWidth())) afterChange(e.page);
+                    break;
+                }
+                case Viewer::Tool::Line: addArrowOrLine(*d, e, false); break;
+                case Viewer::Tool::Arrow: addArrowOrLine(*d, e, true); break;
+                case Viewer::Tool::Pen:
+                    if (annot::addInk(*d, e.page, {e.pts}, drawColor(), lineWidth())) afterChange(e.page);
+                    break;
+                default: break;
+            }
+            break;
+        case Viewer::Event::Click: {   // comment tool: place a note
+            std::wstring text;
+            if (askText(L"Comment", L"Type your comment.", false, text, L"", true)) {
+                text = fromEdit(text);
+                if (!text.empty() && annot::addNote(*d, e.page, e.pts.front(), text, hlColor())) afterChange(e.page);
+            }
+            setTool(Viewer::Tool::Comment);   // one note at a time: switch the tool off again
+            break;
+        }
+        case Viewer::Event::DoubleClick:
+            for (const auto& a : annot::list(*d, e.page))
+                if (a.index == e.annot && annot::hasComment(a.subtype)) { editComment(*d, e.page, e.annot); break; }
+            break;
+        case Viewer::Event::ContextMenu: {
+            HMENU m = CreatePopupMenu();
+            int subtype = 0;
+            if (e.annot >= 0)
+                for (const auto& a : annot::list(*d, e.page)) if (a.index == e.annot) subtype = a.subtype;
+            if (subtype) {
+                if (annot::hasComment(subtype)) AppendMenuW(m, MF_STRING, M_EDIT_COMMENT, subtype == FPDF_ANNOT_TEXT ? L"Edit comment..." : L"Add or edit comment...");
+                AppendMenuW(m, MF_STRING, M_DELETE, (std::wstring(L"Delete this ") + annot::typeName(subtype)).c_str());
+                AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+            }
+            const bool hasSel = app.viewer.hasSelection();
+            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COPY, L"Copy\tCtrl+C");
+            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_HIGHLIGHT, L"Highlight\tCtrl+H");
+            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_UNDERLINE, L"Underline\tCtrl+U");
+            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_STRIKE, L"Strikethrough\tCtrl+Shift+K");
+            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COMMENT, L"Comment on selected text...\tCtrl+M");
+            int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, e.screen.x, e.screen.y, 0, app.wnd, nullptr);
+            DestroyMenu(m);
+            switch (cmd) {
+                case M_EDIT_COMMENT: editComment(*d, e.page, e.annot); break;
+                case M_DELETE: deleteAnnotation(*d, e.page, e.annot); break;
+                case M_COPY: app.viewer.copySelection(); break;
+                case M_HIGHLIGHT: markupSelection(annot::Markup::Highlight, false); break;
+                case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
+                case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
+                case M_COMMENT: markupSelection(annot::Markup::Highlight, true); break;
+            }
+            break;
+        }
+    }
+}
+
+void deleteSelectedAnnotation() {
+    Document* d = activeDoc();
+    int page, index;
+    if (d && app.viewer.selectedAnnot(page, index)) deleteAnnotation(*d, page, index);
+}
+
+void showAnnotateMenu(const RECT& anchor) {
+    HMENU m = CreatePopupMenu();
+    auto item = [&](UINT id, const wchar_t* text, bool checked = false) {
+        AppendMenuW(m, MF_STRING | (checked ? MF_CHECKED : 0), id, text);
+    };
+    item(M_HIGHLIGHT, L"Highlight selected text\tCtrl+H");
+    item(M_UNDERLINE, L"Underline selected text\tCtrl+U");
+    item(M_STRIKE, L"Strikethrough selected text\tCtrl+Shift+K");
+    item(M_SQUIGGLY, L"Squiggly underline selected text");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    item(M_COMMENT, L"Add comment\tCtrl+M", app.tool == Viewer::Tool::Comment);
+    item(M_RECT, L"Rectangle", app.tool == Viewer::Tool::Rectangle);
+    item(M_ELLIPSE, L"Ellipse", app.tool == Viewer::Tool::Ellipse);
+    item(M_LINE, L"Line", app.tool == Viewer::Tool::Line);
+    item(M_ARROW, L"Arrow", app.tool == Viewer::Tool::Arrow);
+    item(M_PEN, L"Pen (freehand)", app.tool == Viewer::Tool::Pen);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU hl = CreatePopupMenu(), dc = CreatePopupMenu(), wd = CreatePopupMenu();
+    for (int i = 0; i < 7; ++i) {
+        AppendMenuW(hl, MF_STRING | (app.hlColour == i ? MF_CHECKED : 0), M_HL_COLOUR + i, kPaletteNames[i]);
+        AppendMenuW(dc, MF_STRING | (app.drawColour == i ? MF_CHECKED : 0), M_DRAW_COLOUR + i, kPaletteNames[i]);
+    }
+    for (int i = 0; i < 3; ++i) AppendMenuW(wd, MF_STRING | (app.widthIdx == i ? MF_CHECKED : 0), M_WIDTH + i, kWidthNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(hl), L"Highlight and note colour");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(dc), L"Drawing colour");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(wd), L"Line width");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    int a, b;
+    AppendMenuW(m, app.viewer.selectedAnnot(a, b) ? MF_STRING : MF_GRAYED, M_DELETE, L"Delete selected annotation\tDel");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);   // also destroys the submenus
+    if (cmd >= M_HL_COLOUR && cmd < M_HL_COLOUR + 7) { app.hlColour = cmd - M_HL_COLOUR; return; }
+    if (cmd >= M_DRAW_COLOUR && cmd < M_DRAW_COLOUR + 7) { app.drawColour = cmd - M_DRAW_COLOUR; applyStyle(); return; }
+    if (cmd >= M_WIDTH && cmd < M_WIDTH + 3) { app.widthIdx = cmd - M_WIDTH; applyStyle(); return; }
+    switch (cmd) {
+        case M_HIGHLIGHT: markupSelection(annot::Markup::Highlight, false); break;
+        case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
+        case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
+        case M_SQUIGGLY: markupSelection(annot::Markup::Squiggly, false); break;
+        case M_COMMENT: if (app.viewer.hasSelection()) markupSelection(annot::Markup::Highlight, true); else setTool(Viewer::Tool::Comment); break;
+        case M_RECT: setTool(Viewer::Tool::Rectangle); break;
+        case M_ELLIPSE: setTool(Viewer::Tool::Ellipse); break;
+        case M_LINE: setTool(Viewer::Tool::Line); break;
+        case M_ARROW: setTool(Viewer::Tool::Arrow); break;
+        case M_PEN: setTool(Viewer::Tool::Pen); break;
+        case M_DELETE: deleteSelectedAnnotation(); break;
+    }
 }
 
 void updateFindCount() {
@@ -315,6 +623,9 @@ void runCommand(int id) {
         case C_FIND: if (d) toggleFind(!app.findVisible); break;
         case C_PANEL: showSidebar(Sidebar::Mode::Bookmarks); break;
         case C_GOTO: goToPageDialog(); break;
+        case C_SAVE: saveActive(); break;
+        case C_UNDO: undoRedo(false); break;
+        case C_REDO: undoRedo(true); break;
     }
 }
 
@@ -326,7 +637,7 @@ void layoutHeader(HDC dc, int width) {
 
     int x = 8;
     for (size_t i = 0; i < app.tabs.size(); ++i) {
-        SIZE sz; std::wstring t = app.tabs[i]->title();
+        SIZE sz; std::wstring t = tabLabel(*app.tabs[i]);
         GetTextExtentPoint32W(dc, t.c_str(), static_cast<int>(t.size()), &sz);
         int w = std::clamp<int>(sz.cx + 44, 90, 240);
         app.tabRects.push_back({x, 4, x + w, kTabH});
@@ -343,6 +654,10 @@ void layoutHeader(HDC dc, int width) {
     };
     x = 8;
     add(L"Open", C_OPEN, true);
+    add(L"Save", C_SAVE, d && d->dirty());
+    x += 6;
+    add(L"Undo", C_UNDO, d && d->canUndo());
+    add(L"Redo", C_REDO, d && d->canRedo());
     x += 10;
     add(L"Prev", C_PREV, d != nullptr);
     x += 90;   // room for the "page x / n" label
@@ -358,6 +673,8 @@ void layoutHeader(HDC dc, int width) {
     x += 10;
     add(L"Find", C_FIND, d != nullptr);
     add(L"Panel", C_PANEL, d != nullptr);
+    x += 10;
+    add(L"Annotate", C_ANNOT, d != nullptr);
     (void)width;
 }
 
@@ -383,7 +700,7 @@ void paintHeader(HDC dc, const RECT& client) {
         FillRect(dc, &app.tabRects[i], w); DeleteObject(w);
         RECT t = app.tabRects[i]; t.left += 12; t.right -= 30;
         SetTextColor(dc, RGB(0x20, 0x20, 0x20));
-        DrawTextW(dc, app.tabs[i]->title().c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+        DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         SetTextColor(dc, RGB(0x60, 0x60, 0x60));
         DrawTextW(dc, L"x", -1, &app.closeRects[i], DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
@@ -446,6 +763,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.fontBold = CreateFontIndirectW(&lf);
             app.viewer.create(h, app.inst);
             app.viewer.setOnChange(onViewerChange, nullptr);
+            app.viewer.onEvent = onViewerEvent;
+            app.viewer.setStyle(drawColor(), lineWidth());
             app.sidebar.create(h, app.inst);
             app.sidebar.setOnNavigate(onSidebarNavigate, nullptr);
             app.findEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_EDIT), app.inst, nullptr);
@@ -493,7 +812,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (!app.tabs.empty() && hit(app.plusRect, x, y)) { runCommand(C_NEWTAB); return 0; }
             if (activeDoc() && hit(app.pageRect, x, y)) { runCommand(C_GOTO); return 0; }
             for (const Button& b : app.buttons)
-                if (b.enabled && hit(b.rc, x, y)) { runCommand(b.id); return 0; }
+                if (b.enabled && hit(b.rc, x, y)) {
+                    if (b.id == C_ANNOT) showAnnotateMenu(b.rc); else runCommand(b.id);
+                    return 0;
+                }
             return 0;
         }
         case WM_MBUTTONUP: {
@@ -524,6 +846,16 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;
+                    case 'Z': undoRedo(shift); return 0;
+                    case 'Y': undoRedo(true); return 0;
+                    case 'H': markupSelection(annot::Markup::Highlight, false); return 0;
+                    case 'U': markupSelection(annot::Markup::Underline, false); return 0;
+                    case 'K': if (shift) markupSelection(annot::Markup::Strikethrough, false); return 0;
+                    case 'M':
+                        if (app.viewer.hasSelection()) markupSelection(annot::Markup::Highlight, true);
+                        else if (d) setTool(Viewer::Tool::Comment);
+                        return 0;
                     case 'F': runCommand(C_FIND); return 0;
                     case 'G': runCommand(C_GOTO); return 0;
                     case 'C': app.viewer.copySelection(); return 0;
@@ -546,8 +878,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (!d) return 0;
             switch (w) {
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
+                case VK_DELETE: deleteSelectedAnnotation(); return 0;
                 case VK_ESCAPE:
-                    if (app.findVisible) toggleFind(false); else app.viewer.clearSelection();
+                    if (app.findVisible) toggleFind(false);
+                    else if (app.tool != Viewer::Tool::None) setTool(app.tool);
+                    else { app.viewer.clearSelection(); app.viewer.clearAnnotSelection(); }
                     return 0;
                 case VK_NEXT: app.viewer.goToPage(app.viewer.currentPage() + 1); return 0;
                 case VK_PRIOR: app.viewer.goToPage(app.viewer.currentPage() - 1); return 0;
@@ -563,6 +898,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_SYSKEYDOWN:
             if (GetKeyState(VK_MENU) < 0 && (w == VK_LEFT || w == VK_RIGHT)) return 0;
             break;
+        case WM_GETMINMAXINFO:
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {980, 420};   // the toolbar needs this much room
+            return 0;
+        case WM_CLOSE:
+            for (auto& t : app.tabs) if (!confirmClose(*t)) return 0;
+            DestroyWindow(h);
+            return 0;
         case WM_DESTROY:
             setActiveDocument(nullptr);
             app.tabs.clear();

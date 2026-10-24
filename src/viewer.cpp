@@ -1,5 +1,6 @@
 #include "viewer.hpp"
 #include <windowsx.h>
+#include <cstdlib>
 #include <algorithm>
 #include <cmath>
 #include <cwctype>
@@ -182,7 +183,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
 
     if (pixels <= kMaxCachedPixels) {
         auto it = cache_.find(page);
-        if (it == cache_.end() || it->second.w != w || it->second.h != h) {
+        if (it == cache_.end() || it->second.w != w || it->second.h != h || it->second.revision != doc_->revision()) {
             if (it != cache_.end()) { DeleteObject(it->second.bmp); cache_.erase(it); }
             if (cache_.size() >= kCacheLimit) {   // drop the page farthest from the current one
                 int cur = currentPage(), farthest = cache_.begin()->first;
@@ -194,12 +195,12 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
             void* bits = nullptr;
             HBITMAP bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
             if (!bmp) return;
-            FPDF_PAGE pg = api.FPDF_LoadPage(doc_->handle(), page);
+            FPDF_PAGE pg = doc_->page(page);
             FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, bits, w * 4);
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-            if (pg) { api.FPDF_RenderPageBitmap(fb, pg, 0, 0, w, h, 0, FPDF_ANNOT); api.FPDF_ClosePage(pg); }
+            if (pg) api.FPDF_RenderPageBitmap(fb, pg, 0, 0, w, h, 0, FPDF_ANNOT);
             api.FPDFBitmap_Destroy(fb);
-            it = cache_.emplace(page, Cached{bmp, w, h, doc_->zoom}).first;
+            it = cache_.emplace(page, Cached{bmp, w, h, doc_->zoom, doc_->revision()}).first;
         }
         HDC mem = CreateCompatibleDC(dc);
         HGDIOBJ old = SelectObject(mem, it->second.bmp);
@@ -214,10 +215,10 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
         void* bits = nullptr;
         HBITMAP bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
         if (!bmp) return;
-        FPDF_PAGE pg = api.FPDF_LoadPage(doc_->handle(), page);
+        FPDF_PAGE pg = doc_->page(page);
         FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(sw, sh, FPDFBitmap_BGRx, bits, sw * 4);
         api.FPDFBitmap_FillRect(fb, 0, 0, sw, sh, 0xFFFFFFFF);
-        if (pg) { api.FPDF_RenderPageBitmap(fb, pg, x - vis.left, y - vis.top, w, h, 0, FPDF_ANNOT); api.FPDF_ClosePage(pg); }
+        if (pg) api.FPDF_RenderPageBitmap(fb, pg, x - vis.left, y - vis.top, w, h, 0, FPDF_ANNOT);
         api.FPDFBitmap_Destroy(fb);
         HDC mem = CreateCompatibleDC(dc);
         HGDIOBJ old = SelectObject(mem, bmp);
@@ -421,6 +422,135 @@ bool Viewer::copySelection() {
     return g != nullptr;
 }
 
+// ---- annotation tools ----
+
+void Viewer::setTool(Tool t) {
+    tool_ = t;
+    drawing_ = false;
+    if (t != Tool::None) clearSelection();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void Viewer::invalidatePage(int page) {
+    auto it = cache_.find(page);
+    if (it != cache_.end()) { DeleteObject(it->second.bmp); cache_.erase(it); }
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+void Viewer::documentChanged() {
+    clearCache();
+    sel_ = Selection{};
+    selAnnotPage_ = selAnnotIndex_ = -1;
+    if (doc_) {
+        int keepY = doc_->scrollY;
+        relayout();
+        doc_->scrollY = keepY;
+        clampScroll();
+        updateScrollBars();
+    }
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    notify();
+}
+
+bool Viewer::pageAt(int cx, int cy, int& page) const {
+    if (!doc_ || tops_.empty()) return false;
+    const int contentY = cy + doc_->scrollY;
+    int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), contentY) - tops_.begin()) - 1;
+    if (idx < 0 || contentY > tops_[idx] + heights_[idx]) return false;
+    if (cx < pageX(idx) || cx > pageX(idx) + widths_[idx]) return false;
+    page = idx;
+    return true;
+}
+
+bool Viewer::toPage(int cx, int cy, int page, annot::PointD& out) const {
+    FPDF_PAGE pg = doc_ ? doc_->page(page) : nullptr;
+    if (!pg) return false;
+    const int lx = std::clamp(cx - pageX(page), 0, widths_[page]);
+    const int ly = std::clamp(cy + doc_->scrollY - tops_[page], 0, heights_[page]);
+    double px, py;
+    pdfium::api().FPDF_DeviceToPage(pg, 0, 0, widths_[page], heights_[page], 0, lx, ly, &px, &py);
+    out = {px, py};
+    return true;
+}
+
+RECT Viewer::annotScreenRect(int page, const annot::RectD& r) const {
+    RECT out{0, 0, 0, 0};
+    FPDF_PAGE pg = doc_ ? doc_->page(page) : nullptr;
+    if (!pg) return out;
+    int x1, y1, x2, y2;
+    const auto& api = pdfium::api();
+    api.FPDF_PageToDevice(pg, 0, 0, widths_[page], heights_[page], 0, r.left, r.top, &x1, &y1);
+    api.FPDF_PageToDevice(pg, 0, 0, widths_[page], heights_[page], 0, r.right, r.bottom, &x2, &y2);
+    const int ox = pageX(page), oy = tops_[page] - doc_->scrollY;
+    return {std::min(x1, x2) + ox, std::min(y1, y2) + oy, std::max(x1, x2) + ox + 1, std::max(y1, y2) + oy + 1};
+}
+
+bool Viewer::selectedAnnot(int& page, int& index) const {
+    if (selAnnotPage_ < 0) return false;
+    page = selAnnotPage_; index = selAnnotIndex_;
+    return true;
+}
+
+void Viewer::clearAnnotSelection() {
+    if (selAnnotPage_ < 0) return;
+    selAnnotPage_ = selAnnotIndex_ = -1;
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+std::vector<Viewer::PageRects> Viewer::selectionRects() {
+    std::vector<PageRects> out;
+    if (!sel_.active || !doc_) return out;
+    int p1 = sel_.p1, c1 = sel_.c1, p2 = sel_.p2, c2 = sel_.c2;
+    if (p1 > p2 || (p1 == p2 && c1 > c2)) { std::swap(p1, p2); std::swap(c1, c2); }
+    const auto& api = pdfium::api();
+    for (int p = p1; p <= p2; ++p) {
+        FPDF_TEXTPAGE tp = doc_->text(p);
+        if (!tp) continue;
+        int start = p == p1 ? c1 : 0;
+        int end = p == p2 ? c2 : doc_->charCount(p) - 1;
+        if (end < start) continue;
+        PageRects pr{p, {}};
+        int n = api.FPDFText_CountRects(tp, start, end - start + 1);
+        for (int i = 0; i < n; ++i) {
+            double l, t, r, b;
+            if (api.FPDFText_GetRect(tp, i, &l, &t, &r, &b)) pr.rects.push_back({l, b, r, t});
+        }
+        if (!pr.rects.empty()) out.push_back(std::move(pr));
+    }
+    return out;
+}
+
+void Viewer::drawPreview(HDC dc) {
+    if (!drawing_) return;
+    const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
+    HPEN pen = CreatePen(PS_SOLID, w, penColor_);
+    HGDIOBJ oldPen = SelectObject(dc, pen);
+    HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    switch (tool_) {
+        case Tool::Rectangle: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Line: case Tool::Arrow:
+            MoveToEx(dc, drawStart_.x, drawStart_.y, nullptr); LineTo(dc, drawNow_.x, drawNow_.y); break;
+        case Tool::Pen:
+            if (!drawPts_.empty()) {
+                // Redraw the stroke from its page points, so it stays right while the view scrolls.
+                bool first = true;
+                for (const auto& p : drawPts_) {
+                    FPDF_PAGE pg = doc_->page(drawPage_);
+                    int x, y;
+                    pdfium::api().FPDF_PageToDevice(pg, 0, 0, widths_[drawPage_], heights_[drawPage_], 0, p.x, p.y, &x, &y);
+                    x += pageX(drawPage_); y += tops_[drawPage_] - doc_->scrollY;
+                    if (first) { MoveToEx(dc, x, y, nullptr); first = false; } else LineTo(dc, x, y);
+                }
+            }
+            break;
+        default: break;
+    }
+    SelectObject(dc, oldBrush);
+    SelectObject(dc, oldPen);
+    DeleteObject(pen);
+}
+
 void Viewer::onPaint() {
     PAINTSTRUCT ps;
     HDC dc = BeginPaint(hwnd_, &ps);
@@ -448,6 +578,18 @@ void Viewer::onPaint() {
             drawPage(dc, static_cast<int>(i), x, y, widths_[i], heights_[i], ps.rcPaint);
             drawOverlays(dc, static_cast<int>(i), x, y, widths_[i], heights_[i], ps.rcPaint);
         }
+        if (selAnnotPage_ >= 0 && selAnnotPage_ < static_cast<int>(tops_.size())) {
+            for (const auto& a : annot::list(*doc_, selAnnotPage_)) {
+                if (a.index != selAnnotIndex_) continue;
+                RECT r = annotScreenRect(selAnnotPage_, a.rect);
+                InflateRect(&r, 3, 3);
+                HPEN pen = CreatePen(PS_DOT, 1, RGB(0x30, 0x80, 0xFF));
+                HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+                Rectangle(dc, r.left, r.top, r.right, r.bottom);
+                SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
+            }
+        }
+        drawPreview(dc);
     }
     EndPaint(hwnd_, &ps);
 }
@@ -495,25 +637,88 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_SETCURSOR:
-            if (LOWORD(l) == HTCLIENT && doc_) { SetCursor(LoadCursor(nullptr, IDC_IBEAM)); return TRUE; }
+            if (LOWORD(l) == HTCLIENT && doc_) {
+                SetCursor(LoadCursor(nullptr, tool_ == Tool::None ? IDC_IBEAM : IDC_CROSS));
+                return TRUE;
+            }
             break;
         case WM_LBUTTONDOWN: {
             SetFocus(hwnd_);
             if (!doc_) return 0;
-            int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l), p, ch;
+            const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+            int page, ch;
+            if (tool_ != Tool::None) {
+                annot::PointD pt;
+                if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) {
+                    drawing_ = true; drawPage_ = page;
+                    drawStart_ = drawNow_ = {cx, cy};
+                    drawPts_.assign(1, pt);
+                    SetCapture(hwnd_);
+                }
+                return 0;
+            }
             clearSelection();
-            if (charAt(cx, cy, p, ch, false)) {
-                anchorPage_ = p; anchorChar_ = ch;
+            clearAnnotSelection();
+            if (pageAt(cx, cy, page)) {
+                annot::PointD pt;
+                if (toPage(cx, cy, page, pt)) {
+                    int ai = annot::hitTest(*doc_, page, pt);
+                    if (ai >= 0) {
+                        // Shape-like annotations are selected by a click; text markup leaves text selection alone.
+                        for (const auto& a : annot::list(*doc_, page)) {
+                            if (a.index != ai) continue;
+                            if (a.subtype == FPDF_ANNOT_TEXT || a.subtype == FPDF_ANNOT_SQUARE || a.subtype == FPDF_ANNOT_CIRCLE ||
+                                a.subtype == FPDF_ANNOT_INK || a.subtype == FPDF_ANNOT_STAMP || a.subtype == FPDF_ANNOT_FREETEXT) {
+                                selAnnotPage_ = page; selAnnotIndex_ = ai;
+                                InvalidateRect(hwnd_, nullptr, FALSE);
+                                return 0;
+                            }
+                        }
+                    }
+                }
+            }
+            if (charAt(cx, cy, page, ch, false)) {
+                anchorPage_ = page; anchorChar_ = ch;
                 dragging_ = true;
                 SetCapture(hwnd_);
             }
             return 0;
         }
-        case WM_LBUTTONDBLCLK:
-            if (doc_) selectWordAt(GET_X_LPARAM(l), GET_Y_LPARAM(l));
+        case WM_LBUTTONDBLCLK: {
+            if (!doc_) return 0;
+            const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+            int page; annot::PointD pt;
+            if (tool_ == Tool::None && pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) {
+                int ai = annot::hitTest(*doc_, page, pt);
+                if (ai >= 0 && onEvent) {
+                    Event e; e.kind = Event::DoubleClick; e.page = page; e.annot = ai; e.pts = {pt};
+                    onEvent(e);
+                    return 0;
+                }
+            }
+            if (tool_ == Tool::None) selectWordAt(cx, cy);
             return 0;
+        }
+        case WM_RBUTTONUP: {
+            if (!doc_ || !onEvent) return 0;
+            const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+            int page; annot::PointD pt;
+            Event e; e.kind = Event::ContextMenu; e.tool = tool_;
+            if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) { e.page = page; e.pts = {pt}; e.annot = annot::hitTest(*doc_, page, pt); }
+            else e.page = -1;
+            e.screen = {cx, cy};
+            ClientToScreen(hwnd_, &e.screen);
+            onEvent(e);
+            return 0;
+        }
         case WM_MOUSEMOVE:
-            if (dragging_) {
+            if (drawing_) {
+                int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+                drawNow_ = {cx, cy};
+                annot::PointD pt;
+                if (tool_ == Tool::Pen && toPage(cx, cy, drawPage_, pt)) drawPts_.push_back(pt);
+                InvalidateRect(hwnd_, nullptr, FALSE);
+            } else if (dragging_) {
                 int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
                 RECT rc; GetClientRect(hwnd_, &rc);
                 if (cy < 0) scrollBy(cy / 2 - 8);                       // drag past the edge to scroll
@@ -522,6 +727,23 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         case WM_LBUTTONUP:
+            if (drawing_) {
+                drawing_ = false;
+                ReleaseCapture();
+                annot::PointD end;
+                const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
+                if (toPage(cx, cy, drawPage_, end) && onEvent) {
+                    Event e; e.page = drawPage_; e.tool = tool_;
+                    const bool moved = std::abs(cx - drawStart_.x) + std::abs(cy - drawStart_.y) > 3;
+                    if (tool_ == Tool::Comment) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
+                    else if (moved) {
+                        e.kind = Event::Draw;
+                        e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};
+                        onEvent(e);
+                    }
+                }
+                InvalidateRect(hwnd_, nullptr, FALSE);
+            }
             if (dragging_) { dragging_ = false; ReleaseCapture(); }
             return 0;
         case WM_KEYDOWN: case WM_SYSKEYDOWN:

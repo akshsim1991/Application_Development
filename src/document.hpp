@@ -13,6 +13,8 @@ struct Bookmark {
     std::vector<Bookmark> children;
 };
 
+enum class SaveResult { Ok, CannotWrite, DiskFull, Failed };
+
 enum class OpenResult { Ok, FileUnreadable, TooLarge, NotPdf, PasswordNeeded, WrongPassword, Damaged, Unsupported };
 
 class Document {
@@ -23,6 +25,8 @@ public:
     Document& operator=(const Document&) = delete;
 
     OpenResult open(const std::wstring& path, const std::string& password = {});
+    // Replaces the content with `bytes` (used by undo/redo). View state and path are kept.
+    OpenResult load(std::vector<unsigned char>&& bytes, const std::string& password);
     static std::wstring describe(OpenResult r, const std::wstring& path);
 
     const std::wstring& path() const { return path_; }
@@ -40,6 +44,23 @@ public:
     std::vector<TextHit> find(const std::wstring& query, bool matchCase);
     std::vector<Bookmark> bookmarks() const;
 
+    // Saving. The document keeps encryption when it was opened with a password.
+    bool serialize(std::vector<unsigned char>& out) const;
+    SaveResult saveAs(const std::wstring& path);       // writes a temp file, then replaces `path`
+    void setPath(const std::wstring& p) { path_ = p; }
+    bool isEncrypted() const { return !password_.empty(); }
+
+    // Change tracking. Call beginChange() BEFORE modifying the document: it stores an undo step.
+    // A change that turns out to be a no-op can be dropped with cancelChange().
+    bool dirty() const { return dirty_; }
+    void beginChange();
+    void cancelChange();
+    bool canUndo() const { return !undo_.empty(); }
+    bool canRedo() const { return !redo_.empty(); }
+    bool undo();
+    bool redo();
+    int revision() const { return revision_; }         // bumps on every change, undo and redo
+
     // View state, kept per tab.
     double zoom = 1.0;       // 1.0 == 100 % (96 dpi)
     int scrollX = 0, scrollY = 0;
@@ -50,6 +71,13 @@ private:
     std::vector<unsigned char> data_;   // PDFium reads from this buffer for the document's life
     FPDF_DOCUMENT doc_ = nullptr;
     std::vector<PageSize> sizes_;
+    std::string password_;
+    bool dirty_ = false;
+    int revision_ = 0;
+    std::vector<std::vector<unsigned char>> undo_, redo_;
+    size_t undoBytes_ = 0;
+    bool restoreFrom(const std::vector<unsigned char>& snap);
+    void trimUndo();
     std::vector<FPDF_PAGE> pages_;
     std::vector<FPDF_TEXTPAGE> texts_;
 

@@ -12,6 +12,7 @@ add_executable(FeatherPDF WIN32
   src/document.cpp
   src/viewer.cpp
   src/sidebar.cpp
+  src/annot.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include")

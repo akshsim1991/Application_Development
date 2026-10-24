@@ -1,6 +1,8 @@
 #pragma once
 #include <windows.h>
+#include <functional>
 #include <map>
+#include "annot.hpp"
 #include "document.hpp"
 
 // Child window that shows the pages of one Document in a continuous vertical layout,
@@ -33,6 +35,29 @@ public:
     std::wstring selectedText();
     bool copySelection();                // puts the selected text on the clipboard
 
+    // ---- annotation tools ----
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen };
+    struct Event {
+        enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
+        Tool tool = Tool::None;
+        int page = 0;
+        std::vector<annot::PointD> pts;   // page coordinates; a drag has its start and end, a pen stroke has many
+        int annot = -1;                   // annotation under the pointer, if any
+        POINT screen{};                   // for ContextMenu
+    };
+    std::function<void(const Event&)> onEvent;
+    void setTool(Tool t);
+    Tool tool() const { return tool_; }
+    void setStyle(COLORREF c, double widthPt) { penColor_ = c; penWidth_ = widthPt; }
+
+    void invalidatePage(int page);       // a page's content changed: redraw it
+    void documentChanged();              // the document was replaced (undo/redo): keep position, redraw all
+    // The selected text as rectangles per page, in page coordinates (for markup annotations).
+    struct PageRects { int page; std::vector<annot::RectD> rects; };
+    std::vector<PageRects> selectionRects();
+    bool selectedAnnot(int& page, int& index) const;
+    void clearAnnotSelection();
+
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
 
 private:
@@ -54,7 +79,12 @@ private:
     void extendSelection(int cx, int cy);
     void selectWordAt(int cx, int cy);
 
-    struct Cached { HBITMAP bmp; int w, h; double zoom; };
+    bool pageAt(int cx, int cy, int& page) const;
+    bool toPage(int cx, int cy, int page, annot::PointD& out) const;
+    RECT annotScreenRect(int page, const annot::RectD& r) const;
+    void drawPreview(HDC dc);
+
+    struct Cached { HBITMAP bmp; int w, h; double zoom; int revision; };
     struct Selection { bool active = false; int p1 = 0, c1 = 0, p2 = 0, c2 = 0; };   // anchor .. focus
 
     HWND hwnd_ = nullptr;
@@ -67,6 +97,14 @@ private:
     int currentMatch_ = -1;
     Selection sel_;
     bool dragging_ = false;
+    Tool tool_ = Tool::None;
+    COLORREF penColor_ = RGB(0xE5, 0x39, 0x35);
+    double penWidth_ = 2;
+    bool drawing_ = false;
+    int drawPage_ = 0;
+    std::vector<annot::PointD> drawPts_;
+    POINT drawStart_{}, drawNow_{};
+    int selAnnotPage_ = -1, selAnnotIndex_ = -1;
     int anchorPage_ = 0, anchorChar_ = 0;
     void (*onChange_)(void*) = nullptr;
     void* onChangeCtx_ = nullptr;

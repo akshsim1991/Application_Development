@@ -5,6 +5,8 @@
 #include "fpdfview.h"
 #include "fpdf_text.h"
 #include "fpdf_doc.h"
+#include "fpdf_annot.h"
+#include "fpdf_save.h"
 
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
@@ -41,7 +43,24 @@
     X(FPDFBookmark_GetDest)      \
     X(FPDFBookmark_GetAction)    \
     X(FPDFAction_GetDest)        \
-    X(FPDFDest_GetDestPageIndex)
+    X(FPDFDest_GetDestPageIndex) \
+    X(FPDF_SaveAsCopy)           \
+    X(FPDFPage_CreateAnnot)      \
+    X(FPDFPage_CloseAnnot)       \
+    X(FPDFPage_GetAnnotCount)    \
+    X(FPDFPage_GetAnnot)         \
+    X(FPDFPage_RemoveAnnot)      \
+    X(FPDFAnnot_GetSubtype)      \
+    X(FPDFAnnot_SetColor)        \
+    X(FPDFAnnot_GetColor)        \
+    X(FPDFAnnot_SetRect)         \
+    X(FPDFAnnot_GetRect)         \
+    X(FPDFAnnot_AppendAttachmentPoints) \
+    X(FPDFAnnot_SetBorder)       \
+    X(FPDFAnnot_SetFlags)        \
+    X(FPDFAnnot_SetStringValue)  \
+    X(FPDFAnnot_GetStringValue)  \
+    X(FPDFAnnot_AddInkStroke)
 
 namespace pdfium {
 

@@ -19,6 +19,7 @@ public:
     void setDocument(Document* d);
     void setMode(Mode m);
     Mode mode() const { return mode_; }
+    void refresh();                                      // the document changed: redraw thumbnails and bookmarks
     void setCurrentPage(int page);                       // highlights it in the thumbnails
     void setOnNavigate(void (*cb)(void*, int), void* ctx) { onNav_ = cb; onNavCtx_ = ctx; }
 

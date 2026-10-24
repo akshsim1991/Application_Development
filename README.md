@@ -26,7 +26,13 @@ Done:
   bookmarks panel (Ctrl+B) and page thumbnails (Ctrl+Shift+B); Go to page (Ctrl+G or click the page
   number); application manifest (visual styles, per-monitor DPI, no UAC prompt).
 
-Next: annotations (highlight, comments, shapes) and Save / Save As, page operations, edit text, export,
+- **Milestone 3:** Save (Ctrl+S) and Save As (Ctrl+Shift+S) with a safe write (temp file, then replace),
+  encryption kept on password-protected files, undo / redo (Ctrl+Z, Ctrl+Y) for every change, unsaved-changes
+  marker and prompts on closing, and annotations: highlight, underline, strikethrough, squiggly underline,
+  comments on selected text or placed as notes, rectangle, ellipse, line, arrow and freehand pen, with colour
+  and width choices, click-to-select and Delete, double-click to edit a comment, and a right-click menu.
+
+Next: page operations (delete, insert, rotate, merge, extract, crop), edit text, export,
 compress / password / watermark / page numbers, signing, redaction, OCR, read aloud, installer.
 The fixes found in testing 2.12 (watermark resources, text-export watermark pollution, unsaved-changes
 flag after Compress, small file sizes shown as 0.0 MB, clear errors when OCR or voices are missing)
@@ -35,4 +41,5 @@ land together with the features they belong to.
 ## Shortcuts
 Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+F find · F3 / Shift+F3 next / previous match ·
 Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all · Ctrl+B bookmarks · Ctrl+Shift+B thumbnails ·
-Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl +/- zoom · PgUp/PgDn/Home/End · Esc.
+Ctrl+S save · Ctrl+Shift+S save as · Ctrl+Z / Ctrl+Y undo / redo · Ctrl+H highlight · Ctrl+U underline ·
+Ctrl+Shift+K strikethrough · Ctrl+M comment · Del delete selected annotation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl +/- zoom · PgUp/PgDn/Home/End · Esc.

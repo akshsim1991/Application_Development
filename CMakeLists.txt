@@ -33,6 +33,7 @@ add_executable(FeatherPDF WIN32
   src/sanitize.cpp
   src/picture.cpp
   src/printing.cpp
+  src/pdfa.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include")

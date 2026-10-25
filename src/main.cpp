@@ -45,6 +45,7 @@
 #include "sign.hpp"
 #include "picture.hpp"
 #include "printing.hpp"
+#include "pdfa.hpp"
 
 namespace {
 
@@ -107,7 +108,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
 void formReset(); void flattenDocument(); void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
-void sanitizeDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
+void sanitizeDialog(); void pdfaDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
 void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int cmd); void addPictureItems(HMENU m);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
@@ -229,7 +230,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -2241,6 +2242,7 @@ void toolsDispatch(int cmd) {
         case N_BW: doGreyscale(); break;
         case N_BATCH: batchDialog(); break;
         case N_SANITIZE: sanitizeDialog(); break;
+        case N_PDFA: pdfaDialog(); break;
         case F_EXPORT: formExport(); break;
         case F_FILL: formFillFromCsv(); break;
         case F_TEXT: startFormField(Viewer::Tool::FormText); break;
@@ -2352,6 +2354,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pg), L"Edit pages");
     sep();
     add(T_EXPORT, L"Export as pictures, text, Word or Excel...");
+    add(N_PDFA, L"Save a PDF/A copy (for archiving)...");
     HMENU rate = CreatePopupMenu();
     add(T_READ, speech::speaking() ? L"Stop reading aloud\tCtrl+Shift+U" : L"Read aloud\tCtrl+Shift+U");
     for (int i = 0; i < 4; ++i) AppendMenuW(rate, MF_STRING | (app.readRate == kRates[i] ? MF_CHECKED : 0), T_RATE + i, kRateNames[i]);
@@ -4270,7 +4273,7 @@ void formReset() {
 void flattenDocument() {
     Document* d = activeDoc();
     if (!d) return;
-    if (MessageBoxW(app.wnd, L"Make every comment, drawing, stamp and form field a fixed part of the page?\n\nThey can no longer be edited or filled in, and links stop working. Undo (Ctrl+Z) takes it back until you save.",
+    if (MessageBoxW(app.wnd, L"Make every comment, drawing, stamp and form field a fixed part of the page?\n\nThey can no longer be edited or filled in. Links keep working. Undo (Ctrl+Z) takes it back until you save.",
                     L"Flatten", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
     const int n = d->flattenAll();
@@ -4296,6 +4299,40 @@ void formAutoDetect() {
 }
 
 // ---- privacy: remove hidden data ----
+void pdfaDialog() {
+    Document* d = activeDoc();
+    if (!d) return;
+    std::vector<FormField> f(2);
+    f[0] = {FormField::Note, L"", {}, L"PDF/A-2b, for archiving: fonts are embedded; scripts, attachments and passwords are left out. Comments and fields become part of the pages."};
+    f[1] = {FormField::Choice, L"Pages:", {L"Keep text and drawings (recommended)", L"Pictures with searchable text (larger)"}, L"", 0};
+    if (!showForm(app.wnd, app.inst, L"Save a PDF/A copy", f, L"Choose file...")) return;
+    std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+    std::wstring base = d->title();
+    if (base.find_last_of(L'.') != std::wstring::npos) base.resize(base.find_last_of(L'.'));
+    wcsncpy_s(buf.data(), buf.size(), (base + L" (PDF-A).pdf").c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Save the PDF/A copy as";
+    ofn.lpstrFilter = L"PDF files (*.pdf)\0*.pdf\0";
+    ofn.lpstrDefExt = L"pdf";
+    ofn.lpstrFile = buf.data();
+    ofn.nMaxFile = static_cast<DWORD>(buf.size());
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    if (_wcsicmp(buf.data(), d->path().c_str()) == 0) { MessageBoxW(app.wnd, L"Choose a different name: the PDF/A copy cannot replace the open file.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    std::vector<unsigned char> out;
+    pdfa::Result r;
+    std::wstring err;
+    const bool ok = pdfa::convert(*d, f[1].choice == 1, out, r, err) && Document::writeFile(buf.data(), out) == SaveResult::Ok;
+    SetCursor(old);
+    if (!ok) { MessageBoxW(app.wnd, (L"The PDF/A copy could not be made. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    std::wstring msg = L"Saved the PDF/A-2b copy (" + std::to_wstring(r.pages) + L" page(s)).";
+    for (const auto& n : r.notes) msg += L"\n\n" + n;
+    msg += L"\n\nOpen it?";
+    if (MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) openFile(buf.data());
+}
+
 void sanitizeDialog() {
     Document* d = activeDoc();
     if (!d) return;
@@ -4504,6 +4541,7 @@ void commandPalette() {
         add(L"Black and white / greyscale pictures", [] { doGreyscale(); });
         add(L"Password protection", [] { toolsDispatch(T_PROTECT); });
         add(L"Remove hidden data (metadata, attachments, scripts)", [] { sanitizeDialog(); });
+        add(L"Save a PDF/A copy for archiving (also text and pictures)", [] { pdfaDialog(); });
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
@@ -5347,6 +5385,25 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         const bool ok = printing::savePng(px, w, h, files[2]);
         return ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--pdfa") {   // --pdfa in.pdf|in.txt|in.md out.pdf [pictures] : writes out.pdf.txt
+        if (files.size() < 3) return 2;
+        Document doc;
+        std::wstring ext = files[1].substr(files[1].find_last_of(L'.') == std::wstring::npos ? files[1].size() : files[1].find_last_of(L'.'));
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        if (ext == L".txt" || ext == L".md" || ext == L".markdown") {
+            std::vector<unsigned char> bytes;
+            if (!textpdf::build(readTextFile(files[1]), ext != L".txt", bytes).ok || doc.load(std::move(bytes), {}) != OpenResult::Ok) return 3;
+        } else if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<unsigned char> out;
+        pdfa::Result r;
+        std::wstring err;
+        const bool ok = pdfa::convert(doc, files.size() > 3 && files[3] == L"pictures", out, r, err);
+        std::wstring rep = L"ok=" + std::to_wstring(ok) + L" pages=" + std::to_wstring(r.pages) + L" fonts=" + std::to_wstring(r.fontsReplaced) + L" pictures=" + std::to_wstring(r.picturePages) + L"\n" + err + L"\n";
+        for (const auto& n : r.notes) rep += n + L"\n";
+        std::string u(rep.begin(), rep.end());
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end()));
+        return ok && Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
         if (files.size() < 3) return 2;

@@ -17,6 +17,14 @@
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
     X(FPDF_InitLibrary)          \
+    X(FPDFText_LoadFont) \
+    X(FPDFPageObj_CreateTextObj) \
+    X(FPDFTextObj_GetTextRenderMode) \
+    X(FPDFPageObj_GetStrokeColor) \
+    X(FPDFFont_Close) \
+    X(FPDFImageObj_GetImageMetadata) \
+    X(FPDFFormObj_CountObjects) \
+    X(FPDFFormObj_GetObject) \
     X(FPDF_GetFileIdentifier) \
     X(FPDFPageObj_SetLineCap) \
     X(FPDFPageObj_SetLineJoin) \

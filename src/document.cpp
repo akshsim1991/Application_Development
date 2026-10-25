@@ -1,4 +1,5 @@
 #include "document.hpp"
+#include "pdfedit.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <cstring>
@@ -532,7 +533,110 @@ bool Document::movePages(std::vector<int> pages, int destination) {
     return true;
 }
 
+namespace {
+
+// The object numbers inside an array text: "[3 0 R 7 0 R]" -> 3, 7
+std::vector<int> refsInArray(const std::string& a) {
+    std::vector<int> out;
+    size_t p = 0;
+    while (p < a.size()) {
+        while (p < a.size() && !pdfedit::File::isDigit(a[p])) ++p;
+        if (p >= a.size()) break;
+        char* x = nullptr;
+        const long n = strtol(a.c_str() + p, &x, 10);
+        const char* y = x;
+        strtol(y, &x, 10);
+        while (*x == ' ' || *x == '\r' || *x == '\n') ++x;
+        if (*x == 'R' && x != y) { out.push_back(static_cast<int>(n)); p = static_cast<size_t>(x - a.c_str()) + 1; }
+        else p = static_cast<size_t>(y - a.c_str());
+    }
+    return out;
+}
+
+// The /Annots array text of a page dictionary (following one indirect reference), and the object holding it (-1: inline)
+bool annotsOf(const pdfedit::File& f, const std::string& page, std::string& array, int& holder) {
+    size_t b, e;
+    holder = -1;
+    if (!pdfedit::valueSpan(page, "/Annots", b, e)) return false;
+    array = page.substr(b, e - b);
+    if (array.find('[') == std::string::npos) {
+        holder = atoi(array.c_str());
+        if (!f.object(holder, array)) return false;
+    }
+    return true;
+}
+
+// Link annotations of each page, as dictionary text that stands on its own (an indirect action is copied in)
+std::map<int, std::vector<std::string>> linksOf(const std::vector<unsigned char>& pdf, int pages) {
+    std::map<int, std::vector<std::string>> out;
+    const std::string s(pdf.begin(), pdf.end());
+    pdfedit::File f(s);
+    std::string cat;
+    if (!f.parseXref() || !f.object(pdfedit::refOf(f.trailer, "/Root"), cat)) return out;
+    const int tree = pdfedit::refOf(cat, "/Pages");
+    for (int i = 0; i < pages; ++i) {
+        int idx = i;
+        std::set<int> seen;
+        const int pg = pdfedit::pageRef(f, tree, idx, seen);
+        std::string body, arr;
+        int holder;
+        if (pg < 0 || !f.object(pg, body) || !annotsOf(f, body, arr, holder)) continue;
+        for (int r : refsInArray(arr)) {
+            std::string a;
+            size_t sb, se;
+            if (!f.object(r, a) || !pdfedit::valueSpan(a, "/Subtype", sb, se) || a.compare(sb, 5, "/Link") != 0) continue;
+            size_t ab, ae;
+            if (pdfedit::valueSpan(a, "/A", ab, ae) && a.find('<', ab) > ae) {   // "/A N 0 R"
+                std::string act;
+                if (f.object(atoi(a.c_str() + ab), act)) {
+                    while (!act.empty() && std::isspace(static_cast<unsigned char>(act.back()))) act.pop_back();
+                    size_t lead = act.find_first_not_of(" \r\n\t");
+                    a = a.substr(0, ab) + " " + act.substr(lead == std::string::npos ? 0 : lead) + a.substr(ae);
+                }
+            }
+            out[i].push_back(a);
+        }
+    }
+    return out;
+}
+
+// Puts the links back on their pages (as new objects), as an incremental update
+bool reattachLinks(std::vector<unsigned char>& pdf, const std::map<int, std::vector<std::string>>& links) {
+    const std::string s(pdf.begin(), pdf.end());
+    pdfedit::File f(s);
+    std::string cat;
+    if (!f.parseXref() || !f.object(pdfedit::refOf(f.trailer, "/Root"), cat)) return false;
+    const int tree = pdfedit::refOf(cat, "/Pages");
+    std::map<int, std::string> write;
+    int next = f.size;
+    for (const auto& kv : links) {
+        int idx = kv.first;
+        std::set<int> seen;
+        const int pg = pdfedit::pageRef(f, tree, idx, seen);
+        std::string body;
+        if (pg < 0 || !f.object(pg, body)) continue;
+        std::string refs;
+        for (const std::string& a : kv.second) { write[next] = a; refs += std::to_string(next++) + " 0 R "; }
+        std::string arr;
+        int holder;
+        if (annotsOf(f, body, arr, holder) && arr.rfind(']') != std::string::npos) {
+            arr.insert(arr.rfind(']'), " " + refs);
+            if (holder >= 0) write[holder] = arr;
+            else write[pg] = pdfedit::setKey(body, "/Annots", arr.substr(arr.find('[')));
+        } else write[pg] = pdfedit::setKey(body, "/Annots", "[" + refs + "]");
+    }
+    if (write.empty()) return true;
+    pdf = pdfedit::appendIncremental(s, f, write, next);
+    return true;
+}
+
+} // namespace
+
 int Document::flattenAll() {
+    // PDFium drops every annotation of a flattened page, links too; they are not part of its look, so they come back
+    std::vector<unsigned char> before;
+    std::map<int, std::vector<std::string>> links;
+    if (serialize(before)) links = linksOf(before, pageCount());
     beginChange();
     int changed = 0;
     for (int i = 0; i < pageCount(); ++i) {
@@ -540,7 +644,7 @@ int Document::flattenAll() {
         if (p && pdfium::api().FPDFPage_Flatten(p, FLAT_PRINT) == FLATTEN_SUCCESS) ++changed;
     }
     std::vector<unsigned char> bytes;
-    if (!changed || !serialize(bytes) || load(std::move(bytes), password_) != OpenResult::Ok) { if (changed) undo(); else cancelChange(); return 0; }
+    if (!changed || !serialize(bytes) || (!links.empty() && !reattachLinks(bytes, links)) || load(std::move(bytes), password_) != OpenResult::Ok) { if (changed) undo(); else cancelChange(); return 0; }
     return changed;
 }
 

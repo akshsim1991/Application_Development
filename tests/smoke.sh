@@ -184,6 +184,31 @@ from PIL import Image
 im=Image.open('$work/sheet.png').convert('RGB')
 assert all(max(p)-min(p)<=2 for p in im.get_flattened_data()) and min(min(p) for p in im.get_flattened_data())<128\""
 
+echo "PDF/A-2b copy"
+python3 -c "
+import pikepdf
+p=pikepdf.open('$work/rich.pdf'); p.pages.append(p.pages[0])
+link=p.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.Annot,Subtype=pikepdf.Name.Link,Rect=[72,700,300,720],Dest=[p.pages[1].obj,pikepdf.Name.Fit]))
+p.pages[0].obj['/Annots']=pikepdf.Array([link])
+p.attachments['a.txt']=pikepdf.AttachedFileSpec(p,b'x')
+p.Root.OpenAction=pikepdf.Dictionary(S=pikepdf.Name.JavaScript,JS='app.alert(1)')
+p.save('$work/arch.pdf')"
+run --pdfa "$(W arch.pdf)" "$(W arch-a.pdf)"
+check "converted"                   "grep -q '^ok=1' '$work/arch-a.pdf.txt'"
+check "names PDF/A-2b, sRGB intent" "python3 -c \"
+import pikepdf;p=pikepdf.open('$work/arch-a.pdf');m=p.Root.Metadata.read_bytes()
+assert b'<pdfaid:part>2</pdfaid:part>' in m and b'<pdfaid:conformance>B</pdfaid:conformance>' in m
+oi=p.Root.OutputIntents[0];assert oi.S=='/GTS_PDFA1' and oi.DestOutputProfile.N==3 and '/ID' in p.trailer\""
+check "no script, attachment"       "python3 -c \"
+import pikepdf;p=pikepdf.open('$work/arch-a.pdf');assert '/OpenAction' not in p.Root and len(p.attachments)==0\""
+check "link kept, printable"        "python3 -c \"
+import pikepdf;p=pikepdf.open('$work/arch-a.pdf');a=p.pages[0].Annots[0];assert a.Subtype=='/Link' and a.F==4 and a.Dest[0].objgen==p.pages[1].objgen\""
+check "visible fonts embedded"      "grep -q 'pictures=0' '$work/arch-a.pdf.txt' && ! pdffonts '$work/arch-a.pdf' | tail -n +3 | awk '{print \$(NF-4)}' | grep -q no || grep -q 'pictures=[1-9]' '$work/arch-a.pdf.txt'"
+check "text still searchable"       "pdftotext '$work/arch-a.pdf' - | grep -q 'Quarterly Report'"
+if [ -n "${VERAPDF:-}" ]; then
+  check "veraPDF: PDF/A-2b passes"  "'$VERAPDF' --flavour 2b --format text '$work/arch-a.pdf' 2>/dev/null | grep -q '^PASS'"
+else echo "  skip veraPDF check (set VERAPDF to the veraPDF command line)"; fi
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""

@@ -25,6 +25,7 @@ add_executable(FeatherPDF WIN32
   src/sigpad.cpp
   src/outline.cpp
   src/foldersearch.cpp
+  src/batch.cpp
   src/picture.cpp
   resources/FeatherPDF.rc)
 

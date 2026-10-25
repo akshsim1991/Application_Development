@@ -18,6 +18,7 @@
 #include "sidebar.hpp"
 #include "outline.hpp"
 #include "foldersearch.hpp"
+#include "batch.hpp"
 #include <commctrl.h>
 #include <shlobj.h>
 #include <sstream>
@@ -96,7 +97,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
-void searchFolder(); void writeSession(); void clearSession(); bool restoreSession();
+void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -217,7 +218,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -2057,6 +2058,7 @@ void toolsDispatch(int cmd) {
         case N_TABLE_DEL: tableDelete(); break;
         case N_BOOKMARK: addBookmarkHere(); break;
         case N_BW: doGreyscale(); break;
+        case N_BATCH: batchDialog(); break;
         default:
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
@@ -2096,6 +2098,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(red, MF_STRING, N_RED_CHECK, L"Check that the text is gone...");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(red), L"Redact");
+    add(N_BATCH, L"Batch: process a whole folder...");
     add(T_COMPRESS, L"Compress (make the file smaller)...");
     add(N_BW, L"Black and white / greyscale pictures...");
     add(T_PROTECT, L"Password protection...");
@@ -2382,7 +2385,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2391,6 +2394,7 @@ void showMainMenu(const RECT& anchor) {
     add(MM_OPEN, L"Open...\tCtrl+O");
     add(MM_NEWPDF, L"New PDF from pictures...");
     add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
+    add(MM_BATCH, L"Batch: process a whole folder...");
     HMENU rec = CreatePopupMenu();
     for (size_t i = 0; i < app.recent.size(); ++i) {
         size_t s = app.recent[i].find_last_of(L"\\/");
@@ -2497,6 +2501,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
         case MM_SEARCHDIR: searchFolder(); break;
+        case MM_BATCH: batchDialog(); break;
         case MM_RELOAD: reloadFromDisk(); break;
         case MM_SIGN: toolsDispatch(T_SIGN); break;
         case MM_COPYAREA: startCopyArea(); break;
@@ -3489,6 +3494,98 @@ void searchFolder() {
     }
 }
 
+// ---- batch mode ----
+std::wstring presetsDir() {
+    std::wstring s = settingsPath();
+    return s.substr(0, s.find_last_of(L'\\')) + L"\\presets";
+}
+
+std::vector<std::wstring> presetNames() {
+    std::vector<std::wstring> out;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((presetsDir() + L"\\*.ini").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { std::wstring n = fd.cFileName; out.push_back(n.substr(0, n.size() - 4)); } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+bool browseFolder(const wchar_t* title, std::wstring& out) {
+    wchar_t folder[MAX_PATH] = L"";
+    BROWSEINFOW bi{};
+    bi.hwndOwner = app.wnd; bi.lpszTitle = title; bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return false;
+    SHGetPathFromIDListW(pidl, folder);
+    CoTaskMemFree(pidl);
+    out = folder;
+    return !out.empty();
+}
+
+void batchDialog() {
+    batch::Job job;
+    std::vector<std::wstring> names = presetNames();
+    if (!names.empty()) {
+        std::vector<FormField> f(2);
+        std::vector<std::wstring> choices{L"New settings"};
+        choices.insert(choices.end(), names.begin(), names.end());
+        f[0] = {FormField::Choice, L"Start from:", choices, L"", 0};
+        f[1] = {FormField::Check, L"Delete the chosen preset instead"};
+        if (!showForm(app.wnd, app.inst, L"Batch: process a folder", f, L"Next")) return;
+        if (f[0].choice > 0) {
+            const std::wstring file = presetsDir() + L"\\" + names[f[0].choice - 1] + L".ini";
+            if (f[1].checked) { DeleteFileW(file.c_str()); MessageBoxW(app.wnd, L"The preset was deleted.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+            batch::load(file, job);
+        }
+    }
+    if (!browseFolder(L"Choose the folder with the PDF files to process", job.inputDir)) return;
+    int where = MessageBoxW(app.wnd, L"Where should the results go?\n\nYes = next to the originals, named \"... (batch).pdf\"\nNo = choose another folder (the sub-folder structure is kept)\nCancel = stop", L"Batch", MB_YESNOCANCEL | MB_ICONQUESTION);
+    if (where == IDCANCEL) return;
+    job.outputDir.clear();
+    if (where == IDNO && !browseFolder(L"Choose the folder for the results", job.outputDir)) return;
+
+    std::vector<FormField> f(11);
+    f[0] = {FormField::Check, L"Recognise text (OCR)", {}, L"", 0, job.ocr};
+    f[1] = {FormField::Text, L"OCR language:", {}, job.ocrLanguage};
+    f[2] = {FormField::Text, L"Watermark text (empty = none):", {}, job.watermark};
+    f[3] = {FormField::Choice, L"Compress:", {L"No", L"Balanced", L"High quality", L"Smallest file"}, L"", job.compress};
+    f[4] = {FormField::Check, L"Greyscale pictures", {}, L"", 0, job.greyscale};
+    f[5] = {FormField::Password, L"Password to open (empty = none):", {}, job.userPassword};
+    f[6] = {FormField::Password, L"Owner password (empty = same):", {}, job.ownerPassword};
+    f[7] = {FormField::Text, L"Sign with certificate file (.pfx):", {}, job.certificate};
+    f[8] = {FormField::Password, L"Certificate password:", {}, job.certificatePassword};
+    f[9] = {FormField::Check, L"Include sub-folders", {}, L"", 0, job.subfolders};
+    f[10] = {FormField::Text, L"Save these settings as preset:", {}, L""};
+    if (!showForm(app.wnd, app.inst, L"Batch: what to do with every file", f, L"Start", [](const std::vector<FormField>& v) -> std::wstring {
+            if (!v[2].text.empty() && !pageobj::isLatin(v[2].text)) return L"The watermark can use letters, numbers and common symbols of Western languages.";
+            if (!v[7].text.empty() && GetFileAttributesW(v[7].text.c_str()) == INVALID_FILE_ATTRIBUTES) return L"The certificate file was not found.";
+            const bool any = v[0].checked || !v[2].text.empty() || v[3].choice > 0 || v[4].checked || !v[5].text.empty() || !v[6].text.empty() || !v[7].text.empty();
+            return any ? L"" : L"Choose at least one thing to do."; })) return;
+    job.ocr = f[0].checked; job.ocrLanguage = f[1].text.empty() ? L"eng" : f[1].text; job.watermark = f[2].text; job.compress = f[3].choice;
+    job.greyscale = f[4].checked; job.userPassword = f[5].text; job.ownerPassword = f[6].text; job.certificate = f[7].text;
+    job.certificatePassword = f[8].text; job.subfolders = f[9].checked;
+    std::wstring pname = f[10].text;
+    for (auto& c : pname) if (wcschr(L"\\/:*?\"<>|.", c)) c = L'_';
+    if (!pname.empty()) {
+        CreateDirectoryW(presetsDir().c_str(), nullptr);
+        batch::save(presetsDir() + L"\\" + pname + L".ini", job);
+    }
+    ProgressWin pw;
+    progressOpen(pw, L"Batch");
+    batch::Result r = batch::run(job, [&](int d, int t, const std::wstring& file) { return progressStep(pw, d, t, file); });
+    progressClose(pw);
+    std::wstring msg = std::to_wstring(r.done) + L" of " + std::to_wstring(r.total) + L" file(s) processed";
+    if (r.failed) msg += L", " + std::to_wstring(r.failed) + L" with problems";
+    if (r.cancelled) msg += L" (stopped)";
+    msg += L".";
+    for (size_t i = 0; i < r.problems.size() && i < 10; ++i) msg += L"\n  - " + r.problems[i];
+    if (r.problems.size() > 10) msg += L"\n  ... and " + std::to_wstring(r.problems.size() - 10) + L" more";
+    if (!r.total) msg = L"There are no PDF files in that folder.";
+    MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | (r.failed ? MB_ICONWARNING : MB_ICONINFORMATION));
+}
+
 // ---- command palette (Ctrl+K) ----
 struct PaletteCmd { std::wstring name; std::function<void()> run; };
 struct PaletteState { std::vector<PaletteCmd> all; std::vector<int> shown; HWND edit = nullptr, list = nullptr; bool done = false; int chosen = -1; };
@@ -3568,6 +3665,7 @@ void commandPalette() {
     Document* d = activeDoc();
     add(L"Open a file", [] { runCommand(C_OPEN); });
     add(L"Search all my PDFs in a folder", [] { searchFolder(); });
+    add(L"Batch: process a whole folder", [] { batchDialog(); });
     add(L"New PDF from pictures", [] { newPdfFromPictures(); });
     if (d) {
         add(L"Save", [] { saveActive(); });
@@ -4243,6 +4341,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--batch") {   // --batch preset.ini : runs the saved preset on its folders, writes preset.ini.log
+        if (files.size() < 2) return 2;
+        batch::Job job;
+        if (!batch::load(files[1], job) || job.inputDir.empty()) return 3;
+        batch::Result r = batch::run(job, nullptr);
+        std::wstring log = L"total=" + std::to_wstring(r.total) + L" done=" + std::to_wstring(r.done) + L" failed=" + std::to_wstring(r.failed) + L"\r\n";
+        for (const auto& p : r.problems) log += p + L"\r\n";
+        int n = WideCharToMultiByte(CP_UTF8, 0, log.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, log.c_str(), -1, u.data(), n, nullptr, nullptr);
+        Document::writeFile(files[1] + L".log", std::vector<unsigned char>(u.begin(), u.end()));
+        return r.failed ? 5 : 0;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

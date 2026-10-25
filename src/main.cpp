@@ -21,6 +21,7 @@
 #include "batch.hpp"
 #include "formcreate.hpp"
 #include "visualdiff.hpp"
+#include "textpdf.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
 #include <commctrl.h>
@@ -409,9 +410,17 @@ void addRecent(const std::wstring& path) {
 }
 
 // ---- opening files ----
+bool openTextAsPdf(const std::wstring& path);
+
 void openFile(const std::wstring& pathIn) {
     wchar_t full[MAX_PATH * 2];
     std::wstring path = GetFullPathNameW(pathIn.c_str(), MAX_PATH * 2, full, nullptr) ? full : pathIn;
+    {   // a text or Markdown file becomes a new PDF
+        const size_t dot = path.find_last_of(L'.');
+        std::wstring ext = dot == std::wstring::npos ? L"" : path.substr(dot);
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        if (ext == L".txt" || ext == L".md" || ext == L".markdown") { openTextAsPdf(path); return; }
+    }
 
     for (size_t i = 0; i < app.tabs.size(); ++i)
         if (_wcsicmp(app.tabs[i]->path().c_str(), path.c_str()) == 0) { switchTab(static_cast<int>(i)); return; }
@@ -447,13 +456,35 @@ void openDialog() {
     wchar_t buf[MAX_PATH * 2] = L"";
     OPENFILENAMEW ofn{sizeof(ofn)};
     ofn.hwndOwner = app.wnd;
-    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0All files (*.*)\0*.*\0";
+    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0Text and Markdown (made into a PDF) (*.txt;*.md)\0*.txt;*.md;*.markdown\0All files (*.*)\0*.*\0";
     ofn.lpstrFile = buf;
     ofn.nMaxFile = MAX_PATH * 2;
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
     if (GetOpenFileNameW(&ofn)) openFile(buf);
 }
 
+
+// ---- text and Markdown files as PDF ----
+std::wstring readTextFile(const std::wstring& path);
+void addDocumentTab(std::unique_ptr<Document> doc);
+
+bool openTextAsPdf(const std::wstring& path) {
+    std::wstring ext = path.substr(path.find_last_of(L'.'));
+    for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+    std::vector<unsigned char> bytes;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    textpdf::Result r = textpdf::build(readTextFile(path), ext != L".txt", bytes);
+    SetCursor(old);
+    auto doc = std::make_unique<Document>();
+    if (!r.ok || doc->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The file could not be made into a PDF.", kAppName, MB_OK | MB_ICONWARNING); return false; }
+    std::wstring name = path.substr(path.find_last_of(L"\\/") + 1);
+    name = name.substr(0, name.find_last_of(L'.')) + L".pdf";
+    doc->setName(name);
+    doc->markModified();
+    addDocumentTab(std::move(doc));
+    if (r.replaced) MessageBoxW(app.wnd, (std::to_wstring(r.replaced) + L" character(s) are not in the standard PDF fonts (for example Indian or Asian scripts) and were written as \"?\".").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+    return true;
+}
 
 // ---- saving, closing, undo ----
 
@@ -2440,7 +2471,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2448,6 +2479,7 @@ void showMainMenu(const RECT& anchor) {
     const bool has = d != nullptr;
     add(MM_OPEN, L"Open...\tCtrl+O");
     add(MM_NEWPDF, L"New PDF from pictures...");
+    add(MM_NEWTEXT, L"New PDF from a text or Markdown file...");
     add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
     add(MM_BATCH, L"Batch: process a whole folder...");
     HMENU rec = CreatePopupMenu();
@@ -2555,6 +2587,17 @@ void showMainMenu(const RECT& anchor) {
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
+        case MM_NEWTEXT: {
+            wchar_t buf[MAX_PATH * 2] = L"";
+            OPENFILENAMEW ofn{sizeof(ofn)};
+            ofn.hwndOwner = app.wnd;
+            ofn.lpstrTitle = L"Choose a text or Markdown file";
+            ofn.lpstrFilter = L"Text and Markdown (*.txt;*.md)\0*.txt;*.md;*.markdown\0";
+            ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2;
+            ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+            if (GetOpenFileNameW(&ofn)) openTextAsPdf(buf);
+            break;
+        }
         case MM_SEARCHDIR: searchFolder(); break;
         case MM_BATCH: batchDialog(); break;
         case MM_RELOAD: reloadFromDisk(); break;
@@ -4764,6 +4807,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::string rep = "ok=" + std::to_string(r.ok) + " pixels=" + std::to_string(r.differingPixels) + "\n";
         Document::writeFile(files[3] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         return r.ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--topdf") {   // --topdf in.txt|in.md out.pdf
+        if (files.size() < 3) return 2;
+        std::wstring ext = files[1].substr(files[1].find_last_of(L'.') == std::wstring::npos ? files[1].size() : files[1].find_last_of(L'.'));
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        std::vector<unsigned char> bytes;
+        textpdf::Result r = textpdf::build(readTextFile(files[1]), ext != L".txt", bytes);
+        if (!r.ok) return 4;
+        return Document::writeFile(files[2], bytes) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

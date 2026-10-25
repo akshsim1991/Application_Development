@@ -11,10 +11,27 @@
 #include "fpdf_formfill.h"
 #include "fpdf_ppo.h"
 #include "fpdf_transformpage.h"
+#include "fpdf_flatten.h"
+#include "fpdf_attachment.h"
 
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
     X(FPDF_InitLibrary)          \
+    X(FPDF_GetFileIdentifier) \
+    X(FPDFPageObj_SetLineCap) \
+    X(FPDFPageObj_SetLineJoin) \
+    X(FPDFAnnot_GetFlags) \
+    X(FPDFDoc_DeleteAttachment) \
+    X(FPDFDoc_GetAttachmentCount) \
+    X(FPDFImageObj_GetImagePixelSize) \
+    X(FPDFImageObj_GetRenderedBitmap) \
+    X(FPDFPage_Flatten) \
+    X(FPDFPath_Close) \
+    X(FPDFPath_BezierTo) \
+    X(FPDFPath_LineTo) \
+    X(FPDFPath_MoveTo) \
+    X(FPDFPageObj_CreateNewPath) \
+    X(FPDFAnnot_AppendObject) \
     X(FPDFPathSegment_GetPoint) \
     X(FPDFPath_GetPathSegment) \
     X(FPDFPath_CountSegments) \

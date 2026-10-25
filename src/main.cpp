@@ -20,6 +20,7 @@
 #include "foldersearch.hpp"
 #include "batch.hpp"
 #include "formcreate.hpp"
+#include "visualdiff.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
 #include <commctrl.h>
@@ -3304,135 +3305,6 @@ void splitPdf() {
     MessageBoxW(app.wnd, msg, kAppName, saved ? MB_OK | MB_ICONINFORMATION : MB_OK | MB_ICONWARNING);
 }
 
-// ---- compare two documents (by text) ----
-struct Word { int start, count; std::wstring text; };
-std::vector<Word> wordsOf(Document& d, int page) {
-    std::vector<Word> out;
-    const int n = d.charCount(page);
-    if (n <= 0) return out;
-    std::wstring t = d.textRange(page, 0, n);
-    size_t i = 0;
-    while (i < t.size()) {
-        while (i < t.size() && iswspace(t[i])) ++i;
-        size_t s = i;
-        while (i < t.size() && !iswspace(t[i])) ++i;
-        if (i > s) out.push_back({static_cast<int>(s), static_cast<int>(i - s), t.substr(s, i - s)});
-    }
-    return out;
-}
-
-void compareDocs() {
-    Document* a = activeDoc();
-    if (!a || app.tabs.size() < 2) return;
-    std::vector<Document*> others;
-    std::vector<std::wstring> names;
-    for (auto& t : app.tabs) if (t.get() != a) { others.push_back(t.get()); names.push_back(t->title()); }
-    std::vector<FormField> f(2);
-    f[0] = {FormField::Note, L"", {}, L"Opens a copy of \"" + a->title() + L"\" in a new tab with the words that are missing from the other document highlighted."};
-    f[1] = {FormField::Choice, L"Compare with:", names, L"", 0};
-    if (!showForm(app.wnd, app.inst, L"Compare documents", f, L"Compare")) return;
-    Document* b = others[f[1].choice];
-    std::vector<unsigned char> bytes;
-    if (!a->serialize(bytes)) { MessageBoxW(app.wnd, L"The document could not be prepared for comparing.", kAppName, MB_OK | MB_ICONWARNING); return; }
-    auto copy = std::make_unique<Document>();
-    if (copy->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The comparison copy could not be opened. (Password-protected documents cannot be compared.)", kAppName, MB_OK | MB_ICONWARNING); return; }
-    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    int pagesDiff = 0, onlyA = 0, onlyB = 0, skipped = 0;
-    const int pages = std::max(a->pageCount(), b->pageCount());
-    for (int p = 0; p < pages; ++p) {
-        std::vector<Word> wa = p < a->pageCount() ? wordsOf(*a, p) : std::vector<Word>{};
-        std::vector<Word> wb = p < b->pageCount() ? wordsOf(*b, p) : std::vector<Word>{};
-        const size_t n = wa.size(), m = wb.size();
-        if (n * m > 9000000) { ++skipped; continue; }
-        std::vector<char> keepA(n, 0);
-        {   // longest common subsequence of the words
-            std::vector<std::vector<unsigned short>> L(n + 1, std::vector<unsigned short>(m + 1, 0));
-            for (size_t i = n; i-- > 0;)
-                for (size_t j = m; j-- > 0;) L[i][j] = wa[i].text == wb[j].text ? static_cast<unsigned short>(L[i + 1][j + 1] + 1) : std::max(L[i + 1][j], L[i][j + 1]);
-            size_t i = 0, j = 0;
-            while (i < n && j < m) {
-                if (wa[i].text == wb[j].text) { keepA[i] = 1; ++i; ++j; }
-                else if (L[i + 1][j] >= L[i][j + 1]) ++i; else ++j;
-            }
-            onlyB += static_cast<int>(m - L[0][0]);
-        }
-        std::vector<annot::RectD> rects;
-        FPDF_TEXTPAGE tp = p < copy->pageCount() ? copy->text(p) : nullptr;
-        for (size_t i = 0; i < n; ++i) {
-            if (keepA[i]) continue;
-            ++onlyA;
-            if (!tp) continue;
-            const int cnt = pdfium::api().FPDFText_CountRects(tp, wa[i].start, wa[i].count);
-            for (int k = 0; k < cnt; ++k) {
-                double l, t, r, bt;
-                if (pdfium::api().FPDFText_GetRect(tp, k, &l, &t, &r, &bt)) rects.push_back({l, bt, r, t});
-            }
-        }
-        const bool differs = !rects.empty() || wa.size() != wb.size() || std::any_of(keepA.begin(), keepA.end(), [](char c) { return !c; });
-        if (differs) ++pagesDiff;
-        if (!rects.empty() && p < copy->pageCount()) annot::addMarkup(*copy, p, annot::Markup::Highlight, rects, RGB(0xFF, 0x8C, 0x00));
-    }
-    SetCursor(old);
-    wchar_t msg[400];
-    swprintf(msg, 400, L"Pages with differences: %d of %d.\nWords only in \"%ls\" (highlighted in the new tab): %d.\nWords only in \"%ls\": %d.%ls\n\nThis compares the text, not how the pages look.",
-             pagesDiff, pages, a->title().c_str(), onlyA, b->title().c_str(), onlyB, skipped ? L"\nSome very large pages were skipped." : L"");
-    copy->setName(L"Comparison - " + a->title());
-    addDocumentTab(std::move(copy));
-    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
-}
-
-// ---- side by side ----
-void sideBySideAction(int cmd) {
-    if (cmd == N_SBS_OFF) {
-        app.sbs = false; app.sbsDoc = nullptr; app.sbsOwned.reset();
-        app.viewer2.setDocument(nullptr);
-        ShowWindow(app.viewer2.hwnd(), SW_HIDE);
-        relayoutChildren();
-        return;
-    }
-    Document* other = nullptr;
-    if (cmd == N_SBS_TAB) {
-        std::vector<Document*> others;
-        std::vector<std::wstring> names;
-        for (auto& t : app.tabs) if (t.get() != activeDoc()) { others.push_back(t.get()); names.push_back(t->title()); }
-        if (others.empty()) return;
-        std::vector<FormField> f(1);
-        f[0] = {FormField::Choice, L"Show next to this one:", names, L"", 0};
-        if (!showForm(app.wnd, app.inst, L"Side by side", f, L"Show")) return;
-        other = others[f[0].choice];
-        app.sbsOwned.reset();
-    } else if (cmd == N_SBS_OPEN) {
-        std::vector<std::wstring> files;
-        pickPdf(false, files, L"Open next to this document");
-        if (files.empty()) return;
-        auto doc = openForImport(files[0]);
-        if (!doc) return;
-        other = doc.get();
-        app.sbsOwned = std::move(doc);
-    }
-    if (!other) return;
-    app.sbs = true; app.sbsDoc = other;
-    app.viewer2.setLayout(app.layout, app.cover);
-    app.viewer2.setDocument(other);
-    ShowWindow(app.viewer2.hwnd(), SW_SHOW);
-    relayoutChildren();
-    if (activeDoc()) { other->fitWidth = true; app.viewer2.fitWidth(); app.viewer.fitWidth(); }
-}
-
-// keeps the second view at the same zoom and position as the first
-void syncSideBySide(bool fromFirst) {
-    if (!app.sbs || app.syncing) return;
-    Document* a = activeDoc();
-    if (!a || !app.sbsDoc || a == app.sbsDoc) return;
-    app.syncing = true;
-    Viewer& dst = fromFirst ? app.viewer2 : app.viewer;
-    Document* src = fromFirst ? a : app.sbsDoc;
-    Document* tgt = fromFirst ? app.sbsDoc : a;
-    if (std::fabs(tgt->zoom - src->zoom) > 1e-6) dst.setZoom(src->zoom);
-    dst.scrollTo(src->scrollY);
-    app.syncing = false;
-}
-
 // ---- a small progress window (used by folder search and batch mode) ----
 struct ProgressWin {
     HWND wnd = nullptr, label = nullptr, bar = nullptr;
@@ -3485,6 +3357,175 @@ void progressClose(ProgressWin& p) {
     EnableWindow(app.wnd, TRUE);
     DestroyWindow(p.wnd);
     SetForegroundWindow(app.wnd);
+}
+
+// ---- compare two documents (by text) ----
+struct Word { int start, count; std::wstring text; };
+std::vector<Word> wordsOf(Document& d, int page) {
+    std::vector<Word> out;
+    const int n = d.charCount(page);
+    if (n <= 0) return out;
+    std::wstring t = d.textRange(page, 0, n);
+    size_t i = 0;
+    while (i < t.size()) {
+        while (i < t.size() && iswspace(t[i])) ++i;
+        size_t s = i;
+        while (i < t.size() && !iswspace(t[i])) ++i;
+        if (i > s) out.push_back({static_cast<int>(s), static_cast<int>(i - s), t.substr(s, i - s)});
+    }
+    return out;
+}
+
+void compareTextDocs(Document* a, Document* b) {
+    std::vector<unsigned char> bytes;
+    if (!a->serialize(bytes)) { MessageBoxW(app.wnd, L"The document could not be prepared for comparing.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    auto copy = std::make_unique<Document>();
+    if (copy->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The comparison copy could not be opened. (Password-protected documents cannot be compared.)", kAppName, MB_OK | MB_ICONWARNING); return; }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    int pagesDiff = 0, onlyA = 0, onlyB = 0, skipped = 0;
+    const int pages = std::max(a->pageCount(), b->pageCount());
+    for (int p = 0; p < pages; ++p) {
+        std::vector<Word> wa = p < a->pageCount() ? wordsOf(*a, p) : std::vector<Word>{};
+        std::vector<Word> wb = p < b->pageCount() ? wordsOf(*b, p) : std::vector<Word>{};
+        const size_t n = wa.size(), m = wb.size();
+        if (n * m > 9000000) { ++skipped; continue; }
+        std::vector<char> keepA(n, 0);
+        {   // longest common subsequence of the words
+            std::vector<std::vector<unsigned short>> L(n + 1, std::vector<unsigned short>(m + 1, 0));
+            for (size_t i = n; i-- > 0;)
+                for (size_t j = m; j-- > 0;) L[i][j] = wa[i].text == wb[j].text ? static_cast<unsigned short>(L[i + 1][j + 1] + 1) : std::max(L[i + 1][j], L[i][j + 1]);
+            size_t i = 0, j = 0;
+            while (i < n && j < m) {
+                if (wa[i].text == wb[j].text) { keepA[i] = 1; ++i; ++j; }
+                else if (L[i + 1][j] >= L[i][j + 1]) ++i; else ++j;
+            }
+            onlyB += static_cast<int>(m - L[0][0]);
+        }
+        std::vector<annot::RectD> rects;
+        FPDF_TEXTPAGE tp = p < copy->pageCount() ? copy->text(p) : nullptr;
+        for (size_t i = 0; i < n; ++i) {
+            if (keepA[i]) continue;
+            ++onlyA;
+            if (!tp) continue;
+            const int cnt = pdfium::api().FPDFText_CountRects(tp, wa[i].start, wa[i].count);
+            for (int k = 0; k < cnt; ++k) {
+                double l, t, r, bt;
+                if (pdfium::api().FPDFText_GetRect(tp, k, &l, &t, &r, &bt)) rects.push_back({l, bt, r, t});
+            }
+        }
+        const bool differs = !rects.empty() || wa.size() != wb.size() || std::any_of(keepA.begin(), keepA.end(), [](char c) { return !c; });
+        if (differs) ++pagesDiff;
+        if (!rects.empty() && p < copy->pageCount()) annot::addMarkup(*copy, p, annot::Markup::Highlight, rects, RGB(0xFF, 0x8C, 0x00));
+    }
+    SetCursor(old);
+    wchar_t msg[400];
+    swprintf(msg, 400, L"Pages with differences: %d of %d.\nWords only in \"%ls\" (highlighted in the new tab): %d.\nWords only in \"%ls\": %d.%ls\n\nThis compares the text, not how the pages look.",
+             pagesDiff, pages, a->title().c_str(), onlyA, b->title().c_str(), onlyB, skipped ? L"\nSome very large pages were skipped." : L"");
+    copy->setName(L"Comparison - " + a->title());
+    addDocumentTab(std::move(copy));
+    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+
+void compareVisual(Document* a, Document* b) {
+    const int pages = std::max(a->pageCount(), b->pageCount());
+    std::vector<std::pair<double, double>> sizes;
+    for (int p = 0; p < pages; ++p) {
+        const PageSize ps = p < a->pageCount() ? a->pageSize(p) : b->pageSize(p);
+        sizes.push_back({ps.w, ps.h});
+    }
+    std::vector<unsigned char> bytes;
+    auto doc = std::make_unique<Document>();
+    if (!Document::blankBytes(sizes, bytes) || doc->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The comparison could not be made.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    ProgressWin pw;
+    progressOpen(pw, L"Comparing the pages");
+    int differing = 0, failed = 0;
+    for (int p = 0; p < pages; ++p) {
+        if (!progressStep(pw, p, pages, L"Page " + std::to_wstring(p + 1) + L" of " + std::to_wstring(pages))) break;
+        const std::wstring png = std::wstring(tmp) + L"feather_cmp_" + std::to_wstring(p) + L".png";
+        visualdiff::PageResult r = visualdiff::overlay(*a, p, *b, p, 100, png);
+        std::wstring err;
+        if (!r.ok || !pageobj::addPicture(*doc, p, 0, sizes[p].second, png, err, sizes[p].first)) ++failed;
+        else if (r.percent > 0.02) ++differing;
+        DeleteFileW(png.c_str());
+    }
+    progressClose(pw);
+    doc->setName(L"Visual comparison - " + a->title());
+    addDocumentTab(std::move(doc));
+    wchar_t msg[400];
+    swprintf(msg, 400, L"Pages that look different: %d of %d.\n\nRed: only in \"%ls\". Green: only in \"%ls\". Grey: the same.%ls",
+             differing, pages, a->title().c_str(), b->title().c_str(), failed ? L"\n\nSome pages could not be compared." : L"");
+    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void compareDocs() {
+    Document* a = activeDoc();
+    if (!a || app.tabs.size() < 2) return;
+    std::vector<Document*> others;
+    std::vector<std::wstring> names;
+    for (auto& t : app.tabs) if (t.get() != a) { others.push_back(t.get()); names.push_back(t->title()); }
+    std::vector<FormField> f(3);
+    f[0] = {FormField::Note, L"", {}, L"Compare \"" + a->title() + L"\" with another open document."};
+    f[1] = {FormField::Choice, L"Compare with:", names, L"", 0};
+    f[2] = {FormField::Choice, L"How:", {L"The words (text differences)", L"How the pages look (overlay)", L"Both"}, L"", 0};
+    if (!showForm(app.wnd, app.inst, L"Compare documents", f, L"Compare")) return;
+    Document* b = others[f[1].choice];
+    if (f[2].choice != 1) compareTextDocs(a, b);
+    if (f[2].choice != 0) compareVisual(a, b);
+}
+
+// ---- side by side ----
+void sideBySideAction(int cmd) {
+    if (cmd == N_SBS_OFF) {
+        app.sbs = false; app.sbsDoc = nullptr; app.sbsOwned.reset();
+        app.viewer2.setDocument(nullptr);
+        ShowWindow(app.viewer2.hwnd(), SW_HIDE);
+        relayoutChildren();
+        return;
+    }
+    Document* other = nullptr;
+    if (cmd == N_SBS_TAB) {
+        std::vector<Document*> others;
+        std::vector<std::wstring> names;
+        for (auto& t : app.tabs) if (t.get() != activeDoc()) { others.push_back(t.get()); names.push_back(t->title()); }
+        if (others.empty()) return;
+        std::vector<FormField> f(1);
+        f[0] = {FormField::Choice, L"Show next to this one:", names, L"", 0};
+        if (!showForm(app.wnd, app.inst, L"Side by side", f, L"Show")) return;
+        other = others[f[0].choice];
+        app.sbsOwned.reset();
+    } else if (cmd == N_SBS_OPEN) {
+        std::vector<std::wstring> files;
+        pickPdf(false, files, L"Open next to this document");
+        if (files.empty()) return;
+        auto doc = openForImport(files[0]);
+        if (!doc) return;
+        other = doc.get();
+        app.sbsOwned = std::move(doc);
+    }
+    if (!other) return;
+    app.sbs = true; app.sbsDoc = other;
+    app.viewer2.setLayout(app.layout, app.cover);
+    app.viewer2.setDocument(other);
+    ShowWindow(app.viewer2.hwnd(), SW_SHOW);
+    relayoutChildren();
+    if (activeDoc()) { other->fitWidth = true; app.viewer2.fitWidth(); app.viewer.fitWidth(); }
+}
+
+// keeps the second view at the same zoom and position as the first
+void syncSideBySide(bool fromFirst) {
+    if (!app.sbs || app.syncing) return;
+    Document* a = activeDoc();
+    if (!a || !app.sbsDoc || a == app.sbsDoc) return;
+    app.syncing = true;
+    Viewer& dst = fromFirst ? app.viewer2 : app.viewer;
+    Document* src = fromFirst ? a : app.sbsDoc;
+    Document* tgt = fromFirst ? app.sbsDoc : a;
+    if (std::fabs(tgt->zoom - src->zoom) > 1e-6) dst.setZoom(src->zoom);
+    dst.scrollTo(src->scrollY);
+    app.syncing = false;
 }
 
 // ---- a list of results to choose from (modal); returns the index or -1 ----
@@ -4685,6 +4726,16 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             if (!copy.serialize(out) || Document::writeFile(files[3] + L"\\row" + std::to_wstring(r) + L".pdf", out) != SaveResult::Ok) return 4;
         }
         return 0;
+    }
+    if (!files.empty() && files[0] == L"--visualdiff") {   // --visualdiff a.pdf b.pdf out.png [page] : overlay of one page pair
+        if (files.size() < 4) return 2;
+        Document da, db;
+        if (da.open(files[1]) != OpenResult::Ok || db.open(files[2]) != OpenResult::Ok) return 3;
+        const int page = files.size() > 4 ? _wtoi(files[4].c_str()) - 1 : 0;
+        visualdiff::PageResult r = visualdiff::overlay(da, page, db, page, 100, files[3]);
+        std::string rep = "ok=" + std::to_string(r.ok) + " pixels=" + std::to_string(r.differingPixels) + "\n";
+        Document::writeFile(files[3] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        return r.ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

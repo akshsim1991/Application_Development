@@ -2316,6 +2316,9 @@ void setFullscreen(bool on, bool presentation) {
     }
     relayoutChildren();
     InvalidateRect(app.wnd, nullptr, TRUE);
+    // a presentation shows one page per screen; the chosen layout comes back afterwards
+    if (on && presentation) app.viewer.setLayout(0, app.cover);
+    else if (!on) app.viewer.setLayout(app.layout, app.cover);
     if (on) { if (presentation) app.viewer.fitPage(); else app.viewer.fitWidth(); }
     else if (activeDoc()) app.viewer.fitWidth();
 }
@@ -2624,8 +2627,8 @@ void runCommand(int id) {
     Document* d = activeDoc();
     switch (id) {
         case C_OPEN: case C_NEWTAB: openDialog(); break;
-        case C_PREV: if (d) app.viewer.goToPage(app.viewer.currentPage() - 1); break;
-        case C_NEXT: if (d) app.viewer.goToPage(app.viewer.currentPage() + 1); break;
+        case C_PREV: if (d) app.viewer.stepPage(-1); break;
+        case C_NEXT: if (d) app.viewer.stepPage(1); break;
         case C_ZOOMIN: if (d) app.viewer.setZoom(d->zoom * 1.25); break;
         case C_ZOOMOUT: if (d) app.viewer.setZoom(d->zoom / 1.25); break;
         case C_ACTUAL: if (d) app.viewer.setZoom(1.0); break;
@@ -4059,6 +4062,10 @@ void syncSideBySide(bool fromFirst) {
     Document* src = fromFirst ? a : app.sbsDoc;
     Document* tgt = fromFirst ? app.sbsDoc : a;
     if (std::fabs(tgt->zoom - src->zoom) > 1e-6) dst.setZoom(src->zoom);
+    if (app.layout == 0) {   // single page: the same page number on both sides
+        const int p = (fromFirst ? app.viewer : app.viewer2).currentPage();
+        if (dst.currentPage() != p) dst.goToPage(p);
+    }
     dst.scrollTo(src->scrollY);
     app.syncing = false;
 }
@@ -4672,6 +4679,7 @@ void commandPalette() {
         add(L"Page layout: single page", [] { setPageLayout(0); });
         add(L"Page layout: continuous", [] { setPageLayout(1); });
         add(L"Page layout: two pages", [] { setPageLayout(2); });
+        add(L"Page layout: show the cover page on its own (two pages)", [] { setPageLayout(3); });
         add(L"Rotate view left", [] { rotateView(-1); });
         add(L"Rotate view right", [] { rotateView(1); });
         add(L"Full screen", [] { setFullscreen(true, false); });
@@ -5178,8 +5186,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     else if (app.tool != Viewer::Tool::None) setTool(app.tool);
                     else { app.viewer.clearSelection(); app.viewer.clearAnnotSelection(); }
                     return 0;
-                case VK_NEXT: app.viewer.goToPage(app.viewer.currentPage() + 1); return 0;
-                case VK_PRIOR: app.viewer.goToPage(app.viewer.currentPage() - 1); return 0;
+                case VK_NEXT: app.viewer.stepPage(1); return 0;
+                case VK_PRIOR: app.viewer.stepPage(-1); return 0;
                 case VK_HOME: app.viewer.goToPage(0); return 0;
                 case VK_END: app.viewer.goToPage(d->pageCount() - 1); return 0;
                 case VK_DOWN: app.viewer.scrollBy(60); return 0;
@@ -5655,6 +5663,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     HWND w = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
                              CW_USEDEFAULT, CW_USEDEFAULT, 1200, 780, nullptr, nullptr, inst, nullptr);
     loadSettings();
+    // the viewers were made before the settings were read: give them the saved page layout now
+    app.viewer.setLayout(app.layout, app.cover);
+    app.viewer2.setLayout(app.layout, app.cover);
     applyTheme();
     updateEmptyText();
     ShowWindow(w, show);

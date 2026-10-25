@@ -67,9 +67,10 @@ void Viewer::setDocument(Document* d) {
 }
 
 void Viewer::setLayout(int layout, bool cover) {
+    const int keep = doc_ ? currentPage() : 0;   // with the old layout, before it changes
     layout_ = layout; cover_ = cover;
     if (!doc_) return;
-    int keep = currentPage();
+    if (layout_ == 0) doc_->shownPage = keep;
     clearCache();
     relayout();
     goToPage(keep);
@@ -77,27 +78,35 @@ void Viewer::setLayout(int layout, bool cover) {
 }
 
 void Viewer::relayout() {
-    tops_.clear(); widths_.clear(); heights_.clear(); xs_.clear();
+    tops_.clear(); widths_.clear(); heights_.clear(); xs_.clear(); rows_.clear();
     contentW_ = contentH_ = 0;
     if (!doc_) { updateScrollBars(); return; }
     const int n = doc_->pageCount();
     // rows of pages: one, or two side by side
-    std::vector<std::pair<int, int>> rows;   // first page, count
     if (layout_ == 2) {
         int i = 0;
-        if (cover_ && n > 0) { rows.push_back({0, 1}); i = 1; }
-        for (; i < n; i += 2) rows.push_back({i, std::min(2, n - i)});
-    } else for (int i = 0; i < n; ++i) rows.push_back({i, 1});
+        if (cover_ && n > 0) { rows_.push_back({0, 1}); i = 1; }
+        for (; i < n; i += 2) rows_.push_back({i, std::min(2, n - i)});
+    } else for (int i = 0; i < n; ++i) rows_.push_back({i, 1});
     RECT rc; GetClientRect(hwnd_, &rc);
+    const bool spreads = layout_ == 2 && n > 1;   // a lone page in the two-page layout keeps its place in a spread
+    // two pages: like a book, a left and a right column meet at the gutter; each is as wide as its widest page
+    auto columns = [&](auto width, double& left, double& right) {
+        left = right = 0;
+        for (auto& r : rows_) {
+            if (r.second == 2) { left = std::max(left, width(r.first)); right = std::max(right, width(r.first + 1)); }
+            else if (cover_ && r.first == 0) right = std::max(right, width(r.first));
+            else left = std::max(left, width(r.first));
+        }
+    };
     if (doc_->fitWidth) {
         double maxW = 1;
-        for (auto& r : rows) {
-            double w = 0;
-            for (int k = 0; k < r.second; ++k) w += doc_->pageSize(r.first + k).w;
-            if (layout_ == 2 && r.second == 1) w *= 2;   // a lone page keeps the width of half a spread
-            maxW = std::max(maxW, w);
-        }
-        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin - (layout_ == 2 ? kGap + 4 : 0);
+        if (spreads) {
+            double l, r;
+            columns([&](int p) { return static_cast<double>(doc_->pageSize(p).w); }, l, r);
+            maxW = std::max(1.0, l + r);
+        } else for (auto& r : rows_) maxW = std::max(maxW, static_cast<double>(doc_->pageSize(r.first).w));
+        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin - (spreads ? kGap + 4 : 2);   // a little slack: rounded page sizes must not need a sideways scroll bar
         doc_->zoom = std::clamp(avail / (maxW * 96.0 / 72.0), kMinZoom, kMaxZoom);
     }
     const double s = pxPerPt();
@@ -106,29 +115,63 @@ void Viewer::relayout() {
         widths_[i] = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).w * s)));
         heights_[i] = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).h * s)));
     }
-    // content width: widest row
-    for (auto& r : rows) {
-        int w = 0;
-        for (int k = 0; k < r.second; ++k) w += widths_[r.first + k] + (k ? kGap : 0);
-        if (layout_ == 2 && r.second == 1 && !(cover_ && r.first == 0 && n > 1)) {}
-        contentW_ = std::max(contentW_, w + 2 * kMargin);
+    if (n == 0) { updateScrollBars(); return; }
+    if (layout_ == 0) {
+        // single page: one page on screen at a time; every page sits at the same place, only the shown one is drawn
+        doc_->shownPage = std::clamp(doc_->shownPage, 0, n - 1);
+        for (int i = 0; i < n; ++i) contentW_ = std::max(contentW_, widths_[i] + 2 * kMargin);
+        for (int i = 0; i < n; ++i) { tops_[i] = kMargin; xs_[i] = (contentW_ - widths_[i]) / 2; }
+        contentH_ = heights_[doc_->shownPage] + 2 * kMargin;
+        updateScrollBars();
+        return;
     }
-    int y = kMargin, lastGap = kGap;
-    for (auto& r : rows) {
-        int rowH = 0, rowW = 0;
-        for (int k = 0; k < r.second; ++k) { rowH = std::max(rowH, heights_[r.first + k]); rowW += widths_[r.first + k] + (k ? kGap : 0); }
-        int x = (contentW_ - rowW) / 2;
-        if (layout_ == 2 && r.second == 1 && cover_ && r.first == 0 && n > 1) x = (contentW_ + kGap) / 2;   // the cover sits on the right-hand side
+    double colL = 0, colR = 0;
+    if (spreads) {
+        columns([&](int p) { return static_cast<double>(widths_[p]); }, colL, colR);
+        contentW_ = static_cast<int>(colL + kGap + colR) + 2 * kMargin;
+    } else for (auto& r : rows_) contentW_ = std::max(contentW_, widths_[r.first] + 2 * kMargin);
+    const int gutterL = kMargin + static_cast<int>(colL), gutterR = gutterL + kGap;   // the inner edges of the two columns
+    int y = kMargin;
+    for (auto& r : rows_) {
+        int rowH = 0;
+        for (int k = 0; k < r.second; ++k) rowH = std::max(rowH, heights_[r.first + k]);
         for (int k = 0; k < r.second; ++k) {
             const int p = r.first + k;
-            tops_[p] = y; xs_[p] = x;
-            x += widths_[p] + kGap;
+            tops_[p] = y;
+            if (!spreads) xs_[p] = (contentW_ - widths_[p]) / 2;
+            else {
+                // a left page ends at the gutter, a right page starts there; a lone cover is a right page, a lone last page a left one
+                const bool right = r.second == 2 ? k == 1 : (cover_ && r.first == 0);
+                xs_[p] = right ? gutterR : gutterL - widths_[p];
+            }
         }
-        lastGap = layout_ == 0 ? std::max<int>(kGap, rc.bottom - rowH - kMargin) : kGap;
-        y += rowH + lastGap;
+        y += rowH + kGap;
     }
-    contentH_ = y - lastGap + kMargin;
+    contentH_ = y - kGap + kMargin;
     updateScrollBars();
+}
+
+void Viewer::showPage(int page, bool atEnd) {
+    if (!doc_ || tops_.empty()) return;
+    doc_->shownPage = std::clamp(page, 0, static_cast<int>(tops_.size()) - 1);
+    relayout();
+    RECT rc; GetClientRect(hwnd_, &rc);
+    doc_->scrollY = atEnd ? std::max(0L, contentH_ - rc.bottom) : 0;
+    clampScroll();
+    updateScrollBars();
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    notify();
+}
+
+void Viewer::stepPage(int dir) {
+    if (!doc_ || rows_.empty()) return;
+    const int cur = currentPage();
+    if (layout_ != 2) { if (cur + dir >= 0 && cur + dir < static_cast<int>(tops_.size())) goToPage(cur + dir); return; }
+    size_t r = 0;
+    while (r + 1 < rows_.size() && rows_[r + 1].first <= cur) ++r;
+    const long next = static_cast<long>(r) + dir;
+    if (next < 0 || next >= static_cast<long>(rows_.size())) return;
+    goToPage(rows_[static_cast<size_t>(next)].first);
 }
 
 bool Viewer::pageRect(int page, RECT& out) const {
@@ -187,18 +230,35 @@ void Viewer::fitWidth() {
 }
 
 void Viewer::fitPage() {
-    if (!doc_) return;
+    if (!doc_ || rows_.empty()) return;
     RECT rc; GetClientRect(hwnd_, &rc);
-    int p = currentPage();
-    const PageSize& ps = doc_->pageSize(p);
-    double zw = (rc.right - 2.0 * kMargin) / (ps.w * 96.0 / 72.0);
-    double zh = (rc.bottom - 2.0 * kMargin) / (ps.h * 96.0 / 72.0);
+    const int p = currentPage();
+    // the page fits; in the two-page layout its whole spread does, at the width of the book's two columns
+    double w = doc_->pageSize(p).w, h = doc_->pageSize(p).h;
+    bool two = false;
+    if (layout_ == 2 && doc_->pageCount() > 1) {
+        double l = 0, r = 0;
+        for (const auto& row : rows_) {
+            if (row.second == 2) { l = std::max(l, static_cast<double>(doc_->pageSize(row.first).w)); r = std::max(r, static_cast<double>(doc_->pageSize(row.first + 1).w)); }
+            else if (cover_ && row.first == 0) r = std::max(r, static_cast<double>(doc_->pageSize(row.first).w));
+            else l = std::max(l, static_cast<double>(doc_->pageSize(row.first).w));
+            if (p >= row.first && p < row.first + row.second) {
+                h = 0;
+                for (int k = 0; k < row.second; ++k) h = std::max(h, static_cast<double>(doc_->pageSize(row.first + k).h));
+            }
+        }
+        w = l + r;
+        two = true;
+    }
+    const double zw = (rc.right - 2.0 * kMargin - (two ? kGap + 4 : 2)) / (w * 96.0 / 72.0);
+    const double zh = (rc.bottom - 2.0 * kMargin) / (h * 96.0 / 72.0);
     setZoom(std::min(zw, zh));
     goToPage(p);
 }
 
 int Viewer::currentPage() const {
     if (!doc_ || tops_.empty()) return 0;
+    if (layout_ == 0) return std::clamp(doc_->shownPage, 0, static_cast<int>(tops_.size()) - 1);
     RECT rc; GetClientRect(hwnd_, &rc);
     int probe = doc_->scrollY + rc.bottom / 3;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), probe) - tops_.begin()) - 1;
@@ -212,6 +272,7 @@ void Viewer::goToPage(int index) {
     index = std::clamp(index, 0, static_cast<int>(tops_.size()) - 1);
     const int from = currentPage();
     if (onJump && from != index) onJump(from, index);
+    if (layout_ == 0) { doc_->shownPage = index; relayout(); }
     doc_->scrollY = tops_[index] - kMargin;
     clampScroll();
     updateScrollBars();
@@ -221,6 +282,12 @@ void Viewer::goToPage(int index) {
 
 void Viewer::scrollBy(int dy) {
     if (!doc_) return;
+    if (layout_ == 0 && !tops_.empty()) {   // single page: scrolling past the end of the page turns it
+        RECT rc; GetClientRect(hwnd_, &rc);
+        const int maxY = std::max(0, static_cast<int>(contentH_ - rc.bottom));
+        if (dy > 0 && doc_->scrollY >= maxY && doc_->shownPage + 1 < static_cast<int>(tops_.size())) { showPage(doc_->shownPage + 1, false); return; }
+        if (dy < 0 && doc_->scrollY <= 0 && doc_->shownPage > 0) { showPage(doc_->shownPage - 1, true); return; }
+    }
     doc_->scrollY += dy;
     clampScroll();
     SetScrollPos(hwnd_, SB_VERT, doc_->scrollY, TRUE);
@@ -487,6 +554,7 @@ void Viewer::setCurrentMatch(int current) {
     currentMatch_ = ((current % static_cast<int>(matches_.size())) + static_cast<int>(matches_.size())) %
                     static_cast<int>(matches_.size());
     const TextHit& h = matches_[currentMatch_];
+    if (layout_ == 0 && h.page != currentPage()) showPage(h.page, false);
     auto rects = rectsFor(h.page, h.start, h.count);   // client coordinates at the current scroll
     if (!rects.empty()) {
         RECT rc; GetClientRect(hwnd_, &rc);
@@ -511,7 +579,8 @@ bool Viewer::charAt(int cx, int cy, int& page, int& ch, bool nearest) const {
     const int contentY = cy + doc_->scrollY;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), contentY) - tops_.begin()) - 1;
     idx = std::clamp(idx, 0, static_cast<int>(tops_.size()) - 1);
-    if (idx > 0 && tops_[idx - 1] == tops_[idx] && cx < pageX(idx)) --idx;   // left page of a spread
+    if (layout_ == 0) idx = currentPage();
+    else if (idx > 0 && tops_[idx - 1] == tops_[idx] && cx < pageX(idx)) --idx;   // left page of a spread
     if (!nearest && (contentY > tops_[idx] + heights_[idx] || cx < pageX(idx) || cx > pageX(idx) + widths_[idx]))
         return false;
     const auto& api = pdfium::api();
@@ -664,7 +733,9 @@ bool Viewer::pageAt(int cx, int cy, int& page) const {
     if (!doc_ || tops_.empty()) return false;
     const int contentY = cy + doc_->scrollY;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), contentY) - tops_.begin()) - 1;
+    if (layout_ == 0) idx = currentPage();   // only the shown page is there
     for (int i = idx; i >= 0 && i >= idx - 1; --i) {   // two pages can share a row
+        if (layout_ == 0 && i != idx) break;
         if (contentY < tops_[i] || contentY > tops_[i] + heights_[i]) continue;
         if (cx < pageX(i) || cx > pageX(i) + widths_[i]) continue;
         page = i;
@@ -827,6 +898,7 @@ void Viewer::onPaint() {
         DrawTextW(dc, emptyText_.c_str(), -1, &box, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
     } else {
         for (size_t i = 0; i < tops_.size(); ++i) {
+            if (layout_ == 0 && static_cast<int>(i) != currentPage()) continue;   // single page: only the shown one
             int x = pageX(static_cast<int>(i));
             int y = tops_[i] - doc_->scrollY;
             if (y + heights_[i] < ps.rcPaint.top) continue;
@@ -869,6 +941,12 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_VSCROLL: case WM_HSCROLL: {
             if (!doc_) return 0;
             const bool vert = m == WM_VSCROLL;
+            if (vert && layout_ == 0) {
+                const int code = LOWORD(w);
+                RECT rc; GetClientRect(hwnd_, &rc);
+                if (code == SB_LINEDOWN || code == SB_LINEUP) { scrollBy(code == SB_LINEDOWN ? 40 : -40); return 0; }
+                if (code == SB_PAGEDOWN || code == SB_PAGEUP) { scrollBy((code == SB_PAGEDOWN ? 1 : -1) * static_cast<int>(rc.bottom) * 9 / 10); return 0; }
+            }
             SCROLLINFO si{sizeof(si), SIF_ALL};
             GetScrollInfo(hwnd_, vert ? SB_VERT : SB_HORZ, &si);
             int pos = si.nPos;
@@ -1028,7 +1106,8 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     }
                 }
             }
-            if (charAt(cx, cy, page, ch, false)) {
+            // a drag that starts beside the text (in the margin, between lines) starts at the nearest character
+            if (charAt(cx, cy, page, ch, false) || (pageAt(cx, cy, page) && charAt(cx, cy, page, ch, true))) {
                 anchorPage_ = page; anchorChar_ = ch;
                 dragging_ = true;
                 SetCapture(hwnd_);

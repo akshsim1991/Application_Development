@@ -124,6 +124,7 @@ public:
     // View state, kept per tab.
     double zoom = 1.0;       // 1.0 == 100 % (96 dpi)
     int scrollX = 0, scrollY = 0;
+    int shownPage = 0;       // the page on screen in the single-page layout
     bool fitWidth = true;
 
 private:

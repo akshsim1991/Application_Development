@@ -70,6 +70,8 @@ public:
 
     // Page layout: 0 one page at a time, 1 continuous, 2 two pages side by side (cover = first page alone).
     void setLayout(int layout, bool cover);
+    // The next / previous page, or spread in the two-page layout (dir = +1 or -1).
+    void stepPage(int dir);
     int layout() const { return layout_; }
     bool cover() const { return cover_; }
     std::function<void(int from, int to)> onJump;                 // goToPage moved to another page
@@ -129,6 +131,8 @@ private:
     std::vector<int> tops_;      // page top offsets in pixels (content coordinates)
     std::vector<int> widths_, heights_, xs_;   // xs_: left edge of each page inside the content
     int layout_ = 1; bool cover_ = false;
+    std::vector<std::pair<int, int>> rows_;   // first page and page count of each row (two pages side by side in the two-page layout)
+    void showPage(int page, bool atEnd);      // single-page layout: put this page on screen, at its top or its end
     std::vector<Measure> measures_;
     bool showRulers_ = false; int units_ = 0;
     annot::PointD pendingVertex_{}, pendingArm_{}; bool hasPending_ = false, hasArm_ = false; int pendingPage_ = 0;

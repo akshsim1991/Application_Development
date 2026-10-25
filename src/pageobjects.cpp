@@ -905,4 +905,122 @@ void snapGuides(Document& d, int page, const std::vector<int>& exclude, std::vec
     }
 }
 
+
+// ---- more page tools ----
+namespace {
+// the page drawn small in grey levels (0 black .. 255 white)
+std::vector<unsigned char> greyThumb(Document& d, int page, int& w, int& h, double dpi) {
+    const PageSize& ps = d.pageSize(page);
+    w = std::max(4, static_cast<int>(ps.w * dpi / 72.0)); h = std::max(4, static_cast<int>(ps.h * dpi / 72.0));
+    std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4, 255), g(static_cast<size_t>(w) * h);
+    const auto& api = pdfium::api();
+    FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), w * 4);
+    if (fb) { api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF); d.renderPage(page, fb, 0, 0, w, h); api.FPDFBitmap_Destroy(fb); }
+    for (size_t i = 0; i < g.size(); ++i) g[i] = static_cast<unsigned char>((px[i * 4] + px[i * 4 + 1] * 2 + px[i * 4 + 2]) / 4);
+    return g;
+}
+}
+
+std::vector<int> blankPages(Document& d) {
+    std::vector<int> out;
+    for (int p = 0; p < d.pageCount(); ++p) {
+        if (d.charCount(p) > 0) {
+            std::wstring t = d.textRange(p, 0, d.charCount(p));
+            if (t.find_first_not_of(L" \t\r\n") != std::wstring::npos) continue;
+        }
+        int w, h;
+        auto g = greyThumb(d, p, w, h, 40);
+        size_t dark = 0;
+        for (unsigned char v : g) if (v < 200) ++dark;
+        if (dark <= g.size() / 500) out.push_back(p);   // at most 0.2 % ink: specks of a scanned blank sheet
+    }
+    return out;
+}
+
+std::vector<std::vector<int>> duplicatePages(Document& d) {
+    std::map<std::string, std::vector<int>> groups;
+    for (int p = 0; p < d.pageCount(); ++p) {
+        int w, h;
+        auto g = greyThumb(d, p, w, h, 24);
+        std::wstring t = d.charCount(p) > 0 ? d.textRange(p, 0, d.charCount(p)) : L"";
+        unsigned long long hsh = 1469598103934665603ULL;
+        auto mix = [&](unsigned long long v) { hsh ^= v; hsh *= 1099511628211ULL; };
+        mix(static_cast<unsigned long long>(w)); mix(static_cast<unsigned long long>(h));
+        for (unsigned char v : g) mix(v / 16);   // small rendering differences do not count
+        for (wchar_t c : t) mix(c);
+        groups[std::to_string(hsh)].push_back(p);
+    }
+    std::vector<std::vector<int>> out;
+    for (auto& kv : groups) if (kv.second.size() > 1) out.push_back(kv.second);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+bool addHeaderFooter(Document& d, const std::vector<int>& pages, const HeaderFooter& hf) {
+    if (pages.empty()) return false;
+    const auto& api = pdfium::api();
+    wchar_t date[64] = L"";
+    GetDateFormatW(LOCALE_USER_DEFAULT, DATE_SHORTDATE, nullptr, nullptr, date, 64);
+    const std::wstring file = d.title();
+    std::wstring title = file;
+    {
+        const unsigned long n = api.FPDF_GetMetaText(d.handle(), "Title", nullptr, 0);
+        if (n > 2) { std::vector<unsigned short> buf(n / 2 + 1); api.FPDF_GetMetaText(d.handle(), "Title", buf.data(), n); title.assign(buf.begin(), buf.begin() + (n / 2 - 1)); }
+    }
+    d.beginChange();
+    bool any = false;
+    int num = hf.firstNumber;
+    const int total = hf.firstNumber + static_cast<int>(pages.size()) - 1;
+    for (int i : pages) {
+        FPDF_PAGE pg = d.page(i);
+        if (!pg) { ++num; continue; }
+        const double vw = d.pageSize(i).w, vh = d.pageSize(i).h;
+        for (int slot = 0; slot < 6; ++slot) {
+            std::wstring t = hf.text[slot];
+            if (t.find_first_not_of(L' ') == std::wstring::npos) continue;
+            auto replaceAll = [&](const std::wstring& a, const std::wstring& b) { size_t p = 0; while ((p = t.find(a, p)) != std::wstring::npos) { t.replace(p, a.size(), b); p += b.size(); } };
+            replaceAll(L"{page}", std::to_wstring(num));
+            replaceAll(L"{pages}", std::to_wstring(total));
+            replaceAll(L"{date}", date);
+            replaceAll(L"{file}", file);
+            replaceAll(L"{title}", title);
+            if (!isLatin(t)) continue;
+            FPDF_PAGEOBJECT o = makeText(d, "Helvetica", hf.sizePt, t, hf.color, 100);
+            if (!o) continue;
+            float l, b, r, tp;
+            api.FPDFPageObj_GetBounds(o, &l, &b, &r, &tp);
+            const double tw = r - l, th = tp - b;
+            const int col = slot % 3;
+            const double cx = col == 0 ? hf.marginPt + tw / 2 : col == 1 ? vw / 2 : vw - hf.marginPt - tw / 2;
+            if (place(pg, o, vw, vh, cx, slot < 3 ? hf.marginPt : vh - hf.marginPt, 0)) { api.FPDFPage_InsertObject(pg, o); any = true; }
+            else api.FPDFPageObj_Destroy(o);
+            (void)th;
+        }
+        api.FPDFPage_GenerateContent(pg);
+        ++num;
+    }
+    if (!any) { d.cancelChange(); return false; }
+    return true;
+}
+
+bool addBackground(Document& d, const std::vector<int>& pages, COLORREF color) {
+    if (pages.empty()) return false;
+    const auto& api = pdfium::api();
+    d.beginChange();
+    bool any = false;
+    for (int i : pages) {
+        FPDF_PAGE pg = d.page(i);
+        double l, b, r, t;
+        if (!pg || !d.cropBoxOf(i, l, b, r, t)) continue;
+        FPDF_PAGEOBJECT o = api.FPDFPageObj_CreateNewRect(static_cast<float>(l), static_cast<float>(b), static_cast<float>(r - l), static_cast<float>(t - b));
+        if (!o) continue;
+        api.FPDFPageObj_SetFillColor(o, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+        api.FPDFPath_SetDrawMode(o, FPDF_FILLMODE_ALTERNATE, 0);
+        if (api.FPDFPage_InsertObjectAtIndex(pg, o, 0)) { api.FPDFPage_GenerateContent(pg); any = true; }
+        else api.FPDFPageObj_Destroy(o);
+    }
+    if (!any) { d.cancelChange(); return false; }
+    return true;
+}
+
 } // namespace pageobj

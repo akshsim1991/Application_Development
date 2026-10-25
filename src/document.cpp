@@ -532,6 +532,19 @@ bool Document::movePages(std::vector<int> pages, int destination) {
     return true;
 }
 
+bool Document::reversePages() {
+    const int n = pageCount();
+    if (n < 2) return false;
+    std::vector<int> order(n);
+    for (int i = 0; i < n; ++i) order[i] = n - 1 - i;
+    beginChange();
+    closePages();
+    bool ok = pdfium::api().FPDF_MovePages(doc_, order.data(), static_cast<unsigned long>(n), 0) != 0;
+    rebuildPages();
+    if (!ok) { cancelChange(); return false; }
+    return true;
+}
+
 bool Document::cropPages(const std::vector<int>& pages, double l, double b, double r, double t) {
     if (pages.empty()) return false;
     beginChange();

@@ -224,7 +224,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
-              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
 enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
@@ -1080,6 +1080,24 @@ void showPagesMenu(const RECT& anchor) {
     pagesMenuAction(cmd, {});
 }
 
+Document* g_formDoc = nullptr;   // the document the open form works on (for validating page lists)
+
+std::vector<int> pagesFromText(Document& d, const std::wstring& t) {
+    bool blank = true;
+    for (wchar_t c : t) if (c != L' ') blank = false;
+    if (blank) {
+        std::vector<int> all(d.pageCount());
+        for (int i = 0; i < d.pageCount(); ++i) all[i] = i;
+        return all;
+    }
+    return d.parseRange(t);
+}
+
+std::wstring badPages(const std::wstring& t) {
+    if (!g_formDoc || !pagesFromText(*g_formDoc, t).empty()) return L"";
+    return L"The pages are not valid. Leave the box empty for all pages, or type page numbers and ranges such as 1-3, 5, 8-.";
+}
+
 void pagesMenuAction(int cmd, const std::vector<int>& sel) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1090,6 +1108,78 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
         for (int p : sel) curText += (curText.empty() ? L"" : L",") + std::to_wstring(p + 1);
     }
     switch (cmd) {
+        case P_REVERSE: if (d->reversePages()) afterPagesChanged(); break;
+        case P_BLANKS: {
+            HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            std::vector<int> blank = pageobj::blankPages(*d);
+            SetCursor(old);
+            if (blank.empty()) { MessageBoxW(app.wnd, L"No blank pages were found.", kAppName, MB_OK | MB_ICONINFORMATION); break; }
+            if (static_cast<int>(blank.size()) >= d->pageCount()) { MessageBoxW(app.wnd, L"Every page looks blank, so none was removed.", kAppName, MB_OK | MB_ICONINFORMATION); break; }
+            std::wstring list;
+            for (size_t i = 0; i < blank.size() && i < 30; ++i) list += (i ? L", " : L"") + std::to_wstring(blank[i] + 1);
+            if (blank.size() > 30) list += L", ...";
+            if (MessageBoxW(app.wnd, (std::to_wstring(blank.size()) + L" blank page(s) found: " + list + L".\n\nRemove them?").c_str(), L"Remove blank pages", MB_YESNO | MB_ICONQUESTION) == IDYES && d->deletePages(blank)) afterPagesChanged();
+            break;
+        }
+        case P_DUPES: {
+            HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            auto groups = pageobj::duplicatePages(*d);
+            SetCursor(old);
+            if (groups.empty()) { MessageBoxW(app.wnd, L"No duplicate pages were found.", kAppName, MB_OK | MB_ICONINFORMATION); break; }
+            std::wstring msg = L"These pages look the same:\n";
+            std::vector<int> extra;
+            for (size_t g = 0; g < groups.size() && g < 15; ++g) {
+                msg += L"  pages";
+                for (size_t k = 0; k < groups[g].size(); ++k) msg += (k ? L", " : L" ") + std::to_wstring(groups[g][k] + 1);
+                msg += L"\n";
+            }
+            for (auto& g : groups) for (size_t k = 1; k < g.size(); ++k) extra.push_back(g[k]);
+            msg += L"\nDelete the later copies (" + std::to_wstring(extra.size()) + L" page(s)) and keep the first of each?";
+            if (MessageBoxW(app.wnd, msg.c_str(), L"Duplicate pages", MB_YESNO | MB_ICONQUESTION) == IDYES && d->deletePages(extra)) afterPagesChanged();
+            break;
+        }
+        case P_HEADER: {
+            std::vector<FormField> f(10);
+            f[0] = {FormField::Note, L"", {}, L"Leave a box empty for nothing there. You can use {page} {pages} {date} {file} {title}."};
+            f[1] = {FormField::Text, L"Header, left:", {}, L""};
+            f[2] = {FormField::Text, L"Header, centre:", {}, L"{title}"};
+            f[3] = {FormField::Text, L"Header, right:", {}, L""};
+            f[4] = {FormField::Text, L"Footer, left:", {}, L"{date}"};
+            f[5] = {FormField::Text, L"Footer, centre:", {}, L""};
+            f[6] = {FormField::Text, L"Footer, right:", {}, L"Page {page} of {pages}"};
+            f[7] = {FormField::Choice, L"Size:", {L"8 pt", L"9 pt", L"10 pt", L"12 pt"}, L"", 1};
+            f[8] = {FormField::Text, L"First page number:", {}, L"1"};
+            f[9] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+            g_formDoc = d;
+            bool ok = showForm(app.wnd, app.inst, L"Headers and footers", f, L"Add", [](const std::vector<FormField>& v) -> std::wstring {
+                for (int i = 1; i <= 6; ++i) if (!pageobj::isLatin(v[i].text)) return L"Use letters, numbers and common symbols of Western languages.";
+                wchar_t* e = nullptr; wcstol(v[8].text.c_str(), &e, 10);
+                if (e == v[8].text.c_str() || *e) return L"Type a number for the first page number.";
+                return badPages(v[9].text); });
+            g_formDoc = nullptr;
+            if (!ok) break;
+            pageobj::HeaderFooter hf;
+            for (int i = 0; i < 6; ++i) hf.text[i] = f[i + 1].text;
+            static const double sizes[] = {8, 9, 10, 12};
+            hf.sizePt = sizes[f[7].choice];
+            hf.firstNumber = static_cast<int>(wcstol(f[8].text.c_str(), nullptr, 10));
+            if (pageobj::addHeaderFooter(*d, pagesFromText(*d, f[9].text), hf)) afterPagesChanged();
+            else MessageBoxW(app.wnd, L"Nothing was added (all boxes are empty?).", kAppName, MB_OK | MB_ICONINFORMATION);
+            break;
+        }
+        case P_BGCOLOR: {
+            std::vector<FormField> f(2);
+            static const wchar_t* names[] = {L"Light yellow (easy reading)", L"Light green", L"Light blue", L"Light grey", L"Cream", L"White"};
+            static const COLORREF cols[] = {RGB(0xFF, 0xF8, 0xD0), RGB(0xE4, 0xF4, 0xE0), RGB(0xE2, 0xEE, 0xFA), RGB(0xEE, 0xEE, 0xEE), RGB(0xFB, 0xF4, 0xE4), RGB(0xFF, 0xFF, 0xFF)};
+            f[0] = {FormField::Choice, L"Colour:", {names[0], names[1], names[2], names[3], names[4], names[5]}, L"", 0};
+            f[1] = {FormField::Text, L"Pages (empty = all):", {}, L""};
+            g_formDoc = d;
+            bool ok = showForm(app.wnd, app.inst, L"Background colour", f, L"Add", [](const std::vector<FormField>& v) -> std::wstring { return badPages(v[1].text); });
+            g_formDoc = nullptr;
+            if (!ok) break;
+            if (pageobj::addBackground(*d, pagesFromText(*d, f[1].text), cols[f[0].choice])) afterPagesChanged();
+            break;
+        }
         case P_DELETE: {
             auto pages = askPages(*d, L"Delete pages", L"Which pages should be deleted?", curText);
             if (pages.empty()) break;
@@ -1224,24 +1314,6 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
 
 
 // ---- tools: watermark, page numbers ----
-
-Document* g_formDoc = nullptr;   // the document the open form works on (for validating page lists)
-
-std::vector<int> pagesFromText(Document& d, const std::wstring& t) {
-    bool blank = true;
-    for (wchar_t c : t) if (c != L' ') blank = false;
-    if (blank) {
-        std::vector<int> all(d.pageCount());
-        for (int i = 0; i < d.pageCount(); ++i) all[i] = i;
-        return all;
-    }
-    return d.parseRange(t);
-}
-
-std::wstring badPages(const std::wstring& t) {
-    if (!g_formDoc || !pagesFromText(*g_formDoc, t).empty()) return L"";
-    return L"The pages are not valid. Leave the box empty for all pages, or type page numbers and ranges such as 1-3, 5, 8-.";
-}
 
 std::wstring validateWatermark(const std::vector<FormField>& f) {
     if (f[0].text.empty()) return L"Type the text of the watermark.";
@@ -2139,7 +2211,7 @@ void toolsDispatch(int cmd) {
         default:
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
-            if (cmd >= P_DELETE && cmd <= P_NUP) { pagesMenuAction(cmd, {}); break; }
+            if (cmd >= P_DELETE && cmd <= P_BGCOLOR) { pagesMenuAction(cmd, {}); break; }
             break;
     }
 }
@@ -2213,6 +2285,12 @@ void showToolsMenu(const RECT& anchor) {
     padd(P_ROT_L, L"Rotate this page left");
     padd(P_ROT_ALL, L"Rotate all pages right");
     padd(P_MOVE, L"Move pages...", d->pageCount() > 1);
+    padd(P_REVERSE, L"Reverse the page order", d->pageCount() > 1);
+    padd(P_BLANKS, L"Remove blank pages...", d->pageCount() > 1);
+    padd(P_DUPES, L"Find duplicate pages...", d->pageCount() > 1);
+    AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
+    padd(P_HEADER, L"Headers and footers...");
+    padd(P_BGCOLOR, L"Background colour...");
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
     padd(P_CROP, L"Crop pages...");
     padd(P_CROPBOX, L"Crop by drawing a box");
@@ -4872,6 +4950,29 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, txt.c_str(), -1, u.data(), n, nullptr, nullptr);
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end()));
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--pages") {   // --pages in.pdf out.pdf reverse|noblanks|nodupes|header|background : writes out.pdf.txt
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<int> all(doc.pageCount());
+        for (int i = 0; i < doc.pageCount(); ++i) all[i] = i;
+        std::string rep;
+        const std::wstring& op = files[3];
+        if (op == L"reverse") doc.reversePages();
+        else if (op == L"noblanks") { auto b = pageobj::blankPages(doc); for (int x : b) rep += std::to_string(x + 1) + " "; if (!b.empty()) doc.deletePages(b); }
+        else if (op == L"nodupes") {
+            std::vector<int> extra;
+            for (auto& g : pageobj::duplicatePages(doc)) { for (int x : g) rep += std::to_string(x + 1) + " "; rep += "| "; for (size_t k = 1; k < g.size(); ++k) extra.push_back(g[k]); }
+            if (!extra.empty()) doc.deletePages(extra);
+        } else if (op == L"header") {
+            pageobj::HeaderFooter hf;
+            hf.text[1] = L"Confidential report"; hf.text[3] = L"{file}"; hf.text[5] = L"Page {page} of {pages}";
+            pageobj::addHeaderFooter(doc, all, hf);
+        } else if (op == L"background") pageobj::addBackground(doc, all, RGB(0xFF, 0xF8, 0xD0));
+        else return 2;
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

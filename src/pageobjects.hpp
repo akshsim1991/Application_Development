@@ -80,6 +80,22 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y);
 // the standard fonts lack (the document is then unchanged).
 bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style, Align align);
 
+// ---- more page tools ----
+// Pages with no text and (almost) nothing drawn. Scanned pages count as blank when they are nearly white.
+std::vector<int> blankPages(Document& d);
+// Groups of pages that look the same (same text and same picture at a small size). Each group lists 2 or more pages.
+std::vector<std::vector<int>> duplicatePages(Document& d);
+struct HeaderFooter {
+    std::wstring text[6];   // header left, centre, right, footer left, centre, right; {page} {pages} {date} {file} {title}
+    double sizePt = 9;
+    COLORREF color = RGB(0x40, 0x40, 0x40);
+    int firstNumber = 1;
+    double marginPt = 28;
+};
+bool addHeaderFooter(Document& d, const std::vector<int>& pages, const HeaderFooter& hf);
+// A coloured rectangle behind everything on the page (it shows where the page itself is not painted).
+bool addBackground(Document& d, const std::vector<int>& pages, COLORREF color);
+
 // ---- picking up and moving page objects ----
 struct GroupHit {
     bool found = false;

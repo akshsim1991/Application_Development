@@ -103,7 +103,8 @@ public:
     bool deletePages(std::vector<int> pages);          // refuses to delete every page
     bool insertBlankPage(int after, int templatePage); // `after` = -1 inserts at the start
     bool rotatePages(const std::vector<int>& pages, int quarterTurnsClockwise);
-    bool movePages(std::vector<int> pages, int destination);   // destination is the index before the move
+    bool movePages(std::vector<int> pages, int destination);
+    bool reversePages();   // last page first; one undo step   // destination is the index before the move
     bool cropPages(const std::vector<int>& pages, double leftPt, double bottomPt, double rightPt, double topPt);
     // Copies pages of `src` into this document, so that the first copy lands at index `at`.
     bool importPages(Document& src, const std::vector<int>& srcPages, int at);

@@ -86,6 +86,7 @@ struct App {
     std::vector<RECT> tabRects, closeRects;
     RECT plusRect{}, pageRect{};
     int hover = -1;
+    int pressed = -1;          // the toolbar button (or -2 - tab close button) pressed and not yet released
     int theme = 2;            // 0 light, 1 dark, 2 like Windows
     int units = 0, scaleIdx = 0;   // geometry tools: mm/cm/in/pt, drawing scale
     bool sbs = false, syncing = false;
@@ -139,6 +140,7 @@ struct MenuCheck {
     int menus = 0, items = 0;
 };
 MenuCheck g_menuCheck;
+RECT g_menuExclude{};   // screen rectangle a menu must not cover (the button that opened it); empty: none
 
 void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>& seen) {
     const int n = GetMenuItemCount(m);
@@ -162,7 +164,14 @@ void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>
 }
 
 int trackMenu(HMENU m, UINT flags, int x, int y, int reserved, HWND owner, const RECT* rc) {
-    if (!g_menuCheck.on) return TrackPopupMenu(m, flags, x, y, reserved, owner, rc);
+    if (!g_menuCheck.on) {
+        (void)reserved; (void)rc;
+        TPMPARAMS tp{sizeof(tp), g_menuExclude};
+        const bool exclude = !IsRectEmpty(&g_menuExclude);
+        g_menuExclude = RECT{};
+        // TPM_VERTICAL: when the menu does not fit below the button it goes above it, never over it
+        return TrackPopupMenuEx(m, flags | (exclude ? TPM_VERTICAL : 0), x, y, owner, exclude ? &tp : nullptr);
+    }
     std::map<UINT, std::wstring> seen;
     ++g_menuCheck.menus;
     collectMenu(m, L"menu " + std::to_wstring(g_menuCheck.menus), seen);
@@ -2826,11 +2835,8 @@ void showMainMenu(const RECT& anchor) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
     auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
     const bool has = d != nullptr;
+    // Only what the toolbar, the zoom box, the tool menus and the right-click menu do not already offer.
     add(MM_OPEN, L"Open...\tCtrl+O");
-    add(MM_NEWPDF, L"New PDF from pictures...");
-    add(MM_NEWTEXT, L"New PDF from a text or Markdown file...");
-    add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
-    add(MM_BATCH, L"Batch: process a whole folder...");
     HMENU rec = CreatePopupMenu();
     for (size_t i = 0; i < app.recent.size(); ++i) {
         size_t s = app.recent[i].find_last_of(L"\\/");
@@ -2838,40 +2844,19 @@ void showMainMenu(const RECT& anchor) {
     }
     if (app.recent.empty()) AppendMenuW(rec, MF_STRING | MF_GRAYED, 0, L"(none)");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rec), L"Open recent");
-    add(MM_SAVE, L"Save\tCtrl+S", has && d->dirty());
+    {
+        HMENU np = CreatePopupMenu();
+        AppendMenuW(np, MF_STRING, MM_NEWPDF, L"From pictures...");
+        AppendMenuW(np, MF_STRING, MM_NEWTEXT, L"From a text or Markdown file...");
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(np), L"New PDF");
+    }
     add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
     add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
-    {
-        HMENU cm = CreatePopupMenu();
-        AppendMenuW(cm, MF_STRING | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), MM_COMPARE, L"Another open tab (compare the text)...");
-        AppendMenuW(m, MF_POPUP | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(cm), L"Compare with");
-        HMENU sb = CreatePopupMenu();
-        AppendMenuW(sb, MF_STRING | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), MM_SBSTAB, L"Another open tab");
-        AppendMenuW(sb, MF_STRING | (has ? 0 : MF_GRAYED), MM_SBSOPEN, L"Open a file next to this one...");
-        AppendMenuW(sb, MF_STRING | (app.sbs ? 0 : MF_GRAYED), MM_SBSOFF, L"Back to one document");
-        AppendMenuW(m, MF_POPUP | (has ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(sb), L"Side by side (two in one tab)");
-    }
     add(MM_CLOSE, L"Close tab\tCtrl+W", has);
     sep();
-    add(MM_UNDO, L"Undo\tCtrl+Z", has && d->canUndo());
-    add(MM_REDO, L"Redo\tCtrl+Y", has && d->canRedo());
-    sep();
     add(MM_PRINT, L"Print...\tCtrl+P", has);
-    add(MM_PREVIEW, L"Print preview\tCtrl+Shift+P", has);
     add(MM_PROPS, L"Document properties...\tCtrl+D", has);
     add(MM_RELOAD, L"Reload from disk", has && !d->path().empty());
-    add(MM_READ, L"Read aloud\tCtrl+Shift+U", has);
-    add(MM_SIGN, L"Sign with a certificate...", has);
-    sep();
-    add(MM_SELALL, L"Select all\tCtrl+A", has);
-    add(MM_COPYPAGE, L"Copy page as image", has);
-    add(MM_COPYAREA, L"Copy area as image", has);
-    sep();
-    add(MM_FIRST, L"First page\tHome", has);
-    add(MM_LAST, L"Last page\tEnd", has);
-    add(MM_GOTO, L"Go to page...\tCtrl+G", has);
-    add(MM_BACK, L"Back\tAlt+Left", has && !app.navBack.empty());
-    add(MM_FWD, L"Forward\tAlt+Right", has && !app.navFwd.empty());
     sep();
     add(MM_BM, L"Bookmarks panel\tCtrl+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Bookmarks);
     add(MM_THUMBS, L"Thumbnails panel\tCtrl+Shift+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Pages);
@@ -2884,12 +2869,14 @@ void showMainMenu(const RECT& anchor) {
         AppendMenuW(lay, MF_STRING | (app.layout == 2 ? 0 : MF_GRAYED) | (app.cover ? MF_CHECKED : 0), MM_LAYOUT + 3, L"Show cover page separately");
         AppendMenuW(m, MF_POPUP | (has ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(lay), L"Page layout");
     }
-    add(MM_ROTL, L"Rotate left\tCtrl+L", has);
-    add(MM_ROTR, L"Rotate right\tCtrl+R", has);
-    sep();
-    add(MM_FITW, L"Fit width\tCtrl+2", has);
-    add(MM_FITP, L"Fit page\tCtrl+0", has);
-    add(MM_ACTUAL, L"Actual size\tCtrl+1", has);
+    {
+        HMENU go = CreatePopupMenu();
+        AppendMenuW(go, MF_STRING | (has ? 0 : MF_GRAYED), MM_FIRST, L"First page\tHome");
+        AppendMenuW(go, MF_STRING | (has ? 0 : MF_GRAYED), MM_LAST, L"Last page\tEnd");
+        AppendMenuW(go, MF_STRING | (has && !app.navBack.empty() ? 0 : MF_GRAYED), MM_BACK, L"Back\tAlt+Left");
+        AppendMenuW(go, MF_STRING | (has && !app.navFwd.empty() ? 0 : MF_GRAYED), MM_FWD, L"Forward\tAlt+Right");
+        AppendMenuW(m, MF_POPUP | (has ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(go), L"Go to");
+    }
     add(MM_FULL, L"Full screen\tF11", has);
     add(MM_PRESENT, L"Presentation\tF5", has);
     HMENU col = CreatePopupMenu();
@@ -2901,7 +2888,10 @@ void showMainMenu(const RECT& anchor) {
     for (int i = 0; i < 3; ++i) AppendMenuW(th, MF_STRING | (app.theme == i ? MF_CHECKED : 0), MM_THEME + i, thNames[i]);
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(th), L"Theme");
     sep();
+    add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
+    add(MM_BATCH, L"Batch: process a whole folder...");
     add(MM_PALETTE, L"Command palette...\tCtrl+K");
+    sep();
     add(MM_SETTINGS, L"Settings...");
     add(MM_DEFAULT, L"Set as default PDF viewer...");
     add(MM_GUIDE, L"User guide\tF1");
@@ -2913,30 +2903,16 @@ void showMainMenu(const RECT& anchor) {
     DestroyMenu(m);
     switch (cmd) {
         case MM_OPEN: runCommand(C_OPEN); break;
-        case MM_SAVE: saveActive(); break;
         case MM_SAVEAS: if (d) saveAsDialog(*d); break;
         case MM_EXPORT: if (d) doExport(*d); break;
         case MM_CLOSE: closeTab(app.active); break;
-        case MM_UNDO: undoRedo(false); break;
-        case MM_REDO: undoRedo(true); break;
         case MM_PRINT: printDocument(); break;
-        case MM_PREVIEW: printPreview(); break;
         case MM_GUIDE: openUserGuide(); break;
         case MM_PROPS: showProperties(); break;
-        case MM_READ: readAloud(); break;
-        case MM_SELALL: app.viewer.selectAll(); break;
-        case MM_COPYPAGE:
-            if (d && !pageobj::copyPageToClipboard(*d, app.viewer.currentPage(), app.wnd))
-                MessageBoxW(app.wnd, L"The page could not be copied as a picture (it may be too large).", kAppName, MB_OK | MB_ICONWARNING);
-            break;
         case MM_FIRST: app.viewer.goToPage(0); break;
         case MM_LAST: if (d) app.viewer.goToPage(d->pageCount() - 1); break;
-        case MM_GOTO: runCommand(C_GOTO); break;
         case MM_BM: showSidebar(Sidebar::Mode::Bookmarks); break;
         case MM_THUMBS: showSidebar(Sidebar::Mode::Pages); break;
-        case MM_FITW: runCommand(C_FITW); break;
-        case MM_FITP: runCommand(C_FITP); break;
-        case MM_ACTUAL: runCommand(C_ACTUAL); break;
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
@@ -2954,17 +2930,9 @@ void showMainMenu(const RECT& anchor) {
         case MM_SEARCHDIR: searchFolder(); break;
         case MM_BATCH: batchDialog(); break;
         case MM_RELOAD: reloadFromDisk(); break;
-        case MM_SIGN: toolsDispatch(T_SIGN); break;
-        case MM_COPYAREA: startCopyArea(); break;
         case MM_BACK: navBack(); break;
         case MM_FWD: navForward(); break;
-        case MM_ROTL: rotateView(-1); break;
-        case MM_ROTR: rotateView(1); break;
         case MM_PALETTE: commandPalette(); break;
-        case MM_COMPARE: compareDocs(); break;
-        case MM_SBSTAB: sideBySideAction(N_SBS_TAB); break;
-        case MM_SBSOPEN: sideBySideAction(N_SBS_OPEN); break;
-        case MM_SBSOFF: sideBySideAction(N_SBS_OFF); break;
         case MM_SETTINGS: showSettings(); break;
         case MM_DEFAULT: registerAsViewer(); break;
         case MM_ABOUT: showAbout(); break;
@@ -5099,27 +5067,54 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_LBUTTONDOWN: {
+            // Buttons act when the mouse is released over them (as Windows buttons do). Acting on the press left the
+            // release to land on whatever menu item had opened under the pointer.
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+            app.pressed = -1;
             for (size_t i = 0; i < app.closeRects.size(); ++i)
-                if (hit(app.closeRects[i], x, y)) { closeTab(static_cast<int>(i)); return 0; }
+                if (hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)
                 if (hit(app.tabRects[i], x, y)) { switchTab(static_cast<int>(i)); return 0; }
             if (!app.tabs.empty() && hit(app.plusRect, x, y)) { runCommand(C_NEWTAB); return 0; }
             if (activeDoc() && hit(app.pageRect, x, y)) { runCommand(C_GOTO); return 0; }
             for (const Button& b : app.buttons)
-                if (b.enabled && hit(b.rc, x, y)) {
-                    if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
-                    else if (b.id == C_EDITPDF) showToolsMenu(b.rc);
-                    else if (b.id == C_COMMENT) showCommentMenu(b.rc);
-                    else if (b.id == C_GEOM) showGeometryMenu(b.rc);
-                    else if (b.id == C_SBS) showSideBySideMenu(b.rc);
-                    else if (b.id == C_ZOOMMENU) showZoomMenu(b.rc);
-                    else if (b.id == C_MENU) showMainMenu(b.rc);
-                    else runCommand(b.id);
-                    return 0;
-                }
+                if (b.enabled && hit(b.rc, x, y)) { app.pressed = b.id; SetCapture(h); InvalidateRect(h, &b.rc, FALSE); return 0; }
             return 0;
         }
+        case WM_LBUTTONUP: {
+            const int pressed = app.pressed;
+            app.pressed = -1;
+            if (GetCapture() == h) ReleaseCapture();
+            if (pressed == -1) return 0;
+            int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+            if (pressed <= -2) {   // a tab's close button: only when released on the same button
+                const size_t i = static_cast<size_t>(-2 - pressed);
+                if (i < app.closeRects.size() && hit(app.closeRects[i], x, y)) closeTab(static_cast<int>(i));
+                return 0;
+            }
+            for (const Button& b : app.buttons) {
+                if (b.id != pressed) continue;
+                InvalidateRect(h, &b.rc, FALSE);
+                if (!b.enabled || !hit(b.rc, x, y)) return 0;   // dragged off the button: nothing happens
+                RECT scr = b.rc;
+                MapWindowPoints(h, nullptr, reinterpret_cast<POINT*>(&scr), 2);
+                g_menuExclude = scr;   // its menu must not open over it
+                if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
+                else if (b.id == C_EDITPDF) showToolsMenu(b.rc);
+                else if (b.id == C_COMMENT) showCommentMenu(b.rc);
+                else if (b.id == C_GEOM) showGeometryMenu(b.rc);
+                else if (b.id == C_SBS) showSideBySideMenu(b.rc);
+                else if (b.id == C_ZOOMMENU) showZoomMenu(b.rc);
+                else if (b.id == C_MENU) showMainMenu(b.rc);
+                else { g_menuExclude = RECT{}; runCommand(b.id); }
+                g_menuExclude = RECT{};
+                return 0;
+            }
+            return 0;
+        }
+        case WM_CAPTURECHANGED:
+            if (app.pressed != -1 && reinterpret_cast<HWND>(l) != h) { app.pressed = -1; InvalidateRect(h, nullptr, FALSE); }
+            break;
         case WM_MOUSEMOVE: {
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l), hv = -1;
             for (const Button& b : app.buttons) if (b.enabled && hit(b.rc, x, y)) hv = b.id;

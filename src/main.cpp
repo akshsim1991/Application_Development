@@ -132,6 +132,43 @@ std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"")
 
 void applyTheme();
 
+// ---- every popup menu goes through trackMenu: in the --menucheck test it is inspected instead of shown ----
+struct MenuCheck {
+    bool on = false;
+    std::wstring report;   // problems found
+    int menus = 0, items = 0;
+};
+MenuCheck g_menuCheck;
+
+void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>& seen) {
+    const int n = GetMenuItemCount(m);
+    for (int i = 0; i < n; ++i) {
+        wchar_t text[256] = L"";
+        MENUITEMINFOW mi{sizeof(mi)};
+        mi.fMask = MIIM_ID | MIIM_SUBMENU | MIIM_FTYPE | MIIM_STRING;
+        mi.dwTypeData = text;
+        mi.cch = 255;
+        if (!GetMenuItemInfoW(m, static_cast<UINT>(i), TRUE, &mi)) continue;
+        std::wstring label = text;
+        if (label.find(L'\t') != std::wstring::npos) label.resize(label.find(L'\t'));
+        if (mi.hSubMenu) { collectMenu(mi.hSubMenu, path + L" > " + label, seen); continue; }
+        if (mi.fType & MFT_SEPARATOR) continue;
+        ++g_menuCheck.items;
+        auto it = seen.find(mi.wID);
+        if (mi.wID == 0) g_menuCheck.report += L"no command number: " + path + L" > " + label + L"\n";
+        else if (it != seen.end()) g_menuCheck.report += L"same command number " + std::to_wstring(mi.wID) + L": \"" + it->second + L"\" and \"" + path + L" > " + label + L"\"\n";
+        else seen[mi.wID] = path + L" > " + label;
+    }
+}
+
+int trackMenu(HMENU m, UINT flags, int x, int y, int reserved, HWND owner, const RECT* rc) {
+    if (!g_menuCheck.on) return TrackPopupMenu(m, flags, x, y, reserved, owner, rc);
+    std::map<UINT, std::wstring> seen;
+    ++g_menuCheck.menus;
+    collectMenu(m, L"menu " + std::to_wstring(g_menuCheck.menus), seen);
+    return 0;   // as if the menu was closed without a choice
+}
+
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
     if (app.fullscreen) {   // only the pages, edge to edge
@@ -910,7 +947,7 @@ void onViewerEvent(const Viewer::Event& e) {
             if (e.page >= 0) { sep(); add(M_COPY_PAGE, L"Copy page as image"); add(N_COPYAREA, L"Copy area as image"); }
             sep();
             add(N_READ_FROM, hasSel ? L"Read the selected text aloud\tCtrl+Shift+U" : L"Read aloud from this page\tCtrl+Shift+U");
-            int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, e.screen.x, e.screen.y, 0, app.wnd, nullptr);
+            int cmd = trackMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, e.screen.x, e.screen.y, 0, app.wnd, nullptr);
             DestroyMenu(m);
             switch (cmd) {
                 case M_SELALL: app.viewer.selectAll(); break;
@@ -1018,7 +1055,7 @@ void showAnnotateMenu(const RECT& anchor) {
     item(M_DELETE, L"Delete selected annotation\tDel", false, app.viewer.selectedAnnot(a, b));
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);   // also destroys the submenus
     if (cmd >= M_HL_COLOUR && cmd < M_HL_COLOUR + 7) { app.hlColour = cmd - M_HL_COLOUR; return; }
     if (cmd >= M_DRAW_COLOUR && cmd < M_DRAW_COLOUR + 7) { app.drawColour = cmd - M_DRAW_COLOUR; applyStyle(); return; }
@@ -1073,7 +1110,7 @@ void showCommentMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, F_FLATTEN, L"Flatten: make comments and fields part of the page...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     switch (cmd) {
         case M_COMMENT: setTool(Viewer::Tool::Comment); break;
@@ -1102,7 +1139,7 @@ void showGeometryMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING | (app.viewer.hasMeasurements() ? 0 : MF_GRAYED), G_CLEAR, L"Clear the measurements");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     if (cmd) geometryAction(cmd);
 }
@@ -1122,7 +1159,7 @@ void showSideBySideMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING | (two ? 0 : MF_GRAYED), N_COMPARE, L"Compare with another open tab...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     if (cmd == N_COMPARE) compareDocs(); else if (cmd) sideBySideAction(cmd);
 }
@@ -1136,7 +1173,7 @@ void showZoomMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, Z_BASE + 22, L"Actual size\tCtrl+1");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     Document* d = activeDoc();
     if (!d || !cmd) return;
@@ -1227,7 +1264,7 @@ void showPagesMenu(const RECT& anchor) {
     add(P_EXTRACT, L"Extract pages into a new file...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     pagesMenuAction(cmd, {});
 }
@@ -2087,7 +2124,7 @@ void openRecentMenu(POINT screenPt) {
         AppendMenuW(m, MF_STRING, T_RECENT + i, label.c_str());
     }
     if (!app.recent.empty()) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, T_RECENT_CLEAR, L"Clear the list"); }
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, screenPt.x, screenPt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, screenPt.x, screenPt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     if (cmd == T_RECENT_CLEAR) { app.recent.clear(); updateEmptyText(); saveSettings(); }
     else if (cmd >= T_RECENT && cmd < T_RECENT + 10 && cmd - T_RECENT < static_cast<int>(app.recent.size())) {
@@ -2536,7 +2573,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rate), L"Reading speed");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = kRates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } return; }
     if (cmd) toolsDispatch(cmd);
@@ -2747,7 +2784,7 @@ void showThumbMenu(int clicked, POINT pt) {
     sep();
     add(M_EXTRACT, L"Extract pages...");
     add(M_ALL, L"Select all pages\tCtrl+A");
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     const int first = pages.front(), last = pages.back();
     switch (cmd) {
@@ -2782,7 +2819,8 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW, MM_GUIDE, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_RECENT = 100 };
+    static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2871,7 +2909,7 @@ void showMainMenu(const RECT& anchor) {
     add(MM_EXIT, L"Exit\tCtrl+Q");
     POINT pt{anchor.right, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     switch (cmd) {
         case MM_OPEN: runCommand(C_OPEN); break;
@@ -5635,7 +5673,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
 
     // One window: if Feather PDF is already running, give it the files and quit.
-    HWND existing = FindWindowW(L"FeatherPdfMain", nullptr);
+    // --menucheck report.txt file.pdf : builds every menu with the file open and reports command numbers used twice (exit 1)
+    std::wstring menuCheckOut;
+    if (!files.empty() && files[0] == L"--menucheck") {
+        if (files.size() < 3) return 2;
+        menuCheckOut = files[1];
+        files = {files[2]};
+    }
+    HWND existing = menuCheckOut.empty() ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
     if (existing) {
         for (auto& f : files) {
             COPYDATASTRUCT cds{1, static_cast<DWORD>(f.size() * sizeof(wchar_t)), const_cast<wchar_t*>(f.c_str())};
@@ -5671,9 +5716,33 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ShowWindow(w, show);
     UpdateWindow(w);
     relayoutChildren();
-    restoreSession();
+    if (menuCheckOut.empty()) restoreSession();
     for (auto& f : files) openFile(f);
     SetFocus(w);
+    if (!menuCheckOut.empty()) {
+        g_menuCheck.on = true;
+        RECT r{0, 0, 10, 10};
+        const bool doc = activeDoc() != nullptr;
+        showMainMenu(r); showToolsMenu(r); showAnnotateMenu(r); showCommentMenu(r); showGeometryMenu(r);
+        showSideBySideMenu(r); showZoomMenu(r); showPagesMenu(r); openRecentMenu(POINT{0, 0});
+        if (doc) {
+            showThumbMenu(0, POINT{0, 0});
+            Viewer::Event e;
+            e.kind = Viewer::Event::ContextMenu; e.page = 0; e.pts = {{100, 100}}; e.annot = -1; e.screen = {0, 0};
+            onViewerEvent(e);                                   // the page's right-click menu
+            app.tool = Viewer::Tool::Select; app.sel.page = 0; app.sel.objects = {0};
+            onViewerEvent(e);                                   // with an object picked by the Move tool
+            app.tool = Viewer::Tool::None; app.sel.page = -1; app.sel.objects.clear();
+        }
+        g_menuCheck.on = false;
+        std::wstring rep = L"menus=" + std::to_wstring(g_menuCheck.menus) + L" items=" + std::to_wstring(g_menuCheck.items) + L" document=" + (doc ? L"yes" : L"no") + L"\n" + g_menuCheck.report;
+        const int n = WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);
+        Document::writeFile(menuCheckOut, std::vector<unsigned char>(u.begin(), u.end()));
+        DestroyWindow(w);
+        return g_menuCheck.report.empty() && doc ? 0 : 1;
+    }
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {

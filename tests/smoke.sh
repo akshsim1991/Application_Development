@@ -217,6 +217,11 @@ check "scanned page has no text"    "grep -q 'Pages without any text (scanned; O
 run --fonts "$(W scan_ocr.pdf)" "$(W fonts-ocr.txt)"
 check "OCR layer is invisible text" "grep -q 'invisible only (OCR text layer)' '$work/fonts-ocr.txt'"
 
+echo "menus: every command number used once per menu"
+run --menucheck "$(W menus.txt)" "$(W rich.pdf)"; rc=$?
+check "no menu item runs another item's command" "[ $rc -eq 0 ] && grep -q 'document=yes' '$work/menus.txt'"
+[ $rc -ne 0 ] && sed 's/^/       /' "$work/menus.txt"
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""

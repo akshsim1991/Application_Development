@@ -1,91 +1,62 @@
-# 2.12 vs the 2.13 rebuild: parity checklist
+# 2.12 vs 2.13: parity checklist
 
-Source of the 2.12 column: the installed 2.12 program run under Wine (its menus, tool tips and dialog texts), not its source code.
-Status: **done** = works like 2.12 · **partial** = exists but differs · **missing** = not built yet.
+Source of the 2.12 column: the installed 2.12 program run under Wine and the screenshots of the real 2.12 (menus, tool tips and
+dialogs), not its source code. Status: **done** · **partial** (exists but differs) · **missing**.
 
 ## Window and navigation
-
 | 2.12 | 2.13 | Status |
 |---|---|---|
-| Tabs, new tab, close tab, merge open tabs | tabs, new tab, close tab | partial (no merge of tabs, no move to new window) |
-| Main menu ("..." at the right) | "Menu" button: open, recent, save, export, print, panels, view, page colours, theme, settings, about, exit | partial (no compare / side by side / command palette entries) |
-| Toolbar groups: Edit PDF · Annotate · Comment · Geometry · Side by side | Annotate · Pages · Tools | partial (different grouping) |
-| Page layout: continuous / single page / two pages | continuous only | **missing** |
-| Rotate view left / right (Ctrl+L / Ctrl+R) | – | **missing** |
-| Back / Forward (Alt+Left / Alt+Right) | – | **missing** |
-| Reload from disk, "file changed by another program" | – | **missing** |
-| Command palette (Ctrl+K) | – | **missing** |
-| Theme: light / dark / like Windows (the window itself) | Light / Dark / Like Windows, plus Settings dialog and About | done |
-| Thumbnails drag to reorder, select several pages, cut / copy / paste pages between tabs, right-click menu | all (right-click menu, Ctrl/Shift select, drag, Del, Ctrl+C/X/V, paste between tabs) | done |
-| Zoom, fit width / page, actual size, full screen, presentation | all | done |
-| Go to page, first / last page, bookmarks panel, thumbnails | all | done |
-| Find with match case, all tabs, results across tabs | find, match case, current tab | partial (no "all tabs") |
-| Recent files, drag and drop, one window | all | done |
+| Tabs, new tab, close tab | yes | done |
+| Icon toolbar: Open, Save, Undo, Redo, Edit PDF, Annotate, Comment, Geometry, Side by side, page box, zoom, search, "..." menu | same layout, every item has an icon, hover highlight | done |
+| Zoom drop-down (50 % ... 400 %, fit width / page, actual size) | yes | done |
+| Main "..." menu (open, new from pictures, recent, save, export, compare, side by side, print, reload, read aloud, sign, copy, select all, copy page / area, navigation, panels, page layout, rotate, fit, full screen, page colours, theme, command palette, default viewer, About, exit) | yes | done |
+| Page layout: single / continuous / two pages, cover page | yes | done |
+| Rotate view left / right (Ctrl+L / Ctrl+R) | rotates the pages (an undoable change that Save keeps) | partial |
+| Back / Forward (Alt+Left / Alt+Right) | yes | done |
+| Reload from disk | yes (asks first when there are unsaved changes) | partial: no automatic "file changed" notice |
+| Command palette (Ctrl+K) | yes, about 70 commands | done |
+| Theme light / dark / like Windows, Settings, About | yes | done |
+| Thumbnails: select several, drag to reorder, right-click menu, cut / copy / paste pages between tabs | yes | done |
+| Find (match case) | current tab | partial: no "all tabs" |
+| Merge open tabs into one document, move a tab to a new window | - | missing |
 
-## Viewing and reading
-
+## Viewing
 | 2.12 | 2.13 | Status |
 |---|---|---|
-| Copy page as image / copy area as image | copy page | partial (no area) |
-| Look up, translate, Wikipedia on selected text | – | **missing** |
-| Read aloud with voice and speed, pause | read aloud, speed | partial (no voice choice, no pause bar) |
-| Print: copies, range, booklet, pages per sheet | print with range and copies | partial (no booklet / N-up) |
-| Document properties (title, author, keywords editable) | read-only | partial |
+| Right-click menu (copy, select all, search online, look up, highlight..., add link, add comment here, edit text, copy page / area as image, read aloud) | yes | done |
+| Links inside documents (web pages and pages) are clickable | yes (web pages ask first) | done |
+| Read aloud with voice choice, pause bar | read aloud, speed | partial |
+| Print: printer, range, copies, pages per sheet (1, 2, 4, 6, 9), size, orientation | yes, no preview | partial |
+| Document properties editable | read-only | partial |
 
 ## Annotating
-
 | 2.12 | 2.13 | Status |
 |---|---|---|
-| Highlight, underline, strikethrough, squiggly | all | done |
-| Comments, notes summary | comments, notes summary (Markdown file) | done |
-| Rectangle, ellipse, line, arrow, pen, colours, widths | all | done |
-| Text size for annotations | – | **missing** |
-| Stamps (standard and custom) | standard and custom | done |
-| Handwritten signature (draw / picture, remember) | – | **missing** |
-| Insert picture, replace picture, delete picture, paste picture | insert | partial |
-| Add link (drag a box, web page or page) | – | **missing** |
-| Select several annotations, drag to move, change colour | select one, delete | partial |
-| Measuring: ruler, protractor, units, drawing scale, keep on page | – | **missing** |
+| Highlight, underline, strikethrough, squiggly, comments, shapes, arrow, pen, colours, widths, text size | yes | done |
+| Stamps, insert picture | yes | done |
+| Handwritten signature: type, draw, picture, remembered | yes | done |
+| Link (drag a box) | web addresses | partial: no link to a page |
+| Select several annotations, move / resize pictures and text | one annotation | missing |
 
 ## Editing
-
 | 2.12 | 2.13 | Status |
 |---|---|---|
-| Edit text, paragraph reflow (F2), bold / italic / font / size / colour / align | edit a line (same font where possible) | partial |
-| Find and replace text | – | **missing** |
-| Insert, edit, delete tables | – | **missing** |
-| Add bookmark, rename, move, delete bookmarks | view only | **missing** |
-| Fillable forms: fill in | fill in | done |
-| Fillable forms: add text field, check box, option buttons, list, signature field | – | **missing** |
-| Move / resize inserted pictures and text | – | **missing** |
+| Edit text line, add text box | yes | done |
+| Paragraph reflow (F2) | - | missing |
+| Find and replace text | yes (inside one text run) | partial |
+| Insert, edit, delete tables | yes (tables made by Feather PDF) | partial |
+| Add bookmark | yes | done |
+| Fill in forms | yes | done |
+| Create form fields | - | missing (PDFium cannot create them) |
 | Undo / redo | 30 steps | done |
 
-## Pages
-
+## Pages and tools
 | 2.12 | 2.13 | Status |
 |---|---|---|
-| Delete, insert blank, rotate, move, crop (also by drawing a box), extract, split, merge, insert from file | all except draw-a-box crop and split | partial |
-| Pages per sheet, booklet | – | **missing** |
-| New PDF from pictures | – | **missing** |
-
-## Tools
-
-| 2.12 | 2.13 | Status |
-|---|---|---|
-| Watermark, page numbers | both | done |
-| Compress (by quality or target size), black and white / greyscale | compress; greyscale only as a compress option | partial |
-| Password protection with limits | yes | done |
-| Redaction (areas, selected text, find and mark, apply) | yes | done |
-| OCR | yes (Tesseract, English bundled) | done |
-| Export: pictures, text, Markdown, Word, Excel / CSV | yes | done |
-| Digital signatures: sign, own certificate, check, time stamp, visible signature | sign, own certificate, check | partial (no time stamp, no visible stamp) |
-| Compare two PDFs, mark the differences | – | **missing** |
-| Side by side view, scroll and zoom together | – | **missing** |
-| Set as default PDF viewer | open-with registration | done |
-
-## Suggested order
-
-1. Make the window feel like 2.12: main menu, Edit PDF / Annotate / Comment / Geometry grouping, theme, command palette.
-2. Navigation: page layouts, rotate view, back / forward, reload from disk, search in all tabs.
-3. Quick wins: new PDF from pictures, copy area as image, link tool, add bookmark, find and replace.
-4. Larger features: tables, measuring tools, handwritten signature, form field creation, compare, side by side, booklet.
+| Delete, insert, rotate, move, crop, crop by drawing a box, extract, split, merge, insert from file, new PDF from pictures | yes | done |
+| Pages per sheet, booklet (printing) | pages per sheet; no booklet | partial |
+| Watermark, page numbers, compress, greyscale pictures, protect, redact, OCR, export | yes | done |
+| Digital signatures: sign, own certificate, check | yes | partial: no time stamp, no visible stamp |
+| Geometry: ruler, protractor, units, drawing scale, rulers, keep / clear | yes | done |
+| Compare two PDFs | text comparison, differences highlighted in a copy | partial |
+| Side by side, scroll and zoom together | yes | done |

@@ -41,18 +41,19 @@ bool fromText(const std::wstring& name, const std::wstring& pngPath) {
     if (name.empty()) return false;
     Gdi g;
     if (!g.ok) return false;
-    static const wchar_t* fonts[] = {L"Segoe Script", L"Lucida Handwriting", L"Brush Script MT", L"Segoe UI"};
+    static const wchar_t* fonts[] = {L"Segoe Script", L"Lucida Handwriting", L"Brush Script MT", L"Segoe UI", L"Tahoma", L"Microsoft Sans Serif", L"Arial"};
     std::unique_ptr<Gdiplus::FontFamily> fam;
     for (const wchar_t* f : fonts) {
         auto c = std::make_unique<Gdiplus::FontFamily>(f);
         if (c->IsAvailable()) { fam = std::move(c); break; }
     }
-    if (!fam) fam = std::make_unique<Gdiplus::FontFamily>(L"Arial");
+    if (!fam) fam.reset(Gdiplus::FontFamily::GenericSansSerif()->Clone());
     Gdiplus::Font font(fam.get(), 72, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
     Gdiplus::Bitmap probe(8, 8, PixelFormat32bppARGB);
     Gdiplus::Graphics pg(&probe);
     Gdiplus::RectF box;
     pg.MeasureString(name.c_str(), -1, &font, Gdiplus::PointF(0, 0), &box);
+    if (box.Width < 4 || box.Height < 4) return false;
     const int w = static_cast<int>(box.Width) + 40, h = static_cast<int>(box.Height) + 24;
     Gdiplus::Bitmap bmp(w, h, PixelFormat32bppARGB);
     Gdiplus::Graphics gr(&bmp);

@@ -57,12 +57,18 @@ void layout(HWND h, State* st) {
         st->controls.push_back(ctl);
     }
     y += unit / 2;
-    HWND ok = CreateWindowExW(0, L"BUTTON", st->okText, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, w - pad * 2 - unit * 12, y, unit * 6, unit * 2, h,
-                              reinterpret_cast<HMENU>(IDOK), st->inst, nullptr);
-    HWND cancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, w - pad - unit * 6, y, unit * 6, unit * 2, h,
-                                  reinterpret_cast<HMENU>(IDCANCEL), st->inst, nullptr);
+    // an OK text that starts with "!" makes a dialog with only that one button (for information)
+    const bool single = st->okText[0] == L'!';
+    const wchar_t* okLabel = single ? st->okText + 1 : st->okText;
+    const int okW = std::max<int>(unit * 6, static_cast<int>(wcslen(okLabel)) * unit / 2 + unit * 2);
+    HWND ok = CreateWindowExW(0, L"BUTTON", okLabel, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON,
+                              single ? w - pad - okW : w - pad * 2 - unit * 6 - okW, y, okW, unit * 2, h, reinterpret_cast<HMENU>(IDOK), st->inst, nullptr);
     SendMessageW(ok, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
-    SendMessageW(cancel, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    if (!single) {
+        HWND cancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, w - pad - unit * 6, y, unit * 6, unit * 2, h,
+                                      reinterpret_cast<HMENU>(IDCANCEL), st->inst, nullptr);
+        SendMessageW(cancel, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    }
     y += unit * 2 + pad;
 
     RECT rc{0, 0, w, y};

@@ -89,6 +89,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
+void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
 void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd);
@@ -429,7 +430,10 @@ void afterDocReplaced() {
     refresh();
 }
 
+bool saveAsDialog(Document& d);
+
 bool saveDocument(Document& d, const std::wstring& path) {
+    if (path.empty()) return saveAsDialog(d);   // a new document has no file yet
     SaveResult r = d.saveAs(path);
     std::wstring name = path.substr(path.find_last_of(L"\\/") + 1);
     const wchar_t* msg = nullptr;
@@ -780,6 +784,11 @@ void showAnnotateMenu(const RECT& anchor) {
     AppendMenuW(sg, MF_STRING, N_SIG_TYPE, L"Type my name...");
     AppendMenuW(sg, MF_STRING, N_SIG_DRAW, L"Draw my signature...");
     AppendMenuW(sg, MF_STRING, N_SIG_PIC, L"Use a picture of my signature...");
+    {
+        std::wstring saved = signaturePathFwd();
+        AppendMenuW(sg, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(sg, MF_STRING | (GetFileAttributesW(saved.c_str()) != INVALID_FILE_ATTRIBUTES ? 0 : MF_GRAYED), N_SIG_CLEAR, L"Use my saved signature");
+    }
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Signature");
     item(T_PICTURE, L"Insert picture...");
     item(N_LINK, L"Link (drag a box)", app.tool == Viewer::Tool::Link);
@@ -820,7 +829,7 @@ void showAnnotateMenu(const RECT& anchor) {
         case M_PEN: setTool(Viewer::Tool::Pen); break;
         case T_PICTURE: toolsDispatch(cmd); break;
         case N_LINK: startLink(); break;
-        case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: signatureAction(cmd); break;
+        case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: case N_SIG_CLEAR: signatureAction(cmd); break;
         case M_DELETE: deleteSelectedAnnotation(); break;
     }
 }
@@ -2179,10 +2188,8 @@ void applyTheme() {
 // ---- About and Settings ----
 void showAbout() {
     std::vector<FormField> f(1);
-    f[0] = {FormField::Note, L"", {}, L"Feather PDF\nLightweight PDF viewer and editor\nVersion 2.13.0\n\nCreated by: Akshaya Simha\n"
-            L"Built with care for a faster, simpler document experience.\n\nFree to use and share, always. No subscription, no trial, no licence key.\n\n"
-            L"PDF rendering by PDFium; text recognition by Tesseract. See the licenses folder."};
-    showForm(app.wnd, app.inst, L"About Feather PDF", f, L"Close");
+    f[0] = {FormField::Note, L"", {}, L"Feather PDF\nVersion 2.13.0\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
+    showForm(app.wnd, app.inst, L"About Feather PDF", f, L"!Close");
 }
 
 void showSettings() {
@@ -2669,12 +2676,15 @@ std::wstring signaturePath() {
     return (p == std::wstring::npos ? L"" : s.substr(0, p + 1)) + L"signature.png";
 }
 
+std::wstring signaturePathFwd() { return signaturePath(); }
+
 void signatureAction(int cmd) {
     Document* d = activeDoc();
     if (!d) return;
     const std::wstring png = signaturePath();
     bool ok = false;
-    if (cmd == N_SIG_TYPE) {
+    if (cmd == N_SIG_CLEAR) ok = GetFileAttributesW(png.c_str()) != INVALID_FILE_ATTRIBUTES;   // the one made last time
+    else if (cmd == N_SIG_TYPE) {
         std::wstring name;
         if (!askText(L"Signature", L"Type your name as you sign it.", false, name, L"") || name.empty()) return;
         if (name.size() > 60) name.resize(60);
@@ -2771,7 +2781,7 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
                 WideCharToMultiByte(CP_UTF8, 0, url.c_str(), -1, u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
                 u8.resize(strlen(u8.c_str()));
                 if (u8.rfind("http://", 0) != 0 && u8.rfind("https://", 0) != 0 && u8.rfind("mailto:", 0) != 0) u8 = "https://" + u8;
-                if (annot::addLink(d, e.page, r, u8)) { app.viewer.documentChanged(); refresh(); }
+                if (annot::addLink(d, e.page, r, u8)) { refreshLinks(d); app.viewer.documentChanged(); refresh(); }
                 else MessageBoxW(app.wnd, L"The link could not be added.", kAppName, MB_OK | MB_ICONWARNING);
             }
             setTool(Viewer::Tool::Link);
@@ -2861,6 +2871,12 @@ void addBookmarkHere() {
     showSidebar(Sidebar::Mode::Bookmarks);
 }
 
+// PDFium keeps its list of links from the first time it is asked; reopening the saved bytes makes new links clickable.
+void refreshLinks(Document& d) {
+    std::vector<unsigned char> b;
+    if (d.serialize(b)) d.reload(std::move(b));
+}
+
 void linkOnSelection() {
     Document* d = activeDoc();
     if (!d || !app.viewer.hasSelection()) return;
@@ -2874,7 +2890,7 @@ void linkOnSelection() {
     for (const auto& pr : app.viewer.selectionRects())
         for (const auto& r : pr.rects) any = annot::addLink(*d, pr.page, r, u8) || any;
     app.viewer.clearSelection();
-    if (any) { app.viewer.documentChanged(); refresh(); }
+    if (any) { refreshLinks(*d); app.viewer.documentChanged(); refresh(); }
     else MessageBoxW(app.wnd, L"The link could not be added.", kAppName, MB_OK | MB_ICONWARNING);
 }
 
@@ -2929,9 +2945,9 @@ void splitPdf() {
     std::vector<FormField> f(3);
     f[0] = {FormField::Choice, L"Split:", {L"Into single pages", L"Every N pages", L"By page ranges"}, L"", 1};
     f[1] = {FormField::Text, L"N pages per file:", {}, L"10"};
-    f[2] = {FormField::Text, L"Ranges (one file each, separated by ;):", {}, L"1-5; 6-"};
+    f[2] = {FormField::Text, L"Ranges (use ; between):", {}, L"1-5; 6-"};
     g_formDoc = d;
-    bool ok = showForm(app.wnd, app.inst, L"Split into several files", f, L"Choose folder and name...", [](const std::vector<FormField>& v) -> std::wstring {
+    bool ok = showForm(app.wnd, app.inst, L"Split into several files", f, L"Name...", [](const std::vector<FormField>& v) -> std::wstring {
         if (v[0].choice == 1) { wchar_t* e = nullptr; long n = wcstol(v[1].text.c_str(), &e, 10); if (e == v[1].text.c_str() || *e || n < 1) return L"Type how many pages each file should have."; }
         if (v[0].choice == 2) {
             size_t pos = 0;
@@ -3014,7 +3030,7 @@ void compareDocs() {
     std::vector<std::wstring> names;
     for (auto& t : app.tabs) if (t.get() != a) { others.push_back(t.get()); names.push_back(t->title()); }
     std::vector<FormField> f(2);
-    f[0] = {FormField::Note, L"", {}, L"Compares the text of this document (" + a->title() + L") with another open document, page by page. A copy of this document opens in a new tab with the words that are not in the other document highlighted."};
+    f[0] = {FormField::Note, L"", {}, L"Opens a copy of \"" + a->title() + L"\" in a new tab with the words that are missing from the other document highlighted."};
     f[1] = {FormField::Choice, L"Compare with:", names, L"", 0};
     if (!showForm(app.wnd, app.inst, L"Compare documents", f, L"Compare")) return;
     Document* b = others[f[1].choice];
@@ -3171,6 +3187,13 @@ LRESULT CALLBACK paletteProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (sel >= 0) { st->chosen = st->shown[sel]; st->done = true; }
             }
             return 0;
+        case WM_ERASEBKGND: {
+            RECT r; GetClientRect(h, &r);
+            HBRUSH b = CreateSolidBrush(pal().panel);
+            FillRect(reinterpret_cast<HDC>(w), &r, b);
+            DeleteObject(b);
+            return 1;
+        }
         case WM_ACTIVATE: if (LOWORD(w) == WA_INACTIVE) st->done = true; return 0;
         case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: {
             HDC dc = reinterpret_cast<HDC>(w);

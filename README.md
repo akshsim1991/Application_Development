@@ -9,7 +9,7 @@ reference). It is a native C++ Win32 application on top of [PDFium](https://pdfi
 
 ## Features
 
-**Reading** · tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
+**Reading** · icon toolbar like 2.12, light / dark / Windows theme, one-page / continuous / two-page layouts, back and forward, reload from disk, clickable links, side by side view, command palette (Ctrl+K), tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
 Go to page, bookmarks panel, page thumbnails, search with all matches highlighted, text selection and copy, dark and
 dimmed page colours, password-protected files, drag and drop, recent files, one window for every launch.
 
@@ -21,9 +21,9 @@ ellipse, line, arrow, freehand pen, colours and line widths, select / edit / del
 **Editing** · edit existing text lines, add text boxes (sans / serif / mono, size, colour), insert pictures, undo / redo
 for everything (30 steps), safe saving (temp file, then replace), unsaved-changes prompts.
 
-**Pages** · delete, insert blank, rotate, move, crop, insert pages from a file, merge PDFs, extract pages to a new file.
+**Pages** · thumbnails with multi-select, drag and a right-click menu (delete, rotate, cut / copy / paste, insert, crop, extract); delete, insert blank, rotate, move, crop (also by drawing a box), insert pages from a file, merge, split, extract, new PDF from pictures.
 
-**Tools** · stamps (Approved, Draft, Confidential, custom), notes summary (all comments and highlights as Markdown), full screen
+**Tools** · find and replace, tables, bookmarks, links, handwritten signatures (type, draw or picture), ruler and protractor with units and drawing scale, compare two documents,  stamps (Approved, Draft, Confidential, custom), notes summary (all comments and highlights as Markdown), full screen
 and presentation mode, watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
@@ -89,8 +89,7 @@ page numbers, text boxes, text editing · `picture.*` pictures, copy as picture 
 
 ## Not in 2.13 yet
 
-Visible signature stamps, comparing two PDFs, side-by-side view, editing tables, adding bookmarks and links,
-find and replace, measuring tools, booklet / pages-per-sheet printing, editing document properties. Text edited or added
+Visible signature stamps and time stamps, creating form fields, links to pages, paragraph reflow, booklet printing, editing document properties, selecting several annotations. See `docs/PARITY.md`. Text edited or added
 uses the built-in Latin fonts; other scripts are not supported for new text. Pages made by Redact become pictures.
 
 ## Third-party software

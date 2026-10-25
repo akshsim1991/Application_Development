@@ -97,7 +97,7 @@ void Viewer::relayout() {
             if (layout_ == 2 && r.second == 1) w *= 2;   // a lone page keeps the width of half a spread
             maxW = std::max(maxW, w);
         }
-        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin - (layout_ == 2 ? kGap : 0);
+        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin - (layout_ == 2 ? kGap + 4 : 0);
         doc_->zoom = std::clamp(avail / (maxW * 96.0 / 72.0), kMinZoom, kMaxZoom);
     }
     const double s = pxPerPt();
@@ -202,7 +202,9 @@ int Viewer::currentPage() const {
     RECT rc; GetClientRect(hwnd_, &rc);
     int probe = doc_->scrollY + rc.bottom / 3;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), probe) - tops_.begin()) - 1;
-    return std::clamp(idx, 0, static_cast<int>(tops_.size()) - 1);
+    idx = std::clamp(idx, 0, static_cast<int>(tops_.size()) - 1);
+    while (idx > 0 && tops_[idx - 1] == tops_[idx]) --idx;   // the left page of a spread
+    return idx;
 }
 
 void Viewer::goToPage(int index) {

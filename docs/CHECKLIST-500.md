@@ -1,35 +1,35 @@
 # Feather PDF 2.13 against the 500-feature checklist
 
-Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Done** = works in 2.13 · **Partly** = part of it, see the note · **Missing** = not built. Tested under Wine; printing, Windows voices and live time-stamp servers were not testable there.
+Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Done** = works in 2.13 · **Partly** = part of it, see the note · **Missing** = not built. Tested under Wine (printing through a CUPS test printer); Windows voices and live time-stamp servers were not testable there.
 
-**Overall: 163 done, 82 partly, 255 missing (of 500).**
+**Overall: 196 done, 85 partly, 219 missing (of 500).**
 
 | Module | Done | Partly | Missing |
 |---|---|---|---|
 | 1. PDF Reading and Navigation | 21 | 4 | 5 |
-| 2. Text Editing | 12 | 8 | 10 |
-| 3. Image Editing | 7 | 3 | 16 |
-| 4. Vector Graphics and Object Editing | 1 | 6 | 13 |
-| 5. Page Management | 13 | 4 | 9 |
-| 6. Annotations and Markup | 14 | 1 | 11 |
+| 2. Text Editing | 12 | 9 | 9 |
+| 3. Image Editing | 15 | 4 | 7 |
+| 4. Vector Graphics and Object Editing | 1 | 7 | 12 |
+| 5. Page Management | 18 | 3 | 5 |
+| 6. Annotations and Markup | 19 | 1 | 6 |
 | 7. OCR and Scanned PDF Editing | 6 | 3 | 18 |
-| 8. PDF Conversion | 6 | 2 | 17 |
-| 9. PDF Forms | 8 | 2 | 10 |
+| 8. PDF Conversion | 9 | 2 | 14 |
+| 9. PDF Forms | 12 | 3 | 5 |
 | 10. Digital Signatures | 9 | 4 | 2 |
-| 11. Security and Privacy | 12 | 2 | 6 |
-| 12. PDF Compression and Optimization | 7 | 1 | 7 |
+| 11. Security and Privacy | 16 | 1 | 3 |
+| 12. PDF Compression and Optimization | 8 | 1 | 6 |
 | 13. PDF Repair and Diagnostics | 0 | 4 | 11 |
 | 14. PDF Comparison | 12 | 2 | 1 |
 | 15. AI-Powered Features | 1 | 4 | 20 |
 | 16. Batch Processing and Automation | 6 | 2 | 17 |
 | 17. Engineering and Scientific Features | 5 | 7 | 13 |
 | 18. Accessibility | 0 | 2 | 13 |
-| 19. Printing and Publishing | 7 | 1 | 12 |
+| 19. Printing and Publishing | 10 | 1 | 9 |
 | 20. Performance and Reliability | 6 | 7 | 7 |
 | 21. User Interface and Customization | 7 | 5 | 8 |
 | 22. Collaboration and Integrations | 1 | 3 | 16 |
-| 23. Advanced Competitive Features | 2 | 5 | 13 |
-| **Total** | **163** | **82** | **255** |
+| 23. Advanced Competitive Features | 2 | 6 | 12 |
+| **Total** | **196** | **85** | **219** |
 
 ## 1. PDF Reading and Navigation
 
@@ -94,7 +94,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 52 | Replace text across multiple pages | Partly | Whole document at once, same limit as above |
 | 53 | Spell-checking | Missing |  |
 | 54 | Grammar checking | Missing |  |
-| 55 | Font embedding | Missing | New text uses the standard (not embedded) fonts |
+| 55 | Font embedding | Partly | PDF/A copies embed fonts; new text in the document itself uses the standard fonts |
 | 56 | Font substitution | Done | A similar standard font is used when the original lacks a character |
 | 57 | Unicode support | Partly | Reading and search: all scripts. New or edited text: Western characters only |
 | 58 | Multilingual text editing | Missing | Western languages only |
@@ -106,19 +106,19 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | # | Feature | Status | Note |
 |---|---|---|---|
 | 61 | Insert images from computer | Done |  |
-| 62 | Paste images from clipboard | Missing |  |
+| 62 | Paste images from clipboard | Done | Ctrl+V or Edit PDF > Picture |
 | 63 | Select existing images | Done | Move tool |
 | 64 | Move images | Done |  |
 | 65 | Resize images | Done |  |
-| 66 | Rotate images | Missing |  |
-| 67 | Flip images | Missing |  |
-| 68 | Crop images | Missing |  |
+| 66 | Rotate images | Done | Quarter turns with the Move tool |
+| 67 | Flip images | Done |  |
+| 68 | Crop images | Done | Drag a box; redrawn at the picture's own resolution |
 | 69 | Delete images | Done | Move tool, then Del |
-| 70 | Replace existing images | Missing |  |
-| 71 | Extract images | Missing | Pages can be exported as pictures, not the embedded images themselves |
+| 70 | Replace existing images | Done | Fitted into the old picture's box |
+| 71 | Extract images | Done | Save picture as PNG, at its own resolution |
 | 72 | Copy images between PDFs | Missing |  |
-| 73 | Adjust image brightness | Missing |  |
-| 74 | Adjust image contrast | Missing |  |
+| 73 | Adjust image brightness | Done |  |
+| 74 | Adjust image contrast | Done |  |
 | 75 | Adjust saturation | Partly | Greyscale only |
 | 76 | Sharpen images | Missing |  |
 | 77 | Reduce image noise | Missing |  |
@@ -129,7 +129,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 82 | Convert image formats | Partly | Recompressed as JPEG |
 | 83 | Align multiple images | Partly | Snapping guides while moving |
 | 84 | Group and ungroup images | Missing |  |
-| 85 | Bring images forward or backward | Missing |  |
+| 85 | Bring images forward or backward | Partly | Bring to front and send to back; no one step at a time |
 | 86 | Edit image masks and clipping paths | Missing |  |
 
 ## 4. Vector Graphics and Object Editing
@@ -153,7 +153,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 101 | Snap objects to grids | Partly | Snaps to page edges, centre and other objects; no grid |
 | 102 | Use rulers and guidelines | Done | Rulers on the page, snapping guides |
 | 103 | Inspect individual PDF objects | Missing |  |
-| 104 | Edit object stacking order | Missing |  |
+| 104 | Edit object stacking order | Partly | Front and back for pictures, paragraphs and tables |
 | 105 | Copy objects between pages | Missing |  |
 | 106 | Lock and unlock objects | Missing |  |
 
@@ -175,13 +175,13 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 118 | Change page orientation | Done | Rotate |
 | 119 | Insert blank pages | Done |  |
 | 120 | Add page numbers | Done |  |
-| 121 | Add headers and footers | Partly | Page numbers top or bottom; no free header/footer text |
+| 121 | Add headers and footers | Done | Left, centre and right text at top and bottom, with page, date, file and title fields |
 | 122 | Add watermarks | Done |  |
 | 123 | Remove watermarks where editable | Missing |  |
-| 124 | Add background colors | Missing |  |
-| 125 | Remove blank pages | Missing |  |
-| 126 | Detect duplicate pages | Missing |  |
-| 127 | Reverse page order | Missing |  |
+| 124 | Add background colors | Done |  |
+| 125 | Remove blank pages | Done |  |
+| 126 | Detect duplicate pages | Done | Same text and same look at a small size |
+| 127 | Reverse page order | Done |  |
 | 128 | Create booklet layouts | Missing |  |
 | 129 | Create N-up page layouts | Partly | When printing (1, 2, 4, 6, 9 per sheet); not as a new PDF |
 | 130 | Overlay PDF pages | Missing |  |
@@ -202,19 +202,19 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 140 | Draw lines | Done |  |
 | 141 | Draw rectangles | Done |  |
 | 142 | Draw circles | Done |  |
-| 143 | Draw polygons | Missing |  |
-| 144 | Add text callouts | Missing |  |
-| 145 | Add cloud annotations | Missing |  |
+| 143 | Draw polygons | Done |  |
+| 144 | Add text callouts | Done |  |
+| 145 | Add cloud annotations | Done |  |
 | 146 | Insert stamps | Done |  |
 | 147 | Create custom stamps | Done |  |
-| 148 | Add date and time stamps | Missing |  |
+| 148 | Add date and time stamps | Done | Date and time, APPROVED / RECEIVED / PAID with date |
 | 149 | Attach files to annotations | Missing |  |
 | 150 | Add audio annotations | Missing |  |
 | 151 | Reply to comments | Missing |  |
 | 152 | Filter comments | Missing |  |
 | 153 | Export annotations | Partly | Notes summary as Markdown; no FDF/XFDF |
 | 154 | Import annotations | Missing |  |
-| 155 | Flatten annotations | Missing |  |
+| 155 | Flatten annotations | Done | Links keep working |
 | 156 | Delete annotations | Done |  |
 | 157 | Copy annotations between documents | Missing |  |
 | 158 | Generate annotation summaries | Done |  |
@@ -265,15 +265,15 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 193 | PDF to images | Done | PNG, JPEG |
 | 194 | HTML to PDF | Missing |  |
 | 195 | PDF to HTML | Missing |  |
-| 196 | Markdown to PDF | Missing |  |
-| 197 | Text to PDF | Missing |  |
+| 196 | Markdown to PDF | Done | Headings, lists, quotes, code, tables, links; Western characters |
+| 197 | Text to PDF | Done | Western characters |
 | 198 | PDF to text | Done | Plain text and Markdown |
 | 199 | SVG to PDF | Missing |  |
 | 200 | PDF to SVG | Missing |  |
 | 201 | TIFF to PDF | Done |  |
 | 202 | PDF to TIFF | Missing |  |
 | 203 | RTF to PDF | Missing |  |
-| 204 | Create PDF/A files | Missing |  |
+| 204 | Create PDF/A files | Done | PDF/A-2b; checked with veraPDF |
 | 205 | Create PDF/X files | Missing |  |
 | 206 | Validate PDF/UA files | Missing |  |
 | 207 | Batch file conversion | Missing |  |
@@ -289,10 +289,10 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 212 | Edit existing PDF forms | Partly | Fill in and add fields; field properties cannot be changed |
 | 213 | Insert text fields | Done |  |
 | 214 | Insert checkboxes | Done |  |
-| 215 | Insert radio buttons | Missing |  |
+| 215 | Insert radio buttons | Done |  |
 | 216 | Insert dropdown menus | Done |  |
-| 217 | Insert list boxes | Missing |  |
-| 218 | Insert date fields | Missing |  |
+| 217 | Insert list boxes | Done |  |
+| 218 | Insert date fields | Partly | Date format scripts for other readers; Feather does not check the date itself |
 | 219 | Insert form buttons | Missing |  |
 | 220 | Automatically detect form fields | Done | Finds blanks in flat forms, asks before adding |
 | 221 | Validate form entries | Missing |  |
@@ -302,8 +302,8 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 225 | Export form data | Done | Excel or CSV |
 | 226 | Populate forms from Excel or CSV | Done | CSV (save from Excel as CSV) |
 | 227 | Batch-fill PDF forms | Done | One copy per row |
-| 228 | Flatten completed forms | Missing |  |
-| 229 | Reset form fields | Missing |  |
+| 228 | Flatten completed forms | Done |  |
+| 229 | Reset form fields | Done |  |
 | 230 | Create reusable form templates | Missing |  |
 
 ## 10. Digital Signatures
@@ -340,16 +340,16 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 253 | Permanently redact text | Done |  |
 | 254 | Permanently redact images | Done | Redacted pages become pictures |
 | 255 | Search and redact sensitive information | Done |  |
-| 256 | Remove metadata | Missing |  |
-| 257 | Remove hidden information | Missing |  |
-| 258 | Remove embedded attachments | Missing |  |
+| 256 | Remove metadata | Done |  |
+| 257 | Remove hidden information | Done | Scripts, thumbnails, application data, hidden comments, XFA |
+| 258 | Remove embedded attachments | Done |  |
 | 259 | Detect suspicious PDF scripts | Missing |  |
 | 260 | Disable PDF JavaScript | Done | Feather PDF never runs scripts in PDFs |
 | 261 | Open suspicious PDFs in a sandbox | Missing |  |
 | 262 | Verify document integrity | Partly | Through signatures |
 | 263 | Maintain security audit logs | Missing |  |
 | 264 | Process documents completely offline | Done |  |
-| 265 | Provide privacy and sanitization reports | Partly | Redaction check report |
+| 265 | Provide privacy and sanitization reports | Done | Report of everything removed, and the redaction check |
 
 ## 12. PDF Compression and Optimization
 
@@ -360,7 +360,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 268 | Compress embedded images | Done |  |
 | 269 | Remove duplicate resources | Missing |  |
 | 270 | Optimize embedded fonts | Missing |  |
-| 271 | Remove unnecessary metadata | Missing |  |
+| 271 | Remove unnecessary metadata | Done | Remove hidden data |
 | 272 | Optimize PDF object streams | Missing |  |
 | 273 | Reduce scanned PDF sizes | Done | Lower dpi, greyscale |
 | 274 | Batch-compress PDFs | Done |  |
@@ -528,12 +528,12 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 401 | Print selected pages | Done |  |
 | 402 | Print custom page ranges | Done |  |
 | 403 | Print multiple pages per sheet | Done |  |
-| 404 | Duplex printing | Missing | No printer properties button yet |
+| 404 | Duplex printing | Done | Long or short edge, plus the printer's own Properties dialog |
 | 405 | Booklet printing | Missing |  |
 | 406 | Poster printing | Missing |  |
 | 407 | Print engineering drawings at actual scale | Done | "Actual size" |
 | 408 | High-resolution printing | Done | At the printer's resolution |
-| 409 | Grayscale printing | Missing |  |
+| 409 | Grayscale printing | Done |  |
 | 410 | Color profile management | Missing |  |
 | 411 | Print annotations | Done |  |
 | 412 | Print form fields | Done |  |
@@ -541,7 +541,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 414 | Add crop marks | Missing |  |
 | 415 | Add bleed marks | Missing |  |
 | 416 | Validate print resolution | Missing |  |
-| 417 | Print preview | Missing |  |
+| 417 | Print preview | Done |  |
 | 418 | Detect paper-size mismatches | Partly | Orientation follows the pages automatically |
 | 419 | Create print presets | Missing |  |
 | 420 | Preflight PDF documents | Missing |  |
@@ -628,7 +628,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 481 | Edit PDF content using a visual object tree | Missing |  |
 | 482 | Switch between visual and structural editing | Missing |  |
 | 483 | Smart layout-preserving text replacement | Partly | Same font and place where the font allows |
-| 484 | Smart image replacement | Missing |  |
+| 484 | Smart image replacement | Partly | Replace picture keeps the place and fits the box |
 | 485 | Automatic object alignment | Partly | Snapping guides |
 | 486 | Scan-to-editable-layout reconstruction | Missing |  |
 | 487 | Editable table reconstruction | Partly | Tables to Excel; tables made in Feather PDF are editable |

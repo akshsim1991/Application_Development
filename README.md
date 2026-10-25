@@ -14,14 +14,19 @@ Go to page, bookmarks panel, page thumbnails, search with all matches highlighte
 dimmed page colours, password-protected files, drag and drop, recent files, one window for every launch.
 
 **Annotating** · highlight, underline, strikethrough, squiggly underline, comments on text or placed as notes, rectangle,
-ellipse, line, arrow, freehand pen, colours and line widths, select / edit / delete annotations, right-click menu.
+ellipse, line, arrow, freehand pen, polygon, cloud, callout with leader line, stamps with the date and time, colours and
+line widths, select / edit / delete annotations, flatten (comments become part of the page; links keep working), right-click menu.
 
-**Forms** · fill in text fields, check boxes, radio buttons and drop-down lists; values are saved into the file.
+**Forms** · fill in text fields, check boxes, radio buttons, list boxes and drop-down lists; values are saved into the file.
+Create text, check box, radio button, list box, drop-down and date fields; reset a form; flatten a filled-in form.
 
-**Editing** · edit existing text lines, add text boxes (sans / serif / mono, size, colour), insert pictures, undo / redo
+**Editing** · edit existing text lines, add text boxes (sans / serif / mono, size, colour), insert pictures; turn, flip, crop,
+replace, brighten / add contrast, make black and white, save as PNG and paste pictures, bring to front / send to back; undo / redo
 for everything (30 steps), safe saving (temp file, then replace), unsaved-changes prompts.
 
-**Pages** · thumbnails with multi-select, drag and a right-click menu (delete, rotate, cut / copy / paste, insert, crop, extract); delete, insert blank, rotate, move, crop (also by drawing a box), insert pages from a file, merge, split, extract, new PDF from pictures.
+**Pages** · thumbnails with multi-select, drag and a right-click menu (delete, rotate, cut / copy / paste, insert, crop, extract); delete, insert blank, rotate, move, crop (also by drawing a box), insert pages from a file, merge, split, extract, reverse the order, remove blank pages, find duplicate pages, headers and
+footers (left / centre / right text with page number, page count, date, file name and title), background colour, new PDF
+from pictures, new PDF from a text or Markdown file.
 
 **Safety net** · the open tabs and their unsaved changes are saved in the background and offered again after a crash; the page you were on is remembered for each file.
 
@@ -29,7 +34,9 @@ for everything (30 steps), safe saving (temp file, then replace), unsaved-change
 and presentation mode, watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
-OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print, document properties,
+OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print (preview, 1-9 pages per
+sheet, greyscale, two-sided, the printer's own Properties dialog), remove hidden data (metadata, attachments, scripts,
+hidden comments) with a report of what was removed, save a PDF/A-2b copy for archiving, document properties,
 export as PNG / JPEG pictures, plain text, Markdown, Word (.docx) and Excel (.xlsx / .csv, tables only).
 
 **Command line** (no window; exit code 0 means success)
@@ -50,7 +57,13 @@ FeatherPDF.exe --formdetect in.pdf out.pdf                  make fillable fields
 FeatherPDF.exe --formfill form.pdf data.csv outdir          one filled-in copy per CSV row
 FeatherPDF.exe --formexport form.pdf answers.csv|xlsx
 FeatherPDF.exe --visualdiff a.pdf b.pdf overlay.png [page]
+FeatherPDF.exe --topdf in.txt|in.md out.pdf                 plain text or Markdown to PDF
+FeatherPDF.exe --sanitize in.pdf out.pdf [comments] [bookmarks]   remove hidden data (report in out.pdf.txt)
+FeatherPDF.exe --pages in.pdf out.pdf reverse|noblanks|nodupes|header|background
+FeatherPDF.exe --pdfa in.pdf|in.txt|in.md out.pdf [pictures]      PDF/A-2b copy (report in out.pdf.txt)
 ```
+
+Test modes used by `tests/smoke.sh`: `--formtest`, `--annottest`, `--pictest`, `--printsheet`.
 
 ## Shortcuts
 
@@ -86,7 +99,8 @@ desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
 ## Testing
 
 `tests/smoke.sh` runs the command line features (export, compress, protect, OCR, sign / check) under Wine against freshly
-generated sample files and checks the results with independent tools (Poppler, pikepdf, python-docx, openpyxl).
+generated sample files and checks the results with independent tools (Poppler, pikepdf, python-docx, openpyxl). Set
+`VERAPDF` to the veraPDF command line to also validate the PDF/A output (`VERAPDF=/path/to/verapdf tests/smoke.sh`).
 `tests/make_samples.py` creates the samples.
 
 ## Code map
@@ -95,12 +109,15 @@ generated sample files and checks the results with independent tools (Poppler, p
 `document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
 page numbers, text boxes, text editing · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
 `protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
-`formdialog.*` reusable dialogs · `pdfium_api.*` run-time binding to pdfium.dll.
+`formdialog.*` reusable dialogs · `formcreate.*` / `formdata.*` creating and filling form fields · `textpdf.*` text and
+Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` print layout and preview · `pdfa.*` PDF/A-2b ·
+`pdfedit.hpp` small raw PDF edits · `pdfium_api.*` run-time binding to pdfium.dll.
 
 ## Not in 2.13 yet
 
-Visible signature stamps and time stamps, creating form fields, links to pages, paragraph reflow, booklet printing, editing document properties, selecting several annotations. See `docs/PARITY.md`. Text edited or added
-uses the built-in Latin fonts; other scripts are not supported for new text. Pages made by Redact become pictures.
+Booklet and poster printing, spell checking, PDF/UA, and new or edited text in
+non-Western scripts (the built-in Latin fonts are used). Pages made by Redact become pictures. The full status of every
+item of the 500-feature list is in `docs/CHECKLIST-500.md`; 2.12 parity is in `docs/PARITY.md`.
 
 ## Third-party software
 

@@ -65,3 +65,8 @@ dialogs), not its source code. Status: **done** · **partial** (exists but diffe
 ## Beyond 2.12
 Session restore after a crash (unsaved edits come back), remembered reading position per file, search all PDFs in a folder (with a saved
 text index), a check that redacted text is really gone, batch mode with saved presets.
+
+Picture tools (turn, flip, crop, brightness and contrast, black and white, replace, save as PNG, paste, front / back), page
+tools (reverse, remove blank pages, find duplicates, headers and footers, background colour), remove hidden data with a
+report, radio button / list box / date fields, form reset, flatten (links kept), polygon / cloud / callout / date stamps,
+print preview with greyscale and two-sided printing, text and Markdown to PDF, and PDF/A-2b copies checked with veraPDF.

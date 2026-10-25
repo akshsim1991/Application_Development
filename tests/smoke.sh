@@ -158,6 +158,19 @@ check "all kinds filled"            "grep -q 'size=Medium\[x\].*colour=Green whe
 check "reset clears them"           "grep -q '^reset: size=Off size=Off size=Off colour= when= who= agree=Off' '$work/ft.txt'"
 check "flatten leaves no fields"    "grep -q 'fields after flatten: 0' '$work/ft.txt' && pdftotext '$work/ft-flat.pdf' - | grep -q 'Medium'"
 
+echo "picture tools"
+python3 -c "
+from PIL import Image, ImageDraw
+im=Image.new('RGB',(300,300),'white'); d=ImageDraw.Draw(im); d.rectangle((20,20,280,280),fill='green'); im.save('$work/sq.png')"
+run --pictest "$(W img.pdf)" "$(W pt)" "$(W sq.png)"
+check "all picture tools ran"       "[ \$(grep -c ' ok ' '$work/pt.txt') -eq 11 ]"
+check "turned picture is upright box" "python3 -c \"
+import re;t=open('$work/pt.txt').read()
+o=[float(x) for x in re.search(r'original ok index=\d+ box=([-\d,]+)',t).group(1).split(',')]
+r=[float(x) for x in re.search(r'rotate ok index=\d+ box=([-\d,]+)',t).group(1).split(',')]
+assert abs((o[2]-o[0])-(r[3]-r[1]))<2 and abs((o[3]-o[1])-(r[2]-r[0]))<2\""
+check "extracted picture"           "python3 -c \"from PIL import Image;assert Image.open('$work/pt-extract.png').size[0]>1000\""
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""

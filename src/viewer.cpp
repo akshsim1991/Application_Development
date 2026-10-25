@@ -712,13 +712,13 @@ void Viewer::drawPreview(HDC dc) {
     }
     if (!drawing_) return;
     const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
-    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo || tool_ == Tool::FormRadio || tool_ == Tool::FormList || tool_ == Tool::FormDate;
+    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo || tool_ == Tool::FormRadio || tool_ == Tool::FormList || tool_ == Tool::FormDate || tool_ == Tool::PicCrop;
     const COLORREF previewCol = tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : boxTool ? RGB(0x30, 0x80, 0xFF) : (tool_ == Tool::Ruler || tool_ == Tool::Protractor) ? RGB(0x00, 0x90, 0x60) : penColor_;
     HPEN pen = CreatePen(boxTool ? PS_DASH : PS_SOLID, boxTool || tool_ == Tool::Ruler || tool_ == Tool::Protractor ? 1 : w, previewCol);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
     switch (tool_) {
-        case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: case Tool::FormText: case Tool::FormCheck: case Tool::FormCombo: case Tool::FormRadio: case Tool::FormList: case Tool::FormDate: case Tool::Cloud: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: case Tool::FormText: case Tool::FormCheck: case Tool::FormCombo: case Tool::FormRadio: case Tool::FormList: case Tool::FormDate: case Tool::Cloud: case Tool::PicCrop: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Line: case Tool::Arrow: case Tool::Ruler: case Tool::Protractor: case Tool::Callout:
             MoveToEx(dc, drawStart_.x, drawStart_.y, nullptr); LineTo(dc, drawNow_.x, drawNow_.y); break;

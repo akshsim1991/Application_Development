@@ -91,6 +91,7 @@ struct App {
     int layout = 1; bool cover = false;
     pageobj::TableSpec pendingTable;
     struct { int page = -1; std::vector<int> objects; } sel;   // the selected picture, paragraph or table
+    struct { int page = -1, obj = -1; } cropPic;                // the picture the PicCrop tool trims
     annot::PointD protVertex{}, protArm{}; int protStage = 0, protPage = 0;
     double pendingPictureWidth = 0;
     struct Pos { std::wstring path; double zoom; int scrollY; bool fit; };
@@ -106,7 +107,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
 void formReset(); void flattenDocument(); void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
 void sanitizeDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
-void startStamp(const std::wstring& text, COLORREF col);
+void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int cmd); void addPictureItems(HMENU m);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -227,7 +228,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -566,6 +567,7 @@ void undoRedo(bool redo) {
     Document* d = activeDoc();
     if (!d) return;
     if (redo ? !d->redo() : !d->undo()) return;
+    app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr);   // object indices may differ now
     afterDocReplaced();
 }
 
@@ -764,6 +766,7 @@ void onViewerEvent(const Viewer::Event& e) {
                     if (mk.page == e.page && e.pts[0].x >= mk.left && e.pts[0].x <= mk.right && e.pts[0].y >= mk.bottom && e.pts[0].y <= mk.top) markIdx = static_cast<int>(i);
                 }
             if (markIdx >= 0) { AppendMenuW(m, MF_STRING, M_RED_REMOVE, L"Remove this redaction mark"); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
+            if (app.tool == Viewer::Tool::Select && app.sel.page >= 0) { addPictureItems(m); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
             const bool hasSel = app.viewer.hasSelection();
             auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
             auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
@@ -827,6 +830,8 @@ void onViewerEvent(const Viewer::Event& e) {
                 case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
                 case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
                 case M_COMMENT: markupSelection(annot::Markup::Highlight, true); break;
+                case PX_ROT_R: case PX_ROT_L: case PX_FLIP_H: case PX_FLIP_V: case PX_CROP: case PX_ADJUST: case PX_GREY:
+                case PX_REPLACE: case PX_SAVE: case PX_FRONT: case PX_BACK: case PX_PASTE: pictureAction(cmd); break;
                 case M_COPY_PAGE:
                     if (!pageobj::copyPageToClipboard(*d, e.page, app.wnd)) MessageBoxW(app.wnd, L"The page could not be copied as a picture (it may be too large).", kAppName, MB_OK | MB_ICONWARNING);
                     break;
@@ -2243,6 +2248,7 @@ void toolsDispatch(int cmd) {
         case F_RESET: formReset(); break;
         case F_FLATTEN: flattenDocument(); break;
         default:
+            if (cmd >= PX_ROT_R && cmd <= PX_PASTE) { pictureAction(cmd); break; }
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= P_DELETE && cmd <= P_BGCOLOR) { pagesMenuAction(cmd, {}); break; }
@@ -2259,6 +2265,7 @@ void showToolsMenu(const RECT& anchor) {
     add(T_EDIT_TEXT, L"Edit text (one line)\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
     add(N_EDITPARA, L"Edit paragraph (font, size, bold, italic)\tF2", true, app.tool == Viewer::Tool::EditPara);
     add(N_SELECTOBJ, L"Move or resize pictures, paragraphs and tables", true, app.tool == Viewer::Tool::Select);
+    { HMENU pm = CreatePopupMenu(); addPictureItems(pm); AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pm), L"Picture (turn, crop, brightness...)"); }
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
     add(N_TABLE_INS, L"Insert table...");
     add(N_TABLE_EDIT, L"Edit a table (text, rows, width)...");
@@ -3193,6 +3200,138 @@ void measureDraw(const Viewer::Event& e) {
     app.viewer.setPending(nullptr, 0, nullptr);
 }
 
+
+// ---- picture tools (on the object picked with the Move tool) ----
+void addPictureItems(HMENU m) {
+    Document* d = activeDoc();
+    const bool any = d && app.tool == Viewer::Tool::Select && app.sel.page >= 0 && !app.sel.objects.empty();
+    const bool pic = any && pageobj::isPicture(*d, app.sel.page, app.sel.objects);
+    auto add = [&](UINT id, const wchar_t* t, bool on) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
+    add(PX_ROT_R, L"Turn right (clockwise)", any);
+    add(PX_ROT_L, L"Turn left", any);
+    add(PX_FLIP_H, L"Flip left to right", any);
+    add(PX_FLIP_V, L"Flip upside down", any);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    add(PX_CROP, L"Crop picture (drag a box)", pic);
+    add(PX_ADJUST, L"Brightness and contrast...", pic);
+    add(PX_GREY, L"Make the picture black and white", pic);
+    add(PX_REPLACE, L"Replace picture...", pic);
+    add(PX_SAVE, L"Save picture as PNG...", pic);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    add(PX_FRONT, L"Bring to front", any);
+    add(PX_BACK, L"Send to back", any);
+    add(PX_PASTE, L"Paste picture\tCtrl+V", d && pageobj::clipboardHasPicture());
+}
+
+void pictureAction(int cmd) {
+    Document* d = activeDoc();
+    if (!d) return;
+    const auto& api = pdfium::api();
+    auto showSelection = [&] {
+        FPDF_PAGE pg = d->page(app.sel.page);
+        double l = 1e18, b = 1e18, r = -1e18, t = -1e18;
+        for (int i : app.sel.objects) {
+            float ol, ob, orr, ot;
+            FPDF_PAGEOBJECT o = pg ? api.FPDFPage_GetObject(pg, i) : nullptr;
+            if (o && api.FPDFPageObj_GetBounds(o, &ol, &ob, &orr, &ot)) { l = std::min<double>(l, ol); b = std::min<double>(b, ob); r = std::max<double>(r, orr); t = std::max<double>(t, ot); }
+        }
+        app.viewer.documentChanged();
+        app.sidebar.refresh();
+        refresh();
+        if (l > r) { app.viewer.setObjectSelection(-1, nullptr); return; }
+        std::vector<double> gx, gy;
+        pageobj::snapGuides(*d, app.sel.page, app.sel.objects, gx, gy);
+        annot::RectD rc{l, b, r, t};
+        app.viewer.setObjectSelection(app.sel.page, &rc, gx, gy);
+    };
+    if (cmd == 0) { showSelection(); return; }
+    if (cmd == PX_PASTE) {
+        const int page = std::max(0, app.viewer.currentPage());
+        const auto sz = d->pageSize(page);
+        std::wstring err;
+        if (!pageobj::pastePicture(*d, page, sz.w * 0.2, sz.h * 0.8, err)) { MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+        if (app.tool != Viewer::Tool::Select) setTool(Viewer::Tool::Select);
+        app.sel.page = page;
+        app.sel.objects = {api.FPDFPage_CountObjects(d->page(page)) - 1};
+        showSelection();
+        return;
+    }
+    if (app.tool != Viewer::Tool::Select || app.sel.page < 0 || app.sel.objects.empty()) {
+        if (app.tool != Viewer::Tool::Select) setTool(Viewer::Tool::Select);
+        MessageBoxW(app.wnd, L"First click the picture (or paragraph or table) to pick it. The Move tool is now on.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const int page = app.sel.page;
+    const bool pic = pageobj::isPicture(*d, page, app.sel.objects);
+    if (!pic && (cmd == PX_CROP || cmd == PX_ADJUST || cmd == PX_GREY || cmd == PX_REPLACE || cmd == PX_SAVE)) {
+        MessageBoxW(app.wnd, L"This works on pictures only. Click a picture to pick it first.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const int obj = app.sel.objects.front();
+    bool ok = true;
+    switch (cmd) {
+        case PX_ROT_R: ok = pageobj::rotateGroup(*d, page, app.sel.objects, 1); break;
+        case PX_ROT_L: ok = pageobj::rotateGroup(*d, page, app.sel.objects, 3); break;
+        case PX_FLIP_H: ok = pageobj::flipGroup(*d, page, app.sel.objects, true); break;
+        case PX_FLIP_V: ok = pageobj::flipGroup(*d, page, app.sel.objects, false); break;
+        case PX_FRONT: ok = pageobj::restackGroup(*d, page, app.sel.objects, true); break;
+        case PX_BACK: ok = pageobj::restackGroup(*d, page, app.sel.objects, false); break;
+        case PX_GREY: ok = pageobj::adjustPicture(*d, page, obj, 0, 0, true); break;
+        case PX_CROP:
+            app.cropPic.page = page; app.cropPic.obj = obj;
+            setTool(Viewer::Tool::PicCrop);
+            MessageBoxW(app.wnd, L"Drag a box around the part of the picture to keep. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+            return;
+        case PX_ADJUST: {
+            std::vector<FormField> f(3);
+            f[0] = {FormField::Text, L"Brightness (-100 to 100):", {}, L"20"};
+            f[1] = {FormField::Text, L"Contrast (-100 to 100):", {}, L"0"};
+            f[2] = {FormField::Check, L"Black and white", {}, L"", 0, false};
+            if (!showForm(app.wnd, app.inst, L"Brightness and contrast", f, L"Apply", [](const std::vector<FormField>& v) -> std::wstring {
+                    for (int i = 0; i < 2; ++i) { const int n = _wtoi(v[i].text.c_str()); if (n < -100 || n > 100) return L"Use numbers from -100 to 100."; }
+                    return L"";
+                })) return;
+            ok = pageobj::adjustPicture(*d, page, obj, _wtoi(f[0].text.c_str()), _wtoi(f[1].text.c_str()), f[2].checked);
+            if (!ok && !_wtoi(f[0].text.c_str()) && !_wtoi(f[1].text.c_str()) && !f[2].checked) return;   // nothing to change
+            break;
+        }
+        case PX_REPLACE: {
+            std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+            OPENFILENAMEW ofn{sizeof(ofn)};
+            ofn.hwndOwner = app.wnd;
+            ofn.lpstrTitle = L"Choose the new picture";
+            ofn.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0All files (*.*)\0*.*\0";
+            ofn.lpstrFile = buf.data();
+            ofn.nMaxFile = static_cast<DWORD>(buf.size());
+            ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+            if (!GetOpenFileNameW(&ofn)) return;
+            std::wstring err;
+            if (!pageobj::replacePicture(*d, page, obj, buf.data(), err)) { MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+            break;
+        }
+        case PX_SAVE: {
+            std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+            std::wstring base = d->title();
+            if (base.find_last_of(L'.') != std::wstring::npos) base.resize(base.find_last_of(L'.'));
+            wcsncpy_s(buf.data(), buf.size(), (base + L" picture.png").c_str(), _TRUNCATE);
+            OPENFILENAMEW ofn{sizeof(ofn)};
+            ofn.hwndOwner = app.wnd;
+            ofn.lpstrTitle = L"Save the picture as";
+            ofn.lpstrFilter = L"PNG pictures (*.png)\0*.png\0";
+            ofn.lpstrDefExt = L"png";
+            ofn.lpstrFile = buf.data();
+            ofn.nMaxFile = static_cast<DWORD>(buf.size());
+            ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+            if (!GetSaveFileNameW(&ofn)) return;
+            if (!pageobj::savePicture(*d, page, obj, buf.data())) MessageBoxW(app.wnd, L"The picture could not be saved.", kAppName, MB_OK | MB_ICONWARNING);
+            return;
+        }
+        default: return;
+    }
+    if (!ok) { MessageBoxW(app.wnd, L"That did not work on this object.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    showSelection();
+}
+
 // ---- events of the new tools ----
 bool featureDraw(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
@@ -3207,6 +3346,15 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
                 annot::RectD r{e.pts[2].x, e.pts[2].y, e.pts[3].x, e.pts[3].y};
                 app.viewer.setObjectSelection(e.page, &r, gx, gy);
             }
+            return true;
+        }
+        case Viewer::Tool::PicCrop: {
+            const int page = app.cropPic.page, obj = app.cropPic.obj;
+            if (page != e.page || e.pts.size() < 2) { MessageBoxW(app.wnd, L"Drag the box over the picture you chose.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
+            if (!pageobj::cropPicture(d, page, obj, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y)) { MessageBoxW(app.wnd, L"The box does not cover any of the picture.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
+            setTool(Viewer::Tool::Select);
+            app.sel.page = page; app.sel.objects = {obj};
+            pictureAction(0);   // shows the new selection
             return true;
         }
         case Viewer::Tool::Ruler: case Viewer::Tool::Protractor: measureDraw(e); return true;
@@ -4309,6 +4457,18 @@ void commandPalette() {
         add(L"Edit text (one line)", [] { toolsDispatch(T_EDIT_TEXT); });
         add(L"Edit paragraph", [] { toolsDispatch(N_EDITPARA); });
         add(L"Move or resize pictures, paragraphs and tables", [] { toolsDispatch(N_SELECTOBJ); });
+        add(L"Picture: turn right", [] { pictureAction(PX_ROT_R); });
+        add(L"Picture: turn left", [] { pictureAction(PX_ROT_L); });
+        add(L"Picture: flip left to right", [] { pictureAction(PX_FLIP_H); });
+        add(L"Picture: flip upside down", [] { pictureAction(PX_FLIP_V); });
+        add(L"Picture: crop", [] { pictureAction(PX_CROP); });
+        add(L"Picture: brightness and contrast", [] { pictureAction(PX_ADJUST); });
+        add(L"Picture: black and white", [] { pictureAction(PX_GREY); });
+        add(L"Picture: replace", [] { pictureAction(PX_REPLACE); });
+        add(L"Picture: save as PNG (extract)", [] { pictureAction(PX_SAVE); });
+        add(L"Picture: bring to front", [] { pictureAction(PX_FRONT); });
+        add(L"Picture: send to back", [] { pictureAction(PX_BACK); });
+        add(L"Paste picture from the clipboard", [] { pictureAction(PX_PASTE); });
         add(L"Add text box", [] { toolsDispatch(T_ADD_TEXT); });
         add(L"Insert table", [] { tableInsert(); });
         add(L"Edit a table", [] { tableEdit(); });
@@ -4756,7 +4916,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'G': runCommand(C_GOTO); return 0;
                     case 'C': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) copyPagesToClip(*d, app.sidebar.selectedPages()); else app.viewer.copySelection(); return 0;
                     case 'X': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) { auto p = app.sidebar.selectedPages(); copyPagesToClip(*d, p); deleteThumbPages(*d, p); } return 0;
-                    case 'V': if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) pastePages(*d, app.sidebar.selectedPages().back() + 1); return 0;
+                    case 'V':
+                        if (d && app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) pastePages(*d, app.sidebar.selectedPages().back() + 1);
+                        else if (d && pageobj::clipboardHasPicture()) pictureAction(PX_PASTE);
+                        return 0;
                     case 'A': if (app.sidebar.thumbsFocused()) app.sidebar.selectAll(); else app.viewer.selectAll(); return 0;
                     case 'B': showSidebar(shift ? Sidebar::Mode::Pages : Sidebar::Mode::Bookmarks); return 0;
                     case 'W': closeTab(app.active); return 0;
@@ -5123,6 +5286,42 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);
         return Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--pictest") {   // --pictest in.pdf outprefix [replacement.png] : one file per picture tool, and outprefix.txt
+        if (files.size() < 3) return 2;
+        std::string rep;
+        auto run = [&](const char* name, auto op) {
+            Document doc;
+            if (doc.open(files[1]) != OpenResult::Ok) { rep += std::string(name) + " open-failed\n"; return; }
+            int obj = -1;
+            FPDF_PAGE pg = doc.page(0);
+            for (int i = 0; pg && i < pdfium::api().FPDFPage_CountObjects(pg); ++i)
+                if (pdfium::api().FPDFPageObj_GetType(pdfium::api().FPDFPage_GetObject(pg, i)) == FPDF_PAGEOBJ_IMAGE) { obj = i; break; }
+            const bool ok = obj >= 0 && op(doc, obj);
+            float l = 0, b = 0, r = 0, t = 0;
+            int newObj = obj;
+            if (std::string(name) == "front") newObj = pdfium::api().FPDFPage_CountObjects(doc.page(0)) - 1;
+            if (std::string(name) == "back") newObj = 0;
+            FPDF_PAGEOBJECT o = newObj >= 0 ? pdfium::api().FPDFPage_GetObject(doc.page(0), newObj) : nullptr;
+            if (o) pdfium::api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t);
+            char line[200];
+            snprintf(line, sizeof line, "%s %s index=%d box=%.0f,%.0f,%.0f,%.0f\n", name, ok ? "ok" : "FAILED", newObj, l, b, r, t);
+            rep += line;
+            if (ok) doc.saveAs(files[2] + L"-" + std::wstring(name, name + strlen(name)) + L".pdf");
+        };
+        auto boxOf = [](Document& d, int obj, float& l, float& b, float& r, float& t) { pdfium::api().FPDFPageObj_GetBounds(pdfium::api().FPDFPage_GetObject(d.page(0), obj), &l, &b, &r, &t); };
+        run("original", [](Document&, int) { return true; });
+        run("rotate", [](Document& d, int o) { return pageobj::rotateGroup(d, 0, {o}, 1); });
+        run("flip", [](Document& d, int o) { return pageobj::flipGroup(d, 0, {o}, true); });
+        run("crop", [&](Document& d, int o) { float l, b, r, t; boxOf(d, o, l, b, r, t); return pageobj::cropPicture(d, 0, o, l, b, (l + r) / 2, (b + t) / 2); });
+        run("rotatecrop", [&](Document& d, int o) { float l, b, r, t; if (!pageobj::rotateGroup(d, 0, {o}, 1)) return false; boxOf(d, o, l, b, r, t); return pageobj::cropPicture(d, 0, o, l, b, (l + r) / 2, t); });
+        run("bright", [](Document& d, int o) { return pageobj::adjustPicture(d, 0, o, 40, 20, false); });
+        run("grey", [](Document& d, int o) { return pageobj::adjustPicture(d, 0, o, 0, 0, true); });
+        run("front", [](Document& d, int o) { std::vector<int> v{o}; return pageobj::restackGroup(d, 0, v, true); });
+        run("back", [](Document& d, int o) { std::vector<int> v{o}; return pageobj::restackGroup(d, 0, v, false); });
+        if (files.size() > 3) { std::wstring err; const std::wstring with = files[3]; run("replace", [&](Document& d, int o) { return pageobj::replacePicture(d, 0, o, with, err); }); }
+        run("extract", [&](Document& d, int o) { return pageobj::savePicture(d, 0, o, files[2] + L"-extract.png"); });
+        return Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
         if (files.size() < 3) return 2;

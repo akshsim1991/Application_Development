@@ -9,7 +9,8 @@ reference). It is a native C++ Win32 application on top of [PDFium](https://pdfi
 
 ## Features
 
-**Reading** · icon toolbar like 2.12, light / dark / Windows theme, one-page / continuous / two-page layouts, back and forward, reload from disk, clickable links, side by side view, command palette (Ctrl+K), tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
+**Reading** · icon toolbar like 2.12, light / dark / Windows theme, one-page / continuous / two-page layouts, back and forward, reload from disk, clickable links, side by side view (left and right or top and bottom, scrolling linked or separate, every tool and the right-click menu
+on both sides; closing either file returns to one document), command palette (Ctrl+K), tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
 Go to page, bookmarks panel, page thumbnails, search with all matches highlighted, text selection and copy, dark and
 dimmed page colours, password-protected files, drag and drop, recent files, one window for every launch.
 
@@ -20,7 +21,9 @@ line widths, select / edit / delete annotations, flatten (comments become part o
 **Forms** · fill in text fields, check boxes, radio buttons, list boxes and drop-down lists; values are saved into the file.
 Create text, check box, radio button, list box, drop-down and date fields; reset a form; flatten a filled-in form.
 
-**Editing** · edit existing text lines, add text boxes (sans / serif / mono, size, colour), insert pictures; turn, flip, crop,
+**Editing** · edit text where it is on the page: click a line (Ctrl+E) or a paragraph (F2) and type in the box that
+opens over it, in the same font, size and colour; paragraphs have a style bar (font, size, bold, italic, colour,
+alignment); Enter or Ctrl+Enter applies, Esc cancels, clicking elsewhere applies. Add text boxes (sans / serif / mono, size, colour), insert pictures; turn, flip, crop,
 replace, brighten / add contrast, make black and white, save as PNG and paste pictures, bring to front / send to back; undo / redo
 for everything (30 steps), safe saving (temp file, then replace), unsaved-changes prompts.
 

@@ -250,6 +250,10 @@ TextHit textAt(Document& d, int page, double x, double y) {
         float size = 0;
         api.FPDFTextObj_GetFontSize(o, &size);
         best.sizePt = size;
+        best.left = l; best.bottom = b; best.right = r; best.top = t;
+        FS_MATRIX m;
+        best.shownSizePt = api.FPDFPageObj_GetMatrix(o, &m) ? size * std::hypot(m.c, m.d) : size;
+        if (best.shownSizePt <= 0) best.shownSizePt = t - b;
         unsigned R = 0, G = 0, B = 0, A = 255;
         api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
         best.color = RGB(R, G, B);

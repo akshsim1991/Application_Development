@@ -47,6 +47,8 @@ public:
         POINT screen{};                   // for ContextMenu
     };
     std::function<void(const Event&)> onEvent;
+    // Called before a mouse press is handled; returning true swallows it (side by side: the press makes this pane the active one).
+    std::function<bool(UINT msg, WPARAM w, LPARAM l)> onPress;
     void setTool(Tool t);
     Tool tool() const { return tool_; }
     void setStyle(COLORREF c, double widthPt) { penColor_ = c; penWidth_ = widthPt; }
@@ -83,6 +85,9 @@ public:
     bool showRulers() const { return showRulers_; }
     void setPending(const annot::PointD* vertex, int page, const annot::PointD* arm) { pendingVertex_ = vertex ? *vertex : annot::PointD{}; hasPending_ = vertex != nullptr; pendingPage_ = page; pendingArm_ = arm ? *arm : annot::PointD{}; hasArm_ = arm != nullptr; InvalidateRect(hwnd_, nullptr, FALSE); }
     bool pageRect(int page, RECT& out) const;
+    // A page rectangle (page coordinates) on screen, in this window's client coordinates; and pixels per point at this zoom.
+    RECT screenRect(int page, const annot::RectD& r) const { return annotScreenRect(page, r); }
+    double pixelsPerPoint() const { return pxPerPt(); }
 
     // A selected group of page objects (a picture, a paragraph, a table). The viewer lets the user drag it or its corners
     // (aspect ratio kept), snaps to the guide lines (page coordinates) and reports the new rectangle as a Draw event

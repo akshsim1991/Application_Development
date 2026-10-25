@@ -51,6 +51,8 @@ struct TextHit {
     bool embeddedFont = false;
     std::string fontName;
     unsigned long flags = 0;
+    double left = 0, bottom = 0, right = 0, top = 0;   // bounds on the page
+    double shownSizePt = 0;                             // the size as drawn (font size times the object's scale)
 };
 
 // The text object under a page point, preferring the smallest one. index == -1 when there is none.

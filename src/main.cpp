@@ -47,6 +47,7 @@
 #include "printing.hpp"
 #include "pdfa.hpp"
 #include "fontlist.hpp"
+#include "inlineedit.hpp"
 
 namespace {
 
@@ -61,6 +62,7 @@ struct App {
     HINSTANCE inst = nullptr;
     HWND wnd = nullptr;
     Viewer viewer;
+    inlineedit::Editor inlineEd;                      // text being edited in place on the page
     Sidebar sidebar;
     bool sidebarVisible = false, findVisible = false;
     HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr;
@@ -86,6 +88,9 @@ struct App {
     int theme = 2;            // 0 light, 1 dark, 2 like Windows
     int units = 0, scaleIdx = 0;   // geometry tools: mm/cm/in/pt, drawing scale
     bool sbs = false, syncing = false;
+    bool sbsLinked = true;     // both documents scroll and zoom together
+    bool sbsStacked = false;   // top and bottom instead of left and right
+    bool sbsSwapped = false;   // the active document (app.viewer) is in the second place (right or bottom)
     Viewer viewer2;                                   // the second view of side by side
     Document* sbsDoc = nullptr;
     std::unique_ptr<Document> sbsOwned;
@@ -114,7 +119,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd);
+void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -152,10 +157,23 @@ void relayoutChildren() {
     }
     const int total = std::max<LONG>(0, rc.right - left), height = std::max<LONG>(0, rc.bottom - top);
     if (app.sbs && app.viewer2.hwnd()) {
-        const int half = total / 2;
-        MoveWindow(app.viewer.hwnd(), left, top, half - 2, height, TRUE);
-        MoveWindow(app.viewer2.hwnd(), left + half + 2, top, total - half - 2, height, TRUE);
+        // two places, left / right or top / bottom; the active document may sit in either
+        RECT a, b;
+        if (app.sbsStacked) {
+            const int half = height / 2;
+            a = {left, top, left + total, top + half - 2};
+            b = {left, top + half + 2, left + total, top + height};
+        } else {
+            const int half = total / 2;
+            a = {left, top, left + half - 2, top + height};
+            b = {left + half + 2, top, left + total, top + height};
+        }
+        const RECT& mine = app.sbsSwapped ? b : a;
+        const RECT& other = app.sbsSwapped ? a : b;
+        MoveWindow(app.viewer.hwnd(), mine.left, mine.top, mine.right - mine.left, mine.bottom - mine.top, TRUE);
+        MoveWindow(app.viewer2.hwnd(), other.left, other.top, other.right - other.left, other.bottom - other.top, TRUE);
         ShowWindow(app.viewer2.hwnd(), SW_SHOW);
+        InvalidateRect(app.wnd, nullptr, FALSE);   // the marker of the active side
     } else {
         MoveWindow(app.viewer.hwnd(), left, top, total, height, TRUE);
         if (app.viewer2.hwnd()) ShowWindow(app.viewer2.hwnd(), SW_HIDE);
@@ -184,6 +202,7 @@ void refresh() {
 void runSearch(bool keepPosition);
 
 void setActiveDocument(Document* d) {
+    if (app.inlineEd.active()) app.inlineEd.commit();
     app.viewer.setDocument(d);
     app.viewer.setMarks(d ? &d->redactions : nullptr);
     app.sidebar.setDocument(d);
@@ -194,6 +213,21 @@ void setActiveDocument(Document* d) {
 
 void switchTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
+    if (app.sbs && app.tabs[i].get() == app.sbsDoc && activeDoc() && activeDoc() != app.sbsDoc) {
+        // the document on the other side becomes the active one; both stay where they are
+        if (app.inlineEd.active()) app.inlineEd.commit();
+        Document* was = activeDoc();
+        app.sbsDoc = was;
+        app.sbsSwapped = !app.sbsSwapped;
+        app.syncing = true;   // no zoom or scroll copying while the views trade documents
+        app.viewer2.setDocument(was);
+        app.active = i;
+        setActiveDocument(app.tabs[i].get());
+        app.syncing = false;
+        relayoutChildren();
+        refresh();
+        return;
+    }
     app.active = i;
     setActiveDocument(app.tabs[i].get());
     refresh();
@@ -211,6 +245,7 @@ void rememberPosition(const Document& d) {
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     if (!confirmClose(*app.tabs[i])) return;
+    if (app.sbs && (app.tabs[i].get() == app.sbsDoc || i == app.active)) endSideBySide();   // back to one document
     rememberPosition(*app.tabs[i]);
     if (i == app.active) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
@@ -232,7 +267,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
 enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
-               N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
+               N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
 constexpr double kTextSizes[] = {8, 10, 12, 14, 18, 24, 36, 48, 72};
@@ -350,6 +385,8 @@ void loadSettings() {
     app.layout = std::clamp(num(L"layout", 1), 0, 2);
     app.cover = num(L"cover", 0) != 0;
     app.units = std::clamp(num(L"units", 0), 0, 3);
+    app.sbsLinked = num(L"sideBySideLinked", 1) != 0;
+    app.sbsStacked = num(L"sideBySideStacked", 0) != 0;
     app.scaleIdx = std::clamp(num(L"scale", 0), 0, 9);
     app.textStyle.family = static_cast<pageobj::Family>(std::clamp(num(L"textFont", 0), 0, 2));
     app.textStyle.bold = num(L"textBold", 0) != 0;
@@ -388,6 +425,8 @@ void saveSettings() {
     put(L"view", L"layout", app.layout);
     put(L"view", L"cover", app.cover);
     put(L"view", L"units", app.units);
+    put(L"view", L"sideBySideLinked", app.sbsLinked);
+    put(L"view", L"sideBySideStacked", app.sbsStacked);
     put(L"view", L"scale", app.scaleIdx);
     put(L"view", L"textFont", static_cast<int>(app.textStyle.family));
     put(L"view", L"textBold", app.textStyle.bold);
@@ -569,6 +608,7 @@ bool confirmClose(Document& d) {
 void undoRedo(bool redo) {
     Document* d = activeDoc();
     if (!d) return;
+    if (app.inlineEd.active()) app.inlineEd.cancel();
     if (redo ? !d->redo() : !d->undo()) return;
     app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr);   // object indices may differ now
     afterDocReplaced();
@@ -583,6 +623,7 @@ double lineWidth() { return kWidths[app.widthIdx]; }
 void applyStyle() { app.viewer.setStyle(drawColor(), lineWidth()); }
 
 void setTool(Viewer::Tool t) {
+    if (app.inlineEd.active()) app.inlineEd.commit();
     app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
     app.viewer.setTool(app.tool);
     if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
@@ -662,7 +703,90 @@ void deleteAnnotation(Document& d, int page, int index) {
 
 void openRecentMenu(POINT screenPt);
 
+// ---- editing text where it is on the page ----
+POINT clickPoint(int page, const annot::PointD& p) {
+    const RECT r = app.viewer.screenRect(page, {p.x, p.y, p.x, p.y});
+    return {r.left, r.top};
+}
+
+void editLineInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT click) {
+    inlineedit::Spec sp;
+    sp.text = hit.text;
+    sp.click = click;
+    std::string nm = hit.fontName;
+    for (auto& c : nm) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    sp.style.family = (hit.flags & 1) || nm.find("courier") != std::string::npos || nm.find("mono") != std::string::npos ? 2
+                    : (hit.flags & 2) || nm.find("times") != std::string::npos || nm.find("serif") != std::string::npos ? 1 : 0;
+    sp.style.bold = nm.find("bold") != std::string::npos || nm.find("black") != std::string::npos || (hit.flags & (1u << 18));
+    sp.style.italic = nm.find("italic") != std::string::npos || nm.find("oblique") != std::string::npos || (hit.flags & 64);
+    sp.style.sizePt = hit.shownSizePt > 0 ? hit.shownSizePt : hit.sizePt;
+    sp.style.color = hit.color;
+    const annot::RectD box{hit.left, hit.bottom, hit.right, hit.top};
+    Document* doc = &d;
+    const int index = hit.index;
+    const std::wstring original = hit.text;
+    app.inlineEd.start(sp,
+        [doc, page, box](RECT& r, double& ppp) {
+            if (activeDoc() != doc) return false;
+            r = app.viewer.screenRect(page, box);
+            ppp = app.viewer.pixelsPerPoint();
+            return true;
+        },
+        [doc, page, index, original](const std::wstring& text, const inlineedit::Style&) {
+            if (activeDoc() != doc || text == original) return true;
+            std::wstring flat;   // an edited line stays one object: line breaks are not kept
+            for (wchar_t ch : text) flat += (ch == L'\r' || ch == L'\n') ? L' ' : ch;
+            if (pageobj::replaceText(*doc, page, index, flat)) { afterChange(page); return true; }
+            MessageBoxW(app.wnd, L"The text could not be changed. It may use a font that cannot show those characters. Try letters and numbers of Western languages.", kAppName, MB_OK | MB_ICONWARNING);
+            return false;
+        });
+}
+
+void editParagraphInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT click) {
+    inlineedit::Spec sp;
+    sp.paragraph = true;
+    sp.click = click;
+    sp.text = hit.text;
+    sp.style.family = static_cast<int>(hit.style.family);
+    sp.style.bold = hit.style.bold;
+    sp.style.italic = hit.style.italic;
+    sp.style.sizePt = hit.style.sizePt;
+    sp.style.color = hit.style.color;
+    for (size_t i = 0; i < std::size(kPalette); ++i) { sp.palette.push_back(kPalette[i]); sp.paletteNames.push_back(kPaletteNames[i]); }
+    const double lh = hit.lineHeight > 0 ? hit.lineHeight : hit.style.sizePt * 1.2;
+    const annot::RectD box{hit.left, hit.top - lh * std::max(1, hit.lines), hit.left + hit.width, hit.top};
+    Document* doc = &d;
+    const pageobj::ParagraphHit h = hit;
+    app.inlineEd.start(sp,
+        [doc, box, page = hit.page](RECT& r, double& ppp) {
+            if (activeDoc() != doc) return false;
+            r = app.viewer.screenRect(page, box);
+            ppp = app.viewer.pixelsPerPoint();
+            return true;
+        },
+        [doc, h](const std::wstring& text, const inlineedit::Style& st) {
+            if (activeDoc() != doc) return true;
+            pageobj::TextStyle ts = h.style;
+            ts.family = static_cast<pageobj::Family>(st.family);
+            ts.sizePt = st.sizePt;
+            ts.bold = st.bold; ts.italic = st.italic;
+            ts.color = st.color;
+            const bool same = text == h.text && ts.family == h.style.family && std::fabs(ts.sizePt - h.style.sizePt) < 0.05 && ts.bold == h.style.bold &&
+                              ts.italic == h.style.italic && ts.color == h.style.color && st.align == 0;
+            if (same) return true;
+            if (!pageobj::isLatin(text)) {
+                MessageBoxW(app.wnd, L"Paragraphs can use letters, numbers and common symbols of Western languages. Please remove other characters.", kAppName, MB_OK | MB_ICONINFORMATION);
+                return false;
+            }
+            if (pageobj::replaceParagraph(*doc, h, text, ts, static_cast<pageobj::Align>(st.align))) { app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); return true; }
+            MessageBoxW(app.wnd, L"The paragraph could not be changed.", kAppName, MB_OK | MB_ICONWARNING);
+            return false;
+        });
+}
+
 void onViewerEvent(const Viewer::Event& e) {
+    // a click anywhere else applies the text being edited (and may start editing the next line)
+    if (app.inlineEd.active() && (e.kind == Viewer::Event::Click || e.kind == Viewer::Event::ContextMenu || e.kind == Viewer::Event::Draw) && !app.inlineEd.commit()) return;
     Document* d = activeDoc();
     if (!d) {
         if (e.kind == Viewer::Event::ContextMenu) openRecentMenu(e.screen);
@@ -727,17 +851,7 @@ void onViewerEvent(const Viewer::Event& e) {
                     MessageBoxW(app.wnd, L"No editable text was found there. Click directly on a line of text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
                     break;
                 }
-                std::wstring text;
-                if (askText(L"Edit text", L"Change this text. Leave it empty to delete it.", false, text, toEdit(hit.text).c_str(), true)) {
-                    text = fromEdit(text);
-                    if (text != hit.text) {
-                        // an edited line stays one object: line breaks are not kept
-                        std::wstring flat;
-                        for (wchar_t ch : text) flat += (ch == L'\r' || ch == L'\n') ? L' ' : ch;
-                        if (pageobj::replaceText(*d, e.page, hit.index, flat)) afterChange(e.page);
-                        else MessageBoxW(app.wnd, L"The text could not be changed. It may use a font that cannot show those characters. Try letters and numbers of Western languages.", kAppName, MB_OK | MB_ICONWARNING);
-                    }
-                }
+                editLineInPlace(*d, e.page, hit, clickPoint(e.page, e.pts.front()));
                 break;
             }
             std::wstring text;
@@ -998,6 +1112,11 @@ void showSideBySideMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING | (two ? 0 : MF_GRAYED), N_SBS_TAB, L"Show another open tab next to this one");
     AppendMenuW(m, MF_STRING | (activeDoc() ? 0 : MF_GRAYED), N_SBS_OPEN, L"Open a file next to this one...");
     AppendMenuW(m, MF_STRING | (app.sbs ? 0 : MF_GRAYED), N_SBS_OFF, L"Back to one document");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING | (app.sbsLinked ? MF_CHECKED : 0), N_SBS_LINK, L"Link scrolling (both scroll and zoom together)");
+    AppendMenuW(m, MF_STRING | (!app.sbsStacked ? MF_CHECKED : 0), N_SBS_HORZ, L"Left and right");
+    AppendMenuW(m, MF_STRING | (app.sbsStacked ? MF_CHECKED : 0), N_SBS_VERT, L"Top and bottom");
+    AppendMenuW(m, MF_STRING | (app.sbs ? 0 : MF_GRAYED), N_SBS_SWAP, L"Swap the two sides");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (two ? 0 : MF_GRAYED), N_COMPARE, L"Compare with another open tab...");
     POINT pt{anchor.left, anchor.bottom};
@@ -3458,36 +3577,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
                 MessageBoxW(app.wnd, L"No paragraph of text was found there. Click directly on the text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
                 return true;
             }
-            std::wstring text;
-            wchar_t head[200];
-            swprintf(head, 200, L"Change the paragraph (%d line%ls). It is set again to fit the same width; a new line starts where you press Enter.", hit.lines, hit.lines == 1 ? L"" : L"s");
-            if (askText(L"Edit paragraph", head, false, text, toEdit(hit.text).c_str(), true)) {
-                text = fromEdit(text);
-                std::vector<FormField> f(6);
-                f[0] = {FormField::Choice, L"Font:", {L"Sans-serif (Helvetica)", L"Serif (Times)", L"Monospaced (Courier)"}, L"", static_cast<int>(hit.style.family)};
-                wchar_t sz[16];
-                swprintf(sz, 16, L"%.1f", hit.style.sizePt);
-                f[1] = {FormField::Text, L"Size (pt):", {}, sz};
-                f[2] = {FormField::Check, L"Bold", {}, L"", 0, hit.style.bold};
-                f[3] = {FormField::Check, L"Italic", {}, L"", 0, hit.style.italic};
-                std::vector<std::wstring> colours{L"Keep the colour"};
-                for (const wchar_t* n : kPaletteNames) colours.push_back(n);
-                f[4] = {FormField::Choice, L"Colour:", colours, L"", 0};
-                f[5] = {FormField::Choice, L"Alignment:", {L"Left", L"Centre", L"Right", L"Justified"}, L"", 0};
-                if (showForm(app.wnd, app.inst, L"Paragraph style", f, L"Apply", [](const std::vector<FormField>& v) -> std::wstring {
-                        wchar_t* end = nullptr; double x = wcstod(v[1].text.c_str(), &end);
-                        return (end == v[1].text.c_str() || *end || x < 4 || x > 200) ? L"Type a size between 4 and 200 points." : L""; })) {
-                    pageobj::TextStyle st = hit.style;
-                    st.family = static_cast<pageobj::Family>(f[0].choice);
-                    st.sizePt = wcstod(f[1].text.c_str(), nullptr);
-                    st.bold = f[2].checked; st.italic = f[3].checked;
-                    if (f[4].choice > 0) st.color = kPalette[f[4].choice - 1];
-                    if (!pageobj::isLatin(text)) MessageBoxW(app.wnd, L"Paragraphs can use letters, numbers and common symbols of Western languages. Please remove other characters.", kAppName, MB_OK | MB_ICONINFORMATION);
-                    else if (pageobj::replaceParagraph(d, hit, text, st, static_cast<pageobj::Align>(f[5].choice))) { app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); }
-                    else MessageBoxW(app.wnd, L"The paragraph could not be changed.", kAppName, MB_OK | MB_ICONWARNING);
-                }
-            }
-            setTool(Viewer::Tool::EditPara);
+            editParagraphInPlace(d, hit, clickPoint(e.page, e.pts.front()));
             return true;
         }
         case Viewer::Tool::TableEdit: {
@@ -3852,9 +3942,37 @@ void compareDocs() {
 // ---- side by side ----
 void sideBySideAction(int cmd) {
     if (cmd == N_SBS_OFF) {
-        app.sbs = false; app.sbsDoc = nullptr; app.sbsOwned.reset();
+        const int page = activeDoc() ? app.viewer.currentPage() : 0;
+        app.sbs = false; app.sbsDoc = nullptr; app.sbsOwned.reset(); app.sbsSwapped = false;
         app.viewer2.setDocument(nullptr);
         ShowWindow(app.viewer2.hwnd(), SW_HIDE);
+        relayoutChildren();
+        if (Document* d = activeDoc()) { d->fitWidth = true; app.viewer.fitWidth(); app.viewer.goToPage(page); }   // the usual one-document view, same page
+        InvalidateRect(app.wnd, nullptr, FALSE);
+        return;
+    }
+    if (cmd == N_SBS_LINK) {
+        app.sbsLinked = !app.sbsLinked;
+        saveSettings();
+        if (app.sbsLinked) syncSideBySide(true);
+        return;
+    }
+    if (cmd == N_SBS_HORZ || cmd == N_SBS_VERT) {
+        app.sbsStacked = cmd == N_SBS_VERT;
+        saveSettings();
+        const int p1 = app.viewer.currentPage(), p2 = app.sbs ? app.viewer2.currentPage() : 0;
+        relayoutChildren();
+        if (app.sbs && activeDoc() && app.sbsDoc) {
+            app.syncing = true;
+            activeDoc()->fitWidth = true; app.sbsDoc->fitWidth = true; app.viewer.fitWidth(); app.viewer2.fitWidth();
+            app.viewer.goToPage(p1); app.viewer2.goToPage(p2);
+            app.syncing = false;
+        }
+        return;
+    }
+    if (cmd == N_SBS_SWAP) {
+        if (!app.sbs) return;
+        app.sbsSwapped = !app.sbsSwapped;
         relayoutChildren();
         return;
     }
@@ -3876,10 +3994,12 @@ void sideBySideAction(int cmd) {
         auto doc = openForImport(files[0]);
         if (!doc) return;
         other = doc.get();
-        app.sbsOwned = std::move(doc);
+        const int keep = app.active;
+        addDocumentTab(std::move(doc));   // a tab of its own, so it can be the active side too
+        switchTab(keep);
     }
     if (!other) return;
-    app.sbs = true; app.sbsDoc = other;
+    app.sbs = true; app.sbsDoc = other; app.sbsSwapped = false;
     app.viewer2.setLayout(app.layout, app.cover);
     app.viewer2.setDocument(other);
     ShowWindow(app.viewer2.hwnd(), SW_SHOW);
@@ -3887,9 +4007,11 @@ void sideBySideAction(int cmd) {
     if (activeDoc()) { other->fitWidth = true; app.viewer2.fitWidth(); app.viewer.fitWidth(); }
 }
 
+void endSideBySide() { sideBySideAction(N_SBS_OFF); }
+
 // keeps the second view at the same zoom and position as the first
 void syncSideBySide(bool fromFirst) {
-    if (!app.sbs || app.syncing) return;
+    if (!app.sbs || app.syncing || !app.sbsLinked) return;
     Document* a = activeDoc();
     if (!a || !app.sbsDoc || a == app.sbsDoc) return;
     app.syncing = true;
@@ -4561,6 +4683,10 @@ void commandPalette() {
         add(L"Remove hidden data (metadata, attachments, scripts)", [] { sanitizeDialog(); });
         add(L"Save a PDF/A copy for archiving (also text and pictures)", [] { pdfaDialog(); });
         add(L"Fonts used in this PDF (and pages that need OCR)", [] { if (Document* d = activeDoc()) showFonts(*d); });
+        add(L"Side by side: link scrolling on / off", [] { sideBySideAction(N_SBS_LINK); });
+        add(L"Side by side: left and right", [] { sideBySideAction(N_SBS_HORZ); });
+        add(L"Side by side: top and bottom", [] { sideBySideAction(N_SBS_VERT); });
+        add(L"Side by side: swap the two sides", [] { sideBySideAction(N_SBS_SWAP); });
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
@@ -4799,7 +4925,21 @@ void openUri(const std::wstring& uri) {
 
 void onViewer2Change(void*) { syncSideBySide(false); }
 
+// A press on the other side makes its document the active one, then the press goes on to it (same place on screen).
+bool onViewer2Press(UINT msg, WPARAM w, LPARAM l) {
+    if (!app.sbs || !app.sbsDoc) return false;
+    for (size_t i = 0; i < app.tabs.size(); ++i)
+        if (app.tabs[i].get() == app.sbsDoc) {
+            switchTab(static_cast<int>(i));
+            if (msg == WM_LBUTTONDOWN) PostMessageW(app.viewer.hwnd(), msg, w, l);
+            else if (msg == WM_RBUTTONDOWN) SetFocus(app.viewer.hwnd());   // the release opens the menu of the active side
+            return true;
+        }
+    return false;
+}
+
 void onViewerChange(void*) {
+    app.inlineEd.reposition();
     RECT r{0, 0, 4000, kTabH + kToolH};
     InvalidateRect(app.wnd, &r, FALSE);
     syncSideBySide(true);
@@ -4829,6 +4969,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             lf.lfWeight = FW_BOLD;
             app.fontBold = CreateFontIndirectW(&lf);
             app.viewer.create(h, app.inst);
+            app.inlineEd.create(app.viewer.hwnd(), app.inst);
             Document::setTimerWindow(app.viewer.hwnd());
             app.viewer.setOnChange(onViewerChange, nullptr);
             SetTimer(h, TIMER_AUTOSAVE, 20000, nullptr);
@@ -4838,6 +4979,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.viewer2.create(h, app.inst);
             ShowWindow(app.viewer2.hwnd(), SW_HIDE);
             app.viewer2.setOnChange(onViewer2Change, nullptr);
+            app.viewer2.onPress = onViewer2Press;
             app.viewer.setLayout(app.layout, app.cover);
             app.viewer.setStyle(drawColor(), lineWidth());
             app.sidebar.create(h, app.inst);
@@ -4889,6 +5031,21 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             RECT rc; GetClientRect(h, &rc);
             PaintBuf buf(screenDc, rc, ps.rcPaint);
             if (!app.fullscreen) paintHeader(buf.dc, rc);
+            if (app.sbs && !app.fullscreen && app.viewer2.hwnd()) {   // an accent line along the active side, in the gap
+                RECT a, o;
+                GetWindowRect(app.viewer.hwnd(), &a);
+                GetWindowRect(app.viewer2.hwnd(), &o);
+                MapWindowPoints(nullptr, h, reinterpret_cast<POINT*>(&a), 2);
+                MapWindowPoints(nullptr, h, reinterpret_cast<POINT*>(&o), 2);
+                HBRUSH gap = CreateSolidBrush(RGB(0x30, 0x30, 0x34)), acc = CreateSolidBrush(RGB(0x2D, 0x7F, 0xF9));
+                RECT g = app.sbsStacked ? RECT{a.left, std::min(a.bottom, o.bottom), a.right, std::max(a.top, o.top)} : RECT{std::min(a.right, o.right), a.top, std::max(a.left, o.left), a.bottom};
+                FillRect(buf.dc, &g, gap);
+                RECT mark = g;
+                if (app.sbsStacked) { if (a.top < o.top) mark.bottom = mark.top + 2; else mark.top = mark.bottom - 2; }
+                else { if (a.left < o.left) mark.right = mark.left + 2; else mark.left = mark.right - 2; }
+                FillRect(buf.dc, &mark, acc);
+                DeleteObject(gap); DeleteObject(acc);
+            }
             buf.done();
             EndPaint(h, &ps);
             return 0;

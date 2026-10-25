@@ -855,7 +855,11 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 return TRUE;
             }
             break;
+        case WM_RBUTTONDOWN:
+            if (onPress && onPress(m, w, l)) return 0;
+            break;
         case WM_LBUTTONDOWN: {
+            if (onPress && onPress(m, w, l)) return 0;
             SetFocus(hwnd_);
             if (!doc_) return 0;
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);

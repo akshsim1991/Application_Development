@@ -1,0 +1,329 @@
+#include "inlineedit.hpp"
+#include <algorithm>
+#include <cmath>
+#include <cwchar>
+
+namespace inlineedit {
+namespace {
+
+enum { ID_EDIT = 301, ID_FAM, ID_SIZE, ID_BOLD, ID_ITAL, ID_COL, ID_ALIGN, ID_OK, ID_NO, ID_HINT };
+const COLORREF kAccent = RGB(0x2D, 0x7F, 0xF9);
+const wchar_t* kFaces[] = {L"Arial", L"Times New Roman", L"Courier New"};
+Editor* g_current = nullptr;   // the edit box's subclass procedure finds its editor here (one editor at a time)
+
+} // namespace
+
+void Editor::create(HWND viewer, HINSTANCE inst) {
+    viewer_ = viewer;
+    inst_ = inst;
+    WNDCLASSEXW wc{sizeof(wc)};
+    wc.lpfnWndProc = proc;
+    wc.hInstance = inst;
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+    wc.lpszClassName = L"FeatherInlineEdit";
+    RegisterClassExW(&wc);
+    NONCLIENTMETRICSW ncm{sizeof(ncm)};
+    SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
+    uiFont_ = CreateFontIndirectW(&ncm.lfMessageFont);
+    editBrush_ = CreateSolidBrush(RGB(0xFF, 0xFF, 0xFF));
+}
+
+void Editor::start(const Spec& spec, Locate locate, Commit commit) {
+    if (wnd_) cancel();
+    spec_ = spec;
+    style_ = spec.style;
+    locate_ = std::move(locate);
+    commit_ = std::move(commit);
+    closing_ = false;
+    if (!locate_(box_, ppp_)) return;
+    wnd_ = CreateWindowExW(0, L"FeatherInlineEdit", L"", WS_CHILD | WS_CLIPCHILDREN, 0, 0, 10, 10, viewer_, nullptr, inst_, this);
+    if (!wnd_) return;
+    g_current = this;
+    auto mk = [&](const wchar_t* cls, const wchar_t* text, DWORD style, int id, int w) {
+        HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, 0, 0, w, 24, wnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst_, nullptr);
+        SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(uiFont_), TRUE);
+        return c;
+    };
+    barH_ = 32;
+    famBox_ = sizeBox_ = boldBtn_ = italBtn_ = colBox_ = alignBox_ = hint_ = nullptr;
+    if (spec_.paragraph) {
+        famBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_FAM, 120);
+        for (const wchar_t* f : {L"Sans-serif", L"Serif", L"Monospaced"}) SendMessageW(famBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(f));
+        SendMessageW(famBox_, CB_SETCURSEL, std::clamp(style_.family, 0, 2), 0);
+        sizeBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP, ID_SIZE, 62);
+        for (const wchar_t* s : {L"8", L"9", L"10", L"11", L"12", L"14", L"16", L"18", L"20", L"24", L"28", L"32", L"36", L"48", L"72"}) SendMessageW(sizeBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(s));
+        wchar_t sz[16];
+        swprintf(sz, 16, L"%g", std::round(style_.sizePt * 10) / 10);
+        SetWindowTextW(sizeBox_, sz);
+        boldBtn_ = mk(L"BUTTON", L"B", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_BOLD, 28);
+        italBtn_ = mk(L"BUTTON", L"I", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_ITAL, 28);
+        SendMessageW(boldBtn_, BM_SETCHECK, style_.bold ? BST_CHECKED : BST_UNCHECKED, 0);
+        SendMessageW(italBtn_, BM_SETCHECK, style_.italic ? BST_CHECKED : BST_UNCHECKED, 0);
+        colBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_COL, 112);
+        SendMessageW(colBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Colour as now"));
+        for (const auto& n : spec_.paletteNames) SendMessageW(colBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(n.c_str()));
+        SendMessageW(colBox_, CB_SETCURSEL, 0, 0);
+        alignBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_ALIGN, 92);
+        for (const wchar_t* a : {L"Left", L"Centre", L"Right", L"Justified"}) SendMessageW(alignBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(a));
+        SendMessageW(alignBox_, CB_SETCURSEL, std::clamp(style_.align, 0, 3), 0);
+        okBtn_ = mk(L"BUTTON", L"Apply", BS_PUSHBUTTON | WS_TABSTOP, ID_OK, 64);
+        noBtn_ = mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, ID_NO, 64);
+        hint_ = mk(L"STATIC", L"Ctrl+Enter applies", SS_LEFT | SS_CENTERIMAGE, ID_HINT, 120);
+    } else {
+        hint_ = mk(L"STATIC", L"Enter applies \x00B7 Esc cancels", SS_LEFT | SS_CENTERIMAGE, ID_HINT, 170);
+        okBtn_ = mk(L"BUTTON", L"Apply", BS_PUSHBUTTON | WS_TABSTOP, ID_OK, 64);
+        noBtn_ = mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, ID_NO, 64);
+    }
+    // the bar's controls, left to right
+    int x = 4;
+    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
+        if (!c) continue;
+        RECT r;
+        GetWindowRect(c, &r);
+        const int w = r.right - r.left;
+        MoveWindow(c, x, 4, w, c == famBox_ || c == sizeBox_ || c == colBox_ || c == alignBox_ ? 300 : 24, FALSE);
+        x += w + 4;
+    }
+    barW_ = x;
+    applyFont();
+    makeEdit();
+    layout();
+    ShowWindow(wnd_, SW_SHOW);
+    SetFocus(edit_);
+    POINT at = spec_.click;
+    if (at.x >= 0) {   // the caret goes where the text was clicked
+        MapWindowPoints(viewer_, edit_, &at, 1);
+        const LRESULT r = SendMessageW(edit_, EM_CHARFROMPOS, 0, MAKELPARAM(std::max(0L, at.x), std::max(0L, at.y)));
+        const int ch = LOWORD(r);
+        SendMessageW(edit_, EM_SETSEL, ch, ch);
+    } else SendMessageW(edit_, EM_SETSEL, static_cast<WPARAM>(-1), -1);
+}
+
+void Editor::applyFont() {
+    if (textFont_) DeleteObject(textFont_);
+    const int px = std::max(6, static_cast<int>(std::lround(style_.sizePt * ppp_)));
+    textFont_ = CreateFontW(-px, 0, 0, 0, style_.bold ? FW_BOLD : FW_NORMAL, style_.italic, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                            CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, kFaces[std::clamp(style_.family, 0, 2)]);
+    if (edit_) { SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(textFont_), TRUE); InvalidateRect(edit_, nullptr, TRUE); }
+}
+
+void Editor::makeEdit() {
+    std::wstring text = spec_.text;
+    DWORD sel0 = 0, sel1 = 0;
+    if (edit_) {
+        const int n = GetWindowTextLengthW(edit_);
+        text.assign(static_cast<size_t>(n) + 1, L'\0');
+        GetWindowTextW(edit_, text.data(), n + 1);
+        text.resize(static_cast<size_t>(n));
+        SendMessageW(edit_, EM_GETSEL, reinterpret_cast<WPARAM>(&sel0), reinterpret_cast<LPARAM>(&sel1));
+        DestroyWindow(edit_);
+    } else if (spec_.paragraph) {   // the edit box wants CR LF line ends
+        std::wstring t;
+        for (wchar_t c : text) { if (c == L'\n') t += L"\r\n"; else if (c != L'\r') t += c; }
+        text = t;
+    }
+    DWORD style = WS_CHILD | WS_VISIBLE | WS_TABSTOP;
+    if (spec_.paragraph) style |= ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | (style_.align == 1 ? ES_CENTER : style_.align == 2 ? ES_RIGHT : ES_LEFT);
+    else style |= ES_AUTOHSCROLL;
+    edit_ = CreateWindowExW(0, L"EDIT", text.c_str(), style, 0, 0, 10, 10, wnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_EDIT)), inst_, nullptr);
+    SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(textFont_), FALSE);
+    SendMessageW(edit_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(1, 1));
+    oldEdit_ = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(edit_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(editProc)));
+    if (sel0 || sel1) SendMessageW(edit_, EM_SETSEL, sel0, sel1);
+}
+
+void Editor::layout() {
+    if (!wnd_ || !edit_) return;
+    // the edit box covers the text, and grows with it
+    HDC dc = GetDC(edit_);
+    HGDIOBJ old = SelectObject(dc, textFont_);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    const int n = GetWindowTextLengthW(edit_);
+    std::wstring text(static_cast<size_t>(n) + 1, L'\0');
+    GetWindowTextW(edit_, text.data(), n + 1);
+    text.resize(static_cast<size_t>(n));
+    int w = box_.right - box_.left + 6, h = box_.bottom - box_.top + 6;
+    if (!spec_.paragraph) {
+        SIZE ext{};
+        GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &ext);
+        w = std::max(w, static_cast<int>(ext.cx + tm.tmAveCharWidth * 2 + 8));
+        h = std::max(h, static_cast<int>(tm.tmHeight + 6));
+    } else {
+        w = std::max(w, static_cast<int>(tm.tmAveCharWidth * 12));
+        const int lines = static_cast<int>(SendMessageW(edit_, EM_GETLINECOUNT, 0, 0));
+        h = std::max(h, static_cast<int>(lines * tm.tmHeight + 8));
+    }
+    SelectObject(dc, old);
+    ReleaseDC(edit_, dc);
+    RECT vr;
+    GetClientRect(viewer_, &vr);
+    // the bar goes above the text, or below it when there is no room above
+    const int ex = box_.left - 3, ey = box_.top - 3;
+    const bool barBelow = ey - barH_ - 2 < 0;
+    const int left = std::min(ex - 2, ex - 2), top = barBelow ? ey - 2 : ey - barH_ - 2;
+    const int width = std::max(w + 4, barW_), height = h + 4 + barH_;
+    const int editY = barBelow ? 2 : barH_ + 2;
+    MoveWindow(wnd_, left, top, width, height, TRUE);
+    MoveWindow(edit_, 2, editY, w, h, TRUE);
+    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
+        if (!c) continue;
+        RECT r;
+        GetWindowRect(c, &r);
+        MapWindowPoints(nullptr, wnd_, reinterpret_cast<POINT*>(&r), 2);
+        const int ch = r.bottom - r.top;
+        SetWindowPos(c, nullptr, r.left, (barBelow ? h + 4 : 0) + 4, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
+        (void)ch;
+    }
+    // only the bar and the framed edit box are part of the window, so the page stays visible around them
+    HRGN rgn = CreateRectRgn(0, editY - 2, w + 4, editY + h + 2);
+    HRGN bar = CreateRectRgn(0, barBelow ? h + 4 : 0, barW_, (barBelow ? h + 4 : 0) + barH_);
+    CombineRgn(rgn, rgn, bar, RGN_OR);
+    DeleteObject(bar);
+    SetWindowRgn(wnd_, rgn, TRUE);
+    (void)vr;
+}
+
+void Editor::reposition() {
+    if (!wnd_ || closing_) return;
+    const double before = ppp_;
+    if (!locate_(box_, ppp_)) { ShowWindow(wnd_, SW_HIDE); return; }
+    if (std::fabs(before - ppp_) > 1e-6) applyFont();
+    layout();
+    ShowWindow(wnd_, SW_SHOW);
+}
+
+void Editor::readBar() {
+    if (!spec_.paragraph) return;
+    style_.family = static_cast<int>(SendMessageW(famBox_, CB_GETCURSEL, 0, 0));
+    wchar_t sz[32] = L"";
+    const int sel = static_cast<int>(SendMessageW(sizeBox_, CB_GETCURSEL, 0, 0));
+    if (sel >= 0 && GetWindowTextLengthW(sizeBox_) == 0) SendMessageW(sizeBox_, CB_GETLBTEXT, sel, reinterpret_cast<LPARAM>(sz));
+    else GetWindowTextW(sizeBox_, sz, 32);
+    const double v = wcstod(sz, nullptr);
+    if (v >= 4 && v <= 200) style_.sizePt = v;
+    style_.bold = SendMessageW(boldBtn_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    style_.italic = SendMessageW(italBtn_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+    const int c = static_cast<int>(SendMessageW(colBox_, CB_GETCURSEL, 0, 0));
+    style_.color = c > 0 && c - 1 < static_cast<int>(spec_.palette.size()) ? spec_.palette[static_cast<size_t>(c - 1)] : spec_.style.color;
+    style_.align = static_cast<int>(SendMessageW(alignBox_, CB_GETCURSEL, 0, 0));
+}
+
+bool Editor::commit() {
+    if (!wnd_ || closing_) return true;
+    readBar();
+    const int n = GetWindowTextLengthW(edit_);
+    std::wstring raw(static_cast<size_t>(n) + 1, L'\0');
+    GetWindowTextW(edit_, raw.data(), n + 1);
+    raw.resize(static_cast<size_t>(n));
+    std::wstring text;
+    for (wchar_t c : raw) if (c != L'\r') text += c;
+    closing_ = true;   // the commit may show a message; nothing should move the editor meanwhile
+    const bool ok = commit_ ? commit_(text, style_) : true;
+    closing_ = false;
+    if (ok) close();
+    else if (edit_) SetFocus(edit_);
+    return ok;
+}
+
+void Editor::cancel() { close(); }
+
+void Editor::close() {
+    if (!wnd_) return;
+    HWND w = wnd_;
+    wnd_ = nullptr;
+    edit_ = nullptr;
+    g_current = nullptr;
+    DestroyWindow(w);
+    if (textFont_) { DeleteObject(textFont_); textFont_ = nullptr; }
+    SetFocus(viewer_);
+}
+
+LRESULT CALLBACK Editor::proc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_NCCREATE) SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams));
+    auto* e = reinterpret_cast<Editor*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    if (!e || m == WM_NCCREATE) return DefWindowProcW(h, m, w, l);
+    return e->handle(h, m, w, l);
+}
+
+LRESULT Editor::handle(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+        case WM_ERASEBKGND: return 1;
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(h, &ps);
+            RECT rc;
+            GetClientRect(h, &rc);
+            FillRect(dc, &rc, GetSysColorBrush(COLOR_BTNFACE));
+            if (edit_ && h == wnd_) {   // an accent frame around the text being edited
+                RECT er;
+                GetWindowRect(edit_, &er);
+                MapWindowPoints(nullptr, h, reinterpret_cast<POINT*>(&er), 2);
+                InflateRect(&er, 2, 2);
+                HBRUSH b = CreateSolidBrush(kAccent);
+                FrameRect(dc, &er, b);
+                InflateRect(&er, -1, -1);
+                FrameRect(dc, &er, b);
+                DeleteObject(b);
+            }
+            EndPaint(h, &ps);
+            return 0;
+        }
+        case WM_CTLCOLOREDIT:
+            if (reinterpret_cast<HWND>(l) == edit_) {
+                HDC dc = reinterpret_cast<HDC>(w);
+                SetTextColor(dc, style_.color);
+                SetBkColor(dc, RGB(0xFF, 0xFF, 0xFF));
+                return reinterpret_cast<LRESULT>(editBrush_);
+            }
+            break;
+        case WM_CTLCOLORSTATIC: {
+            HDC dc = reinterpret_cast<HDC>(w);
+            SetBkColor(dc, GetSysColor(COLOR_BTNFACE));
+            SetTextColor(dc, GetSysColor(COLOR_GRAYTEXT));
+            return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_BTNFACE));
+        }
+        case WM_COMMAND: {
+            const int id = LOWORD(w), code = HIWORD(w);
+            if (id == ID_EDIT && code == EN_CHANGE) { layout(); return 0; }
+            if (id == ID_OK) { commit(); return 0; }
+            if (id == ID_NO) { cancel(); return 0; }
+            if ((id == ID_FAM || id == ID_COL) && code == CBN_SELCHANGE) { readBar(); applyFont(); SetFocus(edit_); return 0; }
+            if (id == ID_ALIGN && code == CBN_SELCHANGE) { readBar(); makeEdit(); layout(); SetFocus(edit_); return 0; }
+            if (id == ID_SIZE && (code == CBN_SELCHANGE || code == CBN_EDITCHANGE)) {
+                if (code == CBN_SELCHANGE) {   // the box shows the new choice only after this message
+                    wchar_t t[32] = L"";
+                    SendMessageW(sizeBox_, CB_GETLBTEXT, SendMessageW(sizeBox_, CB_GETCURSEL, 0, 0), reinterpret_cast<LPARAM>(t));
+                    SetWindowTextW(sizeBox_, t);
+                }
+                readBar(); applyFont(); layout();
+                return 0;
+            }
+            if ((id == ID_BOLD || id == ID_ITAL) && code == BN_CLICKED) { readBar(); applyFont(); layout(); SetFocus(edit_); return 0; }
+            break;
+        }
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+LRESULT CALLBACK Editor::editProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    Editor* e = g_current;
+    if (!e) return DefWindowProcW(h, m, w, l);
+    WNDPROC old = e->oldEdit_;
+    const bool ctrl = GetKeyState(VK_CONTROL) < 0;
+    switch (m) {
+        case WM_GETDLGCODE: return DLGC_WANTALLKEYS | CallWindowProcW(old, h, m, w, l);
+        case WM_KEYDOWN:
+            if (w == VK_ESCAPE) { e->cancel(); return 0; }
+            if (w == VK_RETURN && (!e->spec_.paragraph || ctrl)) { e->commit(); return 0; }
+            if (w == 'A' && ctrl) { SendMessageW(h, EM_SETSEL, 0, -1); return 0; }
+            break;
+        case WM_CHAR:
+            if (w == 0x1B || w == 1) return 0;                                       // Esc, Ctrl+A
+            if ((w == L'\r' || w == L'\n') && (!e->spec_.paragraph || ctrl)) return 0;   // handled on key down
+            break;
+    }
+    return CallWindowProcW(old, h, m, w, l);
+}
+
+} // namespace inlineedit

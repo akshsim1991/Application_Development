@@ -532,6 +532,18 @@ bool Document::movePages(std::vector<int> pages, int destination) {
     return true;
 }
 
+int Document::flattenAll() {
+    beginChange();
+    int changed = 0;
+    for (int i = 0; i < pageCount(); ++i) {
+        FPDF_PAGE p = page(i);
+        if (p && pdfium::api().FPDFPage_Flatten(p, FLAT_PRINT) == FLATTEN_SUCCESS) ++changed;
+    }
+    std::vector<unsigned char> bytes;
+    if (!changed || !serialize(bytes) || load(std::move(bytes), password_) != OpenResult::Ok) { if (changed) undo(); else cancelChange(); return 0; }
+    return changed;
+}
+
 bool Document::reversePages() {
     const int n = pageCount();
     if (n < 2) return false;

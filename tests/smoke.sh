@@ -127,6 +127,41 @@ assert any(im.getpixel((x,y))[2]>240 and im.getpixel((x,y))[0]<250 and im.getpix
 kill "$(cat "$tsa/pid")" 2>/dev/null
 else echo "  skip time stamp test (needs openssl and python3)"; fi
 
+echo "text and Markdown to PDF"
+printf '# Shopping list\n\n- **Milk** and bread\n- Eggs\n\n| Item | Qty |\n|---|---|\n| Tea | 2 |\n' > "$work/list.md"
+run --topdf "$(W list.md)" "$(W list.pdf)"
+check "heading and table text"      "pdftotext '$work/list.pdf' - | grep -q 'Shopping list' && pdftotext -layout '$work/list.pdf' - | grep -q 'Tea'"
+
+echo "sanitise"
+python3 -c "
+import pikepdf
+p=pikepdf.open('$work/rich.pdf'); p.docinfo['/Author']='Secret Person'
+p.attachments['payroll.txt']=pikepdf.AttachedFileSpec(p,b'salaries')
+p.save('$work/dirty.pdf')"
+run --sanitize "$(W dirty.pdf)" "$(W clean.pdf)"
+check "author and attachment gone"  "! grep -aq -e 'Secret Person' -e salaries '$work/clean.pdf' && python3 -c \"import pikepdf;assert len(pikepdf.open('$work/clean.pdf').attachments)==0\""
+check "report written"              "[ -s '$work/clean.pdf.txt' ]"
+check "text kept"                   "pdftotext '$work/clean.pdf' - | grep -q 'Quarterly Report'"
+
+echo "page tools"
+python3 -c "
+import pikepdf
+p=pikepdf.open('$work/rich.pdf'); p.pages.append(p.pages[0]); p.save('$work/twice.pdf')"
+run --pages "$(W twice.pdf)" "$(W once.pdf)" nodupes
+check "duplicate page removed"      "[ \$(pdfinfo '$work/once.pdf' | awk '/^Pages/{print \$2}') -eq 1 ]"
+run --pages "$(W twice.pdf)" "$(W hf.pdf)" header
+check "header and page numbers"     "pdftotext '$work/hf.pdf' - | grep -q 'Page 2 of 2'"
+
+echo "form fields: radio, list, date, reset, flatten"
+run --formtest "$(W rich.pdf)" "$(W ft)"
+check "all kinds filled"            "grep -q 'size=Medium\[x\].*colour=Green when=25.10.2026 who=Ann agree=Yes\[x\]' '$work/ft.txt'"
+check "reset clears them"           "grep -q '^reset: size=Off size=Off size=Off colour= when= who= agree=Off' '$work/ft.txt'"
+check "flatten leaves no fields"    "grep -q 'fields after flatten: 0' '$work/ft.txt' && pdftotext '$work/ft-flat.pdf' - | grep -q 'Medium'"
+
+echo "comment shapes"
+run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
+check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""
+
 
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOME FAILED"

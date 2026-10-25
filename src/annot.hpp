@@ -28,6 +28,12 @@ bool addShape(Document& d, int page, Shape kind, const RectD& r, COLORREF color,
 // Lines, arrows and freehand drawing are ink annotations: one stroke per entry.
 bool addInk(Document& d, int page, const std::vector<std::vector<PointD>>& strokes, COLORREF color, double width);
 bool addNote(Document& d, int page, PointD at, const std::wstring& text, COLORREF color);
+// A closed shape through the points (drawn as one ink stroke, so every viewer shows it).
+bool addPolygon(Document& d, int page, const std::vector<PointD>& pts, COLORREF color, double width);
+// A "cloud" drawn around a rectangle (for marking an area on a drawing).
+bool addCloud(Document& d, int page, const RectD& r, COLORREF color, double width);
+// A text box with a leader line and arrowhead pointing at `tip`; the box sits next to `at`.
+bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color);
 // A clickable box that opens a web page.
 bool addLink(Document& d, int page, const RectD& r, const std::string& uri);
 

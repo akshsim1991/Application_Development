@@ -2,6 +2,7 @@
 #include <algorithm>
 #include <ctime>
 #include <cwchar>
+#include <cmath>
 
 namespace annot {
 namespace {
@@ -253,6 +254,124 @@ bool addLink(Document& d, int page, const RectD& r, const std::string& uri) {
         setRect(a, r);
         api().FPDFAnnot_SetBorder(a, 0, 0, 0);
         return api().FPDFAnnot_SetURI(a, uri.c_str()) != 0;
+    });
+}
+} // namespace annot
+
+namespace annot {
+namespace {
+FPDF_PAGEOBJECT pathFrom(const std::vector<PointD>& pts, bool close) {
+    const auto& p = api();
+    FPDF_PAGEOBJECT o = p.FPDFPageObj_CreateNewPath(static_cast<float>(pts[0].x), static_cast<float>(pts[0].y));
+    for (size_t i = 1; i < pts.size(); ++i) p.FPDFPath_LineTo(o, static_cast<float>(pts[i].x), static_cast<float>(pts[i].y));
+    if (close) p.FPDFPath_Close(o);
+    return o;
+}
+}
+
+bool addPolygon(Document& d, int page, const std::vector<PointD>& pts, COLORREF color, double width) {
+    if (pts.size() < 3) return false;
+    std::vector<PointD> closed = pts;
+    closed.push_back(pts.front());
+    return addInk(d, page, {closed}, color, width);
+}
+
+bool addCloud(Document& d, int page, const RectD& r, COLORREF color, double width) {
+    if (r.right - r.left < 8 || r.top - r.bottom < 8) return false;
+    // scallops along the four edges, each a half circle bulging outwards, sampled as points
+    std::vector<PointD> pts;
+    const PointD corners[5] = {{r.left, r.bottom}, {r.right, r.bottom}, {r.right, r.top}, {r.left, r.top}, {r.left, r.bottom}};
+    const double target = std::max(8.0, std::min(r.right - r.left, r.top - r.bottom) / 4);
+    for (int e = 0; e < 4; ++e) {
+        const PointD a = corners[e], b = corners[e + 1];
+        const double len = std::hypot(b.x - a.x, b.y - a.y);
+        const int n = std::max(2, static_cast<int>(len / target));
+        const double ux = (b.x - a.x) / len, uy = (b.y - a.y) / len;
+        const double nx = uy, ny = -ux;   // outwards for a counter-clockwise walk
+        const double seg = len / n, rad = seg / 2;
+        for (int k = 0; k < n; ++k) {
+            const double cx = a.x + ux * (seg * k + rad), cy = a.y + uy * (seg * k + rad);
+            for (int s = 0; s <= 8; ++s) {
+                const double t = 3.14159265358979 * s / 8;   // from the start of the bump to its end, through the outside
+                pts.push_back({cx - ux * rad * std::cos(t) + nx * rad * std::sin(t), cy - uy * rad * std::cos(t) + ny * rad * std::sin(t)});
+            }
+        }
+    }
+    return addInk(d, page, {pts}, color, width);
+}
+
+bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color) {
+    if (text.empty()) return false;
+    const auto& p = api();
+    // lines of text that fit 220 pt
+    auto widthOf = [&](const std::wstring& s) {
+        FPDF_PAGEOBJECT o = p.FPDFPageObj_NewTextObj(d.handle(), "Helvetica", 10.0f);
+        auto w = wide(s);
+        p.FPDFText_SetText(o, w.data());
+        float l, b, rr, t;
+        double v = p.FPDFPageObj_GetBounds(o, &l, &b, &rr, &t) ? rr - l : s.size() * 5.0;
+        p.FPDFPageObj_Destroy(o);
+        return v;
+    };
+    std::vector<std::wstring> lines;
+    for (size_t pos = 0; pos <= text.size();) {
+        size_t e = text.find_first_of(L"\r\n", pos);
+        std::wstring para = text.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+        std::wstring cur;
+        size_t q = 0;
+        while (q <= para.size()) {
+            size_t sp = para.find(L' ', q);
+            std::wstring word = para.substr(q, sp == std::wstring::npos ? std::wstring::npos : sp - q);
+            std::wstring cand = cur.empty() ? word : cur + L" " + word;
+            if (!cur.empty() && widthOf(cand) > 220) { lines.push_back(cur); cur = word; } else cur = cand;
+            if (sp == std::wstring::npos) break;
+            q = sp + 1;
+        }
+        lines.push_back(cur);
+        if (e == std::wstring::npos) break;
+        pos = e + 1;
+        if (pos < text.size() && text[pos - 1] == L'\r' && text[pos] == L'\n') ++pos;
+    }
+    double w = 0;
+    for (auto& l : lines) w = std::max(w, widthOf(l));
+    const double pad = 5, lh = 12.5, bw = w + 2 * pad, bh = lines.size() * lh + 2 * pad - 2.5;
+    const bool right = at.x >= tip.x;
+    const RectD box{right ? at.x : at.x - bw, at.y - bh / 2, right ? at.x + bw : at.x, at.y + bh / 2};
+    const PointD attach{right ? box.left : box.right, at.y};
+    RectD all{std::min(box.left, tip.x) - 4, std::min(box.bottom, tip.y) - 4, std::max(box.right, tip.x) + 4, std::max(box.top, tip.y) + 4};
+    return create(d, page, FPDF_ANNOT_STAMP, [&](FPDF_ANNOTATION a) {
+        setRect(a, all);
+        // the box
+        FPDF_PAGEOBJECT rect = pathFrom({{box.left, box.bottom}, {box.right, box.bottom}, {box.right, box.top}, {box.left, box.top}}, true);
+        p.FPDFPageObj_SetFillColor(rect, 255, 255, 240, 255);
+        p.FPDFPageObj_SetStrokeColor(rect, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+        p.FPDFPageObj_SetStrokeWidth(rect, 1);
+        p.FPDFPath_SetDrawMode(rect, FPDF_FILLMODE_ALTERNATE, 1);
+        p.FPDFAnnot_AppendObject(a, rect);
+        // the leader line and its arrowhead
+        FPDF_PAGEOBJECT line = pathFrom({attach, tip}, false);
+        p.FPDFPageObj_SetStrokeColor(line, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+        p.FPDFPageObj_SetStrokeWidth(line, 1);
+        p.FPDFPath_SetDrawMode(line, 0, 1);
+        p.FPDFAnnot_AppendObject(a, line);
+        const double ang = std::atan2(attach.y - tip.y, attach.x - tip.x), hl = 8, hw = 0.4;
+        FPDF_PAGEOBJECT head = pathFrom({tip, {tip.x + hl * std::cos(ang + hw), tip.y + hl * std::sin(ang + hw)}, {tip.x + hl * std::cos(ang - hw), tip.y + hl * std::sin(ang - hw)}}, true);
+        p.FPDFPageObj_SetFillColor(head, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+        p.FPDFPath_SetDrawMode(head, FPDF_FILLMODE_ALTERNATE, 0);
+        p.FPDFAnnot_AppendObject(a, head);
+        // the text
+        double y = box.top - pad - 8.5;
+        for (auto& l : lines) {
+            FPDF_PAGEOBJECT t = p.FPDFPageObj_NewTextObj(d.handle(), "Helvetica", 10.0f);
+            auto wl = wide(l);
+            p.FPDFText_SetText(t, wl.data());
+            p.FPDFPageObj_SetFillColor(t, 0x20, 0x20, 0x20, 255);
+            p.FPDFPageObj_Transform(t, 1, 0, 0, 1, box.left + pad, y);
+            p.FPDFAnnot_AppendObject(a, t);
+            y -= lh;
+        }
+        stamp(a, text);
+        return true;
     });
 }
 } // namespace annot

@@ -94,13 +94,24 @@ int setValues(Document& d, const std::map<std::wstring, std::wstring>& values) {
                 FS_RECTF rc;
                 if (it != values.end() && api.FPDFAnnot_GetRect(a, &rc)) {
                     const double cx = (rc.left + rc.right) / 2, cy = (rc.top + rc.bottom) / 2;
-                    auto click = [&] { api.FORM_OnLButtonDown(form, pg, 0, cx, cy); api.FORM_OnLButtonUp(form, pg, 0, cx, cy); };
+                    auto click = [&] { api.FORM_ForceToKillFocus(form); api.FORM_OnLButtonDown(form, pg, 0, cx, cy); api.FORM_OnLButtonUp(form, pg, 0, cx, cy); };
                     if (type == FPDF_FORMFIELD_TEXTFIELD || type == FPDF_FORMFIELD_COMBOBOX) {
                         click();
                         api.FORM_SelectAllText(form, pg);
                         std::vector<unsigned short> w(it->second.begin(), it->second.end());
                         w.push_back(0);
                         api.FORM_ReplaceSelection(form, pg, w.data());
+                        api.FORM_ForceToKillFocus(form);
+                        ++changed;
+                    } else if (type == FPDF_FORMFIELD_LISTBOX) {
+                        // pick the entry whose label matches; an empty value clears the choice
+                        const int count = api.FPDFAnnot_GetOptionCount(form, a);
+                        click();
+                        for (int k = 0; k < count; ++k) {
+                            const std::wstring label = getString([&](unsigned short* b, unsigned long l) { return api.FPDFAnnot_GetOptionLabel(form, a, k, b, l); });
+                            const bool want = !it->second.empty() && label == it->second;
+                            if (want != static_cast<bool>(api.FORM_IsIndexSelected(form, pg, k))) api.FORM_SetIndexSelected(form, pg, k, want);
+                        }
                         api.FORM_ForceToKillFocus(form);
                         ++changed;
                     } else if (type == FPDF_FORMFIELD_CHECKBOX || type == FPDF_FORMFIELD_RADIOBUTTON) {
@@ -118,6 +129,31 @@ int setValues(Document& d, const std::map<std::wstring, std::wstring>& values) {
         }
     }
     return changed;
+}
+
+void drawRadioLabels(Document& d, const std::vector<formcreate::Spec>& specs) {
+    const auto& api = pdfium::api();
+    std::set<int> changed;
+    for (const auto& sp : specs)
+        for (const auto& lb : formcreate::radioLabels(sp)) {
+            FPDF_PAGE pg = d.page(lb.page);
+            FPDF_PAGEOBJECT o = pg ? api.FPDFPageObj_NewTextObj(d.handle(), "Helvetica", static_cast<float>(lb.sizePt)) : nullptr;
+            if (!o) continue;
+            std::vector<unsigned short> w(lb.text.begin(), lb.text.end());
+            w.push_back(0);
+            if (!api.FPDFText_SetText(o, w.data())) { api.FPDFPageObj_Destroy(o); continue; }
+            api.FPDFPageObj_SetFillColor(o, 0, 0, 0, 255);
+            api.FPDFPageObj_Transform(o, 1, 0, 0, 1, lb.x, lb.y);
+            api.FPDFPage_InsertObject(pg, o);
+            changed.insert(lb.page);
+        }
+    for (int p : changed) { api.FPDFPage_GenerateContent(d.page(p)); d.resetText(p); }
+}
+
+int resetAll(Document& d) {
+    std::map<std::wstring, std::wstring> empty;
+    for (const Field& f : list(d)) if (f.type != FPDF_FORMFIELD_RADIOBUTTON) empty[f.name] = L"";
+    return setValues(d, empty);
 }
 
 std::vector<std::vector<std::wstring>> parseCsv(const std::wstring& text) {

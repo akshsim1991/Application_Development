@@ -158,6 +158,8 @@
     X(FORM_SelectAllText)        \
     X(FORM_ReplaceSelection)     \
     X(FORM_GetSelectedText)      \
+    X(FORM_SetIndexSelected)     \
+    X(FORM_IsIndexSelected)      \
     X(FPDF_SetFormFieldHighlightColor) \
     X(FPDF_SetFormFieldHighlightAlpha) \
     X(FPDFText_GetBoundedText)   \

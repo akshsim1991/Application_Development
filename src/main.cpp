@@ -104,8 +104,9 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
-void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
+void formReset(); void flattenDocument(); void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
 void sanitizeDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
+void startStamp(const std::wstring& text, COLORREF col);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -226,7 +227,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -860,6 +861,9 @@ void showAnnotateMenu(const RECT& anchor) {
     item(M_LINE, L"Line", app.tool == Viewer::Tool::Line);
     item(M_ARROW, L"Arrow", app.tool == Viewer::Tool::Arrow);
     item(M_PEN, L"Pen (freehand)", app.tool == Viewer::Tool::Pen);
+    item(A_POLYGON, L"Polygon (click the corners, double-click to finish)", app.tool == Viewer::Tool::Polygon);
+    item(A_CLOUD, L"Cloud (drag a box)", app.tool == Viewer::Tool::Cloud);
+    item(A_CALLOUT, L"Callout (drag from the point to where the text goes)", app.tool == Viewer::Tool::Callout);
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     showStampMenu(m);
     HMENU sg = CreatePopupMenu();
@@ -898,6 +902,20 @@ void showAnnotateMenu(const RECT& anchor) {
     if (cmd >= M_WIDTH && cmd < M_WIDTH + 3) { app.widthIdx = cmd - M_WIDTH; applyStyle(); return; }
     if (cmd >= N_TEXTSIZE && cmd < N_TEXTSIZE + 9) { app.textStyle.sizePt = kTextSizes[cmd - N_TEXTSIZE]; saveSettings(); return; }
     if (cmd >= T_STAMP && cmd <= T_STAMP_CUSTOM) { toolsDispatch(cmd); return; }
+    if (cmd >= A_DATESTAMP && cmd < A_DATESTAMP + 4) {
+        SYSTEMTIME now; GetLocalTime(&now);
+        wchar_t date[64] = L"", time[32] = L"";
+        GetDateFormatW(LOCALE_USER_DEFAULT, 0, &now, L"dd MMM yyyy", date, 64);
+        GetTimeFormatW(LOCALE_USER_DEFAULT, TIME_NOSECONDS, &now, L"HH:mm", time, 32);
+        static const wchar_t* words[] = {L"", L"APPROVED ", L"RECEIVED ", L"PAID "};
+        static const COLORREF cols[] = {RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A), RGB(0x25, 0x6F, 0xD1), RGB(0xD0, 0x2B, 0x2B)};
+        std::wstring t = std::wstring(words[cmd - A_DATESTAMP]) + date + (cmd == A_DATESTAMP ? std::wstring(L" ") + time : L"");
+        bool ok = true;
+        for (auto& c : t) if (c > 0xFF) ok = false;
+        if (!ok) { wchar_t iso[32]; swprintf(iso, 32, L"%04d-%02d-%02d %02d:%02d", now.wYear, now.wMonth, now.wDay, now.wHour, now.wMinute); t = std::wstring(words[cmd - A_DATESTAMP]) + iso; }
+        startStamp(t, cols[cmd - A_DATESTAMP]);
+        return;
+    }
     switch (cmd) {
         case M_HIGHLIGHT: markupSelection(annot::Markup::Highlight, false); break;
         case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
@@ -909,6 +927,9 @@ void showAnnotateMenu(const RECT& anchor) {
         case M_LINE: setTool(Viewer::Tool::Line); break;
         case M_ARROW: setTool(Viewer::Tool::Arrow); break;
         case M_PEN: setTool(Viewer::Tool::Pen); break;
+        case A_POLYGON: setTool(Viewer::Tool::Polygon); break;
+        case A_CLOUD: setTool(Viewer::Tool::Cloud); break;
+        case A_CALLOUT: setTool(Viewer::Tool::Callout); break;
         case T_PICTURE: toolsDispatch(cmd); break;
         case N_LINK: startLink(); break;
         case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: case N_SIG_CLEAR: signatureAction(cmd); break;
@@ -925,6 +946,8 @@ void showCommentMenu(const RECT& anchor) {
     AppendMenuW(m, MF_STRING, N_SELECT_NOTES, L"Notes summary (highlights and comments)...");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (app.viewer.selectedAnnot(a, b) ? 0 : MF_GRAYED), M_DELETE, L"Delete selected comment\tDel");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, F_FLATTEN, L"Flatten: make comments and fields part of the page...");
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
@@ -933,6 +956,7 @@ void showCommentMenu(const RECT& anchor) {
         case M_COMMENT: setTool(Viewer::Tool::Comment); break;
         case M_SQUIGGLY + 100: markupSelection(annot::Markup::Highlight, true); break;
         case N_SELECT_NOTES: toolsDispatch(T_NOTES); break;
+        case F_FLATTEN: flattenDocument(); break;
         case M_DELETE: deleteSelectedAnnotation(); break;
     }
 }
@@ -2160,6 +2184,11 @@ void showStampMenu(HMENU parent) {
     HMENU st = CreatePopupMenu();
     for (int i = 0; i < 7; ++i) AppendMenuW(st, MF_STRING, T_STAMP + i, kStampNames[i]);
     AppendMenuW(st, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(st, MF_STRING, A_DATESTAMP, L"Date and time");
+    AppendMenuW(st, MF_STRING, A_DATESTAMP + 1, L"APPROVED with date");
+    AppendMenuW(st, MF_STRING, A_DATESTAMP + 2, L"RECEIVED with date");
+    AppendMenuW(st, MF_STRING, A_DATESTAMP + 3, L"PAID with date");
+    AppendMenuW(st, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(st, MF_STRING, T_STAMP_CUSTOM, L"Custom stamp...");
     AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(st), L"Stamp");
 }
@@ -2208,6 +2237,11 @@ void toolsDispatch(int cmd) {
         case F_CHECK: startFormField(Viewer::Tool::FormCheck); break;
         case F_COMBO: startFormField(Viewer::Tool::FormCombo); break;
         case F_AUTO: formAutoDetect(); break;
+        case F_RADIO: startFormField(Viewer::Tool::FormRadio); break;
+        case F_LIST: startFormField(Viewer::Tool::FormList); break;
+        case F_DATE: startFormField(Viewer::Tool::FormDate); break;
+        case F_RESET: formReset(); break;
+        case F_FLATTEN: flattenDocument(); break;
         default:
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
@@ -2246,7 +2280,13 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormText ? MF_CHECKED : 0), F_TEXT, L"Add a text field");
     AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormCheck ? MF_CHECKED : 0), F_CHECK, L"Add a check box");
     AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormCombo ? MF_CHECKED : 0), F_COMBO, L"Add a drop-down list");
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormRadio ? MF_CHECKED : 0), F_RADIO, L"Add radio buttons (one choice of several)");
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormList ? MF_CHECKED : 0), F_LIST, L"Add a list box");
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormDate ? MF_CHECKED : 0), F_DATE, L"Add a date field");
     AppendMenuW(frm, MF_STRING, F_AUTO, L"Find fields in a flat form...");
+    AppendMenuW(frm, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(frm, MF_STRING, F_RESET, L"Clear all answers (reset the form)");
+    AppendMenuW(frm, MF_STRING, F_FLATTEN, L"Flatten: make fields and comments part of the page...");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(frm), L"Fillable form");
     HMENU red = CreatePopupMenu();
     AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
@@ -3170,7 +3210,26 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
             return true;
         }
         case Viewer::Tool::Ruler: case Viewer::Tool::Protractor: measureDraw(e); return true;
-        case Viewer::Tool::FormText: case Viewer::Tool::FormCheck: case Viewer::Tool::FormCombo: return formFieldDraw(d, e);
+        case Viewer::Tool::FormText: case Viewer::Tool::FormCheck: case Viewer::Tool::FormCombo:
+        case Viewer::Tool::FormRadio: case Viewer::Tool::FormList: case Viewer::Tool::FormDate: return formFieldDraw(d, e);
+        case Viewer::Tool::Polygon:
+            if (annot::addPolygon(d, e.page, e.pts, drawColor(), lineWidth())) { app.viewer.documentChanged(); refresh(); }
+            return true;
+        case Viewer::Tool::Cloud: {
+            annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y), std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)};
+            if (annot::addCloud(d, e.page, r, drawColor(), lineWidth())) { app.viewer.documentChanged(); refresh(); }
+            return true;
+        }
+        case Viewer::Tool::Callout: {
+            std::wstring text;
+            if (askText(L"Callout", L"The text in the box (Enter for a new line).", false, text, L"", true)) {
+                text = fromEdit(text);
+                if (!text.empty() && !pageobj::isLatin(text)) MessageBoxW(app.wnd, L"Callouts can use letters, numbers and common symbols of Western languages.", kAppName, MB_OK | MB_ICONINFORMATION);
+                else if (!text.empty() && annot::addCallout(d, e.page, e.pts[0], e.pts[1], text, drawColor())) { app.viewer.documentChanged(); refresh(); }
+            }
+            setTool(Viewer::Tool::Callout);
+            return true;
+        }
         case Viewer::Tool::Link: {
             annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y), std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)};
             std::wstring url;
@@ -3984,6 +4043,7 @@ bool addFieldSpecs(Document& d, const std::vector<formcreate::Spec>& specs) {
         MessageBoxW(app.wnd, L"The fields could not be added to this document.", kAppName, MB_OK | MB_ICONWARNING);
         return false;
     }
+    formdata::drawRadioLabels(d, specs);
     app.viewer.documentChanged();
     app.sidebar.refresh();
     refresh();
@@ -4003,8 +4063,11 @@ bool formFieldDraw(Document& d, const Viewer::Event& e) {
     if (sp.right - sp.left < 6 || sp.top - sp.bottom < 6) return true;
     std::set<std::wstring> used;
     for (const auto& f : formdata::list(d)) used.insert(f.name);
-    const wchar_t* what = e.tool == Viewer::Tool::FormText ? L"text field" : e.tool == Viewer::Tool::FormCheck ? L"check box" : L"drop-down list";
-    std::wstring suggestion = e.tool == Viewer::Tool::FormText ? L"Text" : e.tool == Viewer::Tool::FormCheck ? L"Check" : L"Choice";
+    const Viewer::Tool tl = e.tool;
+    const wchar_t* what = tl == Viewer::Tool::FormText ? L"text field" : tl == Viewer::Tool::FormCheck ? L"check box" : tl == Viewer::Tool::FormRadio ? L"radio button group" :
+                          tl == Viewer::Tool::FormList ? L"list box" : tl == Viewer::Tool::FormDate ? L"date field" : L"drop-down list";
+    std::wstring suggestion = tl == Viewer::Tool::FormText ? L"Text" : tl == Viewer::Tool::FormCheck ? L"Check" : tl == Viewer::Tool::FormRadio ? L"Group" :
+                              tl == Viewer::Tool::FormList ? L"List" : tl == Viewer::Tool::FormDate ? L"Date" : L"Choice";
     for (int k = 1; used.count(suggestion + std::to_wstring(k)); ++k) {}
     int k = 1;
     while (used.count(suggestion + std::to_wstring(k))) ++k;
@@ -4013,10 +4076,12 @@ bool formFieldDraw(Document& d, const Viewer::Event& e) {
     while (askText(L"Form field", std::wstring(L"Name of the ") + what + L" (it must be different from the other fields).", false, in, name.c_str())) {
         if (in.empty() || used.count(in)) { MessageBoxW(app.wnd, L"Type a name that no other field has.", kAppName, MB_OK | MB_ICONINFORMATION); name = in; continue; }
         sp.name = in;
-        sp.kind = e.tool == Viewer::Tool::FormText ? formcreate::Spec::Text : e.tool == Viewer::Tool::FormCheck ? formcreate::Spec::Check : formcreate::Spec::Combo;
-        if (sp.kind == formcreate::Spec::Combo) {
+        sp.kind = tl == Viewer::Tool::FormText ? formcreate::Spec::Text : tl == Viewer::Tool::FormCheck ? formcreate::Spec::Check : tl == Viewer::Tool::FormRadio ? formcreate::Spec::Radio :
+                  tl == Viewer::Tool::FormList ? formcreate::Spec::List : tl == Viewer::Tool::FormDate ? formcreate::Spec::Date : formcreate::Spec::Combo;
+        if (sp.kind == formcreate::Spec::Combo || sp.kind == formcreate::Spec::List || sp.kind == formcreate::Spec::Radio) {
             std::wstring opts;
-            if (!askText(L"Drop-down list", L"The choices, one per line.", false, opts, L"Yes\r\nNo", true)) break;
+            if (!askText(sp.kind == formcreate::Spec::Radio ? L"Radio buttons" : sp.kind == formcreate::Spec::List ? L"List box" : L"Drop-down list",
+                         sp.kind == formcreate::Spec::Radio ? L"The choices, one per line. They are stacked in the box you drew, one button each." : L"The choices, one per line.", false, opts, L"Yes\r\nNo", true)) break;
             opts = fromEdit(opts);
             size_t pos = 0;
             while (pos <= opts.size()) {
@@ -4033,6 +4098,33 @@ bool formFieldDraw(Document& d, const Viewer::Event& e) {
     }
     setTool(e.tool);
     return true;
+}
+
+void formReset() {
+    Document* d = activeDoc();
+    if (!d) return;
+    if (formdata::list(*d).empty()) { MessageBoxW(app.wnd, L"This document has no form fields.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    if (MessageBoxW(app.wnd, L"Clear every answer in this form?", L"Reset the form", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    d->beginChange();
+    formdata::resetAll(*d);
+    std::vector<unsigned char> bytes, out;
+    if (d->serialize(bytes) && formcreate::clearRadios(bytes, out)) d->reload(std::move(out));
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    refresh();
+}
+
+void flattenDocument() {
+    Document* d = activeDoc();
+    if (!d) return;
+    if (MessageBoxW(app.wnd, L"Make every comment, drawing, stamp and form field a fixed part of the page?\n\nThey can no longer be edited or filled in, and links stop working. Undo (Ctrl+Z) takes it back until you save.",
+                    L"Flatten", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const int n = d->flattenAll();
+    SetCursor(old);
+    if (!n) { MessageBoxW(app.wnd, L"There was nothing to flatten.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    afterPagesChanged();
+    MessageBoxW(app.wnd, (L"Flattened " + std::to_wstring(n) + L" page(s).").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
 }
 
 void formAutoDetect() {
@@ -4171,6 +4263,19 @@ void commandPalette() {
         add(L"Form: add a check box", [] { startFormField(Viewer::Tool::FormCheck); });
         add(L"Form: add a drop-down list", [] { startFormField(Viewer::Tool::FormCombo); });
         add(L"Form: find fields in a flat form", [] { formAutoDetect(); });
+        add(L"Form: add radio buttons", [] { startFormField(Viewer::Tool::FormRadio); });
+        add(L"Form: add a list box", [] { startFormField(Viewer::Tool::FormList); });
+        add(L"Form: add a date field", [] { startFormField(Viewer::Tool::FormDate); });
+        add(L"Form: clear all answers", [] { formReset(); });
+        add(L"Flatten comments and form fields", [] { flattenDocument(); });
+        add(L"Polygon", [] { setTool(Viewer::Tool::Polygon); });
+        add(L"Cloud", [] { setTool(Viewer::Tool::Cloud); });
+        add(L"Callout", [] { setTool(Viewer::Tool::Callout); });
+        add(L"Reverse the page order", [] { pagesMenuAction(P_REVERSE, {}); });
+        add(L"Remove blank pages", [] { pagesMenuAction(P_BLANKS, {}); });
+        add(L"Find duplicate pages", [] { pagesMenuAction(P_DUPES, {}); });
+        add(L"Headers and footers", [] { pagesMenuAction(P_HEADER, {}); });
+        add(L"Background colour", [] { pagesMenuAction(P_BGCOLOR, {}); });
     }
     add(L"New PDF from pictures", [] { newPdfFromPictures(); });
     if (d) {
@@ -4972,6 +5077,61 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         } else if (op == L"background") pageobj::addBackground(doc, all, RGB(0xFF, 0xF8, 0xD0));
         else return 2;
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--formtest") {   // --formtest in.pdf out : writes out-filled.pdf, out-reset.pdf, out-flat.pdf and out.txt
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<formcreate::Spec> specs(5);
+        specs[0].kind = formcreate::Spec::Radio; specs[0].name = L"size"; specs[0].options = {L"Small", L"Medium", L"Large"};
+        specs[0].left = 72; specs[0].right = 220; specs[0].bottom = 560; specs[0].top = 640;
+        specs[1].kind = formcreate::Spec::List; specs[1].name = L"colour"; specs[1].options = {L"Red", L"Green", L"Blue"};
+        specs[1].left = 260; specs[1].right = 400; specs[1].bottom = 560; specs[1].top = 640;
+        specs[2].kind = formcreate::Spec::Date; specs[2].name = L"when";
+        specs[2].left = 72; specs[2].right = 220; specs[2].bottom = 520; specs[2].top = 540;
+        specs[3].kind = formcreate::Spec::Text; specs[3].name = L"who";
+        specs[3].left = 260; specs[3].right = 400; specs[3].bottom = 520; specs[3].top = 540;
+        specs[4].kind = formcreate::Spec::Check; specs[4].name = L"agree";
+        specs[4].left = 72; specs[4].right = 86; specs[4].bottom = 490; specs[4].top = 504;
+        std::vector<unsigned char> bytes, out;
+        std::wstring err;
+        if (!doc.serialize(bytes) || !formcreate::add(bytes, specs, out, err)) return 5;
+        Document f;
+        if (f.load(std::move(out), {}) != OpenResult::Ok) return 6;
+        formdata::drawRadioLabels(f, specs);
+        std::wstring rep;
+        auto dump = [&](const wchar_t* label) {
+            rep += std::wstring(label) + L":";
+            for (const auto& fl : formdata::list(f)) rep += L" " + fl.name + L"=" + fl.value + (fl.checked ? L"[x]" : L"");
+            rep += L"\n";
+        };
+        dump(L"new");
+        formdata::setValues(f, {{L"size", L"Medium"}, {L"colour", L"Green"}, {L"when", L"25.10.2026"}, {L"who", L"Ann"}, {L"agree", L"yes"}});
+        dump(L"filled");
+        if (f.saveAs(files[2] + L"-filled.pdf") != SaveResult::Ok) return 4;
+        formdata::resetAll(f);
+        if (f.serialize(bytes) && formcreate::clearRadios(bytes, out)) f.reload(std::move(out));
+        dump(L"reset");
+        if (f.saveAs(files[2] + L"-reset.pdf") != SaveResult::Ok) return 4;
+        Document g;
+        if (g.open(files[2] + L"-filled.pdf") != OpenResult::Ok) return 6;
+        rep += L"flattened pages: " + std::to_wstring(g.flattenAll()) + L"\n";
+        if (g.saveAs(files[2] + L"-flat.pdf") != SaveResult::Ok) return 4;
+        { Document h; h.open(files[2] + L"-flat.pdf"); rep += L"fields after flatten: " + std::to_wstring(formdata::list(h).size()) + L"\n"; }
+        int n = WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);
+        return Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        bool ok = annot::addPolygon(doc, 0, {{100, 700}, {200, 760}, {260, 690}, {180, 640}}, RGB(0xD0, 0x20, 0x20), 2)
+               && annot::addCloud(doc, 0, {320, 620, 500, 760}, RGB(0x20, 0x40, 0xD0), 1.5)
+               && annot::addCallout(doc, 0, {150, 500}, {300, 420}, L"Check this figure", RGB(0x10, 0x80, 0x30));
+        if (!ok) return 5;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {

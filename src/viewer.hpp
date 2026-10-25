@@ -37,7 +37,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, Select, FormText, FormCheck, FormCombo, Ruler, Protractor };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, Select, Polygon, Cloud, Callout, FormRadio, FormList, FormDate, FormText, FormCheck, FormCombo, Ruler, Protractor };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -137,6 +137,8 @@ private:
     bool pageUnclamped(int cx, int cy, int page, annot::PointD& out) const;
     void drawObjectSelection(HDC dc);
     ObjDrag objHit(int cx, int cy) const;
+    std::vector<annot::PointD> polyPts_; int polyPage_ = -1; POINT polyMouse_{};
+    void finishPolygon();
     bool linkAt(int cx, int cy, int& destPage, std::wstring& uri) const;
     int contentW_ = 0, contentH_ = 0;
     std::map<int, Cached> cache_;

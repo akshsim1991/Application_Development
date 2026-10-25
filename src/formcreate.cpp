@@ -50,10 +50,54 @@ bool add(const std::vector<unsigned char>& pdf, const std::vector<Spec>& specs, 
         const int w = std::max(2, static_cast<int>(r - l)), h = std::max(2, static_cast<int>(t - b));
         const int obj = next++;
         std::string d = "<< /Type /Annot /Subtype /Widget /T " + pdfString(sp.name) + " /Rect [" + num(l) + " " + num(b) + " " + num(r) + " " + num(t) + "] /F 4 /P " + std::to_string(page) + " 0 R";
-        if (sp.kind == Spec::Text) {
+        if (sp.kind == Spec::Radio) {
+            // a parent field with one widget per choice; each widget draws its circle and its label
+            write.erase(obj);
+            std::string kids;
+            const size_t n = std::max<size_t>(1, sp.options.size());
+            const double rowH = (t - b) / n;
+            std::set<std::string> namesUsed;
+            for (size_t k = 0; k < n; ++k) {
+                const std::wstring label = k < sp.options.size() ? sp.options[k] : L"Choice";
+                std::string state;
+                for (wchar_t c : label) if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')) state += static_cast<char>(c);
+                if (state.empty()) state = "Choice";
+                std::string base = state;
+                for (int q = 2; namesUsed.count(state); ++q) state = base + std::to_string(q);
+                namesUsed.insert(state);
+                const double kt = t - rowH * k, kb = kt - rowH;
+                // the widget covers just the circle: PDFium redraws a radio button when it is clicked, so the label lives in the page (radioLabels)
+                const int kh = std::max(2, static_cast<int>(rowH)), kw = std::min(kh, 14) + 3;
+                const double rr = std::min(kh, 14) / 2.0 - 1, cx = kw / 2.0, cy = kh / 2.0;
+                auto circle = [&](double radius) {
+                    const double cc = radius * 0.5523;
+                    return num(cx + radius) + " " + num(cy) + " m " + num(cx + radius) + " " + num(cy + cc) + " " + num(cx + cc) + " " + num(cy + radius) + " " + num(cx) + " " + num(cy + radius) + " c " +
+                           num(cx - cc) + " " + num(cy + radius) + " " + num(cx - radius) + " " + num(cy + cc) + " " + num(cx - radius) + " " + num(cy) + " c " +
+                           num(cx - radius) + " " + num(cy - cc) + " " + num(cx - cc) + " " + num(cy - radius) + " " + num(cx) + " " + num(cy - radius) + " c " +
+                           num(cx + cc) + " " + num(cy - radius) + " " + num(cx + radius) + " " + num(cy - cc) + " " + num(cx + radius) + " " + num(cy) + " c ";
+                };
+                const std::string common = "q 0.93 0.96 1 rg " + circle(rr) + "f Q 0.3 G 1 w " + circle(rr) + "S\n";
+                auto stream = [&](const std::string& content) {
+                    return "<< /Type /XObject /Subtype /Form /BBox [0 0 " + std::to_string(kw) + " " + std::to_string(kh) + "] /Length " + std::to_string(content.size()) + " >>\nstream\n" + content + "\nendstream";
+                };
+                const int on = next++, off = next++, kid = next++;
+                write[off] = stream(common);
+                write[on] = stream(common + "0 g " + circle(rr * 0.5) + "f\n");
+                write[kid] = "<< /Type /Annot /Subtype /Widget /Parent " + std::to_string(obj) + " 0 R /Rect [" + num(l) + " " + num(kb) + " " + num(l + kw) + " " + num(kt) + "] /F 4 /P " + std::to_string(page) +
+                             " 0 R /AS /Off /MK << /BC [0.3 0.3 0.3] >> /AP << /N << /" + state + " " + std::to_string(on) + " 0 R /Off " + std::to_string(off) + " 0 R >> >> >>";
+                widgetsByPage[page].push_back(kid);
+                kids += std::to_string(kid) + " 0 R ";
+            }
+            write[obj] = "<< /FT /Btn /Ff 49152 /T " + pdfString(sp.name) + " /V /Off /Kids [" + kids + "] >>";
+            allWidgets.push_back(obj);
+            continue;
+        }
+        if (sp.kind == Spec::Text || sp.kind == Spec::Date) {
             d += " /FT /Tx /Ff " + std::string(sp.multiline ? "4096" : "0") + " /DA (/Helv 0 Tf 0 g) /MK << /BC [0.3 0.3 0.3] /BG [0.93 0.96 1] >> /V ()";
-        } else if (sp.kind == Spec::Combo) {
-            d += " /FT /Ch /Ff 131072 /DA (/Helv 0 Tf 0 g) /MK << /BC [0.3 0.3 0.3] /BG [0.93 0.96 1] >> /Opt [";
+            if (sp.kind == Spec::Date)   // other readers check and format the date with these standard scripts; Feather PDF never runs scripts
+                d += " /TU (Date \\(dd.mm.yyyy\\)) /AA << /F << /S /JavaScript /JS (AFDate_FormatEx\\(\"dd.mm.yyyy\"\\);) >> >>";
+        } else if (sp.kind == Spec::Combo || sp.kind == Spec::List) {
+            d += std::string(" /FT /Ch /Ff ") + (sp.kind == Spec::Combo ? "131072" : "0") + " /DA (/Helv " + std::string(sp.kind == Spec::List ? "10" : "0") + " Tf 0 g) /MK << /BC [0.3 0.3 0.3] /BG [0.93 0.96 1] >> /Opt [";
             for (const auto& o : sp.options) d += pdfString(o) + " ";
             d += "]";
         } else {
@@ -140,6 +184,42 @@ bool add(const std::vector<unsigned char>& pdf, const std::vector<Spec>& specs, 
         write[root] = newCat;
     }
     out = appendIncremental(s, f, write, next);
+    return true;
+}
+
+std::vector<Label> radioLabels(const Spec& sp) {
+    std::vector<Label> out;
+    if (sp.kind != Spec::Radio) return out;
+    const double l = std::min(sp.left, sp.right), b = std::min(sp.bottom, sp.top), t = std::max(sp.bottom, sp.top);
+    const size_t n = std::max<size_t>(1, sp.options.size());
+    const double rowH = (t - b) / n;
+    const int kh = std::max(2, static_cast<int>(rowH)), kw = std::min(kh, 14) + 3;
+    const double fs = std::min(10.0, kh * 0.7);
+    for (size_t k = 0; k < n; ++k) {
+        const double kb = t - rowH * (k + 1);
+        out.push_back({sp.page, l + kw + 3, kb + kh / 2.0 - fs * 0.35, fs, k < sp.options.size() ? sp.options[k] : L"Choice"});
+    }
+    return out;
+}
+
+bool clearRadios(const std::vector<unsigned char>& pdf, std::vector<unsigned char>& out) {
+    const std::string s(pdf.begin(), pdf.end());
+    File f(s);
+    if (!f.parseXref()) return false;
+    std::map<int, std::string> write;
+    for (auto& kv : f.offsets) {
+        std::string body;
+        if (!f.object(kv.first, body) || body.find("/Btn") == std::string::npos || body.find("/Kids") == std::string::npos) continue;
+        size_t b, e;
+        if (!valueSpan(body, "/Ff", b, e) || !(atol(body.c_str() + b) & 32768)) continue;
+        write[kv.first] = setKey(body, "/V", "/Off");
+        for (int kid : kidsOf(body)) {
+            std::string kb;
+            if (f.object(kid, kb)) write[kid] = setKey(kb, "/AS", "/Off");
+        }
+    }
+    if (write.empty()) { out = pdf; return true; }
+    out = appendIncremental(s, f, write, f.size);
     return true;
 }
 

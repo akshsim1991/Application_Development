@@ -594,6 +594,7 @@ void Viewer::filterPixels(void* bits, int w, int h) const {
 
 void Viewer::setTool(Tool t) {
     tool_ = t;
+    polyPts_.clear(); polyPage_ = -1;
     drawing_ = false;
     if (t != Tool::None) clearSelection();
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -698,17 +699,28 @@ std::vector<Viewer::PageRects> Viewer::selectionRects() {
 }
 
 void Viewer::drawPreview(HDC dc) {
+    if (tool_ == Tool::Polygon && polyPage_ >= 0 && !polyPts_.empty()) {
+        HPEN pen = CreatePen(PS_SOLID, std::max(1, static_cast<int>(penWidth_ * pxPerPt())), penColor_);
+        HGDIOBJ op = SelectObject(dc, pen);
+        bool first = true;
+        for (const auto& p : polyPts_) {
+            RECT r = annotScreenRect(polyPage_, {p.x, p.y, p.x, p.y});
+            if (first) { MoveToEx(dc, r.left, r.top, nullptr); first = false; } else LineTo(dc, r.left, r.top);
+        }
+        LineTo(dc, polyMouse_.x, polyMouse_.y);
+        SelectObject(dc, op); DeleteObject(pen);
+    }
     if (!drawing_) return;
     const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
-    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo;
+    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo || tool_ == Tool::FormRadio || tool_ == Tool::FormList || tool_ == Tool::FormDate;
     const COLORREF previewCol = tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : boxTool ? RGB(0x30, 0x80, 0xFF) : (tool_ == Tool::Ruler || tool_ == Tool::Protractor) ? RGB(0x00, 0x90, 0x60) : penColor_;
     HPEN pen = CreatePen(boxTool ? PS_DASH : PS_SOLID, boxTool || tool_ == Tool::Ruler || tool_ == Tool::Protractor ? 1 : w, previewCol);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
     switch (tool_) {
-        case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: case Tool::FormText: case Tool::FormCheck: case Tool::FormCombo: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: case Tool::FormText: case Tool::FormCheck: case Tool::FormCombo: case Tool::FormRadio: case Tool::FormList: case Tool::FormDate: case Tool::Cloud: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
-        case Tool::Line: case Tool::Arrow: case Tool::Ruler: case Tool::Protractor:
+        case Tool::Line: case Tool::Arrow: case Tool::Ruler: case Tool::Protractor: case Tool::Callout:
             MoveToEx(dc, drawStart_.x, drawStart_.y, nullptr); LineTo(dc, drawNow_.x, drawNow_.y); break;
         case Tool::Pen:
             if (!drawPts_.empty()) {
@@ -848,6 +860,19 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (!doc_) return 0;
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
             int page, ch;
+            if (tool_ == Tool::Polygon) {
+                annot::PointD pt;
+                if (polyPage_ < 0) { if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) { polyPage_ = page; polyPts_ = {pt}; } }
+                else if (toPage(cx, cy, polyPage_, pt)) {
+                    // a click on the first point closes the shape
+                    RECT first = annotScreenRect(polyPage_, {polyPts_[0].x, polyPts_[0].y, polyPts_[0].x, polyPts_[0].y});
+                    if (polyPts_.size() >= 3 && std::abs(cx - first.left) <= 6 && std::abs(cy - first.top) <= 6) { finishPolygon(); return 0; }
+                    polyPts_.push_back(pt);
+                }
+                polyMouse_ = {cx, cy};
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return 0;
+            }
             if (tool_ == Tool::Select) {
                 ObjDrag m = objHit(cx, cy);
                 annot::PointD pt;
@@ -931,6 +956,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
         }
         case WM_LBUTTONDBLCLK: {
             if (!doc_) return 0;
+            if (tool_ == Tool::Polygon) { finishPolygon(); return 0; }
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
             int page; annot::PointD pt;
             if (tool_ == Tool::None && pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) {
@@ -964,6 +990,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_MOUSEMOVE:
+            if (tool_ == Tool::Polygon && polyPage_ >= 0) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
             if (objDrag_ != ObjDrag::None && doc_) {
                 annot::PointD now;
                 if (!pageUnclamped(GET_X_LPARAM(l), GET_Y_LPARAM(l), objSelPage_, now)) return 0;
@@ -1221,4 +1248,13 @@ void Viewer::drawObjectSelection(HDC dc) {
     }
     SelectObject(dc, ob); SelectObject(dc, op);
     DeleteObject(pen); DeleteObject(white);
+}
+
+void Viewer::finishPolygon() {
+    if (polyPage_ >= 0 && polyPts_.size() >= 3 && onEvent) {
+        Event e; e.kind = Event::Draw; e.tool = Tool::Polygon; e.page = polyPage_; e.pts = polyPts_;
+        polyPts_.clear(); polyPage_ = -1;
+        onEvent(e);
+    } else { polyPts_.clear(); polyPage_ = -1; }
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }

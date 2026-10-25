@@ -26,6 +26,13 @@ int setValues(Document& d, const std::map<std::wstring, std::wstring>& values);
 
 std::vector<std::vector<std::wstring>> parseCsv(const std::wstring& text);
 
+// Empties every text field and drop-down and unticks every check box (radio groups: see formcreate::clearRadios).
+// Returns how many fields were changed.
+int resetAll(Document& d);
+
+// Draws the labels of the radio groups among `specs` into the pages (no undo step of its own: call it inside one).
+void drawRadioLabels(Document& d, const std::vector<formcreate::Spec>& specs);
+
 // Places in a flat form that look like blanks to fill in: runs of underscores, rules after a "label:" and small squares.
 std::vector<formcreate::Spec> detect(Document& d);
 

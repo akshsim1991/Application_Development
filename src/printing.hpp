@@ -1,6 +1,6 @@
 #pragma once
 // Laying pages out on printer sheets (several per sheet, fitted or actual size), in colour or greyscale, and the
-// print preview window that shows the same sheets.
+// Print window that shows the same sheets.
 #include <windows.h>
 #include <string>
 #include <vector>
@@ -33,9 +33,8 @@ bool renderSheet(Document& d, const Layout& l, int sheet, const Paper& p, double
 
 bool savePng(const std::vector<unsigned char>& bgrx, int w, int h, const std::wstring& path);
 
-// Shows the sheets in a window. Returns true when the user chose Print.
-// printText names the button that closes the preview with "yes" (Print, or Print... when the Print dialog comes next).
-bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Paper& p, const std::wstring& printerName, int copies,
-             const wchar_t* printText = nullptr);
+// The Print window: printer and settings on the left, every sheet as it will print on the right, updated as the settings
+// change. Prints when the user chooses Print; true when the job was sent.
+bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage);
 
 } // namespace printing

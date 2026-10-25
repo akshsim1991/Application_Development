@@ -99,7 +99,8 @@ bool hashR6(const Bytes& pw, const Bytes& salt, const Bytes& udata, Bytes& out) 
         for (int i = 0; i < 16; ++i) sum += E[i];
         LPCWSTR alg = sum % 3 == 0 ? BCRYPT_SHA256_ALGORITHM : sum % 3 == 1 ? BCRYPT_SHA384_ALGORITHM : BCRYPT_SHA512_ALGORITHM;
         if (!hashOf(alg, E, K)) return false;
-        if (round >= 63 && E.back() <= round - 32) break;
+        // after at least 64 rounds, stop when E's last byte is at most (rounds done - 32); rounds done is round + 1
+        if (round + 1 >= 64 && E.back() <= round + 1 - 32) break;
     }
     out.assign(K.begin(), K.begin() + 32);
     return true;

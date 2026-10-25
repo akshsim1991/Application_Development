@@ -1724,149 +1724,12 @@ void openUserGuide() {
     openFile(guide);
 }
 
-// The pages as they will print on the default printer's paper (A4 when there is no printer), one per sheet.
-void printPreview() {
-    Document* d = activeDoc();
-    if (!d) return;
-    printing::Layout lay;
-    for (int i = 0; i < d->pageCount(); ++i) lay.pages.push_back(i);
-    wchar_t def[256] = L"";
-    DWORD len = 256;
-    printing::Paper paper;
-    std::wstring name = L"A4 paper (no printer)";
-    if (GetDefaultPrinterW(def, &len)) {
-        if (HDC ic = CreateICW(L"WINSPOOL", def, nullptr, nullptr)) { paper = printing::paperOf(ic); DeleteDC(ic); name = def; }
-    }
-    if (paper.physW <= 0 || paper.physH <= 0) {   // A4 at 300 dpi with 5 mm margins
-        paper.physW = 2480; paper.physH = 3508; paper.offX = paper.offY = 59; paper.areaW = 2480 - 118; paper.areaH = 3508 - 118; paper.ppp = 300 / 72.0;
-    }
-    const PageSize& ps0 = d->pageSize(0);
-    if ((ps0.w > ps0.h) != (paper.physW > paper.physH)) {   // the paper turned the way the pages are, as printing does
-        std::swap(paper.physW, paper.physH); std::swap(paper.offX, paper.offY); std::swap(paper.areaW, paper.areaH);
-    }
-    if (printing::preview(app.wnd, app.inst, *d, lay, paper, name, 1, L"Print...")) printDocument();
-}
-
+// The Print window: settings and a live preview of every sheet in one place.
 void printDocument() {
     Document* d = activeDoc();
     if (!d) return;
-    // printers installed on this PC
-    std::vector<std::wstring> printers;
-    {
-        DWORD need = 0, n = 0;
-        EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, nullptr, 0, &need, &n);
-        std::vector<BYTE> buf(need ? need : 1);
-        if (need && EnumPrintersW(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, nullptr, 4, buf.data(), need, &need, &n))
-            for (DWORD i = 0; i < n; ++i) printers.push_back(reinterpret_cast<PRINTER_INFO_4W*>(buf.data())[i].pPrinterName);
-    }
-    if (printers.empty()) {
-        MessageBoxW(app.wnd, L"No printer is installed. Add one in Windows Settings > Bluetooth & devices > Printers & scanners, then try again.", kAppName, MB_OK | MB_ICONINFORMATION);
-        return;
-    }
-    wchar_t def[256] = L"";
-    DWORD defLen = 256;
-    GetDefaultPrinterW(def, &defLen);
-    int defIdx = 0;
-    for (size_t i = 0; i < printers.size(); ++i) if (printers[i] == def) defIdx = static_cast<int>(i);
-
-    static int lastColour = 0, lastDuplex = 0;
-    static bool lastPreview = true;
-    std::vector<FormField> f(10);
-    f[0] = {FormField::Choice, L"Printer:", printers, L"", defIdx};
-    f[1] = {FormField::Choice, L"Pages:", {L"All pages", L"Current page", L"Page range"}, L"", 0};
-    f[2] = {FormField::Text, L"Range (such as 1-3, 5, 8-):", {}, L""};
-    f[3] = {FormField::Text, L"Copies:", {}, L"1"};
-    f[4] = {FormField::Choice, L"Layout:", {L"1 page per sheet", L"2 pages per sheet", L"4 pages per sheet", L"6 pages per sheet", L"9 pages per sheet"}, L"", 0};
-    f[5] = {FormField::Choice, L"Size:", {L"Fit to the paper", L"Actual size"}, L"", 0};
-    f[6] = {FormField::Choice, L"Orientation:", {L"Automatic (as the pages)", L"Portrait", L"Landscape"}, L"", 0};
-    f[7] = {FormField::Choice, L"Colour:", {L"Colour", L"Black and white (shades of grey)"}, L"", lastColour};
-    f[8] = {FormField::Choice, L"Sides:", {L"One-sided", L"Two-sided, flip on the long edge", L"Two-sided, flip on the short edge"}, L"", lastDuplex};
-    f[9] = {FormField::Check, L"Show a preview first", {}, L"", 0, lastPreview};
-    f.push_back({FormField::Check, L"Open the printer's own settings (Properties) first", {}, L"", 0, false});
-    g_formDoc = d;
-    bool ok = showForm(app.wnd, app.inst, L"Print", f, L"Print", [](const std::vector<FormField>& v) -> std::wstring {
-        wchar_t* end = nullptr;
-        long c = wcstol(v[3].text.c_str(), &end, 10);
-        if (end == v[3].text.c_str() || *end || c < 1 || c > 999) return L"Copies must be a number from 1 to 999.";
-        if (v[1].choice == 2 && (!g_formDoc || g_formDoc->parseRange(v[2].text).empty())) return L"Type the pages to print, such as 1-3, 5, 8-.";
-        return L"";
-    });
-    g_formDoc = nullptr;
-    if (!ok) return;
-    lastColour = f[7].choice; lastDuplex = f[8].choice; lastPreview = f[9].checked;
-
-    std::vector<int> pages;
-    if (f[1].choice == 0) { for (int i = 0; i < d->pageCount(); ++i) pages.push_back(i); }
-    else if (f[1].choice == 1) pages.push_back(app.viewer.currentPage());
-    else pages = d->parseRange(f[2].text);
-    const int copies = static_cast<int>(wcstol(f[3].text.c_str(), nullptr, 10));
-    static const int perSheet[] = {1, 2, 4, 6, 9};
-    printing::Layout lay;
-    lay.pages = pages;
-    lay.perSheet = perSheet[f[4].choice];
-    lay.actualSize = f[5].choice == 1;
-    lay.autoRotate = f[6].choice == 0;
-    lay.grey = f[7].choice == 1;
-    const std::wstring& pname = printers[f[0].choice];
-
-    // orientation: choose from the first page when automatic
-    int orient = f[6].choice == 1 ? DMORIENT_PORTRAIT : f[6].choice == 2 ? DMORIENT_LANDSCAPE : 0;
-    if (!orient) {
-        const PageSize& ps0 = d->pageSize(pages.front());
-        bool land = ps0.w > ps0.h;
-        if (lay.perSheet == 2) land = !land;   // two portrait pages sit side by side on a landscape sheet
-        orient = land ? DMORIENT_LANDSCAPE : DMORIENT_PORTRAIT;
-    }
-    if (f[8].choice && DeviceCapabilitiesW(pname.c_str(), nullptr, DC_DUPLEX, nullptr, nullptr) != 1)
-        MessageBoxW(app.wnd, L"This printer does not say it can print on both sides. Feather PDF asks for two-sided printing anyway; if the pages come out one-sided, choose two-sided in the printer's own settings (Properties).", kAppName, MB_OK | MB_ICONINFORMATION);
-    HDC dc = nullptr;
-    HANDLE hp = nullptr;
-    std::vector<BYTE> dm;
-    if (OpenPrinterW(const_cast<wchar_t*>(pname.c_str()), &hp, nullptr)) {
-        LONG sz = DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), nullptr, nullptr, 0);
-        if (sz > 0) {
-            dm.resize(sz);
-            auto* dev = reinterpret_cast<DEVMODEW*>(dm.data());
-            if (DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, nullptr, DM_OUT_BUFFER) == IDOK) {
-                dev->dmFields |= DM_ORIENTATION | DM_COLOR | DM_DUPLEX;
-                dev->dmOrientation = static_cast<short>(orient);
-                dev->dmColor = static_cast<short>(lay.grey ? DMCOLOR_MONOCHROME : DMCOLOR_COLOR);
-                // long-edge flipping is "vertical" on portrait sheets and "horizontal" on landscape ones
-                const bool longEdge = f[8].choice == 1, land = orient == DMORIENT_LANDSCAPE;
-                dev->dmDuplex = static_cast<short>(!f[8].choice ? DMDUP_SIMPLEX : (longEdge != land ? DMDUP_VERTICAL : DMDUP_HORIZONTAL));
-                DWORD mode = DM_IN_BUFFER | DM_OUT_BUFFER | (f[10].checked ? DM_IN_PROMPT : 0);
-                if (DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, dev, mode) == IDCANCEL) { ClosePrinter(hp); return; }
-                if (f[10].checked) lay.grey = lay.grey || ((dev->dmFields & DM_COLOR) && dev->dmColor == DMCOLOR_MONOCHROME);   // greyscale chosen in Properties
-                dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, dev);
-            }
-        }
-        ClosePrinter(hp);
-    }
-    if (!dc) dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, nullptr);
-    if (!dc) { MessageBoxW(app.wnd, L"The printer could not be opened. Check that it is on and connected.", kAppName, MB_OK | MB_ICONWARNING); return; }
-    const printing::Paper paper = printing::paperOf(dc);
-    if (f[9].checked && !printing::preview(app.wnd, app.inst, *d, lay, paper, pname, copies)) { DeleteDC(dc); return; }
-
-    DOCINFOW di{sizeof(di)};
-    std::wstring name = d->title();
-    di.lpszDocName = name.c_str();
-    bool good = StartDocW(dc, &di) > 0;
-    const int sheets = printing::sheetCount(lay);
-    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    for (int c = 0; good && c < copies; ++c) {
-        for (int k = 0; good && k < sheets; ++k) {
-            if (StartPage(dc) <= 0) { good = false; break; }
-            printing::printSheet(dc, *d, lay, k, paper);
-            if (EndPage(dc) <= 0) good = false;
-        }
-        if (good && f[8].choice && sheets % 2 && c + 1 < copies) {   // two-sided: the next copy starts on a fresh sheet
-            if (StartPage(dc) <= 0 || EndPage(dc) <= 0) good = false;
-        }
-    }
-    SetCursor(old);
-    if (good) EndDoc(dc); else AbortDoc(dc);
-    DeleteDC(dc);
-    if (!good) MessageBoxW(app.wnd, L"The document could not be printed. Check that the printer is on and connected, then try again.", kAppName, MB_OK | MB_ICONWARNING);
+    if (app.inlineEd.active() && !app.inlineEd.commit()) return;
+    printing::run(app.wnd, app.inst, *d, app.viewer.currentPage());
 }
 
 std::wstring metaText(FPDF_DOCUMENT doc, const char* tag) {
@@ -4720,8 +4583,7 @@ void commandPalette() {
         add(L"Save", [] { saveActive(); });
         add(L"Save as", [] { if (activeDoc()) saveAsDialog(*activeDoc()); });
         add(L"Close tab", [] { closeTab(app.active); });
-        add(L"Print", [] { printDocument(); });
-        add(L"Print preview", [] { printPreview(); });
+        add(L"Print (with preview)", [] { printDocument(); });
         add(L"User guide (how to use Feather PDF)", [] { openUserGuide(); });
         add(L"Document properties", [] { showProperties(); });
         add(L"Find", [] { runCommand(C_FIND); });
@@ -5217,7 +5079,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'R': rotateView(1); return 0;
                     case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
-                    case 'P': if (shift) printPreview(); else printDocument(); return 0;
+                    case 'P': printDocument(); return 0;   // Ctrl+Shift+P (the old print preview) opens the same window
                     case 'D': showProperties(); return 0;
                     case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;
                     case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;

@@ -40,7 +40,7 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 - **Status:** Fixed
 - **Root cause:** items were added to the … menu over time without removing older copies.
 - **Fix:** removed Save, Undo, Redo (toolbar), Compare with and Side by side (Side by side button), Print preview (merged
-  into Print, B-008), Read aloud and Sign with a certificate (Edit PDF menu), Select all / Copy page / Copy area (page
+  into Print, B-015), Read aloud and Sign with a certificate (Edit PDF menu), Select all / Copy page / Copy area (page
   right-click menu), Go to page (page box), Fit width / Fit page / Actual size (zoom box menu), Rotate left / right (Edit
   pages; Ctrl+L / Ctrl+R still work). New PDF and Go to (first, last, back, forward) became submenus. Every keyboard shortcut
   still works; every removed command is still in the menu named above and in the command palette.
@@ -165,6 +165,36 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 - **Fix:** the view clips its child windows; Enter / Ctrl+Enter post the Apply command and the commit runs after the key.
 - **Verified:** GUI: refused change at the page foot: the bar stays painted, Enter closes the message, the text stays in the
   editor for shortening.
+
+### B-015 Print and Print preview were separate; the preview came only after the settings, for the default printer
+- **Status:** Fixed, Windows check needed (printing through a real Windows driver)
+- **Root cause:** Print was a settings form, optionally followed by a separate preview window; "Print preview" (Ctrl+Shift+P)
+  previewed one page per sheet on the default printer's paper whatever was chosen later, and a changed page range or
+  layout was seen only after closing and reopening.
+- **Fix:** one Print window: printer and settings on the left, every sheet as it will print on the right (scrollable,
+  "Sheet 3 of 12 · pages 5-6" under each). All pages are shown at once by default; typing a page range or copies updates
+  the preview a quarter of a second after the last key, any other setting at once; an invalid range is shown in red and
+  Print is disabled. The paper comes from the chosen printer with the job's orientation, so the preview and the print use
+  the same sheet geometry and the same layout code. Sheets are drawn when they come into view (a few are kept), so a
+  1000-page document opens at once. Printing shows "Sheet n of m" with Cancel. 2 and 6 pages per sheet are laid out side
+  by side on landscape paper and one above the other on portrait paper (landscape pages on portrait paper were tiny).
+  Layout settings start as for an ordinary print each time; colour and sides are remembered. Ctrl+Shift+P opens the same
+  window.
+- **Verified:** under Wine with a CUPS PDF printer: pages 2-4 at 2 per sheet: preview and printed PDF have the same two
+  sheets with the pages in the same places (screenshots); range "7-x" shows the message and disables Print; "998-" gives
+  3 sheets; 1000-page document: preview opens and scrolls at once; greyscale print of 1000 sheets cancelled at sheet 11
+  (button and Esc): the job is aborted, nothing printed.
+
+### B-016 About one in ten password-protected files could not be opened
+- **Status:** Fixed
+- **Root cause:** an off-by-one in the PDF 2.0 password hash (ISO 32000-2 Algorithm 2.B): the loop must end when, after at
+  least 64 rounds, the last byte of E is at most "rounds done - 32"; the code compared with the 0-based round index. When
+  that byte fell on the boundary, Feather PDF computed one round more than every other reader, which then reported a wrong
+  password or decrypted garbage. Each file uses fresh random salts, so it struck about one file in ten.
+- **Fix:** the loop counts rounds done. Files written by the old code that show the problem cannot be opened by any reader;
+  protect the original again.
+- **Verified:** before: 2 of 20 files failed in poppler; after: 60 files × poppler (user and owner password) × qpdf, no
+  failure. Smoke test "25 protected files all open with both passwords".
 
 ## Found, not yet corrected
 

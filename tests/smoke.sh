@@ -37,6 +37,10 @@ run --protect "$(W rich.pdf)" "$(W prot.pdf)" open123 owner456
 check "needs the password"          "! pdfinfo '$work/prot.pdf' >/dev/null 2>&1"
 check "opens with the password"     "pdftotext -upw open123 '$work/prot.pdf' - | grep -q 'Quarterly Report'"
 check "AES-256 (pikepdf)"           "python3 -c \"import pikepdf;p=pikepdf.open('$work/prot.pdf',password='owner456');assert p.encryption.R==6\""
+# each file gets fresh random keys and salts; a wrong password hash shows only for some of them (B-016)
+bad=0; for i in $(seq 25); do run --protect "$(W rich.pdf)" "$(W prot$i.pdf)" "pw$i" "own$i"
+  python3 -c "import pikepdf;pikepdf.open('$work/prot$i.pdf',password='pw$i');pikepdf.open('$work/prot$i.pdf',password='own$i')" 2>/dev/null || bad=$((bad+1)); done
+check "25 protected files all open with both passwords" "[ $bad -eq 0 ]"
 
 echo "OCR"
 run --ocr "$(W scan.pdf)" "$(W scan_ocr.pdf)" eng; rc=$?

@@ -56,3 +56,20 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 
 ### B-005 Single page scrolled continuously; two pages did not advance; fit page clipped spreads
 - **Status:** Fixed (commit 3902a86); see that commit for the details and the screenshots in the 2.13 notes.
+
+## 2.14 quality pass
+
+### B-006 Zooming did not keep the point under the mouse pointer
+- **Status:** Fixed
+- **Root cause:** Ctrl + wheel zoomed about the middle of the window, not the pointer. Each wheel notch was one fixed
+  step whatever the wheel reported, so high-resolution wheels and touchpads zoomed too fast or unevenly.
+- **Fix:** `Viewer::setZoomAt` finds the page point under the pointer, applies the new zoom and scrolls so that point
+  returns under the pointer. Steps of one gesture (same pointer position, under 1.5 s apart) reuse the first step's point,
+  so rounding errors do not add up. The wheel step is `1.1 ^ (delta / 120)`, so a notch is 10 % and finer wheels make
+  proportionally smaller steps. The zoom buttons, keys and zoom box keep the middle of the window fixed in the same way.
+- **Limits (by design):** when the page is narrower than the window it is centred, so it can move sideways. At the very
+  top or bottom of a document the view cannot scroll past the end, so the point can move vertically there.
+- **Verified:** five.pdf scrolled to page 2, with a temporary log of the anchor point's screen position after every step.
+  Twelve Ctrl + wheel steps at (636, 396) and sixteen at (226, 516), zooming 68 %–193 % in and out: the point stayed at
+  the pointer's y on every step, and at its x whenever the page was wider than the window. Each zoom level returns
+  exactly to the same scroll position when you zoom back to it.

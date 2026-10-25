@@ -15,7 +15,8 @@ public:
     HWND hwnd() const { return hwnd_; }
 
     void setDocument(Document* d);       // not owned; nullptr shows the empty state
-    void setZoom(double zoom);           // 1.0 == 100 %
+    void setZoom(double zoom);           // 1.0 == 100 %; the middle of the window stays on the same spot
+    void setZoomAt(double zoom, int cx, int cy);   // the document point at client (cx, cy) stays there
     void fitWidth();
     void fitPage();
     void goToPage(int index);            // 0-based
@@ -131,6 +132,8 @@ private:
     std::vector<int> tops_;      // page top offsets in pixels (content coordinates)
     std::vector<int> widths_, heights_, xs_;   // xs_: left edge of each page inside the content
     int layout_ = 1; bool cover_ = false;
+    struct Anchor { bool valid = false, onPage = false; const Document* doc = nullptr; int cx = 0, cy = 0, page = -1; annot::PointD pt{}; double fx = 0, fy = 0; DWORD ms = 0; };
+    Anchor anchor_;                           // the point a wheel zoom keeps under the mouse
     std::vector<std::pair<int, int>> rows_;   // first page and page count of each row (two pages side by side in the two-page layout)
     void showPage(int page, bool atEnd);      // single-page layout: put this page on screen, at its top or its end
     std::vector<Measure> measures_;

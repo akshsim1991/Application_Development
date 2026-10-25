@@ -202,16 +202,44 @@ void Viewer::clampScroll() {
 }
 
 void Viewer::setZoom(double z) {
+    RECT rc; GetClientRect(hwnd_, &rc);
+    setZoomAt(z, rc.right / 2, rc.bottom / 2);   // buttons and keys: the middle of the window stays put
+}
+
+void Viewer::setZoomAt(double z, int cx, int cy) {
     if (!doc_) return;
     z = std::clamp(z, kMinZoom, kMaxZoom);
     RECT rc; GetClientRect(hwnd_, &rc);
-    // Keep the middle of the window on the same spot of the document.
-    double rel = contentH_ > 0 ? (doc_->scrollY + rc.bottom / 2.0) / contentH_ : 0;
+    // What is under (cx, cy): a point on a page, or else a spot of the content area. Steps of one wheel gesture (same
+    // pointer position, less than 1.5 s apart) keep the point of the first step, so it does not drift when the page gets
+    // narrower than the window and is centred again.
+    const DWORD nowMs = GetTickCount();
+    const bool sameGesture = anchor_.valid && anchor_.doc == doc_ && anchor_.cx == cx && anchor_.cy == cy && nowMs - anchor_.ms < 1500;
+    if (!sameGesture) {
+        anchor_ = Anchor{};
+        anchor_.onPage = pageAt(cx, cy, anchor_.page) && toPage(cx, cy, anchor_.page, anchor_.pt);
+        const int originX = contentW_ <= rc.right ? -(static_cast<int>(rc.right) - contentW_) / 2 : doc_->scrollX;
+        anchor_.fx = contentW_ > 0 ? (originX + cx) / static_cast<double>(contentW_) : 0.5;
+        anchor_.fy = contentH_ > 0 ? (doc_->scrollY + cy) / static_cast<double>(contentH_) : 0;
+        anchor_.doc = doc_; anchor_.cx = cx; anchor_.cy = cy; anchor_.valid = true;
+    }
+    anchor_.ms = nowMs;
+    const bool onPage = anchor_.onPage && anchor_.page < static_cast<int>(tops_.size());
+    const int page = anchor_.page;
+    const annot::PointD pt = anchor_.pt;
+    const double fx = anchor_.fx, fy = anchor_.fy;
     doc_->fitWidth = false;
     doc_->zoom = z;
     clearCache();
     relayout();
-    doc_->scrollY = static_cast<int>(rel * contentH_ - rc.bottom / 2.0);
+    if (onPage) {   // the same page point goes back under (cx, cy)
+        const RECT now = annotScreenRect(page, {pt.x, pt.y, pt.x, pt.y});
+        doc_->scrollY += now.top - cy;
+        if (contentW_ > rc.right) doc_->scrollX += now.left - cx;
+    } else {
+        doc_->scrollY = static_cast<int>(std::lround(fy * contentH_ - cy));
+        doc_->scrollX = static_cast<int>(std::lround(fx * contentW_ - cx));
+    }
     clampScroll();
     updateScrollBars();
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -970,7 +998,10 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (!doc_) return 0;
             int delta = GET_WHEEL_DELTA_WPARAM(w);
             if (GET_KEYSTATE_WPARAM(w) & MK_CONTROL) {
-                setZoom(doc_->zoom * (delta > 0 ? 1.1 : 1 / 1.1));
+                // zoom around the mouse pointer; 10 % per wheel notch, in proportion for finer wheels and touchpads
+                POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+                ScreenToClient(hwnd_, &p);
+                setZoomAt(doc_->zoom * std::pow(1.1, delta / static_cast<double>(WHEEL_DELTA)), p.x, p.y);
             } else {
                 scrollBy(-delta * 3 / 2);
             }

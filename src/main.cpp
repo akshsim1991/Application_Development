@@ -87,6 +87,7 @@ struct App {
     bool navBusy = false;
     int layout = 1; bool cover = false;
     pageobj::TableSpec pendingTable;
+    struct { int page = -1; std::vector<int> objects; } sel;   // the selected picture, paragraph or table
     annot::PointD protVertex{}, protArm{}; int protStage = 0, protPage = 0;
     double pendingPictureWidth = 0;
     struct Pos { std::wstring path; double zoom; int scrollY; bool fit; };
@@ -222,7 +223,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -545,6 +546,7 @@ void applyStyle() { app.viewer.setStyle(drawColor(), lineWidth()); }
 void setTool(Viewer::Tool t) {
     app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
     app.viewer.setTool(app.tool);
+    if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
     applyStyle();
 }
 
@@ -2059,6 +2061,7 @@ void toolsDispatch(int cmd) {
         case T_UNPROTECT: doUnprotect(*d); break;
         case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
         case N_EDITPARA: setTool(Viewer::Tool::EditPara); break;
+        case N_SELECTOBJ: setTool(Viewer::Tool::Select); break;
         case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case T_TEXT_STYLE: textStyleDialog(); break;
         case T_READ: readAloud(); break;
@@ -2092,6 +2095,7 @@ void showToolsMenu(const RECT& anchor) {
     auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
     add(T_EDIT_TEXT, L"Edit text (one line)\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
     add(N_EDITPARA, L"Edit paragraph (font, size, bold, italic)\tF2", true, app.tool == Viewer::Tool::EditPara);
+    add(N_SELECTOBJ, L"Move or resize pictures, paragraphs and tables", true, app.tool == Viewer::Tool::Select);
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
     add(N_TABLE_INS, L"Insert table...");
     add(N_TABLE_EDIT, L"Edit a table (text, rows, width)...");
@@ -3004,6 +3008,19 @@ void measureDraw(const Viewer::Event& e) {
 // ---- events of the new tools ----
 bool featureDraw(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
+        case Viewer::Tool::Select: {
+            if (app.sel.page != e.page || e.pts.size() < 4) return true;
+            if (pageobj::transformGroup(d, e.page, app.sel.objects, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y, e.pts[2].x, e.pts[2].y, e.pts[3].x, e.pts[3].y)) {
+                app.viewer.documentChanged();
+                app.sidebar.refresh();
+                refresh();
+                std::vector<double> gx, gy;
+                pageobj::snapGuides(d, e.page, app.sel.objects, gx, gy);
+                annot::RectD r{e.pts[2].x, e.pts[2].y, e.pts[3].x, e.pts[3].y};
+                app.viewer.setObjectSelection(e.page, &r, gx, gy);
+            }
+            return true;
+        }
         case Viewer::Tool::Ruler: case Viewer::Tool::Protractor: measureDraw(e); return true;
         case Viewer::Tool::FormText: case Viewer::Tool::FormCheck: case Viewer::Tool::FormCombo: return formFieldDraw(d, e);
         case Viewer::Tool::Link: {
@@ -3049,6 +3066,16 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             if (pageobj::addTable(d, e.page, e.pts.front().x, e.pts.front().y, app.pendingTable)) { app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
             else MessageBoxW(app.wnd, L"The table could not be added.", kAppName, MB_OK | MB_ICONWARNING);
             setTool(Viewer::Tool::TablePlace);   // one table at a time
+            return true;
+        }
+        case Viewer::Tool::Select: {
+            pageobj::GroupHit g = pageobj::groupAt(d, e.page, e.pts.front().x, e.pts.front().y);
+            if (!g.found) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); return true; }
+            app.sel.page = e.page; app.sel.objects = g.objects;
+            std::vector<double> gx, gy;
+            pageobj::snapGuides(d, e.page, g.objects, gx, gy);
+            annot::RectD r{g.left, g.bottom, g.right, g.top};
+            app.viewer.setObjectSelection(e.page, &r, gx, gy);
             return true;
         }
         case Viewer::Tool::EditPara: {
@@ -3954,6 +3981,7 @@ void commandPalette() {
         add(L"Thumbnails panel", [] { showSidebar(Sidebar::Mode::Pages); });
         add(L"Edit text (one line)", [] { toolsDispatch(T_EDIT_TEXT); });
         add(L"Edit paragraph", [] { toolsDispatch(N_EDITPARA); });
+        add(L"Move or resize pictures, paragraphs and tables", [] { toolsDispatch(N_SELECTOBJ); });
         add(L"Add text box", [] { toolsDispatch(T_ADD_TEXT); });
         add(L"Insert table", [] { tableInsert(); });
         add(L"Edit a table", [] { tableEdit(); });
@@ -4424,6 +4452,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case VK_F2: setTool(Viewer::Tool::EditPara); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
                 case VK_DELETE:
+                    if (app.tool == Viewer::Tool::Select && app.sel.page >= 0) {
+                        if (pageobj::deleteGroup(*d, app.sel.page, app.sel.objects)) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); }
+                        return 0;
+                    }
                     if (app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) deleteThumbPages(*d, app.sidebar.selectedPages());
                     else deleteSelectedAnnotation();
                     return 0;

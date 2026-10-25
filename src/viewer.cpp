@@ -775,6 +775,7 @@ void Viewer::onPaint() {
                 SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
             }
         }
+        drawObjectSelection(dc);
         drawPreview(dc);
     }
     buf.done();
@@ -847,6 +848,18 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (!doc_) return 0;
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
             int page, ch;
+            if (tool_ == Tool::Select) {
+                ObjDrag m = objHit(cx, cy);
+                annot::PointD pt;
+                if (m != ObjDrag::None && pageUnclamped(cx, cy, objSelPage_, pt)) {
+                    objDrag_ = m; objDragStart_ = pt; objCur_ = objSel_; snappedX_ = snappedY_ = false;
+                    SetCapture(hwnd_);
+                } else if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt) && onEvent) {
+                    Event e; e.kind = Event::Click; e.tool = Tool::Select; e.page = page; e.pts = {pt};
+                    onEvent(e);
+                }
+                return 0;
+            }
             if (tool_ != Tool::None) {
                 annot::PointD pt;
                 if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) {
@@ -951,6 +964,44 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_MOUSEMOVE:
+            if (objDrag_ != ObjDrag::None && doc_) {
+                annot::PointD now;
+                if (!pageUnclamped(GET_X_LPARAM(l), GET_Y_LPARAM(l), objSelPage_, now)) return 0;
+                const double thr = 6.0 / pxPerPt();
+                const double dx = now.x - objDragStart_.x, dy = now.y - objDragStart_.y;
+                auto snap = [&](const std::vector<double>& g, double v, double& best, bool& ok) {
+                    double bd = thr + 1;
+                    for (double c : g) if (std::fabs(c - v) < bd) { bd = std::fabs(c - v); best = c; }
+                    ok = bd <= thr;
+                    return ok;
+                };
+                annot::RectD r = objSel_;
+                snappedX_ = snappedY_ = false;
+                if (objDrag_ == ObjDrag::Move) {
+                    r = {objSel_.left + dx, objSel_.bottom + dy, objSel_.right + dx, objSel_.top + dy};
+                    double bestShift = 1e9, line = 0;
+                    for (double e : {r.left, (r.left + r.right) / 2, r.right}) { double g; bool ok; if (snap(guideX_, e, g, ok) && std::fabs(g - e) < std::fabs(bestShift)) { bestShift = g - e; line = g; snappedX_ = true; } }
+                    if (snappedX_) { r.left += bestShift; r.right += bestShift; snapX_ = line; }
+                    bestShift = 1e9;
+                    for (double e : {r.bottom, (r.bottom + r.top) / 2, r.top}) { double g; bool ok; if (snap(guideY_, e, g, ok) && std::fabs(g - e) < std::fabs(bestShift)) { bestShift = g - e; line = g; snappedY_ = true; } }
+                    if (snappedY_) { r.bottom += bestShift; r.top += bestShift; snapY_ = line; }
+                } else {
+                    // a corner moves, the opposite corner stays; the aspect ratio is kept
+                    const bool left = objDrag_ == ObjDrag::TL || objDrag_ == ObjDrag::BL, topSide = objDrag_ == ObjDrag::TL || objDrag_ == ObjDrag::TR;
+                    const double ax = left ? objSel_.right : objSel_.left, ay = topSide ? objSel_.bottom : objSel_.top;
+                    double mx = (left ? objSel_.left : objSel_.right) + dx;
+                    double g; bool ok;
+                    if (snap(guideX_, mx, g, ok)) { mx = g; snappedX_ = true; snapX_ = g; }
+                    const double w0 = objSel_.right - objSel_.left, h0 = objSel_.top - objSel_.bottom;
+                    double scale = std::max(0.05, std::fabs(mx - ax) / std::max(1.0, w0));
+                    const double nw = w0 * scale, nh = h0 * scale;
+                    const double nx = left ? ax - nw : ax + nw, ny = topSide ? ay + nh : ay - nh;
+                    r = {std::min(ax, nx), std::min(ay, ny), std::max(ax, nx), std::max(ay, ny)};
+                }
+                objCur_ = r;
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return 0;
+            }
             if (formCapture_ && doc_) {
                 annot::PointD fp;
                 if (toPage(GET_X_LPARAM(l), GET_Y_LPARAM(l), formPage_, fp))
@@ -978,6 +1029,20 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         case WM_LBUTTONUP:
+            if (objDrag_ != ObjDrag::None) {
+                const annot::RectD from = objSel_, to = objCur_;
+                objDrag_ = ObjDrag::None;
+                ReleaseCapture();
+                snappedX_ = snappedY_ = false;
+                const bool moved = std::fabs(to.left - from.left) + std::fabs(to.bottom - from.bottom) + std::fabs(to.right - from.right) + std::fabs(to.top - from.top) > 0.5;
+                if (moved && onEvent) {
+                    Event e; e.kind = Event::Draw; e.tool = Tool::Select; e.page = objSelPage_;
+                    e.pts = {{from.left, from.bottom}, {from.right, from.top}, {to.left, to.bottom}, {to.right, to.top}};
+                    onEvent(e);
+                }
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return 0;
+            }
             if (formCapture_ && doc_) {
                 annot::PointD fp;
                 formCapture_ = false;
@@ -1099,4 +1164,61 @@ bool Viewer::linkAt(int cx, int cy, int& destPage, std::wstring& uri) const {
     FPDF_DEST dest = api.FPDFLink_GetDest(doc_->handle(), link);
     if (dest) { destPage = api.FPDFDest_GetDestPageIndex(doc_->handle(), dest); return destPage >= 0; }
     return false;
+}
+
+// ---- selected page objects: move and resize with guides ----
+void Viewer::setObjectSelection(int page, const annot::RectD* rect, std::vector<double> gx, std::vector<double> gy) {
+    objDrag_ = ObjDrag::None;
+    if (!rect) { objSelPage_ = -1; }
+    else { objSelPage_ = page; objSel_ = objCur_ = *rect; guideX_ = std::move(gx); guideY_ = std::move(gy); }
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
+bool Viewer::pageUnclamped(int cx, int cy, int page, annot::PointD& out) const {
+    FPDF_PAGE pg = doc_ ? doc_->page(page) : nullptr;
+    if (!pg) return false;
+    double px, py;
+    pdfium::api().FPDF_DeviceToPage(pg, 0, 0, widths_[page], heights_[page], 0, cx - pageX(page), cy + doc_->scrollY - tops_[page], &px, &py);
+    out = {px, py};
+    return true;
+}
+
+Viewer::ObjDrag Viewer::objHit(int cx, int cy) const {
+    if (objSelPage_ < 0) return ObjDrag::None;
+    RECT r = const_cast<Viewer*>(this)->annotScreenRect(objSelPage_, objSel_);
+    auto closeTo = [&](int x, int y) { return std::abs(cx - x) <= 7 && std::abs(cy - y) <= 7; };
+    if (closeTo(r.left, r.top)) return ObjDrag::TL;
+    if (closeTo(r.right, r.top)) return ObjDrag::TR;
+    if (closeTo(r.left, r.bottom)) return ObjDrag::BL;
+    if (closeTo(r.right, r.bottom)) return ObjDrag::BR;
+    POINT p{cx, cy};
+    return PtInRect(&r, p) ? ObjDrag::Move : ObjDrag::None;
+}
+
+void Viewer::drawObjectSelection(HDC dc) {
+    if (objSelPage_ < 0 || objSelPage_ >= static_cast<int>(tops_.size())) return;
+    RECT r = annotScreenRect(objSelPage_, objDrag_ == ObjDrag::None ? objSel_ : objCur_);
+    HPEN pen = CreatePen(objDrag_ == ObjDrag::None ? PS_SOLID : PS_DASH, 2, RGB(0x30, 0x80, 0xFF));
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    Rectangle(dc, r.left, r.top, r.right, r.bottom);
+    HBRUSH white = CreateSolidBrush(RGB(255, 255, 255));
+    SelectObject(dc, white);
+    for (POINT c : {POINT{r.left, r.top}, POINT{r.right, r.top}, POINT{r.left, r.bottom}, POINT{r.right, r.bottom}}) Rectangle(dc, c.x - 4, c.y - 4, c.x + 5, c.y + 5);
+    if (objDrag_ != ObjDrag::None) {   // the guide lines the object snapped to
+        HPEN gp = CreatePen(PS_SOLID, 1, RGB(0xE0, 0x30, 0xC0));
+        SelectObject(dc, gp);
+        RECT pr;
+        pageRect(objSelPage_, pr);
+        auto lineAt = [&](bool vertical, double v) {
+            annot::RectD probe{v, v, v, v};
+            RECT s = annotScreenRect(objSelPage_, probe);
+            if (vertical) { MoveToEx(dc, s.left, pr.top, nullptr); LineTo(dc, s.left, pr.bottom); }
+            else { MoveToEx(dc, pr.left, s.top, nullptr); LineTo(dc, pr.right, s.top); }
+        };
+        if (snappedX_) lineAt(true, snapX_);
+        if (snappedY_) lineAt(false, snapY_);
+        SelectObject(dc, pen); DeleteObject(gp);
+    }
+    SelectObject(dc, ob); SelectObject(dc, op);
+    DeleteObject(pen); DeleteObject(white);
 }

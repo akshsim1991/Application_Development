@@ -80,6 +80,21 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y);
 // the standard fonts lack (the document is then unchanged).
 bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style, Align align);
 
+// ---- picking up and moving page objects ----
+struct GroupHit {
+    bool found = false;
+    enum Kind { Picture, Paragraph, Table } kind = Picture;
+    std::vector<int> objects;
+    double left = 0, bottom = 0, right = 0, top = 0;
+};
+// The picture, paragraph or table at a page point (a picture wins over text, text over a table).
+GroupHit groupAt(Document& d, int page, double x, double y);
+// Moves and scales the objects so the rectangle `from` becomes `to` (page coordinates). One undo step.
+bool transformGroup(Document& d, int page, const std::vector<int>& objects, double fl, double fb, double fr, double ft, double tl, double tb, double tr, double tt);
+bool deleteGroup(Document& d, int page, std::vector<int> objects);
+// Lines that moved objects snap to: the page edges and centre, and the edges and centres of the other objects.
+void snapGuides(Document& d, int page, const std::vector<int>& exclude, std::vector<double>& gx, std::vector<double>& gy);
+
 // ---- tables drawn on the page (kept recognisable through a mark, so they can be edited or deleted later) ----
 struct TableSpec {
     int rows = 3, cols = 3;

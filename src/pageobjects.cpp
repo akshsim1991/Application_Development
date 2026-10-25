@@ -4,6 +4,7 @@
 #include <cstring>
 #include <cstdio>
 #include <map>
+#include <set>
 #include <cwctype>
 
 namespace pageobj {
@@ -802,6 +803,106 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     api.FPDFPage_GenerateContent(pg);
     d.resetText(hit.page);
     return true;
+}
+
+
+// ---- picking up and moving page objects ----
+GroupHit groupAt(Document& d, int page, double x, double y) {
+    GroupHit g;
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return g;
+    const auto& api = pdfium::api();
+    auto bounds = [&](const std::vector<int>& idx) {
+        float L = 1e9f, B = 1e9f, R = -1e9f, T = -1e9f;
+        for (int i : idx) {
+            float l, b, r, t;
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (o && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) { L = std::min(L, l); B = std::min(B, b); R = std::max(R, r); T = std::max(T, t); }
+        }
+        g.left = L; g.bottom = B; g.right = R; g.top = T;
+    };
+    const int n = api.FPDFPage_CountObjects(pg);
+    for (int i = n - 1; i >= 0; --i) {   // the topmost picture
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float l, b, r, t;
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+        if (x < l || x > r || y < b || y > t) continue;
+        g.found = true; g.kind = GroupHit::Picture; g.objects = {i};
+        bounds(g.objects);
+        return g;
+    }
+    TableHit th = tableAt(d, page, x, y);
+    ParagraphHit ph = paragraphAt(d, page, x, y);
+    if (ph.found && !th.found) {
+        g.found = true; g.kind = GroupHit::Paragraph; g.objects = ph.objects;
+        bounds(g.objects);
+        return g;
+    }
+    if (th.found) {
+        for (int i = 0; i < n; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (o && tableIdOf(o) == th.id) g.objects.push_back(i);
+        }
+        g.found = !g.objects.empty(); g.kind = GroupHit::Table;
+        bounds(g.objects);
+    }
+    return g;
+}
+
+bool transformGroup(Document& d, int page, const std::vector<int>& objects, double fl, double fb, double fr, double ft, double tl, double tb, double tr, double tt) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg || objects.empty() || fr - fl < 1 || ft - fb < 1) return false;
+    const double sx = (tr - tl) / (fr - fl), sy = (tt - tb) / (ft - fb);
+    if (sx < 0.02 || sy < 0.02) return false;
+    const auto& api = pdfium::api();
+    d.beginChange();
+    pg = d.page(page);
+    const double e = tl - fl * sx, f = tb - fb * sy;
+    for (int i : objects) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (o) api.FPDFPageObj_Transform(o, sx, 0, 0, sy, e, f);
+    }
+    api.FPDFPage_GenerateContent(pg);
+    d.resetText(page);
+    return true;
+}
+
+bool deleteGroup(Document& d, int page, std::vector<int> objects) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg || objects.empty()) return false;
+    const auto& api = pdfium::api();
+    d.beginChange();
+    pg = d.page(page);
+    std::sort(objects.begin(), objects.end(), std::greater<int>());
+    bool any = false;
+    for (int i : objects) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (o && api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(o); any = true; }
+    }
+    if (!any) { d.cancelChange(); return false; }
+    api.FPDFPage_GenerateContent(pg);
+    d.resetText(page);
+    return true;
+}
+
+void snapGuides(Document& d, int page, const std::vector<int>& exclude, std::vector<double>& gx, std::vector<double>& gy) {
+    gx.clear(); gy.clear();
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return;
+    const auto& api = pdfium::api();
+    float l, b, r, t;
+    // the page: its crop box
+    double cl, cb, cr, ct;
+    if (d.cropBoxOf(page, cl, cb, cr, ct)) { gx.push_back(cl); gx.push_back((cl + cr) / 2); gx.push_back(cr); gy.push_back(cb); gy.push_back((cb + ct) / 2); gy.push_back(ct); }
+    const int n = api.FPDFPage_CountObjects(pg);
+    std::set<int> skip(exclude.begin(), exclude.end());
+    for (int i = 0; i < n && gx.size() < 600; ++i) {
+        if (skip.count(i)) continue;
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (!o || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+        gx.push_back(l); gx.push_back((l + r) / 2); gx.push_back(r);
+        gy.push_back(b); gy.push_back((b + t) / 2); gy.push_back(t);
+    }
 }
 
 } // namespace pageobj

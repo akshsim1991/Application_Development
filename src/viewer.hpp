@@ -37,7 +37,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, FormText, FormCheck, FormCombo, Ruler, Protractor };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, Select, FormText, FormCheck, FormCombo, Ruler, Protractor };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -82,7 +82,13 @@ public:
     void setShowRulers(bool on, int units) { showRulers_ = on; units_ = units; InvalidateRect(hwnd_, nullptr, FALSE); }
     bool showRulers() const { return showRulers_; }
     void setPending(const annot::PointD* vertex, int page, const annot::PointD* arm) { pendingVertex_ = vertex ? *vertex : annot::PointD{}; hasPending_ = vertex != nullptr; pendingPage_ = page; pendingArm_ = arm ? *arm : annot::PointD{}; hasArm_ = arm != nullptr; InvalidateRect(hwnd_, nullptr, FALSE); }
-    bool pageRect(int page, RECT& out) const;                     // a page's screen rectangle
+    bool pageRect(int page, RECT& out) const;
+
+    // A selected group of page objects (a picture, a paragraph, a table). The viewer lets the user drag it or its corners
+    // (aspect ratio kept), snaps to the guide lines (page coordinates) and reports the new rectangle as a Draw event
+    // with the tool Select. Pass nullptr to clear the selection.
+    void setObjectSelection(int page, const annot::RectD* rect, std::vector<double> guidesX = {}, std::vector<double> guidesY = {});
+    bool hasObjectSelection() const { return objSelPage_ >= 0; }                     // a page's screen rectangle
 
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
 
@@ -122,6 +128,15 @@ private:
     bool showRulers_ = false; int units_ = 0;
     annot::PointD pendingVertex_{}, pendingArm_{}; bool hasPending_ = false, hasArm_ = false; int pendingPage_ = 0;
     void drawMeasuring(HDC dc, int page);
+    int objSelPage_ = -1;
+    annot::RectD objSel_{}, objCur_{};
+    std::vector<double> guideX_, guideY_;
+    enum class ObjDrag { None, Move, TL, TR, BL, BR } objDrag_ = ObjDrag::None;
+    annot::PointD objDragStart_{};
+    double snapX_ = 0, snapY_ = 0; bool snappedX_ = false, snappedY_ = false;
+    bool pageUnclamped(int cx, int cy, int page, annot::PointD& out) const;
+    void drawObjectSelection(HDC dc);
+    ObjDrag objHit(int cx, int cy) const;
     bool linkAt(int cx, int cy, int& destPage, std::wstring& uri) const;
     int contentW_ = 0, contentH_ = 0;
     std::map<int, Cached> cache_;

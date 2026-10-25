@@ -217,7 +217,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -1507,6 +1507,43 @@ void showProperties() {
 
 // ---- redaction ----
 
+void showRedactionReport(Document& d, const std::vector<std::wstring>& phrases) {
+    if (phrases.empty()) {
+        MessageBoxW(app.wnd, L"The marked areas were removed. They held no text, so there was nothing to look for. Pictures under the black boxes are gone: those pages are now pictures.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    redact::Report r = redact::verify(d, phrases);
+    SetCursor(old);
+    std::wstring msg;
+    if (r.found.empty()) {
+        msg = L"Checked: " + std::to_wstring(r.phrases) + L" redacted phrase(s) were looked for in the text of every page, comments, bookmarks, the document information and the file data. None of them is still in the file.";
+    } else {
+        msg = L"WARNING: some redacted text is still in the file:\n\n";
+        for (size_t i = 0; i < r.found.size() && i < 12; ++i) msg += L"  \"" + r.found[i].phrase.substr(0, 40) + L"\" in " + r.found[i].where + L"\n";
+        msg += L"\nDo not share the file yet. Remove those items (for example the comments or bookmarks) and check again with Edit PDF > Redact > Check that the text is gone.";
+    }
+    MessageBoxW(app.wnd, msg.c_str(), L"Redaction check", MB_OK | (r.found.empty() ? MB_ICONINFORMATION : MB_ICONWARNING));
+}
+
+void checkRedactionText(Document& d) {
+    std::wstring t;
+    if (!askText(L"Check that the text is gone", L"Type the words or phrases that must not be in this document, one per line.", false, t, app.viewer.hasSelection() ? toEdit(app.viewer.selectedText()).c_str() : L"", true)) return;
+    t = fromEdit(t);
+    std::vector<std::wstring> list;
+    size_t pos = 0;
+    while (pos <= t.size()) {
+        size_t e = t.find(L'\r', pos);
+        std::wstring line = t.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+        size_t a = line.find_first_not_of(L' '), z = line.find_last_not_of(L' ');
+        if (a != std::wstring::npos && z - a + 1 >= 3) list.push_back(line.substr(a, z - a + 1));
+        if (e == std::wstring::npos) break;
+        pos = e + 1;
+    }
+    if (list.empty()) { MessageBoxW(app.wnd, L"Type at least one word of three or more letters.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    showRedactionReport(d, list);
+}
+
 void redactionMenuAction(Document& d, int cmd) {
     switch (cmd) {
         case T_RED_AREA:
@@ -1533,6 +1570,7 @@ void redactionMenuAction(Document& d, int cmd) {
             if (!n) MessageBoxW(app.wnd, L"Nothing was found to mark.", kAppName, MB_OK | MB_ICONINFORMATION);
             break;
         }
+        case N_RED_CHECK: checkRedactionText(d); break;
         case T_RED_CLEAR:
             d.redactions.clear();
             app.viewer.setMarks(&d.redactions);
@@ -1551,10 +1589,12 @@ void redactionMenuAction(Document& d, int cmd) {
                      static_cast<int>(d.redactions.size()), d.redactions.size() == 1 ? L"" : L"s", static_cast<int>(pages.size()), pages.size() == 1 ? L"" : L"s");
             if (MessageBoxW(app.wnd, q, L"Apply redactions", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) break;
             HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+            const std::vector<std::wstring> phrases = redact::collect(d);
             int n = redact::apply(d);
             SetCursor(old);
-            if (n) afterPagesChanged();
-            else MessageBoxW(app.wnd, L"The redactions could not be applied.", kAppName, MB_OK | MB_ICONWARNING);
+            if (!n) { MessageBoxW(app.wnd, L"The redactions could not be applied.", kAppName, MB_OK | MB_ICONWARNING); break; }
+            afterPagesChanged();
+            showRedactionReport(d, phrases);
             break;
         }
     }
@@ -2019,7 +2059,7 @@ void toolsDispatch(int cmd) {
         case N_BW: doGreyscale(); break;
         default:
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
-            if (cmd >= T_RED_AREA && cmd <= T_RED_APPLY) { redactionMenuAction(*d, cmd); break; }
+            if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= P_DELETE && cmd <= P_NUP) { pagesMenuAction(cmd, {}); break; }
             break;
     }
@@ -2053,6 +2093,8 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_APPLY, L"Apply redactions...");
     AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_CLEAR, L"Clear marks");
+    AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(red, MF_STRING, N_RED_CHECK, L"Check that the text is gone...");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(red), L"Redact");
     add(T_COMPRESS, L"Compress (make the file smaller)...");
     add(N_BW, L"Black and white / greyscale pictures...");
@@ -3591,6 +3633,7 @@ void commandPalette() {
         add(L"Compare with another open tab", [] { compareDocs(); });
         add(L"Split into several files", [] { splitPdf(); });
         add(L"Crop by drawing a box", [] { cropByBox(); });
+        add(L"Check that redacted text is gone", [] { toolsDispatch(N_RED_CHECK); });
         add(L"Delete pages", [] { pagesMenuAction(P_DELETE, {}); });
         add(L"Insert blank page", [] { pagesMenuAction(P_BLANK, {}); });
     }
@@ -4185,6 +4228,21 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, report.c_str(), -1, u.data(), n, nullptr, nullptr);
         std::vector<unsigned char> rb(u.begin(), u.end());
         return Document::writeFile(files[3], rb) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--redact") {   // --redact in.pdf out.pdf phrase : marks, applies, saves and checks
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        int marked = redact::markText(doc, files[3], false);
+        std::vector<std::wstring> phrases = redact::collect(doc);
+        int pages = marked ? redact::apply(doc) : 0;
+        redact::Report r = redact::verify(doc, phrases);
+        std::vector<unsigned char> out;
+        if (!pages || !doc.serialize(out) || Document::writeFile(files[2], out) != SaveResult::Ok) return 4;
+        std::string rep = "marked=" + std::to_string(marked) + " pages=" + std::to_string(pages) + " phrases=" + std::to_string(r.phrases) + " found=" + std::to_string(r.found.size()) + "\n";
+        std::vector<unsigned char> rb(rep.begin(), rep.end());
+        Document::writeFile(files[2] + L".txt", rb);
+        return r.found.empty() ? 0 : 5;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

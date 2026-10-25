@@ -79,3 +79,94 @@ int markText(Document& d, const std::wstring& query, bool matchCase) {
 }
 
 } // namespace redact
+
+#include "annot.hpp"
+#include <cwctype>
+
+namespace redact {
+
+std::vector<std::wstring> collect(Document& d) {
+    std::vector<std::wstring> out;
+    const auto& api = pdfium::api();
+    for (const RedactMark& m : d.redactions) {
+        FPDF_TEXTPAGE tp = d.text(m.page);
+        if (!tp) continue;
+        const int n = api.FPDFText_GetBoundedText(tp, m.left, m.top, m.right, m.bottom, nullptr, 0);
+        if (n <= 0) continue;
+        std::vector<unsigned short> buf(n + 1);
+        api.FPDFText_GetBoundedText(tp, m.left, m.top, m.right, m.bottom, buf.data(), n);
+        std::wstring t(buf.begin(), buf.begin() + std::min<size_t>(n, buf.size()));
+        t.resize(t.find(L'\0') == std::wstring::npos ? t.size() : t.find(L'\0'));
+        for (auto& c : t) if (c == L'\r' || c == L'\n' || c == L'\t') c = L' ';
+        size_t a = t.find_first_not_of(L' '), z = t.find_last_not_of(L' ');
+        if (a == std::wstring::npos) continue;
+        t = t.substr(a, z - a + 1);
+        if (t.size() >= 3 && std::find(out.begin(), out.end(), t) == out.end()) out.push_back(t);
+    }
+    return out;
+}
+
+namespace {
+std::wstring lower(std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; }
+bool contains(const std::wstring& hay, const std::wstring& needle) { return lower(hay).find(lower(needle)) != std::wstring::npos; }
+void flatten(std::wstring& t) { for (auto& c : t) if (c == L'\r' || c == L'\n' || c == L'\t') c = L' '; }
+void bookmarkTexts(const std::vector<Bookmark>& list, std::vector<std::wstring>& out) {
+    for (const auto& b : list) { out.push_back(b.title); bookmarkTexts(b.children, out); }
+}
+}
+
+Report verify(Document& d, const std::vector<std::wstring>& phrases) {
+    Report r;
+    r.phrases = static_cast<int>(phrases.size());
+    const auto& api = pdfium::api();
+    auto note = [&](const std::wstring& phrase, const std::wstring& where) {
+        for (const auto& f : r.found) if (f.phrase == phrase && f.where == where) return;
+        r.found.push_back({phrase, where});
+    };
+    // 1. the text of every page, 2. comments and other annotations
+    for (int p = 0; p < d.pageCount(); ++p) {
+        std::wstring t = d.textRange(p, 0, d.charCount(p));
+        flatten(t);
+        if (!t.empty()) ++r.textPagesLeft;
+        for (const auto& ph : phrases) if (contains(t, ph)) note(ph, L"the text of page " + std::to_wstring(p + 1));
+        for (const auto& a : annot::list(d, p)) {
+            std::wstring c = a.contents;
+            flatten(c);
+            for (const auto& ph : phrases) if (contains(c, ph)) note(ph, L"a comment or annotation on page " + std::to_wstring(p + 1));
+        }
+        ++r.places;
+    }
+    // 3. bookmarks
+    std::vector<std::wstring> marks;
+    bookmarkTexts(d.bookmarks(), marks);
+    for (const auto& b : marks) for (const auto& ph : phrases) if (contains(b, ph)) note(ph, L"a bookmark");
+    ++r.places;
+    // 4. document information
+    for (const char* key : {"Title", "Author", "Subject", "Keywords", "Creator", "Producer"}) {
+        const unsigned long n = api.FPDF_GetMetaText(d.handle(), key, nullptr, 0);
+        if (n < 4) continue;
+        std::vector<unsigned short> buf(n / 2 + 1);
+        api.FPDF_GetMetaText(d.handle(), key, buf.data(), n);
+        std::wstring v(buf.begin(), buf.begin() + (n / 2 - 1));
+        for (const auto& ph : phrases) if (contains(v, ph)) note(ph, std::wstring(L"the document information (") + std::wstring(key, key + strlen(key)) + L")");
+    }
+    ++r.places;
+    // 5. the raw data of the file as it would be saved
+    std::vector<unsigned char> bytes;
+    if (d.serialize(bytes)) {
+        const std::string raw(bytes.begin(), bytes.end());
+        for (const auto& ph : phrases) {
+            std::string ascii, be;
+            bool plain = true;
+            for (wchar_t c : ph) { if (c > 0x7E || c < 0x20) plain = false; ascii += static_cast<char>(c); be += '\0'; be += static_cast<char>(c & 0xFF); }
+            auto ci = [](const std::string& h, const std::string& n) {
+                return std::search(h.begin(), h.end(), n.begin(), n.end(), [](char a, char b) { return tolower(static_cast<unsigned char>(a)) == tolower(static_cast<unsigned char>(b)); }) != h.end();
+            };
+            if (plain && (ci(raw, ascii) || raw.find(be) != std::string::npos)) note(ph, L"the file data");
+        }
+        ++r.places;
+    }
+    return r;
+}
+
+} // namespace redact

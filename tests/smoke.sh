@@ -53,6 +53,81 @@ PY
 run --checksig "$(W tampered.pdf)" "$(W sig2.txt)"
 check "own check: tampering found"  "grep -q '^CHANGED' '$work/sig2.txt'"
 
+echo "search all PDFs in a folder"
+mkdir -p "$work/lib"; cp "$work/rich.pdf" "$work/img.pdf" "$work/lib/"
+run --search "$(W lib)" "Quarterly" "$(W srch.txt)"
+check "finds the phrase"            "grep -q 'rich.pdf|1|' '$work/srch.txt'"
+run --search "$(W lib)" "Quarterly" "$(W srch2.txt)"
+check "second search uses the saved index" "grep -q 'scanned=0' '$work/srch2.txt'"
+
+echo "redaction and its check"
+run --redact "$(W rich.pdf)" "$(W red.pdf)" "Quarterly"; rc=$?
+check "redaction verified (exit code)" "[ $rc -eq 0 ]"
+check "the text is gone"            "! pdftotext '$work/red.pdf' - | grep -q 'Quarterly'"
+
+echo "batch"
+mkdir -p "$work/bin"; cp "$work/rich.pdf" "$work/bin/"
+printf '[batch]\ninput=%s\noutput=%s\nwatermark=DRAFT\ncompress=1\nuserPassword=abc\nownerPassword=xyz\n' "$(W bin)" "$(W bout)" > "$work/job.ini"
+run --batch "$(W job.ini)"
+check "batch result is encrypted"   "python3 -c \"import pikepdf;p=pikepdf.open('$work/bout/rich.pdf',password='abc');assert p.is_encrypted and len(p.pages)>=1\""
+
+echo "forms"
+python3 - "$work" <<'PY'
+import sys
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfgen import canvas
+c=canvas.Canvas(sys.argv[1]+'/flat.pdf',pagesize=A4); c.setFont('Helvetica',12)
+c.drawString(72,730,'Name: ____________________________'); c.drawString(72,690,'Email:'); c.line(120,688,380,688)
+c.rect(72,640,10,10); c.drawString(90,641,'I agree'); c.save()
+PY
+run --formdetect "$(W flat.pdf)" "$(W flat_f.pdf)"
+check "fields created"              "python3 -c \"import pikepdf;p=pikepdf.open('$work/flat_f.pdf');assert len(p.Root.AcroForm.Fields)==3\""
+printf 'Name,Email,I agree\nAnna,a@x.org,yes\n' > "$work/people.csv"
+run --formfill "$(W flat_f.pdf)" "$(W people.csv)" "$(W filled)"
+check "values filled in"            "python3 -c \"import pikepdf;p=pikepdf.open('$work/filled/row1.pdf');v={str(f.T):str(f.get('/V')) for f in p.Root.AcroForm.Fields};assert v['Name']=='Anna' and v['I agree']=='/Yes',v\""
+run --formexport "$(W filled/row1.pdf)" "$(W ans.csv)"
+check "answers exported"            "grep -q 'Anna' '$work/ans.csv'"
+
+echo "visual compare"
+run --visualdiff "$(W rich.pdf)" "$(W red.pdf)" "$(W vd.png)" 1
+check "overlay written"             "[ -s '$work/vd.png' ] && grep -q 'ok=1' '$work/vd.png.txt'"
+
+if command -v openssl >/dev/null && python3 -c 'import http.server' 2>/dev/null; then
+echo "time stamp and visible signature (local test server)"
+tsa="$work/tsa"; mkdir -p "$tsa"; ( cd "$tsa" &&
+  openssl req -x509 -newkey rsa:2048 -nodes -keyout tsa.key -out tsa.crt -days 30 -subj "/CN=Local Test TSA" -addext "extendedKeyUsage=critical,timeStamping" 2>/dev/null &&
+  echo 01 > serial &&
+  printf '[tsa]\ndefault_tsa=t\n[t]\ndir=.\nserial=./serial\ncrypto_device=builtin\nsigner_cert=./tsa.crt\ncerts=./tsa.crt\nsigner_key=./tsa.key\nsigner_digest=sha256\ndefault_policy=1.2.3.4.1\ndigests=sha256\naccuracy=secs:1\nordering=yes\ntsa_name=yes\ness_cert_id_chain=no\ness_cert_id_alg=sha256\n' > ts.cnf &&
+  cat > server.py <<'PY'
+import http.server, subprocess
+class H(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        n=int(self.headers['Content-Length']); open('q.tsq','wb').write(self.rfile.read(n))
+        subprocess.run(['openssl','ts','-reply','-queryfile','q.tsq','-config','ts.cnf','-section','t','-out','r.tsr'],check=True,capture_output=True)
+        d=open('r.tsr','rb').read()
+        self.send_response(200); self.send_header('Content-Type','application/timestamp-reply'); self.send_header('Content-Length',str(len(d))); self.end_headers(); self.wfile.write(d)
+    def log_message(self,*a): pass
+http.server.HTTPServer(('127.0.0.1',8319),H).serve_forever()
+PY
+  ( setsid python3 server.py >/dev/null 2>&1 & echo $! > pid ) )
+sleep 1.5
+run --sign "$(W rich.pdf)" "$(W ts.pdf)" "$(W t.pfx)" pw http://127.0.0.1:8319 visible
+check "still a valid signature"     "pdfsig '$work/ts.pdf' | grep -q 'Signature is Valid'"
+check "time stamp inside the signature" "python3 -c \"
+from pyhanko.pdf_utils.reader import PdfFileReader
+import io,hashlib
+r=PdfFileReader(io.BytesIO(open('$work/ts.pdf','rb').read())); si=r.embedded_signatures[0].signer_info
+a=[x for x in si['unsigned_attrs'] if x['type'].native=='signature_time_stamp_token'][0]
+info=a['values'][0]['content']['encap_content_info']['content'].parsed
+assert hashlib.sha256(si['signature'].native).digest()==info['message_imprint']['hashed_message'].native\""
+check "visible stamp drawn"         "pdftoppm -r 40 -png '$work/ts.pdf' '$work/tsimg' && python3 -c \"
+from PIL import Image
+im=Image.open('$work/tsimg-1.png').convert('RGB'); w,h=im.size
+assert any(im.getpixel((x,y))[2]>240 and im.getpixel((x,y))[0]<250 and im.getpixel((x,y))[0]>230 for x in range(w//2,w) for y in range(h//2,h))\""
+kill "$(cat "$tsa/pid")" 2>/dev/null
+else echo "  skip time stamp test (needs openssl and python3)"; fi
+
+
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOME FAILED"
 exit $fail

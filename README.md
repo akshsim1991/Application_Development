@@ -23,7 +23,9 @@ for everything (30 steps), safe saving (temp file, then replace), unsaved-change
 
 **Pages** · thumbnails with multi-select, drag and a right-click menu (delete, rotate, cut / copy / paste, insert, crop, extract); delete, insert blank, rotate, move, crop (also by drawing a box), insert pages from a file, merge, split, extract, new PDF from pictures.
 
-**Tools** · find and replace, tables, bookmarks, links, handwritten signatures (type, draw or picture), ruler and protractor with units and drawing scale, compare two documents,  stamps (Approved, Draft, Confidential, custom), notes summary (all comments and highlights as Markdown), full screen
+**Safety net** · the open tabs and their unsaved changes are saved in the background and offered again after a crash; the page you were on is remembered for each file.
+
+**Tools** · batch mode (OCR, watermark, compress, password, signing for a whole folder, saved presets), search all PDFs in a folder, redaction check, forms (create fields, find blanks, fill from a CSV sheet, export answers), paragraph editing, move / resize pictures and text with guides, visual compare, visible signature and time stamp, find and replace, tables, bookmarks, links, handwritten signatures (type, draw or picture), ruler and protractor with units and drawing scale, compare two documents,  stamps (Approved, Draft, Confidential, custom), notes summary (all comments and highlights as Markdown), full screen
 and presentation mode, watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
@@ -40,6 +42,14 @@ FeatherPDF.exe --protect in.pdf out.pdf open-password [owner-password]
 FeatherPDF.exe --ocr in.pdf out.pdf [language]
 FeatherPDF.exe --sign in.pdf out.pdf certificate.pfx password
 FeatherPDF.exe --checksig file.pdf report.txt
+FeatherPDF.exe --sign in.pdf out.pdf cert.pfx password [timestamp-server|-] [visible]
+FeatherPDF.exe --batch preset.ini                           run a saved batch preset (writes preset.ini.log)
+FeatherPDF.exe --search folder text report.txt              full-text search of a folder
+FeatherPDF.exe --redact in.pdf out.pdf text                 redact every occurrence and check that it is gone
+FeatherPDF.exe --formdetect in.pdf out.pdf                  make fillable fields where a flat form has blanks
+FeatherPDF.exe --formfill form.pdf data.csv outdir          one filled-in copy per CSV row
+FeatherPDF.exe --formexport form.pdf answers.csv|xlsx
+FeatherPDF.exe --visualdiff a.pdf b.pdf overlay.png [page]
 ```
 
 ## Shortcuts

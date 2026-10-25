@@ -1880,12 +1880,17 @@ void signDocument(Document& d) {
         MessageBoxW(app.wnd, L"Remove the password protection first (Tools > Password protection), then sign. A signed file cannot be changed afterwards.", kAppName, MB_OK | MB_ICONINFORMATION);
         return;
     }
-    std::vector<FormField> f(4);
+    std::vector<FormField> f(7);
     f[0] = {FormField::Note, L"", {}, L"Signs the document with a certificate. The signed copy is saved as a new file, and any change made to it afterwards shows up as an invalid signature."};
     f[1] = {FormField::Choice, L"Certificate:", {L"One of my Windows certificates", L"A certificate file (.pfx / .p12)"}, L"", 0};
     f[2] = {FormField::Text, L"Reason (optional):", {}, L""};
     f[3] = {FormField::Text, L"Place (optional):", {}, L""};
-    if (!showForm(app.wnd, app.inst, L"Sign with a certificate", f, L"Choose certificate...")) return;
+    f[4] = {FormField::Choice, L"Signature on the page:", {L"Invisible", L"Visible stamp, bottom right", L"Visible stamp, bottom left", L"Visible stamp, top right", L"Visible stamp, top left"}, L"", 0};
+    f[5] = {FormField::Choice, L"Time stamp (proves when you signed):", {L"None", L"DigiCert", L"Sectigo", L"GlobalSign", L"Another server (type the address below)"}, L"", 0};
+    f[6] = {FormField::Text, L"Time stamp server address:", {}, L"http://"};
+    if (!showForm(app.wnd, app.inst, L"Sign with a certificate", f, L"Choose certificate...", [](const std::vector<FormField>& v) -> std::wstring {
+            if (v[5].choice == 4 && v[6].text.rfind(L"http", 0) != 0) return L"Type the address of the time stamp server, starting with http:// or https://.";
+            return L""; })) return;
 
     PCCERT_CONTEXT cert = nullptr;
     HCERTSTORE fileStore = nullptr, myStore = nullptr;
@@ -1949,7 +1954,25 @@ void signDocument(Document& d) {
     sign::Options opt;
     opt.reason = f[2].text;
     opt.location = f[3].text;
+    if (f[4].choice > 0) {
+        const int page = app.viewer.currentPage();
+        double cl, cb, cr, ct;
+        if (d.cropBoxOf(page, cl, cb, cr, ct)) {
+            const double w = 200, h = 60, m = 36;
+            const bool right = f[4].choice == 1 || f[4].choice == 3, bottom = f[4].choice == 1 || f[4].choice == 2;
+            opt.visible = true; opt.page = page;
+            opt.left = right ? cr - m - w : cl + m; opt.right = opt.left + w;
+            opt.bottom = bottom ? cb + m : ct - m - h; opt.top = opt.bottom + h;
+        }
+    }
+    {
+        static const wchar_t* servers[] = {L"", L"http://timestamp.digicert.com", L"http://timestamp.sectigo.com", L"http://timestamp.globalsign.com/tsa/r6advanced1"};
+        std::wstring url = f[5].choice == 4 ? f[6].text : servers[f[5].choice];
+        opt.timestampUrl.assign(url.begin(), url.end());
+    }
+    HCURSOR waitCursor = SetCursor(LoadCursor(nullptr, IDC_WAIT));
     bool ok = d.serialize(plain, FPDF_REMOVE_SECURITY) && sign::signPdf(plain, cert, opt, signedBytes, err);
+    SetCursor(waitCursor);
     cleanup();
     if (!ok) { MessageBoxW(app.wnd, (err.empty() ? L"The document could not be signed." : err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
     SaveResult r = Document::writeFile(out, signedBytes);
@@ -4632,6 +4655,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::vector<unsigned char> out;
         sign::Options so;
         so.reason = L"Approved";
+        if (files.size() > 5 && files[5] != L"-") so.timestampUrl.assign(files[5].begin(), files[5].end());   // time stamp server
+        if (files.size() > 6 && files[6] == L"visible") {   // bottom right of the first page
+            double cl, cb, cr, ct;
+            if (doc.cropBoxOf(0, cl, cb, cr, ct)) { so.visible = true; so.page = 0; so.right = cr - 36; so.left = so.right - 200; so.bottom = cb + 36; so.top = so.bottom + 60; }
+        }
         bool ok = sign::signPdf(plain, cert, so, out, err);
         CertFreeCertificateContext(cert);
         if (store) CertCloseStore(store, 0);

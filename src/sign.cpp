@@ -4,6 +4,9 @@
 #include <cwctype>
 #include <map>
 #include <string>
+#include <winhttp.h>
+#include <bcrypt.h>
+#include "pdfedit.hpp"
 
 namespace sign {
 namespace {
@@ -160,6 +163,192 @@ std::wstring subjectName(PCCERT_CONTEXT cert) {
     return name;
 }
 
+
+// ---------- time stamp (RFC 3161) ----------
+namespace {
+
+Bytes sha256Of(const Bytes& data) {
+    Bytes out;
+    BCRYPT_ALG_HANDLE alg = nullptr;
+    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0) return out;
+    out.resize(32);
+    BCryptHash(alg, nullptr, 0, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), out.data(), 32);
+    BCryptCloseAlgorithmProvider(alg, 0);
+    return out;
+}
+
+Bytes derLength(size_t n) {
+    if (n < 0x80) return {static_cast<unsigned char>(n)};
+    Bytes b;
+    for (size_t v = n; v; v >>= 8) b.insert(b.begin(), static_cast<unsigned char>(v & 0xFF));
+    b.insert(b.begin(), static_cast<unsigned char>(0x80 | b.size()));
+    return b;
+}
+
+Bytes tlv(unsigned char tag, const Bytes& content) {
+    Bytes out{tag};
+    Bytes l = derLength(content.size());
+    out.insert(out.end(), l.begin(), l.end());
+    out.insert(out.end(), content.begin(), content.end());
+    return out;
+}
+
+struct Node { size_t start = 0, header = 0, length = 0; unsigned char tag = 0; size_t contentStart() const { return start + header; } size_t end() const { return start + header + length; } };
+
+bool readNode(const Bytes& b, size_t pos, Node& n) {
+    if (pos + 2 > b.size()) return false;
+    n.start = pos; n.tag = b[pos];
+    size_t len = b[pos + 1], hdr = 2;
+    if (len & 0x80) {
+        size_t cnt = len & 0x7F;
+        if (cnt == 0 || cnt > 4 || pos + 2 + cnt > b.size()) return false;
+        len = 0;
+        for (size_t i = 0; i < cnt; ++i) len = len * 256 + b[pos + 2 + i];
+        hdr = 2 + cnt;
+    }
+    n.header = hdr; n.length = len;
+    return n.end() <= b.size();
+}
+
+// The last child of a constructed node.
+bool lastChild(const Bytes& b, const Node& parent, Node& child) {
+    size_t pos = parent.contentStart();
+    bool any = false;
+    while (pos < parent.end()) {
+        Node n;
+        if (!readNode(b, pos, n)) return false;
+        child = n; any = true;
+        pos = n.end();
+    }
+    return any;
+}
+
+// Adds an unsigned attribute (the time stamp token) to the only SignerInfo of a PKCS#7 blob and fixes the lengths above it.
+bool addUnsignedAttribute(const Bytes& cms, const Bytes& token, Bytes& out) {
+    const char* oid = "\x06\x0B\x2A\x86\x48\x86\xF7\x0D\x01\x09\x10\x02\x0E";   // id-aa-timeStampToken 1.2.840.113549.1.9.16.2.14
+    Bytes attr = tlv(0x30, [&] { Bytes c(oid, oid + 13); Bytes set = tlv(0x31, token); c.insert(c.end(), set.begin(), set.end()); return c; }());
+    Bytes unsignedAttrs = tlv(0xA1, Bytes(attr.begin(), attr.end()));   // [1] IMPLICIT SET OF Attribute
+    // root SEQUENCE -> [0] -> SignedData SEQUENCE -> signerInfos SET -> SignerInfo SEQUENCE
+    Node path[5];
+    if (!readNode(cms, 0, path[0]) || path[0].tag != 0x30) return false;
+    for (int i = 1; i < 5; ++i) if (!lastChild(cms, path[i - 1], path[i])) return false;
+    if (path[1].tag != 0xA0 || path[2].tag != 0x30 || path[3].tag != 0x31 || path[4].tag != 0x30) return false;
+    Bytes inner(cms.begin() + path[4].start, cms.begin() + path[4].end());
+    // the new content of SignerInfo
+    Bytes content(cms.begin() + path[4].contentStart(), cms.begin() + path[4].end());
+    content.insert(content.end(), unsignedAttrs.begin(), unsignedAttrs.end());
+    Bytes child = tlv(path[4].tag, content);
+    for (int level = 3; level >= 0; --level) {
+        Bytes c(cms.begin() + path[level].contentStart(), cms.begin() + path[level + 1].start);   // everything before the last child
+        c.insert(c.end(), child.begin(), child.end());
+        child = tlv(path[level].tag, c);
+    }
+    out = child;
+    return true;
+}
+
+bool httpPost(const std::string& url, const Bytes& body, Bytes& response, std::wstring& error) {
+    std::wstring w(url.begin(), url.end());
+    URL_COMPONENTSW uc{sizeof(uc)};
+    wchar_t host[256] = L"", path[1024] = L"";
+    uc.lpszHostName = host; uc.dwHostNameLength = 256; uc.lpszUrlPath = path; uc.dwUrlPathLength = 1024;
+    if (!WinHttpCrackUrl(w.c_str(), 0, 0, &uc)) { error = L"The time stamp address is not valid."; return false; }
+    HINTERNET ses = WinHttpOpen(L"Feather PDF", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, nullptr, nullptr, 0);
+    if (!ses) { error = L"The network could not be used."; return false; }
+    WinHttpSetTimeouts(ses, 8000, 8000, 10000, 20000);
+    bool ok = false;
+    HINTERNET con = WinHttpConnect(ses, host, uc.nPort, 0);
+    HINTERNET req = con ? WinHttpOpenRequest(con, L"POST", path, nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, uc.nScheme == INTERNET_SCHEME_HTTPS ? WINHTTP_FLAG_SECURE : 0) : nullptr;
+    if (req) {
+        const wchar_t* hdr = L"Content-Type: application/timestamp-query\r\nAccept: application/timestamp-reply\r\n";
+        if (WinHttpSendRequest(req, hdr, static_cast<DWORD>(-1), const_cast<unsigned char*>(body.data()), static_cast<DWORD>(body.size()), static_cast<DWORD>(body.size()), 0) && WinHttpReceiveResponse(req, nullptr)) {
+            DWORD status = 0, sz = sizeof(status);
+            WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &status, &sz, nullptr);
+            if (status == 200) {
+                for (;;) {
+                    DWORD avail = 0;
+                    if (!WinHttpQueryDataAvailable(req, &avail) || avail == 0) break;
+                    Bytes chunk(avail);
+                    DWORD got = 0;
+                    if (!WinHttpReadData(req, chunk.data(), avail, &got) || got == 0) break;
+                    response.insert(response.end(), chunk.begin(), chunk.begin() + got);
+                    if (response.size() > 200000) break;
+                }
+                ok = !response.empty();
+            } else error = L"The time stamp server answered with an error (" + std::to_wstring(status) + L").";
+        } else error = L"The time stamp server could not be reached. Check the internet connection, or sign without a time stamp.";
+    }
+    if (req) WinHttpCloseHandle(req);
+    if (con) WinHttpCloseHandle(con);
+    WinHttpCloseHandle(ses);
+    if (!ok && error.empty()) error = L"The time stamp server could not be used.";
+    return ok;
+}
+
+// Asks the server for a time stamp over `signatureValue` and returns the token (a CMS SignedData).
+bool requestTimestamp(const std::string& url, const Bytes& signatureValue, Bytes& token, std::wstring& error) {
+    const Bytes hash = sha256Of(signatureValue);
+    if (hash.size() != 32) { error = L"The time stamp request could not be prepared."; return false; }
+    const unsigned char algId[] = {0x30, 0x0D, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00};
+    Bytes imprint(algId, algId + sizeof(algId));
+    Bytes h = tlv(0x04, hash);
+    imprint.insert(imprint.end(), h.begin(), h.end());
+    Bytes req{0x02, 0x01, 0x01};
+    Bytes mi = tlv(0x30, imprint);
+    req.insert(req.end(), mi.begin(), mi.end());
+    Bytes nonce(8);
+    BCryptGenRandom(nullptr, nonce.data(), 8, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    nonce[0] &= 0x7F; if (nonce[0] == 0) nonce[0] = 1;
+    Bytes nn = tlv(0x02, nonce);
+    req.insert(req.end(), nn.begin(), nn.end());
+    const unsigned char certReq[] = {0x01, 0x01, 0xFF};
+    req.insert(req.end(), certReq, certReq + 3);
+    Bytes body = tlv(0x30, req), resp;
+    if (!httpPost(url, body, resp, error)) return false;
+    // TimeStampResp ::= SEQUENCE { PKIStatusInfo SEQUENCE { INTEGER status ... }, timeStampToken }
+    Node top, status, tok;
+    if (!readNode(resp, 0, top) || top.tag != 0x30 || !readNode(resp, top.contentStart(), status) || status.tag != 0x30) { error = L"The time stamp answer could not be read."; return false; }
+    Node st;
+    if (!readNode(resp, status.contentStart(), st) || st.tag != 0x02 || st.length != 1) { error = L"The time stamp answer could not be read."; return false; }
+    const int code = resp[st.contentStart()];
+    if (code != 0 && code != 1) { error = L"The time stamp server refused the request."; return false; }
+    if (!readNode(resp, status.end(), tok) || tok.tag != 0x30) { error = L"The time stamp answer holds no time stamp."; return false; }
+    token.assign(resp.begin() + tok.start, resp.begin() + tok.end());
+    return true;
+}
+
+// The signature value (the encrypted digest) of the only signer of a PKCS#7 blob.
+bool signatureValueOf(const Bytes& cms, Bytes& value) {
+    Node path[5];
+    if (!readNode(cms, 0, path[0]) || path[0].tag != 0x30) return false;
+    for (int i = 1; i < 5; ++i) if (!lastChild(cms, path[i - 1], path[i])) return false;
+    // inside SignerInfo: version, issuerAndSerial, digestAlg, [0] signedAttrs, signatureAlg, signature OCTET STRING
+    size_t pos = path[4].contentStart();
+    Node n, sig;
+    bool found = false;
+    while (pos < path[4].end()) {
+        if (!readNode(cms, pos, n)) return false;
+        if (n.tag == 0x04) { sig = n; found = true; }
+        pos = n.end();
+    }
+    if (!found) return false;
+    value.assign(cms.begin() + sig.contentStart(), cms.begin() + sig.end());
+    return true;
+}
+
+std::string asciiOnly(const std::wstring& w) {
+    std::string s;
+    for (wchar_t c : w) s += (c >= 0x20 && c < 0x7F) ? static_cast<char>(c) : '?';
+    return s;
+}
+std::string pdfEscape(const std::string& s) {
+    std::string o;
+    for (char c : s) { if (c == '(' || c == ')' || c == '\\') o += '\\'; o += c; }
+    return o;
+}
+
+} // namespace
+
 bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& out, std::wstring& error) {
     error = L"The document could not be prepared for signing.";
     Pdf in(pdf);
@@ -185,7 +374,22 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
     }
     if (pageNum < 0) return false;
 
-    const long sigNum = in.size, fieldNum = in.size + 1, newSize = in.size + 2;
+    if (opt.visible && opt.page > 0) {   // the page the user is on, not the first one
+        const std::string text(pdf.begin(), pdf.end());
+        pdfedit::File pf(text);
+        if (pf.parseXref()) {
+            std::string cat2;
+            const int rootRef = pdfedit::refOf(pf.trailer, "/Root");
+            if (rootRef >= 0 && pf.object(rootRef, cat2)) {
+                const int pagesRef = pdfedit::refOf(cat2, "/Pages");
+                int idx = opt.page;
+                std::set<int> seen;
+                const int found = pagesRef >= 0 ? pdfedit::pageRef(pf, pagesRef, idx, seen) : -1;
+                if (found >= 0) { pageNum = found; if (!in.body(pageNum, pageText)) return false; }
+            }
+        }
+    }
+    const long sigNum = in.size, fieldNum = in.size + 1, apNum = in.size + 2, newSize = in.size + 3;
     std::map<long, std::string> newObjects;   // object number -> new text of the whole object body
 
     // --- page: add the signature widget to /Annots ---
@@ -245,7 +449,7 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
     }
 
     // --- the signature dictionary and its widget ---
-    const size_t kSigBytes = 14000;   // room for the PKCS#7 blob (certificate chain included)
+    const size_t kSigBytes = opt.timestampUrl.empty() ? 14000 : 32000;   // room for the PKCS#7 blob (certificate chain and time stamp included)
     const std::string zeros(kSigBytes * 2, '0');
     std::string sigDict = "<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached/ByteRange[0 0000000000 0000000000 0000000000]/Contents<" + zeros + ">"
                           "/M(" + pdfDate() + ")/Name" + pdfText(subjectName(cert));
@@ -253,8 +457,34 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
     if (!opt.location.empty()) sigDict += "/Location" + pdfText(opt.location);
     sigDict += ">>";
     newObjects[sigNum] = sigDict;
-    newObjects[fieldNum] = "<</Type/Annot/Subtype/Widget/FT/Sig/T(Signature1)/V " + std::to_string(sigNum) + " 0 R/F 132/Rect[0 0 0 0]/P " +
-                           std::to_string(pageNum) + " 0 R>>";
+    if (opt.visible && opt.right - opt.left >= 40 && opt.top - opt.bottom >= 20) {
+        const double w = opt.right - opt.left, h = opt.top - opt.bottom;
+        const std::string name = asciiOnly(subjectName(cert));
+        std::string lines[3] = {"Digitally signed by " + name, "Date: " + pdfDate().substr(2, 4) + "." + pdfDate().substr(6, 2) + "." + pdfDate().substr(8, 2) + " " + pdfDate().substr(10, 2) + ":" + pdfDate().substr(12, 2),
+                                opt.reason.empty() ? std::string() : "Reason: " + asciiOnly(opt.reason)};
+        int count = lines[2].empty() ? 2 : 3;
+        double size = std::min(9.0, (h - 6) / (count * 1.3));
+        size = std::max(size, 4.0);
+        char buf[256];
+        std::string content;
+        snprintf(buf, sizeof buf, "q 0.96 0.98 1 rg 0 0 %.2f %.2f re f 0.25 0.4 0.7 RG 0.8 w 0.4 0.4 %.2f %.2f re S Q\nBT /F1 %.2f Tf 0.1 0.1 0.35 rg\n", w, h, w - 0.8, h - 0.8, size);
+        content = buf;
+        double y = h - 3 - size;
+        for (int i = 0; i < count; ++i) {
+            snprintf(buf, sizeof buf, "1 0 0 1 4 %.2f Tm (", y);
+            content += buf + pdfEscape(lines[i]) + ") Tj\n";
+            y -= size * 1.3;
+        }
+        content += "ET";
+        snprintf(buf, sizeof buf, "<</Type/XObject/Subtype/Form/BBox[0 0 %.2f %.2f]/Resources<</Font<</F1<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>>>>>/Length %zu>>\nstream\n", w, h, content.size());
+        newObjects[apNum] = std::string(buf) + content + "\nendstream";
+        snprintf(buf, sizeof buf, "<</Type/Annot/Subtype/Widget/FT/Sig/T(Signature1)/V %ld 0 R/F 132/Rect[%.2f %.2f %.2f %.2f]/AP<</N %ld 0 R>>/P %ld 0 R>>", sigNum, opt.left, opt.bottom, opt.right, opt.top, apNum, pageNum);
+        newObjects[fieldNum] = buf;
+    } else {
+        newObjects[fieldNum] = "<</Type/Annot/Subtype/Widget/FT/Sig/T(Signature1)/V " + std::to_string(sigNum) + " 0 R/F 132/Rect[0 0 0 0]/P " +
+                               std::to_string(pageNum) + " 0 R>>";
+        newObjects[apNum] = "null";   // keeps the numbering simple; nothing refers to it
+    }
 
     // --- assemble the incremental update ---
     out = pdf;
@@ -341,6 +571,14 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
         return false;
     }
     sig.resize(sigLen);
+    if (!opt.timestampUrl.empty()) {
+        Bytes value, token, stamped;
+        std::wstring tsErr;
+        if (!signatureValueOf(sig, value)) { error = L"The signature could not be prepared for a time stamp."; return false; }
+        if (!requestTimestamp(opt.timestampUrl, value, token, tsErr)) { error = tsErr; return false; }
+        if (!addUnsignedAttribute(sig, token, stamped)) { error = L"The time stamp could not be added to the signature."; return false; }
+        sig.swap(stamped);
+    }
     if (sig.size() > kSigBytes) { error = L"The certificate chain is too large to fit in the signature."; return false; }
     const std::string h = hex(sig.data(), sig.size());
     std::memcpy(&out[cStart + 1], h.data(), h.size());
@@ -439,6 +677,11 @@ std::vector<Status> check(const Bytes& file) {
             if (!coversAll) st.note += L" Pages or comments were added after the signature.";
         }
         if (signer) CertFreeCertificateContext(signer);
+        {   // a time stamp token as unsigned attribute (1.2.840.113549.1.9.16.2.14)
+            static const unsigned char kTs[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x10, 0x02, 0x0E};
+            if (std::search(blob.begin(), blob.end(), kTs, kTs + sizeof kTs) != blob.end() && st.kind != Status::Changed && st.kind != Status::Unreadable)
+                st.note += L" It carries a trusted time stamp.";
+        }
         results.push_back(st);
     }
     return results;

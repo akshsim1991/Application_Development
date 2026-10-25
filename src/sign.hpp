@@ -10,6 +10,12 @@ namespace sign {
 struct Options {
     std::wstring reason;
     std::wstring location;
+    // A visible signature: a stamp with the signer, date and reason, in this rectangle (page coordinates) of page `page`.
+    bool visible = false;
+    int page = 0;
+    double left = 0, bottom = 0, right = 0, top = 0;
+    // A trusted time stamp (RFC 3161) from this server, for example http://timestamp.digicert.com; empty for none.
+    std::string timestampUrl;
 };
 
 // `pdf` is a complete PDF as written by PDFium (plain objects, classic xref table, no password). The signature is

@@ -36,18 +36,19 @@ dialogs), not its source code. Status: **done** · **partial** (exists but diffe
 | Stamps, insert picture | yes | done |
 | Handwritten signature: type, draw, picture, remembered | yes | done |
 | Link (drag a box) | web addresses | partial: no link to a page |
-| Select several annotations, move / resize pictures and text | one annotation | missing |
+| Move and resize pictures, paragraphs and tables with alignment guides | yes (corners keep the proportions) | done |
+| Select several annotations | one annotation | missing |
 
 ## Editing
 | 2.12 | 2.13 | Status |
 |---|---|---|
 | Edit text line, add text box | yes | done |
-| Paragraph reflow (F2) | - | missing |
+| Paragraph editing (F2): reflow, font, size, bold, italic, colour, alignment | yes (standard fonts: Sans, Serif, Mono) | done |
 | Find and replace text | yes (inside one text run) | partial |
 | Insert, edit, delete tables | yes (tables made by Feather PDF) | partial |
 | Add bookmark | yes | done |
 | Fill in forms | yes | done |
-| Create form fields | - | missing (PDFium cannot create them) |
+| Create form fields (text, check box, drop-down), find blanks in flat forms, fill from a spreadsheet, export answers to Excel / CSV | yes (written by Feather PDF itself) | done |
 | Undo / redo | 30 steps | done |
 
 ## Pages and tools
@@ -56,7 +57,11 @@ dialogs), not its source code. Status: **done** · **partial** (exists but diffe
 | Delete, insert, rotate, move, crop, crop by drawing a box, extract, split, merge, insert from file, new PDF from pictures | yes | done |
 | Pages per sheet, booklet (printing) | pages per sheet; no booklet | partial |
 | Watermark, page numbers, compress, greyscale pictures, protect, redact, OCR, export | yes | done |
-| Digital signatures: sign, own certificate, check | yes | partial: no time stamp, no visible stamp |
+| Digital signatures: sign, own certificate, check, visible stamp, time stamp (RFC 3161) | yes | done |
 | Geometry: ruler, protractor, units, drawing scale, rulers, keep / clear | yes | done |
-| Compare two PDFs | text comparison, differences highlighted in a copy | partial |
+| Compare two PDFs | words highlighted in a copy, plus a visual overlay of how the pages differ | done |
 | Side by side, scroll and zoom together | yes | done |
+
+## Beyond 2.12
+Session restore after a crash (unsaved edits come back), remembered reading position per file, search all PDFs in a folder (with a saved
+text index), a check that redacted text is really gone, batch mode with saved presets.

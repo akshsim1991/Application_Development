@@ -17,6 +17,9 @@
 #include "viewer.hpp"
 #include "sidebar.hpp"
 #include "outline.hpp"
+#include "foldersearch.hpp"
+#include <commctrl.h>
+#include <shlobj.h>
 #include <sstream>
 #include <map>
 #include <set>
@@ -93,7 +96,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
-void writeSession(); void clearSession(); bool restoreSession();
+void searchFolder(); void writeSession(); void clearSession(); bool restoreSession();
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -2337,7 +2340,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2345,6 +2348,7 @@ void showMainMenu(const RECT& anchor) {
     const bool has = d != nullptr;
     add(MM_OPEN, L"Open...\tCtrl+O");
     add(MM_NEWPDF, L"New PDF from pictures...");
+    add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
     HMENU rec = CreatePopupMenu();
     for (size_t i = 0; i < app.recent.size(); ++i) {
         size_t s = app.recent[i].find_last_of(L"\\/");
@@ -2450,6 +2454,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
+        case MM_SEARCHDIR: searchFolder(); break;
         case MM_RELOAD: reloadFromDisk(); break;
         case MM_SIGN: toolsDispatch(T_SIGN); break;
         case MM_COPYAREA: startCopyArea(); break;
@@ -3288,6 +3293,160 @@ void syncSideBySide(bool fromFirst) {
     app.syncing = false;
 }
 
+// ---- a small progress window (used by folder search and batch mode) ----
+struct ProgressWin {
+    HWND wnd = nullptr, label = nullptr, bar = nullptr;
+    bool cancelled = false;
+};
+
+LRESULT CALLBACK progressProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* p = reinterpret_cast<ProgressWin*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    switch (m) {
+        case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams)); break;
+        case WM_COMMAND: if (LOWORD(w) == IDCANCEL && p) p->cancelled = true; return 0;
+        case WM_CLOSE: if (p) p->cancelled = true; return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+void progressOpen(ProgressWin& p, const wchar_t* title) {
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = progressProc; wc.hInstance = app.inst; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1); wc.lpszClassName = L"FeatherProgress";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    RECT pr; GetWindowRect(app.wnd, &pr);
+    const int W = 460, H = 130;
+    p.wnd = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FeatherProgress", title, WS_POPUP | WS_CAPTION, (pr.left + pr.right - W) / 2, (pr.top + pr.bottom - H) / 2, W, H, app.wnd, nullptr, app.inst, &p);
+    HFONT f = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    p.label = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | WS_VISIBLE | SS_LEFTNOWORDWRAP | SS_PATHELLIPSIS, 14, 12, W - 40, 18, p.wnd, nullptr, app.inst, nullptr);
+    p.bar = CreateWindowExW(0, PROGRESS_CLASSW, L"", WS_CHILD | WS_VISIBLE, 14, 38, W - 40, 16, p.wnd, nullptr, app.inst, nullptr);
+    HWND cancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, W - 110, 66, 80, 26, p.wnd, reinterpret_cast<HMENU>(IDCANCEL), app.inst, nullptr);
+    SendMessageW(p.label, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    SendMessageW(cancel, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    EnableWindow(app.wnd, FALSE);
+    ShowWindow(p.wnd, SW_SHOW);
+}
+
+// updates the window and handles clicks; returns false once Cancel was pressed
+bool progressStep(ProgressWin& p, int done, int total, const std::wstring& text) {
+    SetWindowTextW(p.label, text.c_str());
+    SendMessageW(p.bar, PBM_SETRANGE32, 0, std::max(total, 1));
+    SendMessageW(p.bar, PBM_SETPOS, done, 0);
+    MSG msg;
+    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    return !p.cancelled;
+}
+
+void progressClose(ProgressWin& p) {
+    EnableWindow(app.wnd, TRUE);
+    DestroyWindow(p.wnd);
+    SetForegroundWindow(app.wnd);
+}
+
+// ---- a list of results to choose from (modal); returns the index or -1 ----
+struct ListState { std::vector<std::wstring> items; HWND list = nullptr; bool done = false; int chosen = -1; };
+
+LRESULT CALLBACK resultsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* st = reinterpret_cast<ListState*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    switch (m) {
+        case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams)); break;
+        case WM_SIZE: if (st && st->list) MoveWindow(st->list, 8, 8, LOWORD(l) - 16, HIWORD(l) - 52, TRUE); return 0;
+        case WM_COMMAND:
+            if (HIWORD(w) == LBN_DBLCLK) { int s = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0)); if (s >= 0) { st->chosen = s; st->done = true; } }
+            else if (LOWORD(w) == IDOK) { int s = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0)); if (s >= 0) { st->chosen = s; st->done = true; } }
+            else if (LOWORD(w) == IDCANCEL) st->done = true;
+            return 0;
+        case WM_CLOSE: st->done = true; return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+int pickFromList(const wchar_t* title, const std::vector<std::wstring>& items, const wchar_t* openText) {
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = resultsProc; wc.hInstance = app.inst; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1); wc.lpszClassName = L"FeatherResults";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    ListState st; st.items = items;
+    RECT pr; GetWindowRect(app.wnd, &pr);
+    const int W = 900, H = 520;
+    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FeatherResults", title, WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME, (pr.left + pr.right - W) / 2, (pr.top + pr.bottom - H) / 2, W, H, app.wnd, nullptr, app.inst, &st);
+    HFONT f = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    st.list = CreateWindowExW(WS_EX_CLIENTEDGE, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 8, 8, W - 30, H - 100, h, nullptr, app.inst, nullptr);
+    HWND open = CreateWindowExW(0, L"BUTTON", openText, WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, 8, 0, 110, 28, h, reinterpret_cast<HMENU>(IDOK), app.inst, nullptr);
+    HWND close = CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 126, 0, 90, 28, h, reinterpret_cast<HMENU>(IDCANCEL), app.inst, nullptr);
+    SendMessageW(st.list, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    SendMessageW(open, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    SendMessageW(close, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    SendMessageW(st.list, LB_SETHORIZONTALEXTENT, 2400, 0);
+    for (const auto& it : items) SendMessageW(st.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(it.c_str()));
+    SendMessageW(st.list, LB_SETCURSEL, 0, 0);
+    RECT cr; GetClientRect(h, &cr);
+    MoveWindow(st.list, 8, 8, cr.right - 16, cr.bottom - 52, TRUE);
+    MoveWindow(open, 8, cr.bottom - 36, 110, 28, TRUE);
+    MoveWindow(close, 126, cr.bottom - 36, 90, 28, TRUE);
+    EnableWindow(app.wnd, FALSE);
+    ShowWindow(h, SW_SHOW);
+    SetFocus(st.list);
+    MSG msg;
+    while (!st.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        if (!IsDialogMessageW(h, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    }
+    EnableWindow(app.wnd, TRUE);
+    DestroyWindow(h);
+    SetForegroundWindow(app.wnd);
+    return st.chosen;
+}
+
+// ---- search all my PDFs ----
+void searchFolder() {
+    wchar_t folder[MAX_PATH] = L"";
+    BROWSEINFOW bi{};
+    bi.hwndOwner = app.wnd;
+    bi.lpszTitle = L"Choose the folder to search (its sub-folders are searched too)";
+    bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi);
+    if (!pidl) return;
+    SHGetPathFromIDListW(pidl, folder);
+    CoTaskMemFree(pidl);
+    std::vector<FormField> f(2);
+    f[0] = {FormField::Text, L"Find:", {}, app.viewer.hasSelection() ? app.viewer.selectedText() : L""};
+    f[1] = {FormField::Check, L"Match case"};
+    if (!showForm(app.wnd, app.inst, L"Search all my PDFs", f, L"Search", [](const std::vector<FormField>& v) -> std::wstring { return v[0].text.empty() ? L"Type the text to find." : L""; })) return;
+    std::wstring dir = settingsPath();
+    dir = dir.substr(0, dir.find_last_of(L'\\')) + L"\\index";
+    ProgressWin pw;
+    progressOpen(pw, L"Searching");
+    foldersearch::Stats stats;
+    auto hits = foldersearch::search(folder, f[0].text, f[1].checked, dir, [&](int d, int t, const std::wstring& file) {
+        return progressStep(pw, d, t, file);
+    }, stats);
+    progressClose(pw);
+    wchar_t summary[256];
+    swprintf(summary, 256, L"%d result(s) in %d file(s) searched (%d read now, %d from the saved index, %d skipped).", static_cast<int>(hits.size()), stats.files, stats.scanned, stats.cached, stats.skipped);
+    if (hits.empty()) { MessageBoxW(app.wnd, (std::wstring(L"Nothing was found.\n\n") + summary).c_str(), kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    std::vector<std::wstring> items;
+    const size_t base = std::wstring(folder).size() + 1;
+    for (const auto& h : hits) items.push_back(h.file.substr(std::min(base, h.file.size())) + L"   -   page " + std::to_wstring(h.page + 1) + L"   -   " + h.snippet);
+    const std::wstring title = L"Search results: " + f[0].text + L"  (" + summary + L")";
+    int pick = pickFromList(title.c_str(), items, L"Open");
+    if (pick < 0) return;
+    openFile(hits[pick].file);
+    if (Document* d = activeDoc(); d && d->path() == hits[pick].file) {
+        app.viewer.goToPage(hits[pick].page);
+        SetWindowTextW(app.findEdit, f[0].text.c_str());
+        SendMessageW(app.findCase, BM_SETCHECK, f[1].checked ? BST_CHECKED : BST_UNCHECKED, 0);
+        toggleFind(true);
+    }
+}
+
 // ---- command palette (Ctrl+K) ----
 struct PaletteCmd { std::wstring name; std::function<void()> run; };
 struct PaletteState { std::vector<PaletteCmd> all; std::vector<int> shown; HWND edit = nullptr, list = nullptr; bool done = false; int chosen = -1; };
@@ -3366,6 +3525,7 @@ void commandPalette() {
     auto add = [&](const wchar_t* n, std::function<void()> f) { st.all.push_back({n, std::move(f)}); };
     Document* d = activeDoc();
     add(L"Open a file", [] { runCommand(C_OPEN); });
+    add(L"Search all my PDFs in a folder", [] { searchFolder(); });
     add(L"New PDF from pictures", [] { newPdfFromPictures(); });
     if (d) {
         add(L"Save", [] { saveActive(); });
@@ -4011,6 +4171,20 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             return 6;
         }
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--search") {   // --search folder text report.txt
+        if (files.size() < 4) return 2;
+        std::wstring dir = settingsPath();
+        dir = dir.substr(0, dir.find_last_of(L'\\')) + L"\\index";
+        foldersearch::Stats st;
+        auto hits = foldersearch::search(files[1], files[2], false, dir, nullptr, st);
+        std::wstring report = L"files=" + std::to_wstring(st.files) + L" scanned=" + std::to_wstring(st.scanned) + L" cached=" + std::to_wstring(st.cached) + L"\n";
+        for (const auto& h : hits) report += h.file + L"|" + std::to_wstring(h.page + 1) + L"|" + h.snippet + L"\n";
+        int n = WideCharToMultiByte(CP_UTF8, 0, report.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, report.c_str(), -1, u.data(), n, nullptr, nullptr);
+        std::vector<unsigned char> rb(u.begin(), u.end());
+        return Document::writeFile(files[3], rb) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

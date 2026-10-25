@@ -22,6 +22,7 @@
 #include "formcreate.hpp"
 #include "visualdiff.hpp"
 #include "textpdf.hpp"
+#include "sanitize.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
 #include <commctrl.h>
@@ -104,7 +105,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
 void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
-void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
+void sanitizeDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -225,7 +226,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -2128,6 +2129,7 @@ void toolsDispatch(int cmd) {
         case N_BOOKMARK: addBookmarkHere(); break;
         case N_BW: doGreyscale(); break;
         case N_BATCH: batchDialog(); break;
+        case N_SANITIZE: sanitizeDialog(); break;
         case F_EXPORT: formExport(); break;
         case F_FILL: formFillFromCsv(); break;
         case F_TEXT: startFormField(Viewer::Tool::FormText); break;
@@ -2188,6 +2190,7 @@ void showToolsMenu(const RECT& anchor) {
     add(T_COMPRESS, L"Compress (make the file smaller)...");
     add(N_BW, L"Black and white / greyscale pictures...");
     add(T_PROTECT, L"Password protection...");
+    add(N_SANITIZE, L"Remove hidden data (metadata, attachments, scripts)...");
     if (d->isProtected()) add(T_UNPROTECT, L"Remove password protection");
     {
         HMENU sg = CreatePopupMenu();
@@ -3969,6 +3972,40 @@ void formAutoDetect() {
     addFieldSpecs(*d, specs);
 }
 
+// ---- privacy: remove hidden data ----
+void sanitizeDialog() {
+    Document* d = activeDoc();
+    if (!d) return;
+    if (d->isProtected()) { MessageBoxW(app.wnd, L"Remove the password protection first (Edit PDF > Password protection), clean the document, then protect it again.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    std::vector<FormField> f(7);
+    f[0] = {FormField::Note, L"", {}, L"Removes data people do not see but that travels with the file. The pages look the same."};
+    f[1] = {FormField::Check, L"Document information and metadata (author, title, software, dates)", {}, L"", 0, true};
+    f[2] = {FormField::Check, L"Attached files", {}, L"", 0, true};
+    f[3] = {FormField::Check, L"Scripts and automatic actions", {}, L"", 0, true};
+    f[4] = {FormField::Check, L"Hidden annotations, page thumbnails, application data", {}, L"", 0, true};
+    f[5] = {FormField::Check, L"All comments, highlights and drawings", {}, L"", 0, false};
+    f[6] = {FormField::Check, L"Bookmarks", {}, L"", 0, false};
+    if (!showForm(app.wnd, app.inst, L"Remove hidden data", f, L"Remove")) return;
+    sanitize::Options o;
+    o.metadata = f[1].checked; o.attachments = f[2].checked; o.scripts = f[3].checked; o.hidden = f[4].checked; o.comments = f[5].checked; o.bookmarks = f[6].checked;
+    std::vector<unsigned char> bytes, out;
+    sanitize::Report rep;
+    std::wstring err;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    bool ok = d->serialize(bytes) && sanitize::run(bytes, o, out, rep, err);
+    SetCursor(old);
+    if (!ok) { MessageBoxW(app.wnd, (L"The document could not be cleaned. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    d->beginChange();
+    if (d->reload(std::move(out)) != OpenResult::Ok) { d->undo(); MessageBoxW(app.wnd, L"The cleaned document could not be opened, so nothing was changed.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    afterPagesChanged();
+    std::wstring msg = rep.removed.empty() ? L"Nothing of the chosen kinds was found. The document was already clean." : L"Removed:\n";
+    for (const auto& r : rep.removed) msg += L"  - " + r + L"\n";
+    wchar_t sz[160];
+    swprintf(sz, 160, L"\nSize: %.0f KB before, %.0f KB after.\n\nSave the document to keep the change; Undo (Ctrl+Z) takes it back.", rep.before / 1024.0, rep.after / 1024.0);
+    if (!rep.removed.empty()) msg += sz;
+    MessageBoxW(app.wnd, msg.c_str(), L"Privacy report", MB_OK | MB_ICONINFORMATION);
+}
+
 // ---- command palette (Ctrl+K) ----
 struct PaletteCmd { std::wstring name; std::function<void()> run; };
 struct PaletteState { std::vector<PaletteCmd> all; std::vector<int> shown; HWND edit = nullptr, list = nullptr; bool done = false; int chosen = -1; };
@@ -4118,6 +4155,7 @@ void commandPalette() {
         add(L"Compress", [] { toolsDispatch(T_COMPRESS); });
         add(L"Black and white / greyscale pictures", [] { doGreyscale(); });
         add(L"Password protection", [] { toolsDispatch(T_PROTECT); });
+        add(L"Remove hidden data (metadata, attachments, scripts)", [] { sanitizeDialog(); });
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
@@ -4816,6 +4854,24 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         textpdf::Result r = textpdf::build(readTextFile(files[1]), ext != L".txt", bytes);
         if (!r.ok) return 4;
         return Document::writeFile(files[2], bytes) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--sanitize") {   // --sanitize in.pdf out.pdf [comments] [bookmarks] : writes out.pdf.txt with the report
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        sanitize::Options o;
+        for (size_t i = 3; i < files.size(); ++i) { if (files[i] == L"comments") o.comments = true; if (files[i] == L"bookmarks") o.bookmarks = true; }
+        std::vector<unsigned char> bytes, out;
+        sanitize::Report rep;
+        std::wstring err;
+        if (!doc.serialize(bytes) || !sanitize::run(bytes, o, out, rep, err)) return 4;
+        std::wstring txt;
+        for (const auto& r : rep.removed) txt += r + L"\n";
+        int n = WideCharToMultiByte(CP_UTF8, 0, txt.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, txt.c_str(), -1, u.data(), n, nullptr, nullptr);
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end()));
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

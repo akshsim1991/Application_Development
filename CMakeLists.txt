@@ -30,6 +30,7 @@ add_executable(FeatherPDF WIN32
   src/formdata.cpp
   src/visualdiff.cpp
   src/textpdf.cpp
+  src/sanitize.cpp
   src/picture.cpp
   resources/FeatherPDF.rc)
 

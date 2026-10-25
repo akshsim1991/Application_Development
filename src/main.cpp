@@ -48,6 +48,7 @@
 #include "pdfa.hpp"
 #include "fontlist.hpp"
 #include "inlineedit.hpp"
+#include "icons.hpp"
 
 namespace {
 
@@ -1604,6 +1605,31 @@ void readAloud() {
     if (!speech::start(text, app.readRate, err)) MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
 }
 
+void printDocument();
+
+// The pages as they will print on the default printer's paper (A4 when there is no printer), one per sheet.
+void printPreview() {
+    Document* d = activeDoc();
+    if (!d) return;
+    printing::Layout lay;
+    for (int i = 0; i < d->pageCount(); ++i) lay.pages.push_back(i);
+    wchar_t def[256] = L"";
+    DWORD len = 256;
+    printing::Paper paper;
+    std::wstring name = L"A4 paper (no printer)";
+    if (GetDefaultPrinterW(def, &len)) {
+        if (HDC ic = CreateICW(L"WINSPOOL", def, nullptr, nullptr)) { paper = printing::paperOf(ic); DeleteDC(ic); name = def; }
+    }
+    if (paper.physW <= 0 || paper.physH <= 0) {   // A4 at 300 dpi with 5 mm margins
+        paper.physW = 2480; paper.physH = 3508; paper.offX = paper.offY = 59; paper.areaW = 2480 - 118; paper.areaH = 3508 - 118; paper.ppp = 300 / 72.0;
+    }
+    const PageSize& ps0 = d->pageSize(0);
+    if ((ps0.w > ps0.h) != (paper.physW > paper.physH)) {   // the paper turned the way the pages are, as printing does
+        std::swap(paper.physW, paper.physH); std::swap(paper.offX, paper.offY); std::swap(paper.areaW, paper.areaH);
+    }
+    if (printing::preview(app.wnd, app.inst, *d, lay, paper, name, 1, L"Print...")) printDocument();
+}
+
 void printDocument() {
     Document* d = activeDoc();
     if (!d) return;
@@ -1774,7 +1800,7 @@ void showProperties() {
     text += line(L"Modified:", prettyDate(metaText(d->handle(), "ModDate")));
     std::vector<FormField> f(1);
     f[0].kind = FormField::Note; f[0].text = text;
-    showForm(app.wnd, app.inst, L"Document properties", f, L"Close");
+    showForm(app.wnd, app.inst, L"Document properties", f, L"!Close");
 }
 
 
@@ -2121,7 +2147,7 @@ void showSignatures(Document& d) {
     std::vector<FormField> f(1);
     f[0].kind = FormField::Note;
     f[0].text = d.signatures().empty() ? L"This document has no digital signatures." : sigSummary(d.signatures());
-    showForm(app.wnd, app.inst, L"Digital signatures", f, L"Close");
+    showForm(app.wnd, app.inst, L"Digital signatures", f, L"!Close");
 }
 
 void makeOwnCertificate() {
@@ -2737,7 +2763,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2774,6 +2800,7 @@ void showMainMenu(const RECT& anchor) {
     add(MM_REDO, L"Redo\tCtrl+Y", has && d->canRedo());
     sep();
     add(MM_PRINT, L"Print...\tCtrl+P", has);
+    add(MM_PREVIEW, L"Print preview\tCtrl+Shift+P", has);
     add(MM_PROPS, L"Document properties...\tCtrl+D", has);
     add(MM_RELOAD, L"Reload from disk", has && !d->path().empty());
     add(MM_READ, L"Read aloud\tCtrl+Shift+U", has);
@@ -2835,6 +2862,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_UNDO: undoRedo(false); break;
         case MM_REDO: undoRedo(true); break;
         case MM_PRINT: printDocument(); break;
+        case MM_PREVIEW: printPreview(); break;
         case MM_PROPS: showProperties(); break;
         case MM_READ: readAloud(); break;
         case MM_SELALL: app.viewer.selectAll(); break;
@@ -3321,21 +3349,15 @@ void measureDraw(const Viewer::Event& e) {
         app.viewer.addMeasure({e.page, e.pts[0], e.pts[1], {}, false, t});
         return;
     }
-    if (app.protStage == 0) {
-        app.protVertex = e.pts[0]; app.protArm = e.pts[1]; app.protPage = e.page; app.protStage = 1;
-        app.viewer.setPending(&app.protVertex, e.page, &app.protArm);
-        return;
-    }
-    if (e.page != app.protPage) { app.protStage = 0; app.viewer.setPending(nullptr, 0, nullptr); return; }
-    const double ax = app.protArm.x - app.protVertex.x, ay = app.protArm.y - app.protVertex.y;
-    const double bx = e.pts[1].x - app.protVertex.x, by = e.pts[1].y - app.protVertex.y;
+    // protractor: the corner and a point on each side, clicked one after the other
+    if (e.pts.size() < 3) return;
+    const double ax = e.pts[1].x - e.pts[0].x, ay = e.pts[1].y - e.pts[0].y;
+    const double bx = e.pts[2].x - e.pts[0].x, by = e.pts[2].y - e.pts[0].y;
     const double la = std::hypot(ax, ay), lb = std::hypot(bx, by);
-    if (la < 1 || lb < 1) return;
-    double c = std::clamp((ax * bx + ay * by) / (la * lb), -1.0, 1.0);
-    swprintf(t, 64, L"%.1f°", std::acos(c) * 180.0 / 3.14159265358979);
-    app.viewer.addMeasure({e.page, app.protVertex, app.protArm, e.pts[1], true, t});
-    app.protStage = 0;
-    app.viewer.setPending(nullptr, 0, nullptr);
+    if (la < 0.5 || lb < 0.5) return;
+    const double c = std::clamp((ax * bx + ay * by) / (la * lb), -1.0, 1.0);
+    swprintf(t, 64, L"%.1f\u00B0", std::acos(c) * 180.0 / 3.14159265358979);
+    app.viewer.addMeasure({e.page, e.pts[0], e.pts[1], e.pts[2], true, t});
 }
 
 
@@ -4613,6 +4635,7 @@ void commandPalette() {
         add(L"Save as", [] { if (activeDoc()) saveAsDialog(*activeDoc()); });
         add(L"Close tab", [] { closeTab(app.active); });
         add(L"Print", [] { printDocument(); });
+        add(L"Print preview", [] { printPreview(); });
         add(L"Document properties", [] { showProperties(); });
         add(L"Find", [] { runCommand(C_FIND); });
         add(L"Find and replace text", [] { doFindReplace(); });
@@ -4738,47 +4761,7 @@ void commandPalette() {
 // ---- header drawing: tabs + toolbar. Icons are drawn with GDI lines, so nothing depends on icon fonts. ----
 enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE };
 
-void drawIcon(HDC dc, RECT r, int icon, COLORREF col) {
-    const int cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
-    HPEN pen = CreatePen(PS_SOLID, 2, col), thin = CreatePen(PS_SOLID, 1, col);
-    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
-    HBRUSH solid = CreateSolidBrush(col);
-    auto line = [&](int x1, int y1, int x2, int y2) { MoveToEx(dc, cx + x1, cy + y1, nullptr); LineTo(dc, cx + x2, cy + y2); };
-    auto box = [&](int x1, int y1, int x2, int y2) { Rectangle(dc, cx + x1, cy + y1, cx + x2, cy + y2); };
-    switch (icon) {
-        case I_OPEN:   // folder
-            box(-9, -4, 9, 8); line(-9, -4, -9, -7); line(-9, -7, -3, -7); line(-3, -7, 0, -4); break;
-        case I_SAVE:   // floppy
-            box(-8, -8, 8, 8); box(-4, -8, 4, -2); box(-5, 2, 5, 8); break;
-        case I_UNDO: case I_REDO: {
-            const int d = icon == I_UNDO ? 1 : -1;
-            Arc(dc, cx - 8, cy - 6, cx + 8, cy + 10, cx + 8 * d, cy + 2, cx - 6 * d, cy - 6);
-            line(-7 * d, -5, -7 * d, 1); line(-7 * d, -5, -1 * d, -5); break;
-        }
-        case I_EDIT:   // page with a pencil
-            box(-8, -9, 4, 9); line(-5, -4, 1, -4); line(-5, 0, 1, 0); line(-5, 4, -1, 4);
-            line(9, -7, 3, 5); line(3, 5, 1, 7); line(9, -7, 11, -5); break;
-        case I_ANNOT:  // highlighter
-            line(-8, 8, 8, 8); line(-6, 2, 4, -8); line(-2, 6, 8, -4); line(-6, 2, -2, 6); line(4, -8, 8, -4); break;
-        case I_COMMENT: // speech bubble
-            box(-9, -8, 9, 4); line(-4, 4, -6, 9); line(-6, 9, 1, 4); line(-5, -3, 5, -3); line(-5, 0, 2, 0); break;
-        case I_GEOM:   // triangle with ticks
-            line(-8, 8, 8, 8); line(-8, 8, -8, -8); line(-8, -8, 8, 8); line(-8, 2, -4, 2); line(-8, -3, -5, -3); break;
-        case I_SBS:    // two panes
-            box(-9, -7, -1, 7); box(1, -7, 9, 7); break;
-        case I_PREV: line(3, -7, -3, 0); line(-3, 0, 3, 7); break;
-        case I_NEXT: line(-3, -7, 3, 0); line(3, 0, -3, 7); break;
-        case I_ZOUT: case I_ZIN: case I_SEARCH:
-            Ellipse(dc, cx - 8, cy - 8, cx + 4, cy + 4); line(3, 3, 9, 9);
-            if (icon != I_SEARCH) { line(-5, -2, 1, -2); if (icon == I_ZIN) line(-2, -5, -2, 1); }
-            break;
-        case I_MORE:
-            for (int i = -1; i <= 1; ++i) { RECT d{cx + i * 6 - 2, cy - 2, cx + i * 6 + 2, cy + 2}; FillRect(dc, &d, solid); }
-            break;
-    }
-    SelectObject(dc, ob); SelectObject(dc, op);
-    DeleteObject(pen); DeleteObject(thin); DeleteObject(solid);
-}
+void drawIcon(HDC dc, RECT r, int icon, COLORREF col) { icons::draw(dc, r, icon, col); }   // same numbering as icons::
 
 void layoutHeader(HDC dc, int width) {
     app.buttons.clear(); app.tabRects.clear(); app.closeRects.clear();
@@ -5119,7 +5102,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'R': rotateView(1); return 0;
                     case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
-                    case 'P': printDocument(); return 0;
+                    case 'P': if (shift) printPreview(); else printDocument(); return 0;
                     case 'D': showProperties(); return 0;
                     case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;
                     case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;

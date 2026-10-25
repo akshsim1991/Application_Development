@@ -184,33 +184,60 @@ bool savePng(const std::vector<unsigned char>& px, int w, int h, const std::wstr
 // ---- the preview window ----
 namespace {
 
-enum { ID_PREV = 101, ID_NEXT, ID_PRINT, ID_CLOSE, ID_LABEL };
-constexpr int kBar = 52;
+enum { ID_PREV = 101, ID_NEXT, ID_PRINT, ID_CLOSE, ID_LABEL, ID_SHEET, ID_SHEETLABEL };
+constexpr int kBar = 56;
 
 struct Preview {
     Document* doc = nullptr;
     const Layout* layout = nullptr;
     const Paper* paper = nullptr;
-    std::wstring printer;
+    std::wstring printer, printText;
     int copies = 1, sheet = 0, count = 0;
     bool print = false, done = false;
     // the last rendered sheet
     int cachedSheet = -1, cw = 0, ch = 0;
     std::vector<unsigned char> px;
     HFONT font = nullptr;
+    WNDPROC oldEdit = nullptr;
+    HWND wnd = nullptr;
 };
 
+// "pages 3-4" for the pages on a sheet
+std::wstring pagesOn(const Preview* pv) {
+    int gc, gr;
+    gridOf(pv->layout->perSheet, gc, gr);
+    const size_t n = static_cast<size_t>(gc * gr), first = static_cast<size_t>(pv->sheet) * n;
+    std::vector<int> pages;
+    for (size_t k = first; k < first + n && k < pv->layout->pages.size(); ++k) pages.push_back(pv->layout->pages[k] + 1);
+    if (pages.empty()) return L"";
+    std::wstring t = pages.size() == 1 ? L"page " : L"pages ";
+    bool run = true;
+    for (size_t i = 1; i < pages.size(); ++i) if (pages[i] != pages[i - 1] + 1) run = false;
+    if (pages.size() == 1) t += std::to_wstring(pages[0]);
+    else if (run) t += std::to_wstring(pages.front()) + L"-" + std::to_wstring(pages.back());
+    else for (size_t i = 0; i < pages.size(); ++i) t += (i ? L", " : L"") + std::to_wstring(pages[i]);
+    return t;
+}
+
 void updateLabel(HWND w, Preview* pv) {
-    wchar_t t[300];
-    swprintf(t, 300, L"Sheet %d of %d   \x2022   %ls   \x2022   %d cop%ls%ls", pv->sheet + 1, pv->count, pv->printer.c_str(), pv->copies, pv->copies == 1 ? L"y" : L"ies", pv->layout->grey ? L"   \x2022   greyscale" : L"");
-    SetDlgItemTextW(w, ID_LABEL, t);
+    wchar_t num[16];
+    swprintf(num, 16, L"%d", pv->sheet + 1);
+    HWND e = GetDlgItem(w, ID_SHEET);
+    if (GetFocus() != e) SetWindowTextW(e, num);
+    wchar_t of[32];
+    swprintf(of, 32, L"of %d", pv->count);
+    SetDlgItemTextW(w, ID_SHEETLABEL, of);
+    std::wstring t = pagesOn(pv) + L"   \x2022   " + pv->printer + L"   \x2022   " + std::to_wstring(pv->copies) + (pv->copies == 1 ? L" copy" : L" copies") + (pv->layout->grey ? L"   \x2022   greyscale" : L"");
+    SetDlgItemTextW(w, ID_LABEL, t.c_str());
     EnableWindow(GetDlgItem(w, ID_PREV), pv->sheet > 0);
     EnableWindow(GetDlgItem(w, ID_NEXT), pv->sheet + 1 < pv->count);
+    SCROLLINFO si{sizeof(si), SIF_RANGE | SIF_PAGE | SIF_POS, 0, std::max(0, pv->count - 1), 1, pv->sheet, 0};
+    SetScrollInfo(w, SB_VERT, &si, TRUE);
 }
 
 void go(HWND w, Preview* pv, int sheet) {
     sheet = std::clamp(sheet, 0, std::max(0, pv->count - 1));
-    if (sheet == pv->sheet) return;
+    if (sheet == pv->sheet) { updateLabel(w, pv); return; }
     pv->sheet = sheet;
     updateLabel(w, pv);
     InvalidateRect(w, nullptr, FALSE);
@@ -219,33 +246,60 @@ void go(HWND w, Preview* pv, int sheet) {
 void layoutControls(HWND w) {
     RECT rc;
     GetClientRect(w, &rc);
-    const int y = rc.bottom - kBar + 12, bh = 28;
-    MoveWindow(GetDlgItem(w, ID_PREV), 12, y, 90, bh, TRUE);
-    MoveWindow(GetDlgItem(w, ID_NEXT), 108, y, 90, bh, TRUE);
-    MoveWindow(GetDlgItem(w, ID_LABEL), 212, y + 6, std::max(10L, rc.right - 212 - 220), bh - 6, TRUE);
+    const int y = rc.bottom - kBar + 14, bh = 28;
+    int x = 12;
+    MoveWindow(GetDlgItem(w, ID_PREV), x, y, 90, bh, TRUE); x += 96;
+    MoveWindow(GetDlgItem(w, ID_NEXT), x, y, 90, bh, TRUE); x += 104;
+    MoveWindow(GetDlgItem(w, ID_SHEET), x, y + 2, 48, bh - 4, TRUE); x += 54;
+    MoveWindow(GetDlgItem(w, ID_SHEETLABEL), x, y + 6, 60, bh - 6, TRUE); x += 64;
+    MoveWindow(GetDlgItem(w, ID_LABEL), x, y + 6, std::max(10L, rc.right - x - 216), bh - 6, TRUE);
     MoveWindow(GetDlgItem(w, ID_PRINT), rc.right - 204, y, 96, bh, TRUE);
     MoveWindow(GetDlgItem(w, ID_CLOSE), rc.right - 102, y, 90, bh, TRUE);
 }
 
+// The sheet number box: Enter goes to that sheet.
+LRESULT CALLBACK sheetEditProc(HWND e, UINT msg, WPARAM wp, LPARAM lp) {
+    HWND w = GetParent(e);
+    auto* pv = reinterpret_cast<Preview*>(GetWindowLongPtrW(w, GWLP_USERDATA));
+    if (!pv) return DefWindowProcW(e, msg, wp, lp);
+    if (msg == WM_GETDLGCODE) return DLGC_WANTALLKEYS | CallWindowProcW(pv->oldEdit, e, msg, wp, lp);   // Enter goes to the box, not to Print
+    if (msg == WM_KEYDOWN && wp == VK_RETURN) {
+        wchar_t t[16] = L"";
+        GetWindowTextW(e, t, 16);
+        go(w, pv, _wtoi(t) - 1);
+        SendMessageW(e, EM_SETSEL, 0, -1);
+        return 0;
+    }
+    if (msg == WM_CHAR && wp == L'\r') return 0;
+    if (msg == WM_KILLFOCUS) updateLabel(w, pv);
+    return CallWindowProcW(pv->oldEdit, e, msg, wp, lp);
+}
+
 LRESULT CALLBACK previewProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
     auto* pv = reinterpret_cast<Preview*>(GetWindowLongPtrW(w, GWLP_USERDATA));
+    if (!pv && msg != WM_CREATE) return DefWindowProcW(w, msg, wp, lp);
     switch (msg) {
         case WM_CREATE: {
             pv = static_cast<Preview*>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams);
             SetWindowLongPtrW(w, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(pv));
+            pv->wnd = w;
             HINSTANCE inst = reinterpret_cast<CREATESTRUCTW*>(lp)->hInstance;
             NONCLIENTMETRICSW ncm{sizeof(ncm)};
             SystemParametersInfoW(SPI_GETNONCLIENTMETRICS, sizeof(ncm), &ncm, 0);
             pv->font = CreateFontIndirectW(&ncm.lfMessageFont);
-            auto mk = [&](const wchar_t* cls, const wchar_t* text, DWORD style, int id) {
-                HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, 0, 0, 10, 10, w, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst, nullptr);
+            auto mk = [&](DWORD ex, const wchar_t* cls, const wchar_t* text, DWORD style, int id) {
+                HWND c = CreateWindowExW(ex, cls, text, WS_CHILD | WS_VISIBLE | style, 0, 0, 10, 10, w, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst, nullptr);
                 SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(pv->font), TRUE);
+                return c;
             };
-            mk(L"BUTTON", L"\x2039  Previous", WS_TABSTOP | BS_PUSHBUTTON, ID_PREV);
-            mk(L"BUTTON", L"Next  \x203A", WS_TABSTOP | BS_PUSHBUTTON, ID_NEXT);
-            mk(L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS, ID_LABEL);
-            mk(L"BUTTON", L"Print", WS_TABSTOP | BS_DEFPUSHBUTTON, ID_PRINT);
-            mk(L"BUTTON", L"Close", WS_TABSTOP | BS_PUSHBUTTON, ID_CLOSE);
+            mk(0, L"BUTTON", L"\x2039  Previous", WS_TABSTOP | BS_PUSHBUTTON, ID_PREV);
+            mk(0, L"BUTTON", L"Next  \x203A", WS_TABSTOP | BS_PUSHBUTTON, ID_NEXT);
+            HWND e = mk(WS_EX_CLIENTEDGE, L"EDIT", L"1", WS_TABSTOP | ES_NUMBER | ES_CENTER, ID_SHEET);
+            pv->oldEdit = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(e, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(sheetEditProc)));
+            mk(0, L"STATIC", L"", SS_LEFT, ID_SHEETLABEL);
+            mk(0, L"STATIC", L"", SS_LEFT | SS_ENDELLIPSIS, ID_LABEL);
+            mk(0, L"BUTTON", pv->printText.c_str(), WS_TABSTOP | BS_DEFPUSHBUTTON, ID_PRINT);
+            mk(0, L"BUTTON", L"Close", WS_TABSTOP | BS_PUSHBUTTON, ID_CLOSE);
             layoutControls(w);
             updateLabel(w, pv);
             return 0;
@@ -257,6 +311,20 @@ LRESULT CALLBACK previewProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
             SetBkColor(dc, GetSysColor(COLOR_BTNFACE));
             SetTextColor(dc, GetSysColor(COLOR_BTNTEXT));
             return reinterpret_cast<LRESULT>(GetSysColorBrush(COLOR_BTNFACE));
+        }
+        case WM_VSCROLL: {   // the scroll bar moves from sheet to sheet
+            SCROLLINFO si{sizeof(si), SIF_ALL};
+            GetScrollInfo(w, SB_VERT, &si);
+            int to = pv->sheet;
+            switch (LOWORD(wp)) {
+                case SB_LINEUP: case SB_PAGEUP: to = pv->sheet - 1; break;
+                case SB_LINEDOWN: case SB_PAGEDOWN: to = pv->sheet + 1; break;
+                case SB_TOP: to = 0; break;
+                case SB_BOTTOM: to = pv->count - 1; break;
+                case SB_THUMBTRACK: case SB_THUMBPOSITION: to = si.nTrackPos; break;
+            }
+            go(w, pv, to);
+            return 0;
         }
         case WM_PAINT: {
             PAINTSTRUCT ps;
@@ -289,6 +357,15 @@ LRESULT CALLBACK previewProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
                 FillRect(mem, &shadow, sb);
                 DeleteObject(sb);
                 if (pv->cachedSheet == pv->sheet) blit(mem, x, y, sw, sh, pv->px, pv->cw, pv->ch);
+                // the sheet number on the page area, like a page number in the viewer
+                wchar_t t[48];
+                swprintf(t, 48, L"%d / %d", pv->sheet + 1, pv->count);
+                HGDIOBJ of = SelectObject(mem, pv->font);
+                SetBkMode(mem, TRANSPARENT);
+                SetTextColor(mem, RGB(0xF0, 0xF0, 0xF0));
+                RECT tr{0, y + sh + 6, rc.right, y + sh + 30};
+                DrawTextW(mem, t, -1, &tr, DT_CENTER | DT_SINGLELINE | DT_NOPREFIX);
+                SelectObject(mem, of);
             }
             BitBlt(dc, 0, 0, rc.right, rc.bottom, mem, 0, 0, SRCCOPY);
             SelectObject(mem, old);
@@ -307,42 +384,57 @@ LRESULT CALLBACK previewProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
             break;
         case WM_MOUSEWHEEL: go(w, pv, pv->sheet + (GET_WHEEL_DELTA_WPARAM(wp) < 0 ? 1 : -1)); return 0;
         case WM_CLOSE: pv->done = true; return 0;
-        case WM_DESTROY: if (pv && pv->font) DeleteObject(pv->font); return 0;
+        case WM_DESTROY: if (pv->font) DeleteObject(pv->font); pv->font = nullptr; return 0;
     }
     return DefWindowProcW(w, msg, wp, lp);
 }
 
 } // namespace
 
-bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Paper& p, const std::wstring& printerName, int copies) {
-    static bool registered = false;
-    if (!registered) {
-        WNDCLASSEXW wc{sizeof(wc)};
+bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Paper& p, const std::wstring& printerName, int copies, const wchar_t* printText) {
+    WNDCLASSEXW wc{sizeof(wc)};
+    if (!GetClassInfoExW(inst, L"FeatherPrintPreview", &wc)) {
+        wc = WNDCLASSEXW{sizeof(wc)};
         wc.lpfnWndProc = previewProc;
         wc.hInstance = inst;
         wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wc.hIcon = reinterpret_cast<HICON>(SendMessageW(parent, WM_GETICON, ICON_BIG, 0));
+        wc.hIcon = reinterpret_cast<HICON>(GetClassLongPtrW(parent, GCLP_HICON));
         wc.lpszClassName = L"FeatherPrintPreview";
-        registered = RegisterClassExW(&wc) != 0;
+        if (!RegisterClassExW(&wc)) {
+            wchar_t m[160];
+            swprintf(m, 160, L"The print preview could not be shown (window class error %lu).", GetLastError());
+            MessageBoxW(parent, m, L"Print preview", MB_OK | MB_ICONWARNING);
+            return false;
+        }
     }
     Preview pv;
     pv.doc = &d; pv.layout = &l; pv.paper = &p; pv.printer = printerName; pv.copies = copies; pv.count = sheetCount(l);
-    if (!pv.count) return false;
+    pv.printText = printText ? printText : L"Print";
+    if (!pv.count) { MessageBoxW(parent, L"There are no pages to preview.", L"Print preview", MB_OK | MB_ICONINFORMATION); return false; }
     HMONITOR mon = MonitorFromWindow(parent, MONITOR_DEFAULTTONEAREST);
     MONITORINFO mi{sizeof(mi)};
     GetMonitorInfoW(mon, &mi);
     // as tall as the screen allows, and as wide as the sheet needs at that height
     const int h = static_cast<int>((mi.rcWork.bottom - mi.rcWork.top) * 0.9);
-    const int sheetW = p.physH > 0 ? static_cast<int>((h - kBar - 80) * static_cast<double>(p.physW) / p.physH) : h;
-    const int wdt = std::min(static_cast<int>(mi.rcWork.right - mi.rcWork.left) - 40, std::max(640, sheetW + 60));
+    const int sheetW = p.physH > 0 ? static_cast<int>((h - kBar - 110) * static_cast<double>(p.physW) / p.physH) : h;
+    const int wdt = std::min(static_cast<int>(mi.rcWork.right - mi.rcWork.left) - 40, std::max(760, sheetW + 80));
     const int x = mi.rcWork.left + (mi.rcWork.right - mi.rcWork.left - wdt) / 2, y = mi.rcWork.top + (mi.rcWork.bottom - mi.rcWork.top - h) / 2;
-    HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FeatherPrintPreview", L"Print preview", WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX | WS_VISIBLE,
+    HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FeatherPrintPreview", L"Print preview", WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MAXIMIZEBOX | WS_VSCROLL,
                              x, y, wdt, h, parent, nullptr, inst, &pv);
-    if (!w) return false;
+    if (!w) {
+        wchar_t m[160];
+        swprintf(m, 160, L"The print preview could not be shown (error %lu).", GetLastError());
+        MessageBoxW(parent, m, L"Print preview", MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    ShowWindow(w, SW_SHOW);
+    UpdateWindow(w);
+    SetForegroundWindow(w);
+    BringWindowToTop(w);
     EnableWindow(parent, FALSE);
     MSG msg;
     while (!pv.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        if (msg.message == WM_KEYDOWN && (msg.hwnd == w || IsChild(w, msg.hwnd))) {
+        if (msg.message == WM_KEYDOWN && (msg.hwnd == w || IsChild(w, msg.hwnd)) && msg.hwnd != GetDlgItem(w, ID_SHEET)) {
             switch (msg.wParam) {
                 case VK_ESCAPE: pv.done = true; continue;
                 case VK_RIGHT: case VK_NEXT: case VK_DOWN: go(w, &pv, pv.sheet + 1); continue;
@@ -352,6 +444,7 @@ bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Pa
                 case VK_RETURN: pv.print = true; pv.done = true; continue;
             }
         }
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && msg.hwnd == GetDlgItem(w, ID_SHEET)) { pv.done = true; continue; }
         if (!IsDialogMessageW(w, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
     EnableWindow(parent, TRUE);

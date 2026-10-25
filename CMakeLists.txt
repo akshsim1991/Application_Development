@@ -36,6 +36,7 @@ add_executable(FeatherPDF WIN32
   src/pdfa.cpp
   src/fontlist.cpp
   src/inlineedit.cpp
+  src/icons.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include")

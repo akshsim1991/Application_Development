@@ -34,6 +34,8 @@ bool renderSheet(Document& d, const Layout& l, int sheet, const Paper& p, double
 bool savePng(const std::vector<unsigned char>& bgrx, int w, int h, const std::wstring& path);
 
 // Shows the sheets in a window. Returns true when the user chose Print.
-bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Paper& p, const std::wstring& printerName, int copies);
+// printText names the button that closes the preview with "yes" (Print, or Print... when the Print dialog comes next).
+bool preview(HWND parent, HINSTANCE inst, Document& d, const Layout& l, const Paper& p, const std::wstring& printerName, int copies,
+             const wchar_t* printText = nullptr);
 
 } // namespace printing

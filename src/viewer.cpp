@@ -304,6 +304,45 @@ void fillAlpha(HDC dc, const RECT& r, COLORREF col, BYTE alpha) {
     if (bmp) DeleteObject(bmp);
     DeleteDC(mem);
 }
+
+// The angle at v between the sides to a and b, in degrees (0-180), and a small arc that marks it.
+double angleAt(POINT v, POINT a, POINT b) {
+    const double ax = a.x - v.x, ay = a.y - v.y, bx = b.x - v.x, by = b.y - v.y;
+    const double la = std::hypot(ax, ay), lb = std::hypot(bx, by);
+    if (la < 1 || lb < 1) return 0;
+    return std::acos(std::clamp((ax * bx + ay * by) / (la * lb), -1.0, 1.0)) * 180.0 / 3.14159265358979;
+}
+
+void angleArc(HDC dc, POINT v, POINT a, POINT b) {
+    const double la = std::hypot(a.x - v.x, a.y - v.y), lb = std::hypot(b.x - v.x, b.y - v.y);
+    if (la < 4 || lb < 4) return;
+    const int r = static_cast<int>(std::max(10.0, std::min({36.0, la * 0.45, lb * 0.45})));
+    // angles as seen on screen (counter-clockwise, y up); the arc runs counter-clockwise through the smaller opening
+    const double ta = std::atan2(-(a.y - v.y), a.x - v.x), tb = std::atan2(-(b.y - v.y), b.x - v.x);
+    double d = tb - ta;
+    while (d < 0) d += 2 * 3.14159265358979;
+    const double from = d <= 3.14159265358979 ? ta : tb, to = d <= 3.14159265358979 ? tb : ta;
+    const int sx = v.x + static_cast<int>(std::cos(from) * r), sy = v.y - static_cast<int>(std::sin(from) * r);
+    const int ex = v.x + static_cast<int>(std::cos(to) * r), ey = v.y - static_cast<int>(std::sin(to) * r);
+    const int old = SetArcDirection(dc, AD_COUNTERCLOCKWISE);
+    Arc(dc, v.x - r, v.y - r, v.x + r + 1, v.y + r + 1, sx, sy, ex, ey);
+    SetArcDirection(dc, old);
+}
+
+// A short note next to the mouse (white box, dark text).
+void cursorNote(HDC dc, POINT at, const wchar_t* text, COLORREF col) {
+    HFONT f = CreateFontW(-13, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    HGDIOBJ of = SelectObject(dc, f);
+    SIZE sz;
+    GetTextExtentPoint32W(dc, text, static_cast<int>(wcslen(text)), &sz);
+    RECT r{at.x + 16, at.y + 18, at.x + 16 + sz.cx + 12, at.y + 18 + sz.cy + 6};
+    fillAlpha(dc, r, RGB(0xFF, 0xFF, 0xFF), 235);
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, col);
+    DrawTextW(dc, text, -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    SelectObject(dc, of);
+    DeleteObject(f);
+}
 } // namespace
 
 std::vector<RECT> Viewer::rectsFor(int page, int start, int count) const {
@@ -395,7 +434,7 @@ void Viewer::drawMeasuring(HDC dc, int page) {
         toScreen(m.a, a); toScreen(m.b, b);
         MoveToEx(dc, a.x, a.y, nullptr); LineTo(dc, b.x, b.y);
         dot(a); dot(b);
-        if (m.angle) { toScreen(m.c, c); MoveToEx(dc, a.x, a.y, nullptr); LineTo(dc, c.x, c.y); dot(c); label(a, m.text); }
+        if (m.angle) { toScreen(m.c, c); MoveToEx(dc, a.x, a.y, nullptr); LineTo(dc, c.x, c.y); dot(c); angleArc(dc, a, b, c); label(a, m.text); }
         else label({(a.x + b.x) / 2, (a.y + b.y) / 2}, m.text);
     }
     if (hasPending_ && pendingPage_ == page) {   // protractor: the vertex and the first arm wait for the second arm
@@ -699,6 +738,29 @@ std::vector<Viewer::PageRects> Viewer::selectionRects() {
 }
 
 void Viewer::drawPreview(HDC dc) {
+    if (tool_ == Tool::Protractor) {
+        const COLORREF green = RGB(0x00, 0x90, 0x60);
+        static const wchar_t* steps[] = {L"Click the corner of the angle", L"Click a point on the first side", L"Click a point on the second side   (Esc cancels)"};
+        if (polyPage_ >= 0 && !polyPts_.empty()) {
+            HPEN pen = CreatePen(PS_SOLID, 2, green);
+            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+            auto scr = [&](const annot::PointD& p) { RECT r = annotScreenRect(polyPage_, {p.x, p.y, p.x, p.y}); return POINT{r.left, r.top}; };
+            const POINT v = scr(polyPts_[0]);
+            const POINT a = polyPts_.size() > 1 ? scr(polyPts_[1]) : polyMouse_;
+            MoveToEx(dc, v.x, v.y, nullptr); LineTo(dc, a.x, a.y);
+            Ellipse(dc, v.x - 3, v.y - 3, v.x + 4, v.y + 4);
+            if (polyPts_.size() > 1) {
+                Ellipse(dc, a.x - 3, a.y - 3, a.x + 4, a.y + 4);
+                MoveToEx(dc, v.x, v.y, nullptr); LineTo(dc, polyMouse_.x, polyMouse_.y);
+                angleArc(dc, v, a, polyMouse_);
+                wchar_t t[96];
+                swprintf(t, 96, L"%.1f\u00B0   - click to keep it (Esc cancels)", angleAt(v, a, polyMouse_));
+                cursorNote(dc, polyMouse_, t, RGB(0x00, 0x60, 0x40));
+            } else cursorNote(dc, polyMouse_, steps[1], RGB(0x00, 0x60, 0x40));
+            SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
+        } else if (polyMouse_.x || polyMouse_.y) cursorNote(dc, polyMouse_, steps[0], RGB(0x00, 0x60, 0x40));
+        return;
+    }
     if (tool_ == Tool::Polygon && polyPage_ >= 0 && !polyPts_.empty()) {
         HPEN pen = CreatePen(PS_SOLID, std::max(1, static_cast<int>(penWidth_ * pxPerPt())), penColor_);
         HGDIOBJ op = SelectObject(dc, pen);
@@ -864,6 +926,21 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (!doc_) return 0;
             const int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
             int page, ch;
+            if (tool_ == Tool::Protractor) {   // three clicks: the corner, a point on each side
+                annot::PointD pt;
+                if (polyPage_ < 0) { if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) { polyPage_ = page; polyPts_ = {pt}; } }
+                else if (toPage(cx, cy, polyPage_, pt)) {
+                    polyPts_.push_back(pt);
+                    if (polyPts_.size() == 3) {
+                        Event e; e.kind = Event::Draw; e.tool = Tool::Protractor; e.page = polyPage_; e.pts = polyPts_;
+                        polyPts_.clear(); polyPage_ = -1;
+                        if (onEvent) onEvent(e);
+                    }
+                }
+                polyMouse_ = {cx, cy};
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                return 0;
+            }
             if (tool_ == Tool::Polygon) {
                 annot::PointD pt;
                 if (polyPage_ < 0) { if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt)) { polyPage_ = page; polyPts_ = {pt}; } }
@@ -994,7 +1071,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         case WM_MOUSEMOVE:
-            if (tool_ == Tool::Polygon && polyPage_ >= 0) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
+            if ((tool_ == Tool::Polygon && polyPage_ >= 0) || tool_ == Tool::Protractor) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
             if (objDrag_ != ObjDrag::None && doc_) {
                 annot::PointD now;
                 if (!pageUnclamped(GET_X_LPARAM(l), GET_Y_LPARAM(l), objSelPage_, now)) return 0;

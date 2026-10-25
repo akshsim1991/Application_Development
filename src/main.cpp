@@ -222,7 +222,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -748,7 +748,8 @@ void onViewerEvent(const Viewer::Event& e) {
             sep();
             if (e.page >= 0) add(M_ADDCOMMENT_HERE, L"Add comment here...");
             add(M_COMMENT, L"Comment on selected text...\tCtrl+Shift+M", hasSel);
-            if (e.page >= 0) add(M_EDITTEXT_HERE, L"Edit text\tCtrl+E");
+            if (e.page >= 0) add(M_EDITTEXT_HERE, L"Edit text (line)\tCtrl+E");
+            if (e.page >= 0) add(M_EDITPARA_HERE, L"Edit paragraph\tF2");
             if (e.page >= 0) { sep(); add(M_COPY_PAGE, L"Copy page as image"); add(N_COPYAREA, L"Copy area as image"); }
             sep();
             add(N_READ_FROM, hasSel ? L"Read the selected text aloud\tCtrl+Shift+U" : L"Read aloud from this page\tCtrl+Shift+U");
@@ -767,6 +768,11 @@ void onViewerEvent(const Viewer::Event& e) {
                         text = fromEdit(text);
                         if (!text.empty() && annot::addNote(*d, e.page, e.pts.front(), text, hlColor())) afterChange(e.page);
                     }
+                    break;
+                }
+                case M_EDITPARA_HERE: {
+                    Viewer::Event ee = e; ee.kind = Viewer::Event::Click; ee.tool = Viewer::Tool::EditPara;
+                    featureClick(*d, ee);
                     break;
                 }
                 case M_EDITTEXT_HERE: {
@@ -2052,6 +2058,7 @@ void toolsDispatch(int cmd) {
         case T_PROTECT: doProtect(*d); break;
         case T_UNPROTECT: doUnprotect(*d); break;
         case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
+        case N_EDITPARA: setTool(Viewer::Tool::EditPara); break;
         case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case T_TEXT_STYLE: textStyleDialog(); break;
         case T_READ: readAloud(); break;
@@ -2083,7 +2090,8 @@ void showToolsMenu(const RECT& anchor) {
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
     auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
-    add(T_EDIT_TEXT, L"Edit text\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
+    add(T_EDIT_TEXT, L"Edit text (one line)\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
+    add(N_EDITPARA, L"Edit paragraph (font, size, bold, italic)\tF2", true, app.tool == Viewer::Tool::EditPara);
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
     add(N_TABLE_INS, L"Insert table...");
     add(N_TABLE_EDIT, L"Edit a table (text, rows, width)...");
@@ -3043,6 +3051,44 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             setTool(Viewer::Tool::TablePlace);   // one table at a time
             return true;
         }
+        case Viewer::Tool::EditPara: {
+            pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, e.pts.front().x, e.pts.front().y);
+            if (!hit.found) {
+                MessageBoxW(app.wnd, L"No paragraph of text was found there. Click directly on the text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
+                return true;
+            }
+            std::wstring text;
+            wchar_t head[200];
+            swprintf(head, 200, L"Change the paragraph (%d line%ls). It is set again to fit the same width; a new line starts where you press Enter.", hit.lines, hit.lines == 1 ? L"" : L"s");
+            if (askText(L"Edit paragraph", head, false, text, toEdit(hit.text).c_str(), true)) {
+                text = fromEdit(text);
+                std::vector<FormField> f(6);
+                f[0] = {FormField::Choice, L"Font:", {L"Sans-serif (Helvetica)", L"Serif (Times)", L"Monospaced (Courier)"}, L"", static_cast<int>(hit.style.family)};
+                wchar_t sz[16];
+                swprintf(sz, 16, L"%.1f", hit.style.sizePt);
+                f[1] = {FormField::Text, L"Size (pt):", {}, sz};
+                f[2] = {FormField::Check, L"Bold", {}, L"", 0, hit.style.bold};
+                f[3] = {FormField::Check, L"Italic", {}, L"", 0, hit.style.italic};
+                std::vector<std::wstring> colours{L"Keep the colour"};
+                for (const wchar_t* n : kPaletteNames) colours.push_back(n);
+                f[4] = {FormField::Choice, L"Colour:", colours, L"", 0};
+                f[5] = {FormField::Choice, L"Alignment:", {L"Left", L"Centre", L"Right", L"Justified"}, L"", 0};
+                if (showForm(app.wnd, app.inst, L"Paragraph style", f, L"Apply", [](const std::vector<FormField>& v) -> std::wstring {
+                        wchar_t* end = nullptr; double x = wcstod(v[1].text.c_str(), &end);
+                        return (end == v[1].text.c_str() || *end || x < 4 || x > 200) ? L"Type a size between 4 and 200 points." : L""; })) {
+                    pageobj::TextStyle st = hit.style;
+                    st.family = static_cast<pageobj::Family>(f[0].choice);
+                    st.sizePt = wcstod(f[1].text.c_str(), nullptr);
+                    st.bold = f[2].checked; st.italic = f[3].checked;
+                    if (f[4].choice > 0) st.color = kPalette[f[4].choice - 1];
+                    if (!pageobj::isLatin(text)) MessageBoxW(app.wnd, L"Paragraphs can use letters, numbers and common symbols of Western languages. Please remove other characters.", kAppName, MB_OK | MB_ICONINFORMATION);
+                    else if (pageobj::replaceParagraph(d, hit, text, st, static_cast<pageobj::Align>(f[5].choice))) { app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); }
+                    else MessageBoxW(app.wnd, L"The paragraph could not be changed.", kAppName, MB_OK | MB_ICONWARNING);
+                }
+            }
+            setTool(Viewer::Tool::EditPara);
+            return true;
+        }
         case Viewer::Tool::TableEdit: {
             pageobj::TableHit hit = pageobj::tableAt(d, e.page, e.pts.front().x, e.pts.front().y);
             if (!hit.found) { MessageBoxW(app.wnd, L"No table made by Feather PDF was found there.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
@@ -3906,7 +3952,8 @@ void commandPalette() {
         add(L"Presentation", [] { setFullscreen(true, true); });
         add(L"Bookmarks panel", [] { showSidebar(Sidebar::Mode::Bookmarks); });
         add(L"Thumbnails panel", [] { showSidebar(Sidebar::Mode::Pages); });
-        add(L"Edit text", [] { toolsDispatch(T_EDIT_TEXT); });
+        add(L"Edit text (one line)", [] { toolsDispatch(T_EDIT_TEXT); });
+        add(L"Edit paragraph", [] { toolsDispatch(N_EDITPARA); });
         add(L"Add text box", [] { toolsDispatch(T_ADD_TEXT); });
         add(L"Insert table", [] { tableInsert(); });
         add(L"Edit a table", [] { tableEdit(); });
@@ -4374,6 +4421,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             switch (w) {
                 case VK_F11: setFullscreen(!app.fullscreen, false); return 0;
                 case VK_F5: setFullscreen(true, true); return 0;
+                case VK_F2: setTool(Viewer::Tool::EditPara); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
                 case VK_DELETE:
                     if (app.sidebar.thumbsFocused() && !app.sidebar.selection().empty()) deleteThumbPages(*d, app.sidebar.selectedPages());

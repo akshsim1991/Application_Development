@@ -584,4 +584,224 @@ bool removeTable(Document& d, int page, const std::string& id, bool track) {
     return true;
 }
 
+
+// ---- paragraphs ----
+namespace {
+struct Line { double l, b, r, t, size; std::wstring text; std::vector<int> idx; FPDF_PAGEOBJECT first; };
+
+std::wstring textOfObject(FPDF_TEXTPAGE tp, FPDF_PAGEOBJECT o) {
+    const auto& api = pdfium::api();
+    unsigned long bytes = api.FPDFTextObj_GetText(o, tp, nullptr, 0);
+    if (bytes < 2) return {};
+    std::vector<unsigned short> buf(bytes / 2 + 1);
+    api.FPDFTextObj_GetText(o, tp, buf.data(), bytes);
+    return std::wstring(buf.begin(), buf.begin() + (bytes / 2 - 1));
+}
+} // namespace
+
+ParagraphHit paragraphAt(Document& d, int page, double x, double y) {
+    ParagraphHit hit;
+    FPDF_PAGE pg = d.page(page);
+    FPDF_TEXTPAGE tp = d.text(page);
+    if (!pg || !tp) return hit;
+    const auto& api = pdfium::api();
+    // 1. every text object, with its size taken from the font size and the text matrix
+    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; };
+    std::vector<Obj> objs;
+    const int n = api.FPDFPage_CountObjects(pg);
+    for (int i = 0; i < n; ++i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+        float l, b, r, t;
+        if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+        std::wstring text = textOfObject(tp, o);
+        if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) continue;
+        float fs = 0;
+        api.FPDFTextObj_GetFontSize(o, &fs);
+        FS_MATRIX m{1, 0, 0, 1, 0, 0};
+        api.FPDFPageObj_GetMatrix(o, &m);
+        const double scale = std::sqrt(static_cast<double>(m.b) * m.b + static_cast<double>(m.d) * m.d);
+        objs.push_back({i, l, b, r, t, fs * (scale > 0.01 ? scale : 1.0), text, o});
+    }
+    // 2. lines: objects on one baseline, left to right
+    std::vector<Line> lines;
+    std::vector<char> used(objs.size(), 0);
+    std::vector<size_t> order(objs.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return objs[a].t != objs[b].t ? objs[a].t > objs[b].t : objs[a].l < objs[b].l; });
+    for (size_t oi : order) {
+        if (used[oi]) continue;
+        Line ln{objs[oi].l, objs[oi].b, objs[oi].r, objs[oi].t, objs[oi].size, objs[oi].text, {objs[oi].idx}, objs[oi].o};
+        used[oi] = 1;
+        std::vector<size_t> same;
+        for (size_t oj : order) if (!used[oj] && std::fabs(objs[oj].b - objs[oi].b) < 0.4 * objs[oi].size && std::fabs(objs[oj].size - objs[oi].size) < 0.15 * objs[oi].size) same.push_back(oj);
+        std::sort(same.begin(), same.end(), [&](size_t a, size_t b) { return objs[a].l < objs[b].l; });
+        for (size_t oj : same) {
+            const double gap = objs[oj].l - ln.r;
+            if (gap > 2.5 * objs[oi].size || gap < -0.3 * objs[oi].size) continue;   // another column or overlapping
+            ln.text += (gap > 0.15 * objs[oi].size && !ln.text.empty() && ln.text.back() != L' ' ? L" " : L"") + objs[oj].text;
+            ln.r = std::max(ln.r, objs[oj].r); ln.t = std::max(ln.t, objs[oj].t); ln.b = std::min(ln.b, objs[oj].b);
+            ln.idx.push_back(objs[oj].idx);
+            used[oj] = 1;
+        }
+        lines.push_back(ln);
+    }
+    std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.t > b.t; });
+    // 3. the line under the click
+    int hitLine = -1;
+    double best = 1e18;
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const Line& ln = lines[i];
+        if (x < ln.l - 2 || x > ln.r + 2 || y < ln.b - 2 || y > ln.t + 2) continue;
+        const double area = (ln.r - ln.l) * (ln.t - ln.b);
+        if (area < best) { best = area; hitLine = static_cast<int>(i); }
+    }
+    if (hitLine < 0) return hit;
+    // 4. neighbouring lines of the same paragraph
+    auto joins = [&](const Line& above, const Line& below) {
+        const double size = above.size;
+        if (std::fabs(above.size - below.size) > 0.1 * size) return false;
+        const double step = above.b - below.b;
+        if (step < 0.8 * size || step > 2.1 * size) return false;
+        const double indent = below.l - above.l;
+        if (std::fabs(indent) > 0.6 * size && !(indent > 0 && indent < 3.5 * size) && !(indent < 0 && indent > -3.5 * size)) return false;
+        return below.r >= above.l && below.l <= above.r;
+    };
+    int first = hitLine, last = hitLine;
+    while (first > 0 && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
+    while (last + 1 < static_cast<int>(lines.size()) && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
+    hit.found = true;
+    hit.page = page;
+    hit.lines = last - first + 1;
+    double l = 1e9, r = -1e9;
+    std::wstring text;
+    for (int i = first; i <= last; ++i) {
+        const Line& ln = lines[i];
+        for (int ix : ln.idx) hit.objects.push_back(ix);
+        l = std::min(l, ln.l); r = std::max(r, ln.r);
+        std::wstring t = ln.text;
+        while (!t.empty() && t.back() == L' ') t.pop_back();
+        if (!text.empty()) {
+            if (text.size() > 1 && text.back() == L'-' && iswalpha(text[text.size() - 2]) && !t.empty() && iswlower(t[0])) text.pop_back();   // a word broken at the line end
+            else text += L' ';
+        }
+        text += t;
+    }
+    hit.text = text;
+    hit.left = l; hit.top = lines[first].t; hit.width = r - l;
+    hit.lineHeight = last > first ? (lines[first].b - lines[last].b) / (last - first) : lines[first].size * 1.2;
+    // style from the first line's first object
+    FPDF_PAGEOBJECT o = lines[first].first;
+    FPDF_FONT font = api.FPDFTextObj_GetFont(o);
+    std::string fname;
+    unsigned long flags = 0;
+    if (font) {
+        flags = static_cast<unsigned long>(api.FPDFFont_GetFlags(font));
+        size_t len = api.FPDFFont_GetBaseFontName(font, nullptr, 0);
+        if (len > 1) { fname.assign(len, '\0'); api.FPDFFont_GetBaseFontName(font, fname.data(), len); fname.resize(strlen(fname.c_str())); }
+    }
+    auto has = [&](const char* s) { std::string lo = fname; for (auto& ch : lo) ch = static_cast<char>(tolower(ch)); return lo.find(s) != std::string::npos; };
+    Family fam = Family::Sans;
+    if (has("courier") || has("mono") || has("consolas") || (flags & 1)) fam = Family::Mono;
+    else if (has("times") || has("serif") || has("georgia") || has("garamond") || has("cambria") || has("minion") || has("palatino") || (flags & 2)) fam = has("sans") ? Family::Sans : Family::Serif;
+    hit.style.family = fam;
+    hit.style.bold = has("bold") || has("black") || has("heavy") || (flags & 262144);
+    hit.style.italic = has("italic") || has("oblique") || (flags & 64);
+    hit.style.sizePt = std::round(lines[first].size * 2) / 2;
+    unsigned R = 0, G = 0, B = 0, A = 255;
+    api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
+    hit.style.color = RGB(R, G, B);
+    return hit;
+}
+
+bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& st, Align align) {
+    FPDF_PAGE pg = d.page(hit.page);
+    if (!pg || !isLatin(text) || hit.width < 10) return false;
+    const auto& api = pdfium::api();
+    const char* font = standardFont(st.family, st.bold, st.italic);
+    const double unit = textWidth(d, font, L"M") / 100.0;   // width of an "M" per point of size, to cut long words if ever needed
+    (void)unit;
+    auto widthOf = [&](const std::wstring& s) { return textWidth(d, font, s) * st.sizePt / 100.0; };
+    // break the text into lines that fit the width; a newline always starts a new line
+    std::vector<std::pair<std::wstring, bool>> lines;   // text, ends the paragraph
+    for (const std::wstring& para : splitLines(text)) {
+        std::wstring cur;
+        size_t pos = 0;
+        bool anyWord = false;
+        while (pos <= para.size()) {
+            size_t sp = para.find(L' ', pos);
+            std::wstring word = para.substr(pos, sp == std::wstring::npos ? std::wstring::npos : sp - pos);
+            if (!word.empty()) {
+                anyWord = true;
+                const std::wstring cand = cur.empty() ? word : cur + L" " + word;
+                if (cur.empty() || widthOf(cand) <= hit.width) cur = cand;
+                else { lines.push_back({cur, false}); cur = word; }
+            }
+            if (sp == std::wstring::npos) break;
+            pos = sp + 1;
+        }
+        if (anyWord || para.empty()) lines.push_back({cur, true});
+    }
+    const double lh = st.sizePt * (hit.lineHeight > 0 ? std::clamp(hit.lineHeight / std::max(1.0, st.sizePt), 1.0, 2.0) : 1.2);
+    // remove the old lines (last object first so the indices stay valid), then set the new ones
+    d.beginChange();
+    pg = d.page(hit.page);
+    std::vector<int> idx = hit.objects;
+    std::sort(idx.begin(), idx.end(), std::greater<int>());
+    for (int i : idx) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (o && api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
+    }
+    const double vw = d.pageSize(hit.page).w, vh = d.pageSize(hit.page).h;
+    const double S = 100.0;
+    int dx = 0, dy = 0;
+    api.FPDF_PageToDevice(pg, 0, 0, static_cast<int>(vw * S), static_cast<int>(vh * S), 0, hit.left, hit.top, &dx, &dy);
+    const double vx = dx / S;
+    double lineTop = dy / S;
+    bool any = false;
+    for (auto& ln : lines) {
+        if (!ln.first.empty()) {
+            std::wstring t = ln.first;
+            FPDF_PAGEOBJECT o = makeText(d, font, st.sizePt, t, st.color, 100);
+            if (o) {
+                float l, b, r, tp;
+                api.FPDFPageObj_GetBounds(o, &l, &b, &r, &tp);
+                const double tw = r - l, th = tp - b;
+                double x0 = vx;
+                if (align == Align::Right) x0 = vx + hit.width - tw;
+                else if (align == Align::Centre) x0 = vx + (hit.width - tw) / 2;
+                else if (align == Align::Justify && !ln.second && t.find(L' ') != std::wstring::npos) {
+                    // spread the words: stretch the line to the full width with extra word spacing (done with several objects)
+                    api.FPDFPageObj_Destroy(o);
+                    std::vector<std::wstring> words;
+                    size_t p0 = 0;
+                    while (p0 <= t.size()) { size_t sp = t.find(L' ', p0); words.push_back(t.substr(p0, sp == std::wstring::npos ? std::wstring::npos : sp - p0)); if (sp == std::wstring::npos) break; p0 = sp + 1; }
+                    double total = 0;
+                    for (auto& w : words) total += widthOf(w);
+                    const double gap = words.size() > 1 ? (hit.width - total) / (words.size() - 1) : 0;
+                    double cx = vx;
+                    for (auto& w : words) {
+                        FPDF_PAGEOBJECT wo = makeText(d, font, st.sizePt, w, st.color, 100);
+                        if (!wo) continue;
+                        float wl, wb, wr, wt;
+                        api.FPDFPageObj_GetBounds(wo, &wl, &wb, &wr, &wt);
+                        if (place(pg, wo, vw, vh, cx + (wr - wl) / 2, lineTop + (wt - wb) / 2, 0)) { api.FPDFPage_InsertObject(pg, wo); any = true; }
+                        else api.FPDFPageObj_Destroy(wo);
+                        cx += widthOf(w) + gap;
+                    }
+                    lineTop += lh;
+                    continue;
+                }
+                if (place(pg, o, vw, vh, x0 + tw / 2, lineTop + th / 2, 0)) { api.FPDFPage_InsertObject(pg, o); any = true; }
+                else api.FPDFPageObj_Destroy(o);
+            }
+        }
+        lineTop += lh;
+    }
+    if (!any && !text.empty()) { d.undo(); return false; }   // nothing could be placed: put the old lines back
+    api.FPDFPage_GenerateContent(pg);
+    d.resetText(hit.page);
+    return true;
+}
+
 } // namespace pageobj

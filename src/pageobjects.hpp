@@ -63,6 +63,23 @@ bool replaceText(Document& d, int page, int objectIndex, const std::wstring& tex
 // One undo step. Returns the number of replacements; `pages` lists the pages that changed.
 int replaceAll(Document& d, const std::wstring& find, const std::wstring& with, bool matchCase, std::vector<int>& pages);
 
+// ---- paragraphs ----
+enum class Align { Left, Centre, Right, Justify };
+struct ParagraphHit {
+    bool found = false;
+    int page = 0;
+    std::vector<int> objects;       // the text objects that make up the paragraph, lines top to bottom
+    std::wstring text;              // the lines joined into running text
+    double left = 0, top = 0, width = 0, lineHeight = 0;   // page coordinates / points
+    TextStyle style;                // the closest standard font, size and colour
+    int lines = 0;
+};
+// The paragraph (consecutive lines with the same size and left edge) around a page point.
+ParagraphHit paragraphAt(Document& d, int page, double x, double y);
+// Replaces the paragraph by `text` set in `style` inside the same width. One undo step. False when the text uses characters
+// the standard fonts lack (the document is then unchanged).
+bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style, Align align);
+
 // ---- tables drawn on the page (kept recognisable through a mark, so they can be edited or deleted later) ----
 struct TableSpec {
     int rows = 3, cols = 3;

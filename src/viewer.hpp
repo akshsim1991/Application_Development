@@ -37,7 +37,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, FormText, FormCheck, FormCombo, Ruler, Protractor };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, FormText, FormCheck, FormCombo, Ruler, Protractor };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;

@@ -70,13 +70,19 @@ FeatherPDF.exe --fonts in.pdf report.txt                  fonts used, pages with
 
 Test modes used by `tests/smoke.sh`: `--formtest`, `--annottest`, `--pictest`, `--printsheet`.
 
+## User guide
+
+`docs/Feather PDF User Guide.pdf` explains the window, the toolbar icons and every feature, with screenshots and the full
+shortcut and command-line lists. It is installed next to the program (F1 or … > User guide opens it). Rebuild it with
+`python3 scripts/make_user_guide.py` (pictures in `docs/guide/`).
+
 ## Shortcuts
 
 Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+S save · Ctrl+Shift+S save as · Ctrl+Z / Ctrl+Y undo / redo ·
 Ctrl+F find · F3 / Shift+F3 next / previous match · Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all ·
 Ctrl+B bookmarks · Ctrl+Shift+B thumbnails · Ctrl+H highlight · Ctrl+U underline · Ctrl+Shift+K strikethrough ·
 Ctrl+M comment · Ctrl+E edit text · Del delete selected annotation · Ctrl+P print · Ctrl+D properties ·
-Ctrl+Shift+U read aloud · F11 full screen · F5 presentation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
+Ctrl+Shift+P print preview · F1 user guide · Ctrl+Shift+U read aloud · F11 full screen · F5 presentation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
 
 ## Building
 

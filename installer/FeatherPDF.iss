@@ -43,9 +43,11 @@ Source: "{#BuildDir}\pdfium.dll"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BuildDir}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs
 Source: "{#BuildDir}\tessdata\*"; DestDir: "{app}\tessdata"; Flags: ignoreversion recursesubdirs skipifsourcedoesntexist
 Source: "..\THIRD_PARTY_NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\docs\Feather PDF User Guide.pdf"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
+Name: "{autoprograms}\{#AppName} User Guide"; Filename: "{app}\{#AppExe}"; Parameters: """{app}\Feather PDF User Guide.pdf"""
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]

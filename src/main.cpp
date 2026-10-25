@@ -1607,6 +1607,22 @@ void readAloud() {
 
 void printDocument();
 
+// The user guide is installed next to the program; it opens in a tab like any PDF.
+void openUserGuide() {
+    wchar_t exe[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring dir = exe;
+    dir.resize(dir.find_last_of(L"\\/") + 1);
+    const std::wstring guide = dir + L"Feather PDF User Guide.pdf";
+    if (GetFileAttributesW(guide.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        MessageBoxW(app.wnd, L"The user guide (Feather PDF User Guide.pdf) was not found next to the program. Reinstalling Feather PDF puts it back.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    for (size_t i = 0; i < app.tabs.size(); ++i)
+        if (_wcsicmp(app.tabs[i]->path().c_str(), guide.c_str()) == 0) { switchTab(static_cast<int>(i)); return; }
+    openFile(guide);
+}
+
 // The pages as they will print on the default printer's paper (A4 when there is no printer), one per sheet.
 void printPreview() {
     Document* d = activeDoc();
@@ -2763,7 +2779,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW, MM_GUIDE, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
@@ -2847,6 +2863,7 @@ void showMainMenu(const RECT& anchor) {
     add(MM_PALETTE, L"Command palette...\tCtrl+K");
     add(MM_SETTINGS, L"Settings...");
     add(MM_DEFAULT, L"Set as default PDF viewer...");
+    add(MM_GUIDE, L"User guide\tF1");
     add(MM_ABOUT, L"About Feather PDF");
     add(MM_EXIT, L"Exit\tCtrl+Q");
     POINT pt{anchor.right, anchor.bottom};
@@ -2863,6 +2880,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_REDO: undoRedo(true); break;
         case MM_PRINT: printDocument(); break;
         case MM_PREVIEW: printPreview(); break;
+        case MM_GUIDE: openUserGuide(); break;
         case MM_PROPS: showProperties(); break;
         case MM_READ: readAloud(); break;
         case MM_SELALL: app.viewer.selectAll(); break;
@@ -4636,6 +4654,7 @@ void commandPalette() {
         add(L"Close tab", [] { closeTab(app.active); });
         add(L"Print", [] { printDocument(); });
         add(L"Print preview", [] { printPreview(); });
+        add(L"User guide (how to use Feather PDF)", [] { openUserGuide(); });
         add(L"Document properties", [] { showProperties(); });
         add(L"Find", [] { runCommand(C_FIND); });
         add(L"Find and replace text", [] { doFindReplace(); });
@@ -5138,6 +5157,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                         return 0;
                 }
             }
+            if (w == VK_F1) { openUserGuide(); return 0; }
             if (!d) return 0;
             switch (w) {
                 case VK_F11: setFullscreen(!app.fullscreen, false); return 0;

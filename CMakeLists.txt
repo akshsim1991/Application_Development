@@ -59,6 +59,9 @@ if(MINGW)
   target_link_options(FeatherPDF PRIVATE -municode -static -static-libgcc -static-libstdc++)
 endif()
 
+# The user guide sits next to the exe (Help: User guide, F1).
+add_custom_command(TARGET FeatherPDF POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different "${CMAKE_SOURCE_DIR}/docs/Feather PDF User Guide.pdf" "$<TARGET_FILE_DIR:FeatherPDF>/Feather PDF User Guide.pdf")
 # Ship pdfium.dll and the licenses next to the exe (the exe finds them there at run time).
 add_custom_command(TARGET FeatherPDF POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PDFIUM_DIR}/bin/pdfium.dll" "$<TARGET_FILE_DIR:FeatherPDF>"

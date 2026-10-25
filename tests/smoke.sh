@@ -171,6 +171,19 @@ r=[float(x) for x in re.search(r'rotate ok index=\d+ box=([-\d,]+)',t).group(1).
 assert abs((o[2]-o[0])-(r[3]-r[1]))<2 and abs((o[3]-o[1])-(r[2]-r[0]))<2\""
 check "extracted picture"           "python3 -c \"from PIL import Image;assert Image.open('$work/pt-extract.png').size[0]>1000\""
 
+echo "print layout (as the preview shows it)"
+python3 -c "
+import pikepdf
+p=pikepdf.open('$work/img.pdf')
+for i in range(4): p.pages.append(p.pages[0])
+p.save('$work/five.pdf')"
+run --printsheet "$(W five.pdf)" "$(W sheet.png)" 4 grey
+check "4 per sheet: 2 sheets for 5 pages" "grep -q 'sheets=2 ' '$work/sheet.png.txt'"
+check "greyscale sheet"             "python3 -c \"
+from PIL import Image
+im=Image.open('$work/sheet.png').convert('RGB')
+assert all(max(p)-min(p)<=2 for p in im.get_flattened_data()) and min(min(p) for p in im.get_flattened_data())<128\""
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""

@@ -44,6 +44,7 @@
 #include "ocr.hpp"
 #include "sign.hpp"
 #include "picture.hpp"
+#include "printing.hpp"
 
 namespace {
 
@@ -1504,7 +1505,9 @@ void printDocument() {
     int defIdx = 0;
     for (size_t i = 0; i < printers.size(); ++i) if (printers[i] == def) defIdx = static_cast<int>(i);
 
-    std::vector<FormField> f(7);
+    static int lastColour = 0, lastDuplex = 0;
+    static bool lastPreview = true;
+    std::vector<FormField> f(10);
     f[0] = {FormField::Choice, L"Printer:", printers, L"", defIdx};
     f[1] = {FormField::Choice, L"Pages:", {L"All pages", L"Current page", L"Page range"}, L"", 0};
     f[2] = {FormField::Text, L"Range (such as 1-3, 5, 8-):", {}, L""};
@@ -1512,6 +1515,10 @@ void printDocument() {
     f[4] = {FormField::Choice, L"Layout:", {L"1 page per sheet", L"2 pages per sheet", L"4 pages per sheet", L"6 pages per sheet", L"9 pages per sheet"}, L"", 0};
     f[5] = {FormField::Choice, L"Size:", {L"Fit to the paper", L"Actual size"}, L"", 0};
     f[6] = {FormField::Choice, L"Orientation:", {L"Automatic (as the pages)", L"Portrait", L"Landscape"}, L"", 0};
+    f[7] = {FormField::Choice, L"Colour:", {L"Colour", L"Black and white (shades of grey)"}, L"", lastColour};
+    f[8] = {FormField::Choice, L"Sides:", {L"One-sided", L"Two-sided, flip on the long edge", L"Two-sided, flip on the short edge"}, L"", lastDuplex};
+    f[9] = {FormField::Check, L"Show a preview first", {}, L"", 0, lastPreview};
+    f.push_back({FormField::Check, L"Open the printer's own settings (Properties) first", {}, L"", 0, false});
     g_formDoc = d;
     bool ok = showForm(app.wnd, app.inst, L"Print", f, L"Print", [](const std::vector<FormField>& v) -> std::wstring {
         wchar_t* end = nullptr;
@@ -1522,15 +1529,20 @@ void printDocument() {
     });
     g_formDoc = nullptr;
     if (!ok) return;
+    lastColour = f[7].choice; lastDuplex = f[8].choice; lastPreview = f[9].checked;
 
     std::vector<int> pages;
     if (f[1].choice == 0) { for (int i = 0; i < d->pageCount(); ++i) pages.push_back(i); }
     else if (f[1].choice == 1) pages.push_back(app.viewer.currentPage());
     else pages = d->parseRange(f[2].text);
     const int copies = static_cast<int>(wcstol(f[3].text.c_str(), nullptr, 10));
-    static const int perSheet[] = {1, 2, 4, 6, 9}, cols[] = {1, 2, 2, 2, 3}, rowsN[] = {1, 1, 2, 3, 3};
-    const int nup = perSheet[f[4].choice], gc = cols[f[4].choice], gr = rowsN[f[4].choice];
-    const bool actual = f[5].choice == 1;
+    static const int perSheet[] = {1, 2, 4, 6, 9};
+    printing::Layout lay;
+    lay.pages = pages;
+    lay.perSheet = perSheet[f[4].choice];
+    lay.actualSize = f[5].choice == 1;
+    lay.autoRotate = f[6].choice == 0;
+    lay.grey = f[7].choice == 1;
     const std::wstring& pname = printers[f[0].choice];
 
     // orientation: choose from the first page when automatic
@@ -1538,9 +1550,11 @@ void printDocument() {
     if (!orient) {
         const PageSize& ps0 = d->pageSize(pages.front());
         bool land = ps0.w > ps0.h;
-        if (nup == 2) land = !land;   // two portrait pages sit side by side on a landscape sheet
+        if (lay.perSheet == 2) land = !land;   // two portrait pages sit side by side on a landscape sheet
         orient = land ? DMORIENT_LANDSCAPE : DMORIENT_PORTRAIT;
     }
+    if (f[8].choice && DeviceCapabilitiesW(pname.c_str(), nullptr, DC_DUPLEX, nullptr, nullptr) != 1)
+        MessageBoxW(app.wnd, L"This printer does not say it can print on both sides. Feather PDF asks for two-sided printing anyway; if the pages come out one-sided, choose two-sided in the printer's own settings (Properties).", kAppName, MB_OK | MB_ICONINFORMATION);
     HDC dc = nullptr;
     HANDLE hp = nullptr;
     std::vector<BYTE> dm;
@@ -1550,9 +1564,15 @@ void printDocument() {
             dm.resize(sz);
             auto* dev = reinterpret_cast<DEVMODEW*>(dm.data());
             if (DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, nullptr, DM_OUT_BUFFER) == IDOK) {
-                dev->dmFields |= DM_ORIENTATION;
+                dev->dmFields |= DM_ORIENTATION | DM_COLOR | DM_DUPLEX;
                 dev->dmOrientation = static_cast<short>(orient);
-                DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, dev, DM_IN_BUFFER | DM_OUT_BUFFER);
+                dev->dmColor = static_cast<short>(lay.grey ? DMCOLOR_MONOCHROME : DMCOLOR_COLOR);
+                // long-edge flipping is "vertical" on portrait sheets and "horizontal" on landscape ones
+                const bool longEdge = f[8].choice == 1, land = orient == DMORIENT_LANDSCAPE;
+                dev->dmDuplex = static_cast<short>(!f[8].choice ? DMDUP_SIMPLEX : (longEdge != land ? DMDUP_VERTICAL : DMDUP_HORIZONTAL));
+                DWORD mode = DM_IN_BUFFER | DM_OUT_BUFFER | (f[10].checked ? DM_IN_PROMPT : 0);
+                if (DocumentPropertiesW(app.wnd, hp, const_cast<wchar_t*>(pname.c_str()), dev, dev, mode) == IDCANCEL) { ClosePrinter(hp); return; }
+                if (f[10].checked) lay.grey = lay.grey || ((dev->dmFields & DM_COLOR) && dev->dmColor == DMCOLOR_MONOCHROME);   // greyscale chosen in Properties
                 dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, dev);
             }
         }
@@ -1560,38 +1580,23 @@ void printDocument() {
     }
     if (!dc) dc = CreateDCW(L"WINSPOOL", pname.c_str(), nullptr, nullptr);
     if (!dc) { MessageBoxW(app.wnd, L"The printer could not be opened. Check that it is on and connected.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    const printing::Paper paper = printing::paperOf(dc);
+    if (f[9].checked && !printing::preview(app.wnd, app.inst, *d, lay, paper, pname, copies)) { DeleteDC(dc); return; }
 
     DOCINFOW di{sizeof(di)};
     std::wstring name = d->title();
     di.lpszDocName = name.c_str();
     bool good = StartDocW(dc, &di) > 0;
-    const int areaW = GetDeviceCaps(dc, HORZRES), areaH = GetDeviceCaps(dc, VERTRES);
-    const double ppp = GetDeviceCaps(dc, LOGPIXELSX) / 72.0;   // device pixels per point
+    const int sheets = printing::sheetCount(lay);
     HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
     for (int c = 0; good && c < copies; ++c) {
-        for (size_t k = 0; good && k < pages.size(); k += nup) {
+        for (int k = 0; good && k < sheets; ++k) {
             if (StartPage(dc) <= 0) { good = false; break; }
-            const int cw = areaW / gc, ch = areaH / gr, pad = nup > 1 ? 12 : 0;
-            for (int s = 0; s < nup && k + s < pages.size(); ++s) {
-                FPDF_PAGE pg = d->page(pages[k + s]);
-                if (!pg) continue;
-                const PageSize& ps = d->pageSize(pages[k + s]);
-                const int cx = (s % gc) * cw + pad, cy = (s / gc) * ch + pad, aw = cw - 2 * pad, ah = ch - 2 * pad;
-                bool rotate = false;
-                double pw = ps.w, ph = ps.h;
-                if (nup == 1 && f[6].choice == 0 && (ps.w > ps.h) != (aw > ah)) { rotate = true; std::swap(pw, ph); }
-                double sc = actual && nup == 1 ? ppp : std::min(aw / pw, ah / ph);
-                int w = static_cast<int>(pw * sc), h = static_cast<int>(ph * sc);
-                int x = cx + (aw - w) / 2, y = cy + (ah - h) / 2;
-                if (actual && nup == 1) { x = std::max(0, x); y = std::max(0, y); }
-                pdfium::api().FPDF_RenderPage(dc, pg, x, y, w, h, rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
-                if (nup > 1) {   // thin frame so the sheets are easy to tell apart
-                    HGDIOBJ op = SelectObject(dc, GetStockObject(BLACK_PEN)), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
-                    Rectangle(dc, x, y, x + w, y + h);
-                    SelectObject(dc, ob); SelectObject(dc, op);
-                }
-            }
+            printing::printSheet(dc, *d, lay, k, paper);
             if (EndPage(dc) <= 0) good = false;
+        }
+        if (good && f[8].choice && sheets % 2 && c + 1 < copies) {   // two-sided: the next copy starts on a fresh sheet
+            if (StartPage(dc) <= 0 || EndPage(dc) <= 0) good = false;
         }
     }
     SetCursor(old);
@@ -5322,6 +5327,26 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (files.size() > 3) { std::wstring err; const std::wstring with = files[3]; run("replace", [&](Document& d, int o) { return pageobj::replacePicture(d, 0, o, with, err); }); }
         run("extract", [&](Document& d, int o) { return pageobj::savePicture(d, 0, o, files[2] + L"-extract.png"); });
         return Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--printsheet") {   // --printsheet in.pdf out.png perSheet [grey] : sheet 1 on A4 at 100 dpi, as the preview shows it
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        printing::Layout lay;
+        for (int i = 0; i < doc.pageCount(); ++i) lay.pages.push_back(i);
+        lay.perSheet = _wtoi(files[3].c_str());
+        lay.grey = files.size() > 4 && files[4] == L"grey";
+        printing::Paper p;   // A4 portrait at 600 dpi with 1/4 inch margins (landscape for 2 per sheet)
+        p.physW = 4961; p.physH = 7016; p.offX = p.offY = 150; p.ppp = 600 / 72.0;
+        if (lay.perSheet == 2) { std::swap(p.physW, p.physH); }
+        p.areaW = p.physW - 300; p.areaH = p.physH - 300;
+        std::vector<unsigned char> px;
+        int w, h;
+        if (!printing::renderSheet(doc, lay, 0, p, 100.0 / 600, px, w, h)) return 4;
+        std::string rep = "sheets=" + std::to_string(printing::sheetCount(lay)) + " size=" + std::to_string(w) + "x" + std::to_string(h) + "\n";
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        const bool ok = printing::savePng(px, w, h, files[2]);
+        return ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
         if (files.size() < 3) return 2;

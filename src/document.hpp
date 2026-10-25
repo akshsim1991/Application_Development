@@ -88,6 +88,7 @@ public:
     // Change tracking. Call beginChange() BEFORE modifying the document: it stores an undo step.
     // A change that turns out to be a no-op can be dropped with cancelChange().
     bool dirty() const { return dirty_; }
+    void markModified() { dirty_ = true; ++revision_; }   // for documents restored with changes that were never saved
     void beginChange();
     void cancelChange();
     bool canUndo() const { return !undo_.empty(); }

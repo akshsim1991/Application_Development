@@ -18,6 +18,8 @@
 #include "sidebar.hpp"
 #include "outline.hpp"
 #include <sstream>
+#include <map>
+#include <set>
 #include "sigpad.hpp"
 #include "theme.hpp"
 #include <dwmapi.h>
@@ -36,7 +38,7 @@
 namespace {
 
 constexpr int kTabH = 34, kToolH = 40, kFindH = 38, kSideW = 230;
-enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1 };
+enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; };
@@ -80,6 +82,8 @@ struct App {
     pageobj::TableSpec pendingTable;
     annot::PointD protVertex{}, protArm{}; int protStage = 0, protPage = 0;
     double pendingPictureWidth = 0;
+    struct Pos { std::wstring path; double zoom; int scrollY; bool fit; };
+    std::vector<Pos> positions;                       // where each file was last read, most recent first
 
     HBRUSH ctlBrush = nullptr;
 } app;
@@ -89,6 +93,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
+void writeSession(); void clearSession(); bool restoreSession();
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
@@ -179,9 +184,17 @@ void switchTab(int i) {
 
 bool confirmClose(Document& d);
 
+void rememberPosition(const Document& d) {
+    if (d.path().empty()) return;
+    app.positions.erase(std::remove_if(app.positions.begin(), app.positions.end(), [&](const App::Pos& p) { return _wcsicmp(p.path.c_str(), d.path().c_str()) == 0; }), app.positions.end());
+    app.positions.insert(app.positions.begin(), {d.path(), d.zoom, d.scrollY, d.fitWidth});
+    if (app.positions.size() > 100) app.positions.resize(100);
+}
+
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     if (!confirmClose(*app.tabs[i])) return;
+    rememberPosition(*app.tabs[i]);
     if (i == app.active) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
     if (app.tabs.empty()) { app.active = -1; setActiveDocument(nullptr); }
@@ -325,6 +338,17 @@ void loadSettings() {
     app.textStyle.bold = num(L"textBold", 0) != 0;
     app.textStyle.italic = num(L"textItalic", 0) != 0;
     app.textStyle.sizePt = std::clamp(num(L"textSize", 14), 6, 144);
+    app.positions.clear();
+    for (int i = 0; i < 100; ++i) {
+        wchar_t key[16], buf[MAX_PATH * 2 + 64];
+        swprintf(key, 16, L"p%d", i);
+        GetPrivateProfileStringW(L"positions", key, L"", buf, MAX_PATH * 2 + 64, p.c_str());
+        if (!buf[0]) break;
+        std::wstring v = buf;
+        size_t a = v.rfind(L'|'), b = a == std::wstring::npos ? a : v.rfind(L'|', a - 1), c = b == std::wstring::npos ? b : v.rfind(L'|', b - 1);
+        if (c == std::wstring::npos) continue;
+        app.positions.push_back({v.substr(0, c), wcstod(v.substr(c + 1, b - c - 1).c_str(), nullptr), static_cast<int>(wcstol(v.substr(b + 1, a - b - 1).c_str(), nullptr, 10)), v.substr(a + 1) == L"1"});
+    }
     app.recent.clear();
     for (int i = 0; i < 10; ++i) {
         wchar_t key[16], buf[MAX_PATH * 2];
@@ -352,6 +376,13 @@ void saveSettings() {
     put(L"view", L"textBold", app.textStyle.bold);
     put(L"view", L"textItalic", app.textStyle.italic);
     put(L"view", L"textSize", static_cast<int>(app.textStyle.sizePt));
+    WritePrivateProfileStringW(L"positions", nullptr, nullptr, p.c_str());
+    for (size_t i = 0; i < app.positions.size() && i < 100; ++i) {
+        wchar_t key[16], val[MAX_PATH * 2 + 64];
+        swprintf(key, 16, L"p%d", static_cast<int>(i));
+        swprintf(val, MAX_PATH * 2 + 64, L"%ls|%.4f|%d|%d", app.positions[i].path.c_str(), app.positions[i].zoom, app.positions[i].scrollY, app.positions[i].fit ? 1 : 0);
+        WritePrivateProfileStringW(L"positions", key, val, p.c_str());
+    }
     WritePrivateProfileStringW(L"recent", nullptr, nullptr, p.c_str());   // rewrite the whole section
     for (size_t i = 0; i < app.recent.size() && i < 10; ++i) {
         wchar_t key[16];
@@ -394,6 +425,8 @@ void openFile(const std::wstring& pathIn) {
     addRecent(path);
     const bool badSig = std::any_of(doc->signatures().begin(), doc->signatures().end(),
                                     [](const sign::Status& s) { return s.kind == sign::Status::Changed || s.kind == sign::Status::Unreadable; });
+    for (const auto& ps : app.positions)
+        if (_wcsicmp(ps.path.c_str(), path.c_str()) == 0) { doc->zoom = ps.zoom; doc->scrollY = ps.scrollY; doc->fitWidth = ps.fit; break; }
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
     if (badSig) MessageBoxW(app.wnd, L"A digital signature in this document does not match: the document was changed after it was signed (or the signature is damaged). "
@@ -2450,6 +2483,126 @@ void addDocumentTab(std::unique_ptr<Document> doc) {
     switchTab(static_cast<int>(app.tabs.size()) - 1);
 }
 
+
+// ---- session: the open tabs and their unsaved changes are kept in %APPDATA%\FeatherPDF\session while the app runs ----
+std::wstring sessionDir() {
+    std::wstring s = settingsPath();
+    size_t p = s.find_last_of(L'\\');
+    return (p == std::wstring::npos ? L"" : s.substr(0, p)) + L"\\session";
+}
+
+void clearSession() {
+    const std::wstring dir = sessionDir();
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) DeleteFileW((dir + L"\\" + fd.cFileName).c_str()); } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    RemoveDirectoryW(dir.c_str());
+}
+
+void writeSession() {
+    if (app.tabs.empty()) { clearSession(); return; }
+    const std::wstring dir = sessionDir();
+    CreateDirectoryW(dir.c_str(), nullptr);
+    static std::map<Document*, std::pair<int, int>> written;   // document -> revision on disk, recovery file number
+    static int nextId = 1;
+    std::set<std::wstring> keep;
+    std::wstring ini;
+    int n = 0;
+    for (auto& t : app.tabs) {
+        Document& d = *t;
+        std::wstring rec;
+        if (d.dirty() && !d.isProtected()) {
+            auto it = written.find(&d);
+            if (it == written.end()) it = written.emplace(&d, std::make_pair(-1, nextId++)).first;
+            rec = L"rec_" + std::to_wstring(it->second.second) + L".pdf";
+            if (it->second.first != d.revision()) {
+                std::vector<unsigned char> bytes;
+                if (d.serialize(bytes) && Document::writeFile(dir + L"\\" + rec, bytes) == SaveResult::Ok) it->second.first = d.revision();
+                else rec.clear();
+            }
+            if (!rec.empty()) keep.insert(rec);
+        }
+        wchar_t sec[32], v[64];
+        swprintf(sec, 32, L"tab%d", n++);
+        const std::wstring ps = (dir + L"\\session.ini");
+        WritePrivateProfileStringW(sec, L"path", d.path().c_str(), ps.c_str());
+        WritePrivateProfileStringW(sec, L"name", d.title().c_str(), ps.c_str());
+        WritePrivateProfileStringW(sec, L"recovery", rec.c_str(), ps.c_str());
+        swprintf(v, 64, L"%.4f", d.zoom); WritePrivateProfileStringW(sec, L"zoom", v, ps.c_str());
+        WritePrivateProfileStringW(sec, L"scrollY", std::to_wstring(d.scrollY).c_str(), ps.c_str());
+        WritePrivateProfileStringW(sec, L"fit", d.fitWidth ? L"1" : L"0", ps.c_str());
+    }
+    WritePrivateProfileStringW(L"meta", L"count", std::to_wstring(n).c_str(), (dir + L"\\session.ini").c_str());
+    // remove tab sections and recovery files that no longer apply
+    for (int k = n; k < n + 20; ++k) { wchar_t sec[32]; swprintf(sec, 32, L"tab%d", k); WritePrivateProfileStringW(sec, nullptr, nullptr, (dir + L"\\session.ini").c_str()); }
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\rec_*.pdf").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { if (!keep.count(fd.cFileName)) DeleteFileW((dir + L"\\" + fd.cFileName).c_str()); } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    for (auto it = written.begin(); it != written.end();) it = std::any_of(app.tabs.begin(), app.tabs.end(), [&](auto& t) { return t.get() == it->first; }) ? std::next(it) : written.erase(it);
+}
+
+bool restoreSession() {
+    const std::wstring dir = sessionDir(), ini = dir + L"\\session.ini";
+    if (GetFileAttributesW(ini.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+    const int count = static_cast<int>(GetPrivateProfileIntW(L"meta", L"count", 0, ini.c_str()));
+    struct Entry { std::wstring path, name, rec; double zoom; int scrollY; bool fit; };
+    std::vector<Entry> list;
+    int withChanges = 0;
+    for (int i = 0; i < count; ++i) {
+        wchar_t sec[32], b1[MAX_PATH * 2], b2[MAX_PATH * 2], b3[64], b4[64];
+        swprintf(sec, 32, L"tab%d", i);
+        GetPrivateProfileStringW(sec, L"path", L"", b1, MAX_PATH * 2, ini.c_str());
+        GetPrivateProfileStringW(sec, L"name", L"", b2, MAX_PATH * 2, ini.c_str());
+        Entry e{b1, b2, L"", 1.0, 0, true};
+        GetPrivateProfileStringW(sec, L"recovery", L"", b3, 64, ini.c_str());
+        if (b3[0] && GetFileAttributesW((dir + L"\\" + b3).c_str()) != INVALID_FILE_ATTRIBUTES) { e.rec = dir + L"\\" + b3; ++withChanges; }
+        GetPrivateProfileStringW(sec, L"zoom", L"1", b4, 64, ini.c_str());
+        e.zoom = wcstod(b4, nullptr);
+        e.scrollY = static_cast<int>(GetPrivateProfileIntW(sec, L"scrollY", 0, ini.c_str()));
+        e.fit = GetPrivateProfileIntW(sec, L"fit", 1, ini.c_str()) != 0;
+        if (e.rec.empty() && (e.path.empty() || GetFileAttributesW(e.path.c_str()) == INVALID_FILE_ATTRIBUTES)) continue;
+        list.push_back(e);
+    }
+    if (list.empty()) { clearSession(); return false; }
+    std::wstring msg = L"Feather PDF did not close normally last time.\n\nReopen " + std::to_wstring(list.size()) + L" document(s)";
+    if (withChanges) msg += L", including " + std::to_wstring(withChanges) + L" with changes that were not saved";
+    msg += L"?";
+    if (MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) { clearSession(); return false; }
+    for (const Entry& e : list) {
+        if (!e.rec.empty()) {
+            std::vector<unsigned char> bytes;
+            HANDLE f = CreateFileW(e.rec.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (f != INVALID_HANDLE_VALUE) {
+                LARGE_INTEGER sz{};
+                GetFileSizeEx(f, &sz);
+                bytes.resize(static_cast<size_t>(sz.QuadPart));
+                DWORD got = 0;
+                if (!ReadFile(f, bytes.data(), static_cast<DWORD>(bytes.size()), &got, nullptr) || got != bytes.size()) bytes.clear();
+                CloseHandle(f);
+            }
+            auto doc = std::make_unique<Document>();
+            if (!bytes.empty() && doc->load(std::move(bytes), {}) == OpenResult::Ok) {
+                doc->setPath(e.path);
+                if (e.path.empty()) doc->setName(e.name);
+                doc->markModified();
+                doc->zoom = e.zoom; doc->scrollY = e.scrollY; doc->fitWidth = e.fit;
+                addDocumentTab(std::move(doc));
+                continue;
+            }
+        }
+        if (!e.path.empty()) openFile(e.path);
+    }
+    clearSession();
+    writeSession();
+    return true;
+}
+
 // ---- back / forward, layout, rotate view, reload ----
 void onJump(int from, int) {
     if (app.navBusy) return;
@@ -3541,6 +3694,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.viewer.create(h, app.inst);
             Document::setTimerWindow(app.viewer.hwnd());
             app.viewer.setOnChange(onViewerChange, nullptr);
+            SetTimer(h, TIMER_AUTOSAVE, 20000, nullptr);
             app.viewer.onEvent = onViewerEvent;
             app.viewer.onJump = onJump;
             app.viewer.onUri = openUri;
@@ -3579,6 +3733,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_TIMER:
             if (w == TIMER_FIND) { KillTimer(h, TIMER_FIND); runSearch(false); }
+            else if (w == TIMER_AUTOSAVE) writeSession();
             return 0;
         case WM_CTLCOLOREDIT: case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: {
             HDC cdc = reinterpret_cast<HDC>(w);
@@ -3741,7 +3896,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DestroyWindow(h);
             return 0;
         case WM_DESTROY:
+            KillTimer(h, TIMER_AUTOSAVE);
+            for (auto& t : app.tabs) rememberPosition(*t);
             saveSettings();
+            clearSession();   // a normal exit leaves nothing to recover
             speech::stop();
             setActiveDocument(nullptr);
             app.tabs.clear();
@@ -3910,6 +4068,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     ShowWindow(w, show);
     UpdateWindow(w);
     relayoutChildren();
+    restoreSession();
     for (auto& f : files) openFile(f);
     SetFocus(w);
 

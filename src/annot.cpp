@@ -245,3 +245,14 @@ std::wstring notesSummary(Document& d) {
 }
 
 } // namespace annot
+
+namespace annot {
+bool addLink(Document& d, int page, const RectD& r, const std::string& uri) {
+    if (r.right - r.left < 1 || r.top - r.bottom < 1 || uri.empty()) return false;
+    return create(d, page, FPDF_ANNOT_LINK, [&](FPDF_ANNOTATION a) {
+        setRect(a, r);
+        api().FPDFAnnot_SetBorder(a, 0, 0, 0);
+        return api().FPDFAnnot_SetURI(a, uri.c_str()) != 0;
+    });
+}
+} // namespace annot

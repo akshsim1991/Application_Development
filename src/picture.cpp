@@ -41,7 +41,7 @@ bool readFile(const std::wstring& path, std::vector<unsigned char>& out) {
 
 } // namespace
 
-bool addPicture(Document& d, int page, double atX, double atY, const std::wstring& path, std::wstring& error) {
+bool addPicture(Document& d, int page, double atX, double atY, const std::wstring& path, std::wstring& error, double forceWidthPt) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) { error = L"The page could not be found."; return false; }
     Gdiplus::GdiplusStartupInput in;
@@ -58,6 +58,7 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
             const double vw = d.pageSize(page).w, vh = d.pageSize(page).h;
             double wPt = std::min(w * 0.75, vw * 0.5), hPt = wPt * h / w;
             if (hPt > vh * 0.8) { hPt = vh * 0.8; wPt = hPt * w / h; }
+            if (forceWidthPt > 0) { wPt = forceWidthPt; hPt = wPt * h / w; }
             std::wstring ext = path.substr(path.find_last_of(L'.') == std::wstring::npos ? path.size() : path.find_last_of(L'.'));
             for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
             const bool jpeg = ext == L".jpg" || ext == L".jpeg";
@@ -143,6 +144,57 @@ bool copyPageToClipboard(Document& d, int page, void* owner, int dpi) {
     const bool ok = SetClipboardData(CF_DIB, g) != nullptr;
     if (!ok) GlobalFree(g);
     CloseClipboard();
+    return ok;
+}
+
+} // namespace pageobj
+
+namespace pageobj {
+
+bool imageSize(const std::wstring& path, int& w, int& h) {
+    Gdiplus::GdiplusStartupInput in;
+    ULONG_PTR token = 0;
+    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return false;
+    bool ok = false;
+    {
+        Gdiplus::Bitmap bmp(path.c_str());
+        if (bmp.GetLastStatus() == Gdiplus::Ok && bmp.GetWidth() > 0 && bmp.GetHeight() > 0) { w = static_cast<int>(bmp.GetWidth()); h = static_cast<int>(bmp.GetHeight()); ok = true; }
+    }
+    Gdiplus::GdiplusShutdown(token);
+    return ok;
+}
+
+bool copyAreaToClipboard(Document& d, int page, double l, double b, double r, double t, void* owner, int dpi) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    const PageSize& ps = d.pageSize(page);
+    const double sc = dpi / 72.0;
+    const int fw = std::max(1, static_cast<int>(std::lround(ps.w * sc))), fh = std::max(1, static_cast<int>(std::lround(ps.h * sc)));
+    int x1, y1, x2, y2;
+    api.FPDF_PageToDevice(pg, 0, 0, fw, fh, 0, l, t, &x1, &y1);
+    api.FPDF_PageToDevice(pg, 0, 0, fw, fh, 0, r, b, &x2, &y2);
+    const int left = std::min(x1, x2), top = std::min(y1, y2), w = std::abs(x2 - x1), h = std::abs(y2 - y1);
+    if (w < 2 || h < 2 || 1LL * w * h > 80000000LL) return false;
+    const size_t stride = static_cast<size_t>(w) * 4;
+    std::vector<unsigned char> px(stride * h);
+    FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), static_cast<int>(stride));
+    if (!fb) return false;
+    api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
+    d.renderPage(page, fb, -left, -top, fw, fh);
+    api.FPDFBitmap_Destroy(fb);
+    HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, sizeof(BITMAPINFOHEADER) + stride * h);
+    if (!g) return false;
+    auto* mem = static_cast<unsigned char*>(GlobalLock(g));
+    *reinterpret_cast<BITMAPINFOHEADER*>(mem) = {sizeof(BITMAPINFOHEADER), w, h, 1, 32, BI_RGB, static_cast<DWORD>(stride * h), 0, 0, 0, 0};
+    unsigned char* dst = mem + sizeof(BITMAPINFOHEADER);
+    for (int y = 0; y < h; ++y) memcpy(dst + static_cast<size_t>(y) * stride, px.data() + static_cast<size_t>(h - 1 - y) * stride, stride);
+    GlobalUnlock(g);
+    if (!OpenClipboard(static_cast<HWND>(owner))) { GlobalFree(g); return false; }
+    EmptyClipboard();
+    const bool ok = SetClipboardData(CF_DIB, g) != nullptr;
+    CloseClipboard();
+    if (!ok) GlobalFree(g);
     return ok;
 }
 

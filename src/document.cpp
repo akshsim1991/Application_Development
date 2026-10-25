@@ -141,6 +141,7 @@ void Document::closePages() {
 }
 
 std::wstring Document::title() const {
+    if (path_.empty() && !name_.empty()) return name_;
     size_t p = path_.find_last_of(L"\\/");
     return p == std::wstring::npos ? path_ : path_.substr(p + 1);
 }
@@ -634,5 +635,33 @@ bool Document::removeProtection() {
     if (!doc_ || !isProtected()) return false;
     beginChange();
     protMode_ = Protection::Remove;
+    return true;
+}
+
+bool Document::blankBytes(const std::vector<std::pair<double, double>>& sizes, std::vector<unsigned char>& out) {
+    out.clear();
+    const auto& api = pdfium::api();
+    FPDF_DOCUMENT tmp = api.FPDF_CreateNewDocument();
+    if (!tmp) return false;
+    for (size_t i = 0; i < sizes.size(); ++i) {
+        FPDF_PAGE p = api.FPDFPage_New(tmp, static_cast<int>(i), sizes[i].first, sizes[i].second);
+        if (p) api.FPDF_ClosePage(p);
+    }
+    Sink sink;
+    sink.version = 1; sink.WriteBlock = writeBlock; sink.out = &out;
+    bool ok = api.FPDF_SaveAsCopy(tmp, &sink, 0) && out.size() > 8;
+    api.FPDF_CloseDocument(tmp);
+    return ok;
+}
+
+bool Document::cropBoxOf(int page, double& l, double& b, double& r, double& t) {
+    FPDF_PAGE p = this->page(page);
+    if (!p) return false;
+    const auto& api = pdfium::api();
+    float ml, mb, mr, mt;
+    if (!api.FPDFPage_GetMediaBox(p, &ml, &mb, &mr, &mt)) { ml = 0; mb = 0; mr = static_cast<float>(pageSize(page).w); mt = static_cast<float>(pageSize(page).h); }
+    float cl, cb, cr, ct;
+    if (!api.FPDFPage_GetCropBox(p, &cl, &cb, &cr, &ct)) { cl = ml; cb = mb; cr = mr; ct = mt; }
+    l = cl; b = cb; r = cr; t = ct;
     return true;
 }

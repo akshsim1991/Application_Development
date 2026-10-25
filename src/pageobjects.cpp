@@ -2,6 +2,9 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <cstdio>
+#include <map>
+#include <cwctype>
 
 namespace pageobj {
 namespace {
@@ -265,7 +268,7 @@ TextHit textAt(Document& d, int page, double x, double y) {
     return best;
 }
 
-bool replaceText(Document& d, int page, int idx, const std::wstring& text) {
+bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool track) {
     FPDF_PAGE pg = d.page(page);
     if (!pg || idx < 0 || idx >= pdfium::api().FPDFPage_CountObjects(pg)) return false;
     const auto& api = pdfium::api();
@@ -274,10 +277,10 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text) {
     FPDF_TEXTPAGE tp = d.text(page);
     if (!tp) return false;
 
-    d.beginChange();
+    if (track) d.beginChange();
     o = api.FPDFPage_GetObject(pg, idx);
     if (text.empty()) {
-        if (!api.FPDFPage_RemoveObject(pg, o)) { d.cancelChange(); return false; }
+        if (!api.FPDFPage_RemoveObject(pg, o)) { if (track) d.cancelChange(); return false; }
         api.FPDFPageObj_Destroy(o);
         api.FPDFPage_GenerateContent(pg);
         d.resetText(page);
@@ -303,7 +306,7 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text) {
         // fall through to the replacement route
     }
     // Replacement in a similar standard font at the same place, size and colour.
-    if (!isLatin(text)) { d.cancelChange(); return false; }
+    if (!isLatin(text)) { if (track) d.cancelChange(); return false; }
     std::string fname;
     unsigned long flags = 0;
     if (font) {
@@ -324,9 +327,9 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text) {
     FS_MATRIX m{};
     api.FPDFPageObj_GetMatrix(o, &m);
     FPDF_PAGEOBJECT n = makeText(d, standardFont(fam, bold, italic), size, text, RGB(R, G, B), static_cast<int>(A * 100 / 255));
-    if (!n) { d.cancelChange(); return false; }
+    if (!n) { if (track) d.cancelChange(); return false; }
     api.FPDFPageObj_SetMatrix(n, &m);
-    if (!api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(n); d.cancelChange(); return false; }
+    if (!api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(n); if (track) d.cancelChange(); return false; }
     api.FPDFPageObj_Destroy(o);
     api.FPDFPage_InsertObjectAtIndex(pg, n, static_cast<size_t>(idx));
     api.FPDFPage_GenerateContent(pg);
@@ -366,6 +369,218 @@ bool addStamp(Document& d, int page, double cx, double cy, const std::wstring& t
     api.FPDFPage_InsertObject(pg, box);
     api.FPDFPage_InsertObject(pg, t);
     api.FPDFPage_GenerateContent(pg);
+    return true;
+}
+
+
+int replaceAll(Document& d, const std::wstring& find, const std::wstring& with, bool matchCase, std::vector<int>& pages) {
+    pages.clear();
+    if (find.empty()) return 0;
+    const auto& api = pdfium::api();
+    auto lower = [](std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; };
+    const std::wstring needle = matchCase ? find : lower(find);
+    d.beginChange();
+    int total = 0;
+    for (int p = 0; p < d.pageCount(); ++p) {
+        FPDF_PAGE pg = d.page(p);
+        FPDF_TEXTPAGE tp = d.text(p);
+        if (!pg || !tp) continue;
+        struct Job { int idx; std::wstring text; };
+        std::vector<Job> jobs;
+        const int n = api.FPDFPage_CountObjects(pg);
+        for (int i = 0; i < n; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+            unsigned long bytes = api.FPDFTextObj_GetText(o, tp, nullptr, 0);
+            if (bytes < 2) continue;
+            std::vector<unsigned short> buf(bytes / 2 + 1);
+            api.FPDFTextObj_GetText(o, tp, buf.data(), bytes);
+            std::wstring text(buf.begin(), buf.begin() + (bytes / 2 - 1));
+            const std::wstring hay = matchCase ? text : lower(text);
+            if (hay.find(needle) == std::wstring::npos) continue;
+            std::wstring out;
+            size_t pos = 0, hit;
+            int count = 0;
+            while ((hit = hay.find(needle, pos)) != std::wstring::npos) { out += text.substr(pos, hit - pos) + with; pos = hit + needle.size(); ++count; }
+            out += text.substr(pos);
+            total += count;
+            jobs.push_back({i, out});
+        }
+        bool changed = false;
+        for (auto it = jobs.rbegin(); it != jobs.rend(); ++it)   // last object first: deleting one must not shift the others
+            if (replaceText(d, p, it->idx, it->text, false)) changed = true; else --total;
+        if (changed) pages.push_back(p);
+        d.resetText(p);
+    }
+    if (total <= 0) { d.cancelChange(); return 0; }
+    return total;
+}
+
+// ---- tables ----
+namespace {
+std::string toUtf8(const std::wstring& w) {
+    if (w.empty()) return {};
+    int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
+    std::string s(n, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), s.data(), n, nullptr, nullptr);
+    return s;
+}
+std::wstring fromUtf8(const std::string& s) {
+    if (s.empty()) return {};
+    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
+    std::wstring w(n, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
+    return w;
+}
+std::string serialise(const TableSpec& t) {
+    char head[128];
+    snprintf(head, sizeof(head), "%d;%d;%.2f;%.2f;%.2f;%d;", t.rows, t.cols, t.colWidth, t.rowHeight, t.fontSize, t.header ? 1 : 0);
+    std::string s = head;
+    for (size_t i = 0; i < t.cells.size(); ++i) { if (i) s += '\x1f'; s += toUtf8(t.cells[i]); }
+    return s;
+}
+bool parse(const std::string& s, TableSpec& t) {
+    int header = 1;
+    int used = 0;
+    if (sscanf(s.c_str(), "%d;%d;%lf;%lf;%lf;%d;%n", &t.rows, &t.cols, &t.colWidth, &t.rowHeight, &t.fontSize, &header, &used) < 6 || used <= 0) return false;
+    t.header = header != 0;
+    t.cells.clear();
+    std::string rest = s.substr(used), cur;
+    for (char c : rest) { if (c == '\x1f') { t.cells.push_back(fromUtf8(cur)); cur.clear(); } else cur += c; }
+    t.cells.push_back(fromUtf8(cur));
+    t.cells.resize(static_cast<size_t>(t.rows) * t.cols);
+    return t.rows > 0 && t.cols > 0;
+}
+std::wstring markString(FPDF_PAGEOBJECTMARK m, const char* key) {
+    const auto& api = pdfium::api();
+    unsigned long n = 0;
+    if (!api.FPDFPageObjMark_GetParamStringValue(m, key, nullptr, 0, &n) || n < 2) return {};
+    std::vector<unsigned short> buf(n / 2 + 1);
+    api.FPDFPageObjMark_GetParamStringValue(m, key, buf.data(), n, &n);
+    return std::wstring(buf.begin(), buf.begin() + (n / 2 - 1));
+}
+// The id of the table an object belongs to (empty when it is not part of one).
+std::string tableIdOf(FPDF_PAGEOBJECT o, std::string* spec = nullptr) {
+    const auto& api = pdfium::api();
+    const int marks = api.FPDFPageObj_CountMarks(o);
+    for (int i = 0; i < marks; ++i) {
+        FPDF_PAGEOBJECTMARK m = api.FPDFPageObj_GetMark(o, i);
+        unsigned long n = 0;
+        if (!m || !api.FPDFPageObjMark_GetName(m, nullptr, 0, &n) || n < 2) continue;
+        std::vector<unsigned short> buf(n / 2 + 1);
+        api.FPDFPageObjMark_GetName(m, buf.data(), n, &n);
+        if (std::wstring(buf.begin(), buf.begin() + (n / 2 - 1)) != L"FeatherTable") continue;
+        if (spec) *spec = toUtf8(markString(m, "spec"));
+        return toUtf8(markString(m, "id"));
+    }
+    return {};
+}
+} // namespace
+
+bool addTable(Document& d, int page, double atX, double atY, const TableSpec& spec, bool track) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg || spec.rows < 1 || spec.cols < 1) return false;
+    const auto& api = pdfium::api();
+    const double vw = d.pageSize(page).w, vh = d.pageSize(page).h;
+    const double S = 100.0;
+    const int dw = static_cast<int>(vw * S), dh = static_cast<int>(vh * S);
+    int dx = 0, dy = 0;
+    api.FPDF_PageToDevice(pg, 0, 0, dw, dh, 0, atX, atY, &dx, &dy);
+    const double vx = dx / S, vy = dy / S;   // top-left corner, visual points from the page's top-left
+    auto toPageXY = [&](double x, double y, double& px, double& py) { api.FPDF_DeviceToPage(pg, 0, 0, dw, dh, 0, static_cast<int>(x * S), static_cast<int>(y * S), &px, &py); };
+    const double W = spec.cols * spec.colWidth, H = spec.rows * spec.rowHeight;
+    char idbuf[32];
+    snprintf(idbuf, sizeof(idbuf), "t%u", static_cast<unsigned>(GetTickCount()));
+    const std::string id = idbuf;
+    const std::string specText = serialise(spec);
+    bool firstObj = true;
+    auto tag = [&](FPDF_PAGEOBJECT o) {
+        FPDF_PAGEOBJECTMARK m = api.FPDFPageObj_AddMark(o, "FeatherTable");
+        if (!m) return;
+        api.FPDFPageObjMark_SetStringParam(d.handle(), o, m, "id", id.c_str());
+        if (firstObj) { api.FPDFPageObjMark_SetStringParam(d.handle(), o, m, "spec", specText.c_str()); firstObj = false; }
+    };
+    auto rect = [&](double x0, double y0, double x1, double y1, unsigned r, unsigned g, unsigned b) {   // visual coordinates
+        double ax, ay, bx, by;
+        toPageXY(x0, y0, ax, ay); toPageXY(x1, y1, bx, by);
+        FPDF_PAGEOBJECT o = api.FPDFPageObj_CreateNewRect(static_cast<float>(std::min(ax, bx)), static_cast<float>(std::min(ay, by)),
+                                                           static_cast<float>(std::fabs(bx - ax)), static_cast<float>(std::fabs(by - ay)));
+        if (!o) return;
+        api.FPDFPageObj_SetFillColor(o, r, g, b, 255);
+        api.FPDFPath_SetDrawMode(o, FPDF_FILLMODE_ALTERNATE, 0);
+        tag(o);
+        api.FPDFPage_InsertObject(pg, o);
+    };
+    if (track) d.beginChange();
+    if (spec.header) rect(vx, vy, vx + W, vy + spec.rowHeight, 0xE6, 0xE6, 0xE6);
+    const double line = 0.75;
+    for (int r = 0; r <= spec.rows; ++r) rect(vx, vy + r * spec.rowHeight - line / 2, vx + W, vy + r * spec.rowHeight + line / 2, 0x30, 0x30, 0x30);
+    for (int c = 0; c <= spec.cols; ++c) rect(vx + c * spec.colWidth - line / 2, vy, vx + c * spec.colWidth + line / 2, vy + H, 0x30, 0x30, 0x30);
+    for (int r = 0; r < spec.rows; ++r)
+        for (int c = 0; c < spec.cols; ++c) {
+            const std::wstring& text = spec.cells[static_cast<size_t>(r) * spec.cols + c];
+            if (text.empty()) continue;
+            FPDF_PAGEOBJECT o = makeText(d, spec.header && r == 0 ? "Helvetica-Bold" : "Helvetica", spec.fontSize, text, RGB(0x20, 0x20, 0x20), 100);
+            if (!o) continue;
+            float l, b, rr, t;
+            api.FPDFPageObj_GetBounds(o, &l, &b, &rr, &t);
+            const double tw = rr - l, th = t - b;
+            if (place(pg, o, vw, vh, vx + c * spec.colWidth + 4 + tw / 2, vy + r * spec.rowHeight + spec.rowHeight / 2, 0)) { tag(o); api.FPDFPage_InsertObject(pg, o); }
+            else api.FPDFPageObj_Destroy(o);
+            (void)th;
+        }
+    api.FPDFPage_GenerateContent(pg);
+    d.resetText(page);
+    return true;
+}
+
+TableHit tableAt(Document& d, int page, double x, double y) {
+    TableHit hit;
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return hit;
+    const auto& api = pdfium::api();
+    struct Box { float l = 1e9f, b = 1e9f, r = -1e9f, t = -1e9f; std::string spec; };
+    std::map<std::string, Box> boxes;
+    const int n = api.FPDFPage_CountObjects(pg);
+    for (int i = 0; i < n; ++i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (!o) continue;
+        std::string sp;
+        const std::string id = tableIdOf(o, &sp);
+        if (id.empty()) continue;
+        float l, b, r, t;
+        if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+        Box& bx = boxes[id];
+        bx.l = std::min(bx.l, l); bx.b = std::min(bx.b, b); bx.r = std::max(bx.r, r); bx.t = std::max(bx.t, t);
+        if (!sp.empty()) bx.spec = sp;
+    }
+    double bestArea = 1e18;
+    for (auto& kv : boxes) {
+        const Box& bx = kv.second;
+        if (x < bx.l - 1 || x > bx.r + 1 || y < bx.b - 1 || y > bx.t + 1) continue;
+        const double area = static_cast<double>(bx.r - bx.l) * (bx.t - bx.b);
+        TableSpec spec;
+        if (area >= bestArea || !parse(bx.spec, spec)) continue;
+        bestArea = area;
+        hit.found = true; hit.page = page; hit.id = kv.first; hit.spec = spec; hit.left = bx.l; hit.top = bx.t;
+    }
+    return hit;
+}
+
+bool removeTable(Document& d, int page, const std::string& id, bool track) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    if (track) d.beginChange();
+    bool any = false;
+    for (int i = api.FPDFPage_CountObjects(pg) - 1; i >= 0; --i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (!o || tableIdOf(o) != id) continue;
+        if (api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(o); any = true; }
+    }
+    if (!any) { if (track) d.cancelChange(); return false; }
+    api.FPDFPage_GenerateContent(pg);
+    d.resetText(page);
     return true;
 }
 

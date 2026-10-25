@@ -22,6 +22,8 @@ add_executable(FeatherPDF WIN32
   src/protect.cpp
   src/ocr.cpp
   src/sign.cpp
+  src/sigpad.cpp
+  src/outline.cpp
   src/picture.cpp
   resources/FeatherPDF.rc)
 

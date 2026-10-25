@@ -28,6 +28,8 @@ bool addShape(Document& d, int page, Shape kind, const RectD& r, COLORREF color,
 // Lines, arrows and freehand drawing are ink annotations: one stroke per entry.
 bool addInk(Document& d, int page, const std::vector<std::vector<PointD>>& strokes, COLORREF color, double width);
 bool addNote(Document& d, int page, PointD at, const std::wstring& text, COLORREF color);
+// A clickable box that opens a web page.
+bool addLink(Document& d, int page, const RectD& r, const std::string& uri);
 
 std::vector<Info> list(Document& d, int page);
 // Topmost annotation whose rectangle contains the point; -1 if none. Links and popups are ignored.

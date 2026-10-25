@@ -57,7 +57,23 @@ struct TextHit {
 TextHit textAt(Document& d, int page, double x, double y);
 // Replaces the text of an existing object. Characters the original (embedded) font may lack are drawn in a
 // similar standard font instead, at the same place and size. An empty `text` deletes the object.
-bool replaceText(Document& d, int page, int objectIndex, const std::wstring& text);
+bool replaceText(Document& d, int page, int objectIndex, const std::wstring& text, bool track = true);
+
+// Replaces `find` by `with` inside every text object of the document (a match must lie within one object).
+// One undo step. Returns the number of replacements; `pages` lists the pages that changed.
+int replaceAll(Document& d, const std::wstring& find, const std::wstring& with, bool matchCase, std::vector<int>& pages);
+
+// ---- tables drawn on the page (kept recognisable through a mark, so they can be edited or deleted later) ----
+struct TableSpec {
+    int rows = 3, cols = 3;
+    double colWidth = 90, rowHeight = 24, fontSize = 11;   // points
+    bool header = true;
+    std::vector<std::wstring> cells;                        // rows * cols, row by row
+};
+struct TableHit { bool found = false; int page = 0; std::string id; TableSpec spec; double left = 0, top = 0; };   // left/top: page coordinates of the top-left corner
+bool addTable(Document& d, int page, double atX, double atY, const TableSpec& spec, bool track = true);
+TableHit tableAt(Document& d, int page, double x, double y);
+bool removeTable(Document& d, int page, const std::string& id, bool track = true);
 
 // Puts the baseline-left origin of a text object at (originX, originY) measured in points from the top-left of the
 // page as displayed, stretching it horizontally by `sx`. Used for the invisible text layer of recognised text.

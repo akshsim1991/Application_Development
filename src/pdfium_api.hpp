@@ -15,6 +15,20 @@
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
     X(FPDF_InitLibrary)          \
+    X(FPDFDest_GetLocationInPage) \
+    X(FPDFPageObj_RemoveMark) \
+    X(FPDFPageObjMark_GetName) \
+    X(FPDFPageObjMark_GetParamStringValue) \
+    X(FPDFPageObjMark_SetStringParam) \
+    X(FPDFPageObj_GetMark) \
+    X(FPDFPageObj_CountMarks) \
+    X(FPDFPageObj_AddMark) \
+    X(FPDFAnnot_SetURI) \
+    X(FPDFAction_GetURIPath) \
+    X(FPDFAction_GetType) \
+    X(FPDFLink_GetDest) \
+    X(FPDFLink_GetAction) \
+    X(FPDFLink_GetLinkAtPoint) \
     X(FPDF_DestroyLibrary)       \
     X(FPDF_GetLastError)         \
     X(FPDF_LoadMemDocument64)    \

@@ -40,6 +40,10 @@ public:
 
     const std::wstring& path() const { return path_; }
     std::wstring title() const;
+    void setName(const std::wstring& n) { name_ = n; }   // shown when the document has no file yet
+    // A PDF with empty pages of the given sizes (points); the bytes can be passed to load().
+    static bool blankBytes(const std::vector<std::pair<double, double>>& sizes, std::vector<unsigned char>& out);
+    bool cropBoxOf(int page, double& l, double& b, double& r, double& t);
     int pageCount() const { return static_cast<int>(sizes_.size()); }
     const PageSize& pageSize(int i) const { return sizes_[i]; }
     FPDF_DOCUMENT handle() const { return doc_; }
@@ -122,6 +126,7 @@ private:
     std::wstring path_;
     std::vector<unsigned char> data_;   // PDFium reads from this buffer for the document's life
     FPDF_DOCUMENT doc_ = nullptr;
+    std::wstring name_;
     std::vector<PageSize> sizes_;
     std::string password_;
     std::vector<sign::Status> signatures_;

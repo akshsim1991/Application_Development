@@ -21,6 +21,7 @@ public:
     void goToPage(int index);            // 0-based
     int currentPage() const;
     void scrollBy(int dy);
+    void scrollTo(int y) { if (!doc_) return; doc_->scrollY = y; clampScroll(); updateScrollBars(); InvalidateRect(hwnd_, nullptr, FALSE); }
     // Called after any change of page, zoom, or document, so the toolbar can update.
     void setOnChange(void (*cb)(void*), void* ctx) { onChange_ = cb; onChangeCtx_ = ctx; }
 
@@ -36,7 +37,7 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, Ruler, Protractor };
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -64,6 +65,24 @@ public:
     bool selectedAnnot(int& page, int& index) const;
     bool formFocused() const { return formFocus_; }
     void clearAnnotSelection();
+
+    // Page layout: 0 one page at a time, 1 continuous, 2 two pages side by side (cover = first page alone).
+    void setLayout(int layout, bool cover);
+    int layout() const { return layout_; }
+    bool cover() const { return cover_; }
+    std::function<void(int from, int to)> onJump;                 // goToPage moved to another page
+    std::function<void(const std::wstring&)> onUri;               // a link to a web page was clicked
+
+    // Measuring tools: results stay on screen until cleared.
+    struct Measure { int page; annot::PointD a, b, c; bool angle; std::wstring text; };
+    void addMeasure(const Measure& m) { measures_.push_back(m); InvalidateRect(hwnd_, nullptr, FALSE); }
+    void clearMeasures() { measures_.clear(); InvalidateRect(hwnd_, nullptr, FALSE); }
+    const std::vector<Measure>& measures() const { return measures_; }
+    bool hasMeasurements() const { return !measures_.empty(); }
+    void setShowRulers(bool on, int units) { showRulers_ = on; units_ = units; InvalidateRect(hwnd_, nullptr, FALSE); }
+    bool showRulers() const { return showRulers_; }
+    void setPending(const annot::PointD* vertex, int page, const annot::PointD* arm) { pendingVertex_ = vertex ? *vertex : annot::PointD{}; hasPending_ = vertex != nullptr; pendingPage_ = page; pendingArm_ = arm ? *arm : annot::PointD{}; hasArm_ = arm != nullptr; InvalidateRect(hwnd_, nullptr, FALSE); }
+    bool pageRect(int page, RECT& out) const;                     // a page's screen rectangle
 
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
 
@@ -97,7 +116,13 @@ private:
     HWND hwnd_ = nullptr;
     Document* doc_ = nullptr;
     std::vector<int> tops_;      // page top offsets in pixels (content coordinates)
-    std::vector<int> widths_, heights_;
+    std::vector<int> widths_, heights_, xs_;   // xs_: left edge of each page inside the content
+    int layout_ = 1; bool cover_ = false;
+    std::vector<Measure> measures_;
+    bool showRulers_ = false; int units_ = 0;
+    annot::PointD pendingVertex_{}, pendingArm_{}; bool hasPending_ = false, hasArm_ = false; int pendingPage_ = 0;
+    void drawMeasuring(HDC dc, int page);
+    bool linkAt(int cx, int cy, int& destPage, std::wstring& uri) const;
     int contentW_ = 0, contentH_ = 0;
     std::map<int, Cached> cache_;
     std::vector<TextHit> matches_;

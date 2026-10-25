@@ -16,6 +16,9 @@
 #include "document.hpp"
 #include "viewer.hpp"
 #include "sidebar.hpp"
+#include "outline.hpp"
+#include <sstream>
+#include "sigpad.hpp"
 #include "theme.hpp"
 #include <dwmapi.h>
 #include <winspool.h>
@@ -36,8 +39,8 @@ constexpr int kTabH = 34, kToolH = 40, kFindH = 38, kSideW = 230;
 enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
-struct Button { std::wstring label; RECT rc; int id; bool enabled; };
-enum Cmd { C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
+struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; };
+enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -66,10 +69,35 @@ struct App {
     RECT plusRect{}, pageRect{};
     int hover = -1;
     int theme = 2;            // 0 light, 1 dark, 2 like Windows
+    int units = 0, scaleIdx = 0;   // geometry tools: mm/cm/in/pt, drawing scale
+    bool sbs = false, syncing = false;
+    Viewer viewer2;                                   // the second view of side by side
+    Document* sbsDoc = nullptr;
+    std::unique_ptr<Document> sbsOwned;
+    std::vector<int> navBack, navFwd;
+    bool navBusy = false;
+    int layout = 1; bool cover = false;
+    pageobj::TableSpec pendingTable;
+    annot::PointD protVertex{}, protArm{}; int protStage = 0, protPage = 0;
+    double pendingPictureWidth = 0;
+
     HBRUSH ctlBrush = nullptr;
 } app;
 
 Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nullptr; }
+
+
+// features implemented further down
+void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
+void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
+void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
+void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd);
+void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
+bool featureDraw(Document& d, const Viewer::Event& e);
+bool featureClick(Document& d, const Viewer::Event& e);
+void pagesMenuAction(int cmd, const std::vector<int>& sel);
+void toolsDispatch(int cmd);
+void showMainMenu(const RECT& anchor);
 
 std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"") + d.title(); }
 
@@ -80,6 +108,7 @@ void relayoutChildren() {
     if (app.fullscreen) {   // only the pages, edge to edge
         MoveWindow(app.viewer.hwnd(), 0, 0, rc.right, rc.bottom, TRUE);
         MoveWindow(app.sidebar.hwnd(), 0, 0, 0, 0, FALSE);
+        if (app.viewer2.hwnd()) ShowWindow(app.viewer2.hwnd(), SW_HIDE);
         return;
     }
     int top = kTabH + kToolH;
@@ -98,7 +127,16 @@ void relayoutChildren() {
         MoveWindow(app.sidebar.hwnd(), 0, top, kSideW, std::max<LONG>(0, rc.bottom - top), TRUE);
         left = kSideW;
     }
-    MoveWindow(app.viewer.hwnd(), left, top, std::max<LONG>(0, rc.right - left), std::max<LONG>(0, rc.bottom - top), TRUE);
+    const int total = std::max<LONG>(0, rc.right - left), height = std::max<LONG>(0, rc.bottom - top);
+    if (app.sbs && app.viewer2.hwnd()) {
+        const int half = total / 2;
+        MoveWindow(app.viewer.hwnd(), left, top, half - 2, height, TRUE);
+        MoveWindow(app.viewer2.hwnd(), left + half + 2, top, total - half - 2, height, TRUE);
+        ShowWindow(app.viewer2.hwnd(), SW_SHOW);
+    } else {
+        MoveWindow(app.viewer.hwnd(), left, top, total, height, TRUE);
+        if (app.viewer2.hwnd()) ShowWindow(app.viewer2.hwnd(), SW_HIDE);
+    }
 }
 
 void showControls() {
@@ -160,7 +198,13 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY,
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
-              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+// extra menu ids
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+               N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
+               G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
+constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
+constexpr double kTextSizes[] = {8, 10, 12, 14, 18, 24, 36, 48, 72};
 constexpr COLORREF kPalette[] = {RGB(0xFF, 0xE0, 0x00), RGB(0x66, 0xDD, 0x66), RGB(0x55, 0xB8, 0xFF), RGB(0xFF, 0x8A, 0xC8),
                                  RGB(0xFF, 0x8C, 0x00), RGB(0xE5, 0x39, 0x35), RGB(0x20, 0x20, 0x20)};
 constexpr const wchar_t* kPaletteNames[] = {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Black"};
@@ -272,6 +316,10 @@ void loadSettings() {
     app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
     app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
     app.theme = std::clamp(num(L"theme", 2), 0, 2);
+    app.layout = std::clamp(num(L"layout", 1), 0, 2);
+    app.cover = num(L"cover", 0) != 0;
+    app.units = std::clamp(num(L"units", 0), 0, 3);
+    app.scaleIdx = std::clamp(num(L"scale", 0), 0, 9);
     app.textStyle.family = static_cast<pageobj::Family>(std::clamp(num(L"textFont", 0), 0, 2));
     app.textStyle.bold = num(L"textBold", 0) != 0;
     app.textStyle.italic = num(L"textItalic", 0) != 0;
@@ -295,6 +343,10 @@ void saveSettings() {
     put(L"view", L"readingSpeed", app.readRate);
     put(L"view", L"pageColours", static_cast<int>(app.viewer.colours()));
     put(L"view", L"theme", app.theme);
+    put(L"view", L"layout", app.layout);
+    put(L"view", L"cover", app.cover);
+    put(L"view", L"units", app.units);
+    put(L"view", L"scale", app.scaleIdx);
     put(L"view", L"textFont", static_cast<int>(app.textStyle.family));
     put(L"view", L"textBold", app.textStyle.bold);
     put(L"view", L"textItalic", app.textStyle.italic);
@@ -532,6 +584,7 @@ void onViewerEvent(const Viewer::Event& e) {
     }
     switch (e.kind) {
         case Viewer::Event::Draw:
+            if (featureDraw(*d, e)) break;
             switch (e.tool) {
                 case Viewer::Tool::Rectangle: case Viewer::Tool::Ellipse: {
                     annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y),
@@ -555,6 +608,7 @@ void onViewerEvent(const Viewer::Event& e) {
             }
             break;
         case Viewer::Event::Click: {
+            if (featureClick(*d, e)) break;
             if (e.tool == Viewer::Tool::AddText) {
                 std::wstring text;
                 if (askText(L"Add text", L"Type the text to put on the page. Press Enter for a new line.", false, text, L"", true)) {
@@ -576,7 +630,7 @@ void onViewerEvent(const Viewer::Event& e) {
             }
             if (e.tool == Viewer::Tool::Picture) {
                 std::wstring err;
-                if (pageobj::addPicture(*d, e.page, e.pts.front().x, e.pts.front().y, app.pendingPicture, err)) afterChange(e.page);
+                if (pageobj::addPicture(*d, e.page, e.pts.front().x, e.pts.front().y, app.pendingPicture, err, app.pendingPictureWidth)) afterChange(e.page);
                 else MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONWARNING);
                 setTool(Viewer::Tool::Picture);   // one picture at a time
                 break;
@@ -630,14 +684,53 @@ void onViewerEvent(const Viewer::Event& e) {
                 }
             if (markIdx >= 0) { AppendMenuW(m, MF_STRING, M_RED_REMOVE, L"Remove this redaction mark"); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
             const bool hasSel = app.viewer.hasSelection();
-            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COPY, L"Copy\tCtrl+C");
-            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_HIGHLIGHT, L"Highlight\tCtrl+H");
-            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_UNDERLINE, L"Underline\tCtrl+U");
-            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_STRIKE, L"Strikethrough\tCtrl+Shift+K");
-            AppendMenuW(m, hasSel ? MF_STRING : MF_GRAYED, M_COMMENT, L"Comment on selected text...\tCtrl+M");
-            if (e.page >= 0) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, M_COPY_PAGE, L"Copy this page as a picture"); }
+            auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
+            auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
+            add(M_COPY, L"Copy\tCtrl+C", hasSel);
+            add(M_SELALL, L"Select all\tCtrl+A");
+            sep();
+            add(N_SEARCH_WEB, L"Search online (Google)", hasSel);
+            HMENU lk = CreatePopupMenu();
+            AppendMenuW(lk, hasSel ? MF_STRING : MF_GRAYED, N_LOOKUP + 1, L"Dictionary");
+            AppendMenuW(lk, hasSel ? MF_STRING : MF_GRAYED, N_LOOKUP + 2, L"Wikipedia");
+            AppendMenuW(lk, hasSel ? MF_STRING : MF_GRAYED, N_LOOKUP + 3, L"Translate");
+            AppendMenuW(m, MF_POPUP | (hasSel ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(lk), L"Look up");
+            sep();
+            add(M_HIGHLIGHT, L"Highlight\tCtrl+H", hasSel);
+            add(M_UNDERLINE, L"Underline\tCtrl+U", hasSel);
+            add(M_STRIKE, L"Strikethrough\tCtrl+Shift+K", hasSel);
+            add(N_LINK, L"Add a link...", hasSel);
+            sep();
+            if (e.page >= 0) add(M_ADDCOMMENT_HERE, L"Add comment here...");
+            add(M_COMMENT, L"Comment on selected text...\tCtrl+Shift+M", hasSel);
+            if (e.page >= 0) add(M_EDITTEXT_HERE, L"Edit text\tCtrl+E");
+            if (e.page >= 0) { sep(); add(M_COPY_PAGE, L"Copy page as image"); add(N_COPYAREA, L"Copy area as image"); }
+            sep();
+            add(N_READ_FROM, hasSel ? L"Read the selected text aloud\tCtrl+Shift+U" : L"Read aloud from this page\tCtrl+Shift+U");
             int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, e.screen.x, e.screen.y, 0, app.wnd, nullptr);
             DestroyMenu(m);
+            switch (cmd) {
+                case M_SELALL: app.viewer.selectAll(); break;
+                case N_SEARCH_WEB: lookUpKind(0); break;
+                case N_LOOKUP + 1: case N_LOOKUP + 2: case N_LOOKUP + 3: lookUpKind(cmd - N_LOOKUP); break;
+                case N_LINK: linkOnSelection(); break;
+                case N_COPYAREA: startCopyArea(); break;
+                case N_READ_FROM: readAloud(); break;
+                case M_ADDCOMMENT_HERE: {
+                    std::wstring text;
+                    if (e.page >= 0 && !e.pts.empty() && askText(L"Comment", L"Type your comment.", false, text, L"", true)) {
+                        text = fromEdit(text);
+                        if (!text.empty() && annot::addNote(*d, e.page, e.pts.front(), text, hlColor())) afterChange(e.page);
+                    }
+                    break;
+                }
+                case M_EDITTEXT_HERE: {
+                    Viewer::Event ee = e; ee.kind = Viewer::Event::Click; ee.tool = Viewer::Tool::EditText;
+                    onViewerEvent(ee);
+                    break;
+                }
+            }
+            if (cmd >= M_EDIT_COMMENT || cmd == 0) {}
             switch (cmd) {
                 case M_EDIT_COMMENT: editComment(*d, e.page, e.annot); break;
                 case M_DELETE: deleteAnnotation(*d, e.page, e.annot); break;
@@ -662,35 +755,49 @@ void deleteSelectedAnnotation() {
     if (d && app.viewer.selectedAnnot(page, index)) deleteAnnotation(*d, page, index);
 }
 
+void showStampMenu(HMENU parent);
+
 void showAnnotateMenu(const RECT& anchor) {
     HMENU m = CreatePopupMenu();
-    auto item = [&](UINT id, const wchar_t* text, bool checked = false) {
-        AppendMenuW(m, MF_STRING | (checked ? MF_CHECKED : 0), id, text);
+    const bool sel = app.viewer.hasSelection();
+    auto item = [&](UINT id, const wchar_t* text, bool checked = false, bool on = true) {
+        AppendMenuW(m, MF_STRING | (checked ? MF_CHECKED : 0) | (on ? 0 : MF_GRAYED), id, text);
     };
-    item(M_HIGHLIGHT, L"Highlight selected text\tCtrl+H");
-    item(M_UNDERLINE, L"Underline selected text\tCtrl+U");
-    item(M_STRIKE, L"Strikethrough selected text\tCtrl+Shift+K");
-    item(M_SQUIGGLY, L"Squiggly underline selected text");
+    item(M_HIGHLIGHT, L"Highlight\tCtrl+H", false, sel);
+    item(M_UNDERLINE, L"Underline\tCtrl+U", false, sel);
+    item(M_STRIKE, L"Strikethrough\tCtrl+Shift+K", false, sel);
+    item(M_SQUIGGLY, L"Squiggly underline", false, sel);
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    item(M_COMMENT, L"Add comment\tCtrl+M", app.tool == Viewer::Tool::Comment);
+    item(T_ADD_TEXT, L"Add text", app.tool == Viewer::Tool::AddText);
     item(M_RECT, L"Rectangle", app.tool == Viewer::Tool::Rectangle);
     item(M_ELLIPSE, L"Ellipse", app.tool == Viewer::Tool::Ellipse);
     item(M_LINE, L"Line", app.tool == Viewer::Tool::Line);
     item(M_ARROW, L"Arrow", app.tool == Viewer::Tool::Arrow);
     item(M_PEN, L"Pen (freehand)", app.tool == Viewer::Tool::Pen);
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    HMENU hl = CreatePopupMenu(), dc = CreatePopupMenu(), wd = CreatePopupMenu();
+    showStampMenu(m);
+    HMENU sg = CreatePopupMenu();
+    AppendMenuW(sg, MF_STRING, N_SIG_TYPE, L"Type my name...");
+    AppendMenuW(sg, MF_STRING, N_SIG_DRAW, L"Draw my signature...");
+    AppendMenuW(sg, MF_STRING, N_SIG_PIC, L"Use a picture of my signature...");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Signature");
+    item(T_PICTURE, L"Insert picture...");
+    item(N_LINK, L"Link (drag a box)", app.tool == Viewer::Tool::Link);
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU hl = CreatePopupMenu(), dc = CreatePopupMenu(), wd = CreatePopupMenu(), ts = CreatePopupMenu();
     for (int i = 0; i < 7; ++i) {
         AppendMenuW(hl, MF_STRING | (app.hlColour == i ? MF_CHECKED : 0), M_HL_COLOUR + i, kPaletteNames[i]);
         AppendMenuW(dc, MF_STRING | (app.drawColour == i ? MF_CHECKED : 0), M_DRAW_COLOUR + i, kPaletteNames[i]);
     }
     for (int i = 0; i < 3; ++i) AppendMenuW(wd, MF_STRING | (app.widthIdx == i ? MF_CHECKED : 0), M_WIDTH + i, kWidthNames[i]);
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(hl), L"Highlight and note colour");
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(dc), L"Drawing colour");
+    for (int i = 0; i < 9; ++i) { wchar_t t[16]; swprintf(t, 16, L"%d pt", static_cast<int>(kTextSizes[i])); AppendMenuW(ts, MF_STRING | (app.textStyle.sizePt == kTextSizes[i] ? MF_CHECKED : 0), N_TEXTSIZE + i, t); }
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(dc), L"Colour");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(wd), L"Line width");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(ts), L"Text size");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(hl), L"Highlight colour");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     int a, b;
-    AppendMenuW(m, app.viewer.selectedAnnot(a, b) ? MF_STRING : MF_GRAYED, M_DELETE, L"Delete selected annotation\tDel");
+    item(M_DELETE, L"Delete selected annotation\tDel", false, app.viewer.selectedAnnot(a, b));
     POINT pt{anchor.left, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
     int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
@@ -698,19 +805,102 @@ void showAnnotateMenu(const RECT& anchor) {
     if (cmd >= M_HL_COLOUR && cmd < M_HL_COLOUR + 7) { app.hlColour = cmd - M_HL_COLOUR; return; }
     if (cmd >= M_DRAW_COLOUR && cmd < M_DRAW_COLOUR + 7) { app.drawColour = cmd - M_DRAW_COLOUR; applyStyle(); return; }
     if (cmd >= M_WIDTH && cmd < M_WIDTH + 3) { app.widthIdx = cmd - M_WIDTH; applyStyle(); return; }
+    if (cmd >= N_TEXTSIZE && cmd < N_TEXTSIZE + 9) { app.textStyle.sizePt = kTextSizes[cmd - N_TEXTSIZE]; saveSettings(); return; }
+    if (cmd >= T_STAMP && cmd <= T_STAMP_CUSTOM) { toolsDispatch(cmd); return; }
     switch (cmd) {
         case M_HIGHLIGHT: markupSelection(annot::Markup::Highlight, false); break;
         case M_UNDERLINE: markupSelection(annot::Markup::Underline, false); break;
         case M_STRIKE: markupSelection(annot::Markup::Strikethrough, false); break;
         case M_SQUIGGLY: markupSelection(annot::Markup::Squiggly, false); break;
-        case M_COMMENT: if (app.viewer.hasSelection()) markupSelection(annot::Markup::Highlight, true); else setTool(Viewer::Tool::Comment); break;
+        case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case M_RECT: setTool(Viewer::Tool::Rectangle); break;
         case M_ELLIPSE: setTool(Viewer::Tool::Ellipse); break;
         case M_LINE: setTool(Viewer::Tool::Line); break;
         case M_ARROW: setTool(Viewer::Tool::Arrow); break;
         case M_PEN: setTool(Viewer::Tool::Pen); break;
+        case T_PICTURE: toolsDispatch(cmd); break;
+        case N_LINK: startLink(); break;
+        case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: signatureAction(cmd); break;
         case M_DELETE: deleteSelectedAnnotation(); break;
     }
+}
+
+void showCommentMenu(const RECT& anchor) {
+    HMENU m = CreatePopupMenu();
+    int a, b;
+    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::Comment ? MF_CHECKED : 0), M_COMMENT, L"Add comment\tCtrl+M");
+    AppendMenuW(m, MF_STRING | (app.viewer.hasSelection() ? 0 : MF_GRAYED), M_SQUIGGLY + 100, L"Comment on selected text\tCtrl+Shift+M");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, N_SELECT_NOTES, L"Notes summary (highlights and comments)...");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING | (app.viewer.selectedAnnot(a, b) ? 0 : MF_GRAYED), M_DELETE, L"Delete selected comment\tDel");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    switch (cmd) {
+        case M_COMMENT: setTool(Viewer::Tool::Comment); break;
+        case M_SQUIGGLY + 100: markupSelection(annot::Markup::Highlight, true); break;
+        case N_SELECT_NOTES: toolsDispatch(T_NOTES); break;
+        case M_DELETE: deleteSelectedAnnotation(); break;
+    }
+}
+
+void showGeometryMenu(const RECT& anchor) {
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::Ruler ? MF_CHECKED : 0), G_RULER, L"Ruler (measure a distance)");
+    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::Protractor ? MF_CHECKED : 0), G_PROT, L"Protractor (measure an angle)");
+    AppendMenuW(m, MF_STRING | (app.viewer.showRulers() ? MF_CHECKED : 0), G_RULERS, L"Show rulers on the page");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    HMENU un = CreatePopupMenu(), sc = CreatePopupMenu();
+    static const wchar_t* unitNames[] = {L"Millimetres (mm)", L"Centimetres (cm)", L"Inches (in)", L"Points (pt)"};
+    for (int i = 0; i < 4; ++i) AppendMenuW(un, MF_STRING | (app.units == i ? MF_CHECKED : 0), G_UNITS + i, unitNames[i]);
+    static const wchar_t* scaleNames[] = {L"1 : 1 (actual size)", L"1 : 2", L"1 : 5", L"1 : 10", L"1 : 20", L"1 : 50", L"1 : 100", L"2 : 1", L"5 : 1", L"10 : 1"};
+    for (int i = 0; i < 10; ++i) AppendMenuW(sc, MF_STRING | (app.scaleIdx == i ? MF_CHECKED : 0), G_SCALE + i, scaleNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(un), L"Units");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sc), L"Drawing scale");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING | (app.viewer.hasMeasurements() ? 0 : MF_GRAYED), G_KEEP, L"Keep the measurements on the page");
+    AppendMenuW(m, MF_STRING | (app.viewer.hasMeasurements() ? 0 : MF_GRAYED), G_CLEAR, L"Clear the measurements");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd) geometryAction(cmd);
+}
+
+void showSideBySideMenu(const RECT& anchor) {
+    HMENU m = CreatePopupMenu();
+    const bool two = app.tabs.size() >= 2 && activeDoc();
+    AppendMenuW(m, MF_STRING | (two ? 0 : MF_GRAYED), N_SBS_TAB, L"Show another open tab next to this one");
+    AppendMenuW(m, MF_STRING | (activeDoc() ? 0 : MF_GRAYED), N_SBS_OPEN, L"Open a file next to this one...");
+    AppendMenuW(m, MF_STRING | (app.sbs ? 0 : MF_GRAYED), N_SBS_OFF, L"Back to one document");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING | (two ? 0 : MF_GRAYED), N_COMPARE, L"Compare with another open tab...");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd == N_COMPARE) compareDocs(); else if (cmd) sideBySideAction(cmd);
+}
+
+void showZoomMenu(const RECT& anchor) {
+    HMENU m = CreatePopupMenu();
+    for (int i = 0; i < 8; ++i) { wchar_t t[16]; swprintf(t, 16, L"%d%%", static_cast<int>(kZoomPresets[i] * 100 + 0.5)); AppendMenuW(m, MF_STRING, Z_BASE + i, t); }
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, Z_BASE + 20, L"Fit width\tCtrl+2");
+    AppendMenuW(m, MF_STRING, Z_BASE + 21, L"Fit page\tCtrl+0");
+    AppendMenuW(m, MF_STRING, Z_BASE + 22, L"Actual size\tCtrl+1");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    Document* d = activeDoc();
+    if (!d || !cmd) return;
+    if (cmd < Z_BASE + 8) app.viewer.setZoom(kZoomPresets[cmd - Z_BASE]);
+    else if (cmd == Z_BASE + 20) app.viewer.fitWidth();
+    else if (cmd == Z_BASE + 21) app.viewer.fitPage();
+    else if (cmd == Z_BASE + 22) app.viewer.setZoom(1.0);
 }
 
 
@@ -1524,6 +1714,7 @@ void registerAsViewer() {
 }
 
 void startPicture() {
+    app.pendingPictureWidth = 0;
     std::vector<wchar_t> buf(MAX_PATH * 2, 0);
     OPENFILENAMEW ofn{sizeof(ofn)};
     ofn.hwndOwner = app.wnd;
@@ -1734,77 +1925,22 @@ void notesSummary(Document& d) {
     if (MessageBoxW(app.wnd, L"The notes were saved. Open the file?", kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES) ShellExecuteW(app.wnd, L"open", buf, nullptr, nullptr, SW_SHOWNORMAL);
 }
 
-void showToolsMenu(const RECT& anchor) {
+static const wchar_t* kRateNames[] = {L"Slow", L"Normal", L"Fast", L"Very fast"};
+static const int kRates[] = {-4, 0, 3, 6};
+static const wchar_t* kStampNames[] = {L"APPROVED", L"FINAL", L"DRAFT", L"CONFIDENTIAL", L"NOT APPROVED", L"FOR COMMENT", L"REVIEWED"};
+static const COLORREF kStampCols[] = {RGB(0x2E, 0x9E, 0x4A), RGB(0x25, 0x6F, 0xD1), RGB(0xE0, 0x8A, 0x00), RGB(0xD0, 0x2B, 0x2B), RGB(0xD0, 0x2B, 0x2B), RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A)};
+
+void showStampMenu(HMENU parent) {
+    HMENU st = CreatePopupMenu();
+    for (int i = 0; i < 7; ++i) AppendMenuW(st, MF_STRING, T_STAMP + i, kStampNames[i]);
+    AppendMenuW(st, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(st, MF_STRING, T_STAMP_CUSTOM, L"Custom stamp...");
+    AppendMenuW(parent, MF_POPUP, reinterpret_cast<UINT_PTR>(st), L"Stamp");
+}
+
+void toolsDispatch(int cmd) {
     Document* d = activeDoc();
     if (!d) return;
-    HMENU m = CreatePopupMenu();
-    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::EditText ? MF_CHECKED : 0), T_EDIT_TEXT, L"Edit text (click on a line)\tCtrl+E");
-    AppendMenuW(m, MF_STRING | (app.tool == Viewer::Tool::AddText ? MF_CHECKED : 0), T_ADD_TEXT, L"Add a text box (click on the page)");
-    AppendMenuW(m, MF_STRING, T_TEXT_STYLE, L"Style of new text...");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, T_PICTURE, L"Insert a picture...");
-    {
-        HMENU st = CreatePopupMenu();
-        static const struct { const wchar_t* name; COLORREF col; } stamps[] = {
-            {L"APPROVED", RGB(0x2E, 0x9E, 0x4A)}, {L"FINAL", RGB(0x25, 0x6F, 0xD1)}, {L"DRAFT", RGB(0xE0, 0x8A, 0x00)}, {L"CONFIDENTIAL", RGB(0xD0, 0x2B, 0x2B)},
-            {L"NOT APPROVED", RGB(0xD0, 0x2B, 0x2B)}, {L"FOR COMMENT", RGB(0x25, 0x6F, 0xD1)}, {L"REVIEWED", RGB(0x2E, 0x9E, 0x4A)}};
-        for (int i = 0; i < 7; ++i) AppendMenuW(st, MF_STRING, T_STAMP + i, stamps[i].name);
-        AppendMenuW(st, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(st, MF_STRING, T_STAMP_CUSTOM, L"Custom stamp...");
-        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(st), L"Stamp");
-    }
-    AppendMenuW(m, MF_STRING, T_NOTES, L"Notes summary (highlights and comments)...");
-    AppendMenuW(m, MF_STRING, T_WATERMARK, L"Watermark...");
-    AppendMenuW(m, MF_STRING, T_NUMBERS, L"Page numbers...");
-    AppendMenuW(m, MF_STRING, T_OCR, L"Recognise text in scanned pages (OCR)...");
-    AppendMenuW(m, MF_STRING, T_COMPRESS, L"Compress (make the file smaller)...");
-    AppendMenuW(m, MF_STRING, T_PROTECT, L"Password protection...");
-    {
-        HMENU sg = CreatePopupMenu();
-        AppendMenuW(sg, MF_STRING, T_SIGN, L"Sign with a certificate...");
-        AppendMenuW(sg, MF_STRING, T_OWNCERT, L"Make my own certificate...");
-        std::wstring label = d->signatures().empty() ? L"Show signatures (none in this document)" : L"Show the " + std::to_wstring(d->signatures().size()) + L" signature(s) of this document";
-        AppendMenuW(sg, d->signatures().empty() ? MF_GRAYED : MF_STRING, T_SHOWSIGS, label.c_str());
-        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Digital signatures");
-    }
-    if (d->isProtected()) AppendMenuW(m, MF_STRING, T_UNPROTECT, L"Remove password protection");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, T_EXPORT, L"Export as pictures, text, Word or Excel...");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    HMENU red = CreatePopupMenu();
-    AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
-    AppendMenuW(red, MF_STRING, T_RED_SEL, L"Mark selected text");
-    AppendMenuW(red, MF_STRING, T_RED_FIND, L"Find and mark...");
-    AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_APPLY, L"Apply redactions...");
-    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_CLEAR, L"Clear marks");
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(red), L"Redact (remove sensitive content)");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, T_READ, speech::speaking() ? L"Stop reading aloud\tCtrl+Shift+U" : L"Read aloud\tCtrl+Shift+U");
-    HMENU rate = CreatePopupMenu();
-    static const wchar_t* rateNames[] = {L"Slow", L"Normal", L"Fast", L"Very fast"};
-    static const int rates[] = {-4, 0, 3, 6};
-    for (int i = 0; i < 4; ++i) AppendMenuW(rate, MF_STRING | (app.readRate == rates[i] ? MF_CHECKED : 0), T_RATE + i, rateNames[i]);
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rate), L"Reading speed");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    HMENU col = CreatePopupMenu();
-    const Viewer::Colours cur = app.viewer.colours();
-    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Normal ? MF_CHECKED : 0), T_COLOURS, L"Normal");
-    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Dark ? MF_CHECKED : 0), T_COLOURS + 1, L"Dark (night mode)");
-    AppendMenuW(col, MF_STRING | (cur == Viewer::Colours::Dimmed ? MF_CHECKED : 0), T_COLOURS + 2, L"Dimmed (softer white)");
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(col), L"Page colours");
-    AppendMenuW(m, MF_STRING, T_PRINT, L"Print...\tCtrl+P");
-    AppendMenuW(m, MF_STRING, T_PROPS, L"Document properties...\tCtrl+D");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, T_FULLSCREEN, L"Full screen\tF11");
-    AppendMenuW(m, MF_STRING, T_PRESENT, L"Presentation\tF5");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    AppendMenuW(m, MF_STRING, T_DEFAULT_VIEWER, L"Set as the default PDF viewer...");
-    POINT pt{anchor.left, anchor.bottom};
-    ClientToScreen(app.wnd, &pt);
-    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
-    DestroyMenu(m);
     switch (cmd) {
         case T_WATERMARK: doWatermark(*d); break;
         case T_NUMBERS: doPageNumbers(*d); break;
@@ -1812,8 +1948,6 @@ void showToolsMenu(const RECT& anchor) {
         case T_COMPRESS: doCompress(*d); break;
         case T_OCR: doOcr(*d); break;
         case T_NOTES: notesSummary(*d); break;
-        case T_FULLSCREEN: setFullscreen(true, false); break;
-        case T_PRESENT: setFullscreen(true, true); break;
         case T_STAMP_CUSTOM: {
             std::wstring t;
             if (askText(L"Custom stamp", L"The word or words on the stamp (for example PAID).", false, t, L"") && !t.empty()) {
@@ -1831,22 +1965,94 @@ void showToolsMenu(const RECT& anchor) {
         case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case T_TEXT_STYLE: textStyleDialog(); break;
         case T_READ: readAloud(); break;
-        case T_PRINT: printDocument(); break;
-        case T_PROPS: showProperties(); break;
         case T_PICTURE: startPicture(); break;
-        case T_DEFAULT_VIEWER: registerAsViewer(); break;
+        case N_FINDREPLACE: doFindReplace(); break;
+        case N_TABLE_INS: tableInsert(); break;
+        case N_TABLE_EDIT: tableEdit(); break;
+        case N_TABLE_DEL: tableDelete(); break;
+        case N_BOOKMARK: addBookmarkHere(); break;
+        case N_BW: doGreyscale(); break;
         default:
-            if (cmd >= T_STAMP && cmd < T_STAMP + 7) {
-                static const wchar_t* names[] = {L"APPROVED", L"FINAL", L"DRAFT", L"CONFIDENTIAL", L"NOT APPROVED", L"FOR COMMENT", L"REVIEWED"};
-                static const COLORREF cols[] = {RGB(0x2E, 0x9E, 0x4A), RGB(0x25, 0x6F, 0xD1), RGB(0xE0, 0x8A, 0x00), RGB(0xD0, 0x2B, 0x2B), RGB(0xD0, 0x2B, 0x2B), RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A)};
-                startStamp(names[cmd - T_STAMP], cols[cmd - T_STAMP]);
-                break;
-            }
+            if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if (cmd >= T_RED_AREA && cmd <= T_RED_APPLY) { redactionMenuAction(*d, cmd); break; }
-            if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = rates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } }
-            else if (cmd >= T_COLOURS && cmd < T_COLOURS + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - T_COLOURS));
+            if (cmd >= P_DELETE && cmd <= P_NUP) { pagesMenuAction(cmd, {}); break; }
             break;
     }
+}
+
+void showToolsMenu(const RECT& anchor) {
+    Document* d = activeDoc();
+    if (!d) return;
+    HMENU m = CreatePopupMenu();
+    auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
+    auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
+    add(T_EDIT_TEXT, L"Edit text\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
+    add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
+    add(N_TABLE_INS, L"Insert table...");
+    add(N_TABLE_EDIT, L"Edit a table (text, rows, width)...");
+    add(N_TABLE_DEL, L"Delete table", true, app.tool == Viewer::Tool::TableDelete);
+    sep();
+    add(T_ADD_TEXT, L"Add a text box", true, app.tool == Viewer::Tool::AddText);
+    add(T_TEXT_STYLE, L"Style of new text...");
+    add(T_NOTES, L"Notes summary (highlights and comments)...");
+    add(N_BOOKMARK, L"Add a bookmark for this page...");
+    sep();
+    add(T_OCR, L"Recognise text (OCR)...");
+    add(T_WATERMARK, L"Watermark...");
+    add(T_NUMBERS, L"Page numbers...");
+    sep();
+    HMENU red = CreatePopupMenu();
+    AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
+    AppendMenuW(red, MF_STRING, T_RED_SEL, L"Mark selected text");
+    AppendMenuW(red, MF_STRING, T_RED_FIND, L"Find and mark...");
+    AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_APPLY, L"Apply redactions...");
+    AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_CLEAR, L"Clear marks");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(red), L"Redact");
+    add(T_COMPRESS, L"Compress (make the file smaller)...");
+    add(N_BW, L"Black and white / greyscale pictures...");
+    add(T_PROTECT, L"Password protection...");
+    if (d->isProtected()) add(T_UNPROTECT, L"Remove password protection");
+    {
+        HMENU sg = CreatePopupMenu();
+        AppendMenuW(sg, MF_STRING, T_SIGN, L"Sign with a certificate...");
+        AppendMenuW(sg, MF_STRING, T_OWNCERT, L"Make my own certificate...");
+        std::wstring label = d->signatures().empty() ? L"Show signatures (none in this document)" : L"Show the " + std::to_wstring(d->signatures().size()) + L" signature(s) of this document";
+        AppendMenuW(sg, d->signatures().empty() ? MF_GRAYED : MF_STRING, T_SHOWSIGS, label.c_str());
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Digital signatures");
+    }
+    sep();
+    HMENU pg = CreatePopupMenu();
+    auto padd = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(pg, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
+    padd(P_DELETE, L"Delete pages...", d->pageCount() > 1);
+    padd(P_BLANK, L"Insert a blank page after this one");
+    padd(P_INSERT, L"Insert pages from a file...");
+    padd(P_MERGE, L"Merge PDFs into the end of this document...");
+    padd(P_NEWPDF, L"New PDF from pictures...");
+    AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
+    padd(P_ROT_R, L"Rotate this page right");
+    padd(P_ROT_L, L"Rotate this page left");
+    padd(P_ROT_ALL, L"Rotate all pages right");
+    padd(P_MOVE, L"Move pages...", d->pageCount() > 1);
+    AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
+    padd(P_CROP, L"Crop pages...");
+    padd(P_CROPBOX, L"Crop by drawing a box");
+    AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
+    padd(P_EXTRACT, L"Extract pages into a new file...");
+    padd(P_SPLIT, L"Split into several files...");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pg), L"Edit pages");
+    sep();
+    add(T_EXPORT, L"Export as pictures, text, Word or Excel...");
+    HMENU rate = CreatePopupMenu();
+    add(T_READ, speech::speaking() ? L"Stop reading aloud\tCtrl+Shift+U" : L"Read aloud\tCtrl+Shift+U");
+    for (int i = 0; i < 4; ++i) AppendMenuW(rate, MF_STRING | (app.readRate == kRates[i] ? MF_CHECKED : 0), T_RATE + i, kRateNames[i]);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rate), L"Reading speed");
+    POINT pt{anchor.left, anchor.bottom};
+    ClientToScreen(app.wnd, &pt);
+    int cmd = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = kRates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } return; }
+    if (cmd) toolsDispatch(cmd);
 }
 
 void updateFindCount() {
@@ -2091,13 +2297,14 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_RECENT = 100 };
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
         AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
     auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
     const bool has = d != nullptr;
     add(MM_OPEN, L"Open...\tCtrl+O");
+    add(MM_NEWPDF, L"New PDF from pictures...");
     HMENU rec = CreatePopupMenu();
     for (size_t i = 0; i < app.recent.size(); ++i) {
         size_t s = app.recent[i].find_last_of(L"\\/");
@@ -2108,6 +2315,16 @@ void showMainMenu(const RECT& anchor) {
     add(MM_SAVE, L"Save\tCtrl+S", has && d->dirty());
     add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
     add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
+    {
+        HMENU cm = CreatePopupMenu();
+        AppendMenuW(cm, MF_STRING | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), MM_COMPARE, L"Another open tab (compare the text)...");
+        AppendMenuW(m, MF_POPUP | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(cm), L"Compare with");
+        HMENU sb = CreatePopupMenu();
+        AppendMenuW(sb, MF_STRING | (has && app.tabs.size() >= 2 ? 0 : MF_GRAYED), MM_SBSTAB, L"Another open tab");
+        AppendMenuW(sb, MF_STRING | (has ? 0 : MF_GRAYED), MM_SBSOPEN, L"Open a file next to this one...");
+        AppendMenuW(sb, MF_STRING | (app.sbs ? 0 : MF_GRAYED), MM_SBSOFF, L"Back to one document");
+        AppendMenuW(m, MF_POPUP | (has ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(sb), L"Side by side (two in one tab)");
+    }
     add(MM_CLOSE, L"Close tab\tCtrl+W", has);
     sep();
     add(MM_UNDO, L"Undo\tCtrl+Z", has && d->canUndo());
@@ -2115,16 +2332,33 @@ void showMainMenu(const RECT& anchor) {
     sep();
     add(MM_PRINT, L"Print...\tCtrl+P", has);
     add(MM_PROPS, L"Document properties...\tCtrl+D", has);
+    add(MM_RELOAD, L"Reload from disk", has && !d->path().empty());
     add(MM_READ, L"Read aloud\tCtrl+Shift+U", has);
+    add(MM_SIGN, L"Sign with a certificate...", has);
+    sep();
     add(MM_SELALL, L"Select all\tCtrl+A", has);
     add(MM_COPYPAGE, L"Copy page as image", has);
+    add(MM_COPYAREA, L"Copy area as image", has);
     sep();
     add(MM_FIRST, L"First page\tHome", has);
     add(MM_LAST, L"Last page\tEnd", has);
     add(MM_GOTO, L"Go to page...\tCtrl+G", has);
+    add(MM_BACK, L"Back\tAlt+Left", has && !app.navBack.empty());
+    add(MM_FWD, L"Forward\tAlt+Right", has && !app.navFwd.empty());
     sep();
     add(MM_BM, L"Bookmarks panel\tCtrl+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Bookmarks);
     add(MM_THUMBS, L"Thumbnails panel\tCtrl+Shift+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Pages);
+    {
+        HMENU lay = CreatePopupMenu();
+        AppendMenuW(lay, MF_STRING | (app.layout == 0 ? MF_CHECKED : 0), MM_LAYOUT + 0, L"Single page");
+        AppendMenuW(lay, MF_STRING | (app.layout == 1 ? MF_CHECKED : 0), MM_LAYOUT + 1, L"Continuous");
+        AppendMenuW(lay, MF_STRING | (app.layout == 2 ? MF_CHECKED : 0), MM_LAYOUT + 2, L"Two pages");
+        AppendMenuW(lay, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(lay, MF_STRING | (app.layout == 2 ? 0 : MF_GRAYED) | (app.cover ? MF_CHECKED : 0), MM_LAYOUT + 3, L"Show cover page separately");
+        AppendMenuW(m, MF_POPUP | (has ? 0 : MF_GRAYED), reinterpret_cast<UINT_PTR>(lay), L"Page layout");
+    }
+    add(MM_ROTL, L"Rotate left\tCtrl+L", has);
+    add(MM_ROTR, L"Rotate right\tCtrl+R", has);
     sep();
     add(MM_FITW, L"Fit width\tCtrl+2", has);
     add(MM_FITP, L"Fit page\tCtrl+0", has);
@@ -2140,6 +2374,7 @@ void showMainMenu(const RECT& anchor) {
     for (int i = 0; i < 3; ++i) AppendMenuW(th, MF_STRING | (app.theme == i ? MF_CHECKED : 0), MM_THEME + i, thNames[i]);
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(th), L"Theme");
     sep();
+    add(MM_PALETTE, L"Command palette...\tCtrl+K");
     add(MM_SETTINGS, L"Settings...");
     add(MM_DEFAULT, L"Set as default PDF viewer...");
     add(MM_ABOUT, L"About Feather PDF");
@@ -2174,18 +2409,938 @@ void showMainMenu(const RECT& anchor) {
         case MM_ACTUAL: runCommand(C_ACTUAL); break;
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
+        case MM_NEWPDF: newPdfFromPictures(); break;
+        case MM_RELOAD: reloadFromDisk(); break;
+        case MM_SIGN: toolsDispatch(T_SIGN); break;
+        case MM_COPYAREA: startCopyArea(); break;
+        case MM_BACK: navBack(); break;
+        case MM_FWD: navForward(); break;
+        case MM_ROTL: rotateView(-1); break;
+        case MM_ROTR: rotateView(1); break;
+        case MM_PALETTE: commandPalette(); break;
+        case MM_COMPARE: compareDocs(); break;
+        case MM_SBSTAB: sideBySideAction(N_SBS_TAB); break;
+        case MM_SBSOPEN: sideBySideAction(N_SBS_OPEN); break;
+        case MM_SBSOFF: sideBySideAction(N_SBS_OFF); break;
         case MM_SETTINGS: showSettings(); break;
         case MM_DEFAULT: registerAsViewer(); break;
         case MM_ABOUT: showAbout(); break;
         case MM_EXIT: PostMessageW(app.wnd, WM_CLOSE, 0, 0); break;
         default:
-            if (cmd >= MM_COL && cmd < MM_COL + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - MM_COL));
+            if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
+            else if (cmd >= MM_COL && cmd < MM_COL + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - MM_COL));
             else if (cmd >= MM_THEME && cmd < MM_THEME + 3) { app.theme = cmd - MM_THEME; applyTheme(); saveSettings(); }
             else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100 && static_cast<size_t>(cmd - MM_RECENT) < app.recent.size()) openFile(app.recent[cmd - MM_RECENT]);
     }
 }
 
-// ---- header drawing: tabs + toolbar. Text labels only, so nothing depends on icon fonts. ----
+// ---- opening documents that did not come from a file ----
+void addDocumentTab(std::unique_ptr<Document> doc) {
+    Document* raw = doc.get();
+    doc->onFormInvalidate = [raw](int page) { if (activeDoc() == raw) app.viewer.invalidatePage(page); };
+    doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
+    app.tabs.push_back(std::move(doc));
+    switchTab(static_cast<int>(app.tabs.size()) - 1);
+}
+
+// ---- back / forward, layout, rotate view, reload ----
+void onJump(int from, int) {
+    if (app.navBusy) return;
+    app.navBack.push_back(from);
+    app.navFwd.clear();
+    if (app.navBack.size() > 100) app.navBack.erase(app.navBack.begin());
+}
+
+void navBack() {
+    if (app.navBack.empty() || !activeDoc()) return;
+    app.navFwd.push_back(app.viewer.currentPage());
+    int p = app.navBack.back(); app.navBack.pop_back();
+    app.navBusy = true; app.viewer.goToPage(p); app.navBusy = false;
+}
+
+void navForward() {
+    if (app.navFwd.empty() || !activeDoc()) return;
+    app.navBack.push_back(app.viewer.currentPage());
+    int p = app.navFwd.back(); app.navFwd.pop_back();
+    app.navBusy = true; app.viewer.goToPage(p); app.navBusy = false;
+}
+
+void setPageLayout(int layout) {
+    if (layout == 3) app.cover = !app.cover; else app.layout = layout;
+    app.viewer.setLayout(app.layout, app.cover);
+    if (app.sbs) app.viewer2.setLayout(app.layout, app.cover);
+    saveSettings();
+}
+
+void rotateView(int turns) {
+    Document* d = activeDoc();
+    if (!d) return;
+    std::vector<int> all(d->pageCount());
+    for (int i = 0; i < d->pageCount(); ++i) all[i] = i;
+    if (d->rotatePages(all, turns)) afterPagesChanged();
+}
+
+void reloadFromDisk() {
+    Document* d = activeDoc();
+    if (!d || d->path().empty()) return;
+    if (d->dirty() && MessageBoxW(app.wnd, L"This document has changes that are not saved. Reloading from disk throws them away. Reload anyway?", kAppName, MB_YESNO | MB_ICONWARNING) != IDYES) return;
+    const double zoom = d->zoom; const int sy = d->scrollY; const bool fw = d->fitWidth;
+    std::string pw;
+    OpenResult r = d->open(d->path());
+    while (r == OpenResult::PasswordNeeded || r == OpenResult::WrongPassword) {
+        if (!askPassword(Document::describe(r, d->path()), pw)) return;
+        r = d->open(d->path(), pw);
+    }
+    if (r != OpenResult::Ok) { MessageBoxW(app.wnd, Document::describe(r, d->path()).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    d->zoom = zoom; d->scrollY = sy; d->fitWidth = fw;
+    setActiveDocument(d);
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    refresh();
+}
+
+// ---- find and replace ----
+void doFindReplace() {
+    Document* d = activeDoc();
+    if (!d) return;
+    std::vector<FormField> f(3);
+    f[0] = {FormField::Text, L"Find:", {}, app.viewer.hasSelection() ? app.viewer.selectedText() : L""};
+    f[1] = {FormField::Text, L"Replace with:", {}, L""};
+    f[2] = {FormField::Check, L"Match case"};
+    if (!showForm(app.wnd, app.inst, L"Find and replace text", f, L"Replace all", [](const std::vector<FormField>& v) -> std::wstring {
+            if (v[0].text.empty()) return L"Type the text to find.";
+            if (!pageobj::isLatin(v[1].text)) return L"The new text can use letters, numbers and common symbols of Western languages.";
+            return L""; })) return;
+    std::vector<int> pages;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    int n = pageobj::replaceAll(*d, f[0].text, f[1].text, f[2].checked, pages);
+    SetCursor(old);
+    if (n == 0) {
+        MessageBoxW(app.wnd, L"Nothing was replaced. The text may not be there, may be split across lines or styles, or may be on scanned pages (pictures).", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    afterPagesChanged();
+    wchar_t msg[160];
+    swprintf(msg, 160, L"Replaced %d occurrence(s) on %d page(s). Undo (Ctrl+Z) takes it back.", n, static_cast<int>(pages.size()));
+    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+// ---- tables ----
+bool tableDialog(pageobj::TableSpec& t, const wchar_t* title, const wchar_t* ok) {
+    std::vector<FormField> f(6);
+    wchar_t b[32];
+    f[0] = {FormField::Text, L"Rows:", {}, std::to_wstring(t.rows)};
+    f[1] = {FormField::Text, L"Columns:", {}, std::to_wstring(t.cols)};
+    swprintf(b, 32, L"%.0f", t.colWidth * 25.4 / 72.0); f[2] = {FormField::Text, L"Column width (mm):", {}, b};
+    swprintf(b, 32, L"%.0f", t.rowHeight * 25.4 / 72.0); f[3] = {FormField::Text, L"Row height (mm):", {}, b};
+    int si = 3;
+    static const double sizes[] = {8, 9, 10, 11, 12, 14};
+    for (int i = 0; i < 6; ++i) if (sizes[i] == t.fontSize) si = i;
+    f[4] = {FormField::Choice, L"Text size:", {L"8 pt", L"9 pt", L"10 pt", L"11 pt", L"12 pt", L"14 pt"}, L"", si};
+    f[5] = {FormField::Check, L"First row is a heading", {}, L"", 0, t.header};
+    if (!showForm(app.wnd, app.inst, title, f, ok, [](const std::vector<FormField>& v) -> std::wstring {
+            auto num = [](const std::wstring& s, double lo, double hi) { wchar_t* e = nullptr; double x = wcstod(s.c_str(), &e); return e != s.c_str() && !*e && x >= lo && x <= hi; };
+            if (!num(v[0].text, 1, 50) || !num(v[1].text, 1, 20)) return L"Rows can be 1 to 50 and columns 1 to 20.";
+            if (!num(v[2].text, 5, 200) || !num(v[3].text, 4, 100)) return L"Column width can be 5 to 200 mm and row height 4 to 100 mm.";
+            return L""; })) return false;
+    const int oldRows = t.rows, oldCols = t.cols;
+    std::vector<std::wstring> old = t.cells;
+    t.rows = static_cast<int>(wcstol(f[0].text.c_str(), nullptr, 10));
+    t.cols = static_cast<int>(wcstol(f[1].text.c_str(), nullptr, 10));
+    t.colWidth = wcstod(f[2].text.c_str(), nullptr) * 72.0 / 25.4;
+    t.rowHeight = wcstod(f[3].text.c_str(), nullptr) * 72.0 / 25.4;
+    t.fontSize = sizes[f[4].choice];
+    t.header = f[5].checked;
+    // cell texts: one line per row, cells separated by |
+    std::wstring initial;
+    for (int r = 0; r < t.rows; ++r) {
+        for (int c = 0; c < t.cols; ++c) {
+            std::wstring cell = (r < oldRows && c < oldCols && static_cast<size_t>(r) * oldCols + c < old.size()) ? old[static_cast<size_t>(r) * oldCols + c] : L"";
+            initial += (c ? L" | " : L"") + cell;
+        }
+        initial += L"\r\n";
+    }
+    std::wstring text;
+    while (askText(title, L"Type the text of the cells. One line per row; separate the cells of a row with the | sign.", false, text, initial.c_str(), true)) {
+        text = fromEdit(text);
+        if (!pageobj::isLatin(text)) { MessageBoxW(app.wnd, L"Cells can use letters, numbers and common symbols of Western languages.", kAppName, MB_OK | MB_ICONINFORMATION); initial = toEdit(text); continue; }
+        t.cells.assign(static_cast<size_t>(t.rows) * t.cols, L"");
+        int r = 0;
+        size_t pos = 0;
+        while (r < t.rows) {
+            size_t e = text.find(L'\r', pos);
+            std::wstring line = text.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+            size_t cp = 0;
+            for (int c = 0; c < t.cols; ++c) {
+                size_t bar = line.find(L'|', cp);
+                std::wstring cell = line.substr(cp, bar == std::wstring::npos ? std::wstring::npos : bar - cp);
+                size_t a = cell.find_first_not_of(L' '), z = cell.find_last_not_of(L' ');
+                t.cells[static_cast<size_t>(r) * t.cols + c] = a == std::wstring::npos ? L"" : cell.substr(a, z - a + 1);
+                if (bar == std::wstring::npos) break;
+                cp = bar + 1;
+            }
+            ++r;
+            if (e == std::wstring::npos) break;
+            pos = e + 1;
+        }
+        return true;
+    }
+    return false;
+}
+
+void tableInsert() {
+    if (!activeDoc()) return;
+    app.pendingTable = pageobj::TableSpec{};
+    if (!tableDialog(app.pendingTable, L"Insert table", L"Next")) return;
+    if (app.tool != Viewer::Tool::TablePlace) setTool(Viewer::Tool::TablePlace);
+    MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the table should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void tableEdit() {
+    if (!activeDoc()) return;
+    if (app.tool != Viewer::Tool::TableEdit) setTool(Viewer::Tool::TableEdit);
+    MessageBoxW(app.wnd, L"Click a table that was inserted with Feather PDF. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void tableDelete() { if (activeDoc() && app.tool != Viewer::Tool::TableDelete) setTool(Viewer::Tool::TableDelete); }
+
+// ---- links, copy area, crop by box ----
+void startLink() { if (activeDoc()) setTool(Viewer::Tool::Link); }
+void startCopyArea() { if (activeDoc()) setTool(Viewer::Tool::CopyArea); }
+void cropByBox() {
+    if (!activeDoc()) return;
+    setTool(Viewer::Tool::CropBox);
+}
+
+void lookUpSelection(bool web) {
+    std::wstring t = app.viewer.selectedText();
+    if (t.size() > 200) t.resize(200);
+    for (auto& c : t) if (c == L'\r' || c == L'\n') c = L' ';
+    if (t.find_first_not_of(L' ') == std::wstring::npos) return;
+    std::string u8(WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, nullptr, 0, nullptr, nullptr), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
+    u8.resize(strlen(u8.c_str()));
+    std::wstring enc;
+    for (unsigned char ch : u8) {
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.') enc += static_cast<wchar_t>(ch);
+        else { wchar_t b[8]; swprintf(b, 8, L"%%%02X", ch); enc += b; }
+    }
+    const wchar_t* base = web ? L"https://www.google.com/search?q=" : L"https://www.google.com/search?q=define+";
+    ShellExecuteW(app.wnd, L"open", (std::wstring(base) + enc).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void lookUpKind(int kind) {   // 0 search, 1 dictionary, 2 Wikipedia, 3 translate
+    std::wstring t = app.viewer.selectedText();
+    if (t.size() > 200) t.resize(200);
+    for (auto& c : t) if (c == L'\r' || c == L'\n') c = L' ';
+    if (t.find_first_not_of(L' ') == std::wstring::npos) return;
+    std::string u8(WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, nullptr, 0, nullptr, nullptr), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
+    u8.resize(strlen(u8.c_str()));
+    std::wstring enc;
+    for (unsigned char ch : u8) {
+        if (isalnum(ch) || ch == '-' || ch == '_' || ch == '.') enc += static_cast<wchar_t>(ch);
+        else { wchar_t b[8]; swprintf(b, 8, L"%%%02X", ch); enc += b; }
+    }
+    static const wchar_t* bases[] = {L"https://www.google.com/search?q=", L"https://www.google.com/search?q=define+", L"https://en.wikipedia.org/w/index.php?search=", L"https://translate.google.com/?sl=auto&op=translate&text="};
+    ShellExecuteW(app.wnd, L"open", (std::wstring(bases[kind]) + enc).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void readFromThisPage() { if (speech::speaking()) stopReading(); app.viewer.clearSelection(); readAloud(); }
+
+// ---- black and white ----
+void doGreyscale() {
+    Document* d = activeDoc();
+    if (!d) return;
+    compress::Options o;
+    o.dpi = 300; o.jpegQuality = 88; o.greyscale = true;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    compress::Result r = compress::run(*d, o);
+    SetCursor(old);
+    if (!r.changed) { MessageBoxW(app.wnd, L"There are no pictures in colour to convert. Text and drawings are not changed by this command.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    afterPagesChanged();
+    MessageBoxW(app.wnd, (L"Pictures converted to greyscale: " + std::to_wstring(r.pictures) + L". Text and drawings keep their colours.\n\nUndo (Ctrl+Z) takes the change back.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+// ---- handwritten signature ----
+std::wstring signaturePath() {
+    std::wstring s = settingsPath();
+    size_t p = s.find_last_of(L'\\');
+    return (p == std::wstring::npos ? L"" : s.substr(0, p + 1)) + L"signature.png";
+}
+
+void signatureAction(int cmd) {
+    Document* d = activeDoc();
+    if (!d) return;
+    const std::wstring png = signaturePath();
+    bool ok = false;
+    if (cmd == N_SIG_TYPE) {
+        std::wstring name;
+        if (!askText(L"Signature", L"Type your name as you sign it.", false, name, L"") || name.empty()) return;
+        if (name.size() > 60) name.resize(60);
+        ok = sigpad::fromText(name, png);
+    } else if (cmd == N_SIG_DRAW) {
+        ok = sigpad::draw(app.wnd, app.inst, png);
+        if (!ok) return;
+    } else if (cmd == N_SIG_PIC) {
+        std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner = app.wnd;
+        ofn.lpstrTitle = L"Choose a picture of your signature";
+        ofn.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp)\0*.png;*.jpg;*.jpeg;*.bmp\0";
+        ofn.lpstrFile = buf.data(); ofn.nMaxFile = static_cast<DWORD>(buf.size());
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+        if (!GetOpenFileNameW(&ofn)) return;
+        ok = CopyFileW(buf.data(), (png + L".src").c_str(), FALSE) != 0;
+        if (ok) { app.pendingPicture = buf.data(); setTool(Viewer::Tool::Picture); MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the signature should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    }
+    if (!ok) { MessageBoxW(app.wnd, L"The signature could not be made.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    app.pendingPicture = png;
+    app.pendingPictureWidth = 150;
+    if (app.tool != Viewer::Tool::Picture) setTool(Viewer::Tool::Picture);
+    MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the signature should go. Esc cancels.\n\nThis is a picture of your handwriting. For a signature that proves who signed, use Edit PDF > Digital signatures.", kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+// ---- geometry ----
+double unitsPerPoint() { static const double v[] = {25.4 / 72.0, 2.54 / 72.0, 1.0 / 72.0, 1.0}; return v[app.units]; }
+const wchar_t* unitName() { static const wchar_t* v[] = {L"mm", L"cm", L"in", L"pt"}; return v[app.units]; }
+double scaleFactor() { static const double v[] = {1, 2, 5, 10, 20, 50, 100, 0.5, 0.2, 0.1}; return v[app.scaleIdx]; }
+
+void geometryAction(int cmd) {
+    if (!activeDoc()) return;
+    if (cmd == G_RULER) { setTool(Viewer::Tool::Ruler); return; }
+    if (cmd == G_PROT) { app.protStage = 0; app.viewer.setPending(nullptr, 0, nullptr); setTool(Viewer::Tool::Protractor); return; }
+    if (cmd == G_RULERS) { app.viewer.setShowRulers(!app.viewer.showRulers(), app.units); return; }
+    if (cmd == G_CLEAR) { app.viewer.clearMeasures(); return; }
+    if (cmd == G_KEEP) {
+        Document* d = activeDoc();
+        int n = 0;
+        for (const auto& m : app.viewer.measures()) {
+            std::vector<std::vector<annot::PointD>> strokes{{m.a, m.b}};
+            if (m.angle) strokes.push_back({m.a, m.c});
+            if (annot::addInk(*d, m.page, strokes, RGB(0x00, 0x90, 0x60), 1.5)) {
+                annot::addNote(*d, m.page, {(m.a.x + m.b.x) / 2, (m.a.y + m.b.y) / 2}, m.text, RGB(0x66, 0xDD, 0x66));
+                ++n;
+            }
+        }
+        app.viewer.clearMeasures();
+        app.viewer.documentChanged();
+        refresh();
+        (void)n;
+        return;
+    }
+    if (cmd >= G_UNITS && cmd < G_UNITS + 4) { app.units = cmd - G_UNITS; app.viewer.setShowRulers(app.viewer.showRulers(), app.units); saveSettings(); return; }
+    if (cmd >= G_SCALE && cmd < G_SCALE + 10) { app.scaleIdx = cmd - G_SCALE; saveSettings(); return; }
+}
+
+void measureDraw(const Viewer::Event& e) {
+    wchar_t t[64];
+    if (e.tool == Viewer::Tool::Ruler) {
+        const double dx = e.pts[1].x - e.pts[0].x, dy = e.pts[1].y - e.pts[0].y;
+        const double v = std::hypot(dx, dy) * unitsPerPoint() * scaleFactor();
+        swprintf(t, 64, app.units == 1 || app.units == 2 ? L"%.2f %ls" : L"%.1f %ls", v, unitName());
+        app.viewer.addMeasure({e.page, e.pts[0], e.pts[1], {}, false, t});
+        return;
+    }
+    if (app.protStage == 0) {
+        app.protVertex = e.pts[0]; app.protArm = e.pts[1]; app.protPage = e.page; app.protStage = 1;
+        app.viewer.setPending(&app.protVertex, e.page, &app.protArm);
+        return;
+    }
+    if (e.page != app.protPage) { app.protStage = 0; app.viewer.setPending(nullptr, 0, nullptr); return; }
+    const double ax = app.protArm.x - app.protVertex.x, ay = app.protArm.y - app.protVertex.y;
+    const double bx = e.pts[1].x - app.protVertex.x, by = e.pts[1].y - app.protVertex.y;
+    const double la = std::hypot(ax, ay), lb = std::hypot(bx, by);
+    if (la < 1 || lb < 1) return;
+    double c = std::clamp((ax * bx + ay * by) / (la * lb), -1.0, 1.0);
+    swprintf(t, 64, L"%.1f°", std::acos(c) * 180.0 / 3.14159265358979);
+    app.viewer.addMeasure({e.page, app.protVertex, app.protArm, e.pts[1], true, t});
+    app.protStage = 0;
+    app.viewer.setPending(nullptr, 0, nullptr);
+}
+
+// ---- events of the new tools ----
+bool featureDraw(Document& d, const Viewer::Event& e) {
+    switch (e.tool) {
+        case Viewer::Tool::Ruler: case Viewer::Tool::Protractor: measureDraw(e); return true;
+        case Viewer::Tool::Link: {
+            annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y), std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)};
+            std::wstring url;
+            if (askText(L"Link", L"The web address this box should open, for example https://example.com", false, url, L"https://")) {
+                std::string u8(WideCharToMultiByte(CP_UTF8, 0, url.c_str(), -1, nullptr, 0, nullptr, nullptr), '\0');
+                WideCharToMultiByte(CP_UTF8, 0, url.c_str(), -1, u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
+                u8.resize(strlen(u8.c_str()));
+                if (u8.rfind("http://", 0) != 0 && u8.rfind("https://", 0) != 0 && u8.rfind("mailto:", 0) != 0) u8 = "https://" + u8;
+                if (annot::addLink(d, e.page, r, u8)) { app.viewer.documentChanged(); refresh(); }
+                else MessageBoxW(app.wnd, L"The link could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+            }
+            setTool(Viewer::Tool::Link);
+            return true;
+        }
+        case Viewer::Tool::CopyArea: {
+            if (!pageobj::copyAreaToClipboard(d, e.page, std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y), std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y), app.wnd))
+                MessageBoxW(app.wnd, L"The area could not be copied as a picture.", kAppName, MB_OK | MB_ICONWARNING);
+            setTool(Viewer::Tool::CopyArea);
+            return true;
+        }
+        case Viewer::Tool::CropBox: {
+            double cl, cb, cr, ct;
+            if (!d.cropBoxOf(e.page, cl, cb, cr, ct)) return true;
+            const double l = std::min(e.pts[0].x, e.pts[1].x), r = std::max(e.pts[0].x, e.pts[1].x), b = std::min(e.pts[0].y, e.pts[1].y), t = std::max(e.pts[0].y, e.pts[1].y);
+            int ans = MessageBoxW(app.wnd, L"Crop to this box.\n\nYes = crop every page by the same amounts\nNo = crop only this page\nCancel = do nothing", kAppName, MB_YESNOCANCEL | MB_ICONQUESTION);
+            setTool(Viewer::Tool::CropBox);
+            if (ans == IDCANCEL) return true;
+            std::vector<int> pages;
+            if (ans == IDYES) for (int i = 0; i < d.pageCount(); ++i) pages.push_back(i); else pages.push_back(e.page);
+            if (d.cropPages(pages, l - cl, b - cb, cr - r, ct - t)) afterPagesChanged();
+            else MessageBoxW(app.wnd, L"That would leave the page too small.", kAppName, MB_OK | MB_ICONINFORMATION);
+            return true;
+        }
+        default: return false;
+    }
+}
+
+bool featureClick(Document& d, const Viewer::Event& e) {
+    switch (e.tool) {
+        case Viewer::Tool::TablePlace: {
+            if (pageobj::addTable(d, e.page, e.pts.front().x, e.pts.front().y, app.pendingTable)) { app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
+            else MessageBoxW(app.wnd, L"The table could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+            setTool(Viewer::Tool::TablePlace);   // one table at a time
+            return true;
+        }
+        case Viewer::Tool::TableEdit: {
+            pageobj::TableHit hit = pageobj::tableAt(d, e.page, e.pts.front().x, e.pts.front().y);
+            if (!hit.found) { MessageBoxW(app.wnd, L"No table made by Feather PDF was found there.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
+            pageobj::TableSpec t = hit.spec;
+            if (tableDialog(t, L"Edit table", L"Apply")) {
+                d.beginChange();
+                pageobj::removeTable(d, e.page, hit.id, false);
+                if (pageobj::addTable(d, e.page, hit.left, hit.top, t, false)) { d.resetText(e.page); app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
+                else { d.cancelChange(); }
+            }
+            setTool(Viewer::Tool::TableEdit);
+            return true;
+        }
+        case Viewer::Tool::TableDelete: {
+            pageobj::TableHit hit = pageobj::tableAt(d, e.page, e.pts.front().x, e.pts.front().y);
+            if (!hit.found) { MessageBoxW(app.wnd, L"No table made by Feather PDF was found there.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
+            if (pageobj::removeTable(d, e.page, hit.id)) { app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
+            setTool(Viewer::Tool::TableDelete);
+            return true;
+        }
+        default: return false;
+    }
+}
+
+
+void addBookmarkHere() {
+    Document* d = activeDoc();
+    if (!d) return;
+    const int page = app.viewer.currentPage();
+    std::wstring title = L"Page " + std::to_wstring(page + 1);
+    if (app.viewer.hasSelection()) {
+        std::wstring sel = app.viewer.selectedText();
+        for (auto& c : sel) if (c == L'\r' || c == L'\n' || c == L'\t') c = L' ';
+        if (sel.size() > 80) sel.resize(80);
+        if (sel.find_first_not_of(L' ') != std::wstring::npos) title = sel;
+    }
+    std::wstring t;
+    if (!askText(L"Add bookmark", L"Name of the bookmark for this page.", false, t, title.c_str()) || t.empty()) return;
+    std::vector<unsigned char> bytes, out;
+    if (!d->serialize(bytes) || !outline::addBookmark(bytes, page, t, out)) {
+        MessageBoxW(app.wnd, L"The bookmark could not be added to this document (its structure is not supported).", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    d->beginChange();
+    if (d->reload(std::move(out)) != OpenResult::Ok) {
+        d->cancelChange();
+        MessageBoxW(app.wnd, L"The bookmark could not be added to this document.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    afterPagesChanged();
+    showSidebar(Sidebar::Mode::Bookmarks);
+}
+
+void linkOnSelection() {
+    Document* d = activeDoc();
+    if (!d || !app.viewer.hasSelection()) return;
+    std::wstring url;
+    if (!askText(L"Link", L"The web address the selected text should open, for example https://example.com", false, url, L"https://")) return;
+    std::string u8(WideCharToMultiByte(CP_UTF8, 0, url.c_str(), -1, nullptr, 0, nullptr, nullptr), '\0');
+    WideCharToMultiByte(CP_UTF8, 0, url.c_str(), -1, u8.data(), static_cast<int>(u8.size()), nullptr, nullptr);
+    u8.resize(strlen(u8.c_str()));
+    if (u8.rfind("http://", 0) != 0 && u8.rfind("https://", 0) != 0 && u8.rfind("mailto:", 0) != 0) u8 = "https://" + u8;
+    bool any = false;
+    for (const auto& pr : app.viewer.selectionRects())
+        for (const auto& r : pr.rects) any = annot::addLink(*d, pr.page, r, u8) || any;
+    app.viewer.clearSelection();
+    if (any) { app.viewer.documentChanged(); refresh(); }
+    else MessageBoxW(app.wnd, L"The link could not be added.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+// ---- new PDF from pictures, split ----
+void newPdfFromPictures() {
+    std::vector<wchar_t> buf(MAX_PATH * 64, 0);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Choose the pictures (they become pages in the order of their names)";
+    ofn.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0";
+    ofn.lpstrFile = buf.data(); ofn.nMaxFile = static_cast<DWORD>(buf.size());
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
+    if (!GetOpenFileNameW(&ofn)) return;
+    std::vector<std::wstring> files;
+    const wchar_t* p = buf.data();
+    std::wstring first = p;
+    p += first.size() + 1;
+    if (!*p) files.push_back(first);
+    else for (; *p; p += wcslen(p) + 1) files.push_back(first + L"\\" + p);
+    std::sort(files.begin(), files.end());
+    std::vector<std::pair<double, double>> sizes;
+    std::vector<std::wstring> ok;
+    for (const auto& f : files) {
+        int w, h;
+        if (!pageobj::imageSize(f, w, h)) continue;
+        double pw = w * 0.75, ph = h * 0.75;
+        const double big = std::max(pw, ph);
+        if (big > 842) { pw *= 842 / big; ph *= 842 / big; }   // no larger than A4's long side
+        sizes.push_back({pw, ph});
+        ok.push_back(f);
+    }
+    if (ok.empty()) { MessageBoxW(app.wnd, L"None of those files is a picture Feather PDF can read.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    std::vector<unsigned char> bytes;
+    auto doc = std::make_unique<Document>();
+    if (!Document::blankBytes(sizes, bytes) || doc->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The new document could not be made.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    int bad = 0;
+    for (size_t i = 0; i < ok.size(); ++i) {
+        std::wstring err;
+        const double vh = sizes[i].second;
+        if (!pageobj::addPicture(*doc, static_cast<int>(i), 0, vh, ok[i], err, sizes[i].first)) ++bad;
+    }
+    SetCursor(old);
+    doc->setName(L"New PDF.pdf");
+    addDocumentTab(std::move(doc));
+    if (bad) MessageBoxW(app.wnd, L"Some pictures could not be placed. Their pages are empty.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
+void splitPdf() {
+    Document* d = activeDoc();
+    if (!d || d->pageCount() < 2) return;
+    std::vector<FormField> f(3);
+    f[0] = {FormField::Choice, L"Split:", {L"Into single pages", L"Every N pages", L"By page ranges"}, L"", 1};
+    f[1] = {FormField::Text, L"N pages per file:", {}, L"10"};
+    f[2] = {FormField::Text, L"Ranges (one file each, separated by ;):", {}, L"1-5; 6-"};
+    g_formDoc = d;
+    bool ok = showForm(app.wnd, app.inst, L"Split into several files", f, L"Choose folder and name...", [](const std::vector<FormField>& v) -> std::wstring {
+        if (v[0].choice == 1) { wchar_t* e = nullptr; long n = wcstol(v[1].text.c_str(), &e, 10); if (e == v[1].text.c_str() || *e || n < 1) return L"Type how many pages each file should have."; }
+        if (v[0].choice == 2) {
+            size_t pos = 0;
+            const std::wstring& t = v[2].text;
+            bool any = false;
+            while (pos <= t.size()) {
+                size_t e = t.find(L';', pos);
+                std::wstring part = t.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+                if (part.find_first_not_of(L' ') != std::wstring::npos) { any = true; if (!g_formDoc || g_formDoc->parseRange(part).empty()) return L"\"" + part + L"\" is not a valid page range."; }
+                if (e == std::wstring::npos) break;
+                pos = e + 1;
+            }
+            if (!any) return L"Type at least one range.";
+        }
+        return L""; });
+    g_formDoc = nullptr;
+    if (!ok) return;
+    std::vector<std::vector<int>> groups;
+    const int n = d->pageCount();
+    if (f[0].choice == 0) for (int i = 0; i < n; ++i) groups.push_back({i});
+    else if (f[0].choice == 1) {
+        int per = static_cast<int>(wcstol(f[1].text.c_str(), nullptr, 10));
+        for (int i = 0; i < n; i += per) { std::vector<int> g; for (int k = i; k < std::min(n, i + per); ++k) g.push_back(k); groups.push_back(g); }
+    } else {
+        size_t pos = 0;
+        const std::wstring& t = f[2].text;
+        while (pos <= t.size()) {
+            size_t e = t.find(L';', pos);
+            std::wstring part = t.substr(pos, e == std::wstring::npos ? std::wstring::npos : e - pos);
+            if (part.find_first_not_of(L' ') != std::wstring::npos) groups.push_back(d->parseRange(part));
+            if (e == std::wstring::npos) break;
+            pos = e + 1;
+        }
+    }
+    wchar_t buf[MAX_PATH * 2];
+    std::wstring base = d->title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(buf, (base + L" (part).pdf").c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Name for the files (a number is added)";
+    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+    ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2; ofn.lpstrDefExt = L"pdf";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    std::wstring stem = buf;
+    if (stem.size() > 4 && _wcsicmp(stem.c_str() + stem.size() - 4, L".pdf") == 0) stem.resize(stem.size() - 4);
+    int saved = 0;
+    for (size_t i = 0; i < groups.size(); ++i) {
+        if (groups[i].empty()) continue;
+        if (d->extractPages(groups[i], stem + L"-" + std::to_wstring(i + 1) + L".pdf") == SaveResult::Ok) ++saved;
+    }
+    wchar_t msg[160];
+    swprintf(msg, 160, L"%d file(s) were saved next to \"%ls-1.pdf\".", saved, stem.substr(stem.find_last_of(L'\\') + 1).c_str());
+    MessageBoxW(app.wnd, msg, kAppName, saved ? MB_OK | MB_ICONINFORMATION : MB_OK | MB_ICONWARNING);
+}
+
+// ---- compare two documents (by text) ----
+struct Word { int start, count; std::wstring text; };
+std::vector<Word> wordsOf(Document& d, int page) {
+    std::vector<Word> out;
+    const int n = d.charCount(page);
+    if (n <= 0) return out;
+    std::wstring t = d.textRange(page, 0, n);
+    size_t i = 0;
+    while (i < t.size()) {
+        while (i < t.size() && iswspace(t[i])) ++i;
+        size_t s = i;
+        while (i < t.size() && !iswspace(t[i])) ++i;
+        if (i > s) out.push_back({static_cast<int>(s), static_cast<int>(i - s), t.substr(s, i - s)});
+    }
+    return out;
+}
+
+void compareDocs() {
+    Document* a = activeDoc();
+    if (!a || app.tabs.size() < 2) return;
+    std::vector<Document*> others;
+    std::vector<std::wstring> names;
+    for (auto& t : app.tabs) if (t.get() != a) { others.push_back(t.get()); names.push_back(t->title()); }
+    std::vector<FormField> f(2);
+    f[0] = {FormField::Note, L"", {}, L"Compares the text of this document (" + a->title() + L") with another open document, page by page. A copy of this document opens in a new tab with the words that are not in the other document highlighted."};
+    f[1] = {FormField::Choice, L"Compare with:", names, L"", 0};
+    if (!showForm(app.wnd, app.inst, L"Compare documents", f, L"Compare")) return;
+    Document* b = others[f[1].choice];
+    std::vector<unsigned char> bytes;
+    if (!a->serialize(bytes)) { MessageBoxW(app.wnd, L"The document could not be prepared for comparing.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    auto copy = std::make_unique<Document>();
+    if (copy->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The comparison copy could not be opened. (Password-protected documents cannot be compared.)", kAppName, MB_OK | MB_ICONWARNING); return; }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    int pagesDiff = 0, onlyA = 0, onlyB = 0, skipped = 0;
+    const int pages = std::max(a->pageCount(), b->pageCount());
+    for (int p = 0; p < pages; ++p) {
+        std::vector<Word> wa = p < a->pageCount() ? wordsOf(*a, p) : std::vector<Word>{};
+        std::vector<Word> wb = p < b->pageCount() ? wordsOf(*b, p) : std::vector<Word>{};
+        const size_t n = wa.size(), m = wb.size();
+        if (n * m > 9000000) { ++skipped; continue; }
+        std::vector<char> keepA(n, 0);
+        {   // longest common subsequence of the words
+            std::vector<std::vector<unsigned short>> L(n + 1, std::vector<unsigned short>(m + 1, 0));
+            for (size_t i = n; i-- > 0;)
+                for (size_t j = m; j-- > 0;) L[i][j] = wa[i].text == wb[j].text ? static_cast<unsigned short>(L[i + 1][j + 1] + 1) : std::max(L[i + 1][j], L[i][j + 1]);
+            size_t i = 0, j = 0;
+            while (i < n && j < m) {
+                if (wa[i].text == wb[j].text) { keepA[i] = 1; ++i; ++j; }
+                else if (L[i + 1][j] >= L[i][j + 1]) ++i; else ++j;
+            }
+            onlyB += static_cast<int>(m - L[0][0]);
+        }
+        std::vector<annot::RectD> rects;
+        FPDF_TEXTPAGE tp = p < copy->pageCount() ? copy->text(p) : nullptr;
+        for (size_t i = 0; i < n; ++i) {
+            if (keepA[i]) continue;
+            ++onlyA;
+            if (!tp) continue;
+            const int cnt = pdfium::api().FPDFText_CountRects(tp, wa[i].start, wa[i].count);
+            for (int k = 0; k < cnt; ++k) {
+                double l, t, r, bt;
+                if (pdfium::api().FPDFText_GetRect(tp, k, &l, &t, &r, &bt)) rects.push_back({l, bt, r, t});
+            }
+        }
+        const bool differs = !rects.empty() || wa.size() != wb.size() || std::any_of(keepA.begin(), keepA.end(), [](char c) { return !c; });
+        if (differs) ++pagesDiff;
+        if (!rects.empty() && p < copy->pageCount()) annot::addMarkup(*copy, p, annot::Markup::Highlight, rects, RGB(0xFF, 0x8C, 0x00));
+    }
+    SetCursor(old);
+    wchar_t msg[400];
+    swprintf(msg, 400, L"Pages with differences: %d of %d.\nWords only in \"%ls\" (highlighted in the new tab): %d.\nWords only in \"%ls\": %d.%ls\n\nThis compares the text, not how the pages look.",
+             pagesDiff, pages, a->title().c_str(), onlyA, b->title().c_str(), onlyB, skipped ? L"\nSome very large pages were skipped." : L"");
+    copy->setName(L"Comparison - " + a->title());
+    addDocumentTab(std::move(copy));
+    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+// ---- side by side ----
+void sideBySideAction(int cmd) {
+    if (cmd == N_SBS_OFF) {
+        app.sbs = false; app.sbsDoc = nullptr; app.sbsOwned.reset();
+        app.viewer2.setDocument(nullptr);
+        ShowWindow(app.viewer2.hwnd(), SW_HIDE);
+        relayoutChildren();
+        return;
+    }
+    Document* other = nullptr;
+    if (cmd == N_SBS_TAB) {
+        std::vector<Document*> others;
+        std::vector<std::wstring> names;
+        for (auto& t : app.tabs) if (t.get() != activeDoc()) { others.push_back(t.get()); names.push_back(t->title()); }
+        if (others.empty()) return;
+        std::vector<FormField> f(1);
+        f[0] = {FormField::Choice, L"Show next to this one:", names, L"", 0};
+        if (!showForm(app.wnd, app.inst, L"Side by side", f, L"Show")) return;
+        other = others[f[0].choice];
+        app.sbsOwned.reset();
+    } else if (cmd == N_SBS_OPEN) {
+        std::vector<std::wstring> files;
+        pickPdf(false, files, L"Open next to this document");
+        if (files.empty()) return;
+        auto doc = openForImport(files[0]);
+        if (!doc) return;
+        other = doc.get();
+        app.sbsOwned = std::move(doc);
+    }
+    if (!other) return;
+    app.sbs = true; app.sbsDoc = other;
+    app.viewer2.setLayout(app.layout, app.cover);
+    app.viewer2.setDocument(other);
+    ShowWindow(app.viewer2.hwnd(), SW_SHOW);
+    relayoutChildren();
+    if (activeDoc()) { other->fitWidth = true; app.viewer2.fitWidth(); app.viewer.fitWidth(); }
+}
+
+// keeps the second view at the same zoom and position as the first
+void syncSideBySide(bool fromFirst) {
+    if (!app.sbs || app.syncing) return;
+    Document* a = activeDoc();
+    if (!a || !app.sbsDoc || a == app.sbsDoc) return;
+    app.syncing = true;
+    Viewer& dst = fromFirst ? app.viewer2 : app.viewer;
+    Document* src = fromFirst ? a : app.sbsDoc;
+    Document* tgt = fromFirst ? app.sbsDoc : a;
+    if (std::fabs(tgt->zoom - src->zoom) > 1e-6) dst.setZoom(src->zoom);
+    dst.scrollTo(src->scrollY);
+    app.syncing = false;
+}
+
+// ---- command palette (Ctrl+K) ----
+struct PaletteCmd { std::wstring name; std::function<void()> run; };
+struct PaletteState { std::vector<PaletteCmd> all; std::vector<int> shown; HWND edit = nullptr, list = nullptr; bool done = false; int chosen = -1; };
+
+LRESULT CALLBACK paletteEditProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* st = reinterpret_cast<PaletteState*>(GetWindowLongPtrW(GetParent(h), GWLP_USERDATA));
+    if (m == WM_KEYDOWN) {
+        if (w == VK_ESCAPE) { st->done = true; return 0; }
+        if (w == VK_RETURN) {
+            int sel = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0));
+            if (sel >= 0 && sel < static_cast<int>(st->shown.size())) st->chosen = st->shown[sel];
+            st->done = true;
+            return 0;
+        }
+        if (w == VK_DOWN || w == VK_UP) {
+            int n = static_cast<int>(SendMessageW(st->list, LB_GETCOUNT, 0, 0));
+            int sel = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0)) + (w == VK_DOWN ? 1 : -1);
+            if (n > 0) SendMessageW(st->list, LB_SETCURSEL, std::clamp(sel, 0, n - 1), 0);
+            return 0;
+        }
+    }
+    return CallWindowProcW(reinterpret_cast<WNDPROC>(GetPropW(h, L"orig")), h, m, w, l);
+}
+
+LRESULT CALLBACK paletteProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    auto* st = reinterpret_cast<PaletteState*>(GetWindowLongPtrW(h, GWLP_USERDATA));
+    switch (m) {
+        case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(reinterpret_cast<CREATESTRUCTW*>(l)->lpCreateParams)); break;
+        case WM_COMMAND:
+            if (HIWORD(w) == EN_CHANGE && reinterpret_cast<HWND>(l) == st->edit) {
+                wchar_t q[128];
+                GetWindowTextW(st->edit, q, 128);
+                std::wstring lq = q;
+                for (auto& c : lq) c = static_cast<wchar_t>(towlower(c));
+                SendMessageW(st->list, LB_RESETCONTENT, 0, 0);
+                st->shown.clear();
+                for (size_t i = 0; i < st->all.size(); ++i) {
+                    std::wstring ln = st->all[i].name;
+                    for (auto& c : ln) c = static_cast<wchar_t>(towlower(c));
+                    bool ok = true;
+                    size_t pos = 0;
+                    std::wstringstream ss(lq);
+                    std::wstring word;
+                    while (ss >> word) { if (ln.find(word) == std::wstring::npos) { ok = false; break; } (void)pos; }
+                    if (ok) { st->shown.push_back(static_cast<int>(i)); SendMessageW(st->list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(st->all[i].name.c_str())); }
+                }
+                if (!st->shown.empty()) SendMessageW(st->list, LB_SETCURSEL, 0, 0);
+            } else if (HIWORD(w) == LBN_DBLCLK && reinterpret_cast<HWND>(l) == st->list) {
+                int sel = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0));
+                if (sel >= 0) { st->chosen = st->shown[sel]; st->done = true; }
+            }
+            return 0;
+        case WM_ACTIVATE: if (LOWORD(w) == WA_INACTIVE) st->done = true; return 0;
+        case WM_CTLCOLOREDIT: case WM_CTLCOLORLISTBOX: {
+            HDC dc = reinterpret_cast<HDC>(w);
+            SetTextColor(dc, pal().text);
+            SetBkColor(dc, pal().panel);
+            static HBRUSH br = nullptr;
+            if (br) DeleteObject(br);
+            br = CreateSolidBrush(pal().panel);
+            return reinterpret_cast<LRESULT>(br);
+        }
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+void commandPalette() {
+    PaletteState st;
+    auto add = [&](const wchar_t* n, std::function<void()> f) { st.all.push_back({n, std::move(f)}); };
+    Document* d = activeDoc();
+    add(L"Open a file", [] { runCommand(C_OPEN); });
+    add(L"New PDF from pictures", [] { newPdfFromPictures(); });
+    if (d) {
+        add(L"Save", [] { saveActive(); });
+        add(L"Save as", [] { if (activeDoc()) saveAsDialog(*activeDoc()); });
+        add(L"Close tab", [] { closeTab(app.active); });
+        add(L"Print", [] { printDocument(); });
+        add(L"Document properties", [] { showProperties(); });
+        add(L"Find", [] { runCommand(C_FIND); });
+        add(L"Find and replace text", [] { doFindReplace(); });
+        add(L"Go to page", [] { runCommand(C_GOTO); });
+        add(L"First page", [] { app.viewer.goToPage(0); });
+        add(L"Last page", [] { if (activeDoc()) app.viewer.goToPage(activeDoc()->pageCount() - 1); });
+        add(L"Back", [] { navBack(); });
+        add(L"Forward", [] { navForward(); });
+        add(L"Reload from disk", [] { reloadFromDisk(); });
+        add(L"Fit width", [] { runCommand(C_FITW); });
+        add(L"Fit page", [] { runCommand(C_FITP); });
+        add(L"Actual size", [] { runCommand(C_ACTUAL); });
+        add(L"Zoom in", [] { runCommand(C_ZOOMIN); });
+        add(L"Zoom out", [] { runCommand(C_ZOOMOUT); });
+        add(L"Page layout: single page", [] { setPageLayout(0); });
+        add(L"Page layout: continuous", [] { setPageLayout(1); });
+        add(L"Page layout: two pages", [] { setPageLayout(2); });
+        add(L"Rotate view left", [] { rotateView(-1); });
+        add(L"Rotate view right", [] { rotateView(1); });
+        add(L"Full screen", [] { setFullscreen(true, false); });
+        add(L"Presentation", [] { setFullscreen(true, true); });
+        add(L"Bookmarks panel", [] { showSidebar(Sidebar::Mode::Bookmarks); });
+        add(L"Thumbnails panel", [] { showSidebar(Sidebar::Mode::Pages); });
+        add(L"Edit text", [] { toolsDispatch(T_EDIT_TEXT); });
+        add(L"Add text box", [] { toolsDispatch(T_ADD_TEXT); });
+        add(L"Insert table", [] { tableInsert(); });
+        add(L"Edit a table", [] { tableEdit(); });
+        add(L"Delete table", [] { tableDelete(); });
+        add(L"Add a bookmark for this page", [] { addBookmarkHere(); });
+        add(L"Highlight", [] { markupSelection(annot::Markup::Highlight, false); });
+        add(L"Underline", [] { markupSelection(annot::Markup::Underline, false); });
+        add(L"Strikethrough", [] { markupSelection(annot::Markup::Strikethrough, false); });
+        add(L"Add comment", [] { setTool(Viewer::Tool::Comment); });
+        add(L"Rectangle", [] { setTool(Viewer::Tool::Rectangle); });
+        add(L"Ellipse", [] { setTool(Viewer::Tool::Ellipse); });
+        add(L"Line", [] { setTool(Viewer::Tool::Line); });
+        add(L"Arrow", [] { setTool(Viewer::Tool::Arrow); });
+        add(L"Pen", [] { setTool(Viewer::Tool::Pen); });
+        add(L"Insert picture", [] { startPicture(); });
+        add(L"Link (drag a box)", [] { startLink(); });
+        add(L"Signature: draw", [] { signatureAction(N_SIG_DRAW); });
+        add(L"Signature: type my name", [] { signatureAction(N_SIG_TYPE); });
+        add(L"Ruler (measure a distance)", [] { geometryAction(G_RULER); });
+        add(L"Protractor (measure an angle)", [] { geometryAction(G_PROT); });
+        add(L"Copy page as image", [] { if (activeDoc()) pageobj::copyPageToClipboard(*activeDoc(), app.viewer.currentPage(), app.wnd); });
+        add(L"Copy area as image", [] { startCopyArea(); });
+        add(L"Notes summary", [] { toolsDispatch(T_NOTES); });
+        add(L"Recognise text (OCR)", [] { toolsDispatch(T_OCR); });
+        add(L"Watermark", [] { toolsDispatch(T_WATERMARK); });
+        add(L"Page numbers", [] { toolsDispatch(T_NUMBERS); });
+        add(L"Compress", [] { toolsDispatch(T_COMPRESS); });
+        add(L"Black and white / greyscale pictures", [] { doGreyscale(); });
+        add(L"Password protection", [] { toolsDispatch(T_PROTECT); });
+        add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
+        add(L"Export", [] { toolsDispatch(T_EXPORT); });
+        add(L"Read aloud", [] { readAloud(); });
+        add(L"Compare with another open tab", [] { compareDocs(); });
+        add(L"Split into several files", [] { splitPdf(); });
+        add(L"Crop by drawing a box", [] { cropByBox(); });
+        add(L"Delete pages", [] { pagesMenuAction(P_DELETE, {}); });
+        add(L"Insert blank page", [] { pagesMenuAction(P_BLANK, {}); });
+    }
+    add(L"Settings", [] { showSettings(); });
+    add(L"Theme: light", [] { app.theme = 0; applyTheme(); saveSettings(); });
+    add(L"Theme: dark", [] { app.theme = 1; applyTheme(); saveSettings(); });
+    add(L"Theme: like Windows", [] { app.theme = 2; applyTheme(); saveSettings(); });
+    add(L"About Feather PDF", [] { showAbout(); });
+
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = paletteProc; wc.hInstance = app.inst; wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = nullptr; wc.lpszClassName = L"FeatherPalette";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    RECT pr; GetWindowRect(app.wnd, &pr);
+    const int W = 520, H = 360;
+    HWND h = CreateWindowExW(WS_EX_TOOLWINDOW, L"FeatherPalette", L"", WS_POPUP | WS_BORDER, (pr.left + pr.right - W) / 2, pr.top + 90, W, H, app.wnd, nullptr, app.inst, &st);
+    if (!h) return;
+    HFONT font = static_cast<HFONT>(GetStockObject(DEFAULT_GUI_FONT));
+    st.edit = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL, 10, 10, W - 22, 26, h, nullptr, app.inst, nullptr);
+    st.list = CreateWindowExW(0, L"LISTBOX", L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT, 10, 44, W - 22, H - 56, h, nullptr, app.inst, nullptr);
+    SendMessageW(st.edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    SendMessageW(st.list, WM_SETFONT, reinterpret_cast<WPARAM>(font), TRUE);
+    SendMessageW(st.edit, EM_SETCUEBANNER, TRUE, reinterpret_cast<LPARAM>(L"Type a command..."));
+    SetPropW(st.edit, L"orig", reinterpret_cast<HANDLE>(SetWindowLongPtrW(st.edit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(paletteEditProc))));
+    for (size_t i = 0; i < st.all.size(); ++i) { st.shown.push_back(static_cast<int>(i)); SendMessageW(st.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(st.all[i].name.c_str())); }
+    SendMessageW(st.list, LB_SETCURSEL, 0, 0);
+    ShowWindow(h, SW_SHOW);
+    SetForegroundWindow(h);
+    SetFocus(st.edit);
+    MSG msg;
+    while (!st.done && GetMessageW(&msg, nullptr, 0, 0) > 0) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+    DestroyWindow(h);
+    SetForegroundWindow(app.wnd);
+    SetFocus(app.wnd);
+    if (st.chosen >= 0) st.all[st.chosen].run();
+}
+
+// ---- header drawing: tabs + toolbar. Icons are drawn with GDI lines, so nothing depends on icon fonts. ----
+enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE };
+
+void drawIcon(HDC dc, RECT r, int icon, COLORREF col) {
+    const int cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2;
+    HPEN pen = CreatePen(PS_SOLID, 2, col), thin = CreatePen(PS_SOLID, 1, col);
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    HBRUSH solid = CreateSolidBrush(col);
+    auto line = [&](int x1, int y1, int x2, int y2) { MoveToEx(dc, cx + x1, cy + y1, nullptr); LineTo(dc, cx + x2, cy + y2); };
+    auto box = [&](int x1, int y1, int x2, int y2) { Rectangle(dc, cx + x1, cy + y1, cx + x2, cy + y2); };
+    switch (icon) {
+        case I_OPEN:   // folder
+            box(-9, -4, 9, 8); line(-9, -4, -9, -7); line(-9, -7, -3, -7); line(-3, -7, 0, -4); break;
+        case I_SAVE:   // floppy
+            box(-8, -8, 8, 8); box(-4, -8, 4, -2); box(-5, 2, 5, 8); break;
+        case I_UNDO: case I_REDO: {
+            const int d = icon == I_UNDO ? 1 : -1;
+            Arc(dc, cx - 8, cy - 6, cx + 8, cy + 10, cx + 8 * d, cy + 2, cx - 6 * d, cy - 6);
+            line(-7 * d, -5, -7 * d, 1); line(-7 * d, -5, -1 * d, -5); break;
+        }
+        case I_EDIT:   // page with a pencil
+            box(-8, -9, 4, 9); line(-5, -4, 1, -4); line(-5, 0, 1, 0); line(-5, 4, -1, 4);
+            line(9, -7, 3, 5); line(3, 5, 1, 7); line(9, -7, 11, -5); break;
+        case I_ANNOT:  // highlighter
+            line(-8, 8, 8, 8); line(-6, 2, 4, -8); line(-2, 6, 8, -4); line(-6, 2, -2, 6); line(4, -8, 8, -4); break;
+        case I_COMMENT: // speech bubble
+            box(-9, -8, 9, 4); line(-4, 4, -6, 9); line(-6, 9, 1, 4); line(-5, -3, 5, -3); line(-5, 0, 2, 0); break;
+        case I_GEOM:   // triangle with ticks
+            line(-8, 8, 8, 8); line(-8, 8, -8, -8); line(-8, -8, 8, 8); line(-8, 2, -4, 2); line(-8, -3, -5, -3); break;
+        case I_SBS:    // two panes
+            box(-9, -7, -1, 7); box(1, -7, 9, 7); break;
+        case I_PREV: line(3, -7, -3, 0); line(-3, 0, 3, 7); break;
+        case I_NEXT: line(-3, -7, 3, 0); line(3, 0, -3, 7); break;
+        case I_ZOUT: case I_ZIN: case I_SEARCH:
+            Ellipse(dc, cx - 8, cy - 8, cx + 4, cy + 4); line(3, 3, 9, 9);
+            if (icon != I_SEARCH) { line(-5, -2, 1, -2); if (icon == I_ZIN) line(-2, -5, -2, 1); }
+            break;
+        case I_MORE:
+            for (int i = -1; i <= 1; ++i) { RECT d{cx + i * 6 - 2, cy - 2, cx + i * 6 + 2, cy + 2}; FillRect(dc, &d, solid); }
+            break;
+    }
+    SelectObject(dc, ob); SelectObject(dc, op);
+    DeleteObject(pen); DeleteObject(thin); DeleteObject(solid);
+}
+
 void layoutHeader(HDC dc, int width) {
     app.buttons.clear(); app.tabRects.clear(); app.closeRects.clear();
     Document* d = activeDoc();
@@ -2202,42 +3357,44 @@ void layoutHeader(HDC dc, int width) {
     }
     app.plusRect = {x + 4, 8, x + 28, 30};
 
-    auto add = [&](const wchar_t* label, int id, bool enabled, int minW = 0) {
+    const int top = kTabH + 4, bottom = kTabH + kToolH - 4;
+    auto icon = [&](int id, int ic, bool enabled) {
+        app.buttons.push_back({L"", {x, top, x + 34, bottom}, id, enabled, ic});
+        x += 36;
+    };
+    auto group = [&](const wchar_t* label, int id, int ic, bool enabled) {
         SIZE sz; GetTextExtentPoint32W(dc, label, static_cast<int>(wcslen(label)), &sz);
-        int w = std::max<int>(sz.cx + 20, minW);
-        app.buttons.push_back({label, {x, kTabH + 6, x + w, kTabH + kToolH - 6}, id, enabled});
-        x += w + 4;
+        int w = 12 + 22 + 6 + sz.cx + 12;
+        app.buttons.push_back({label, {x, top, x + w, bottom}, id, enabled, ic});
+        x += w + 2;
     };
     x = 8;
-    add(L"Open", C_OPEN, true);
-    add(L"Save", C_SAVE, d && d->dirty());
-    x += 6;
-    add(L"Undo", C_UNDO, d && d->canUndo());
-    add(L"Redo", C_REDO, d && d->canRedo());
+    icon(C_OPEN, I_OPEN, true);
+    icon(C_SAVE, I_SAVE, d && d->dirty());
+    icon(C_UNDO, I_UNDO, d && d->canUndo());
+    icon(C_REDO, I_REDO, d && d->canRedo());
     x += 10;
-    add(L"Prev", C_PREV, d != nullptr);
-    x += 90;   // room for the "page x / n" label
-    add(L"Next", C_NEXT, d != nullptr);
-    x += 10;
-    add(L"-", C_ZOOMOUT, d != nullptr, 28);
-    x += 52;   // zoom label
-    add(L"+", C_ZOOMIN, d != nullptr, 28);
-    x += 10;
-    add(L"Fit width", C_FITW, d != nullptr);
-    add(L"Fit page", C_FITP, d != nullptr);
-    add(L"100%", C_ACTUAL, d != nullptr);
-    x += 10;
-    add(L"Find", C_FIND, d != nullptr);
-    add(L"Panel", C_PANEL, d != nullptr);
-    x += 10;
-    add(L"Annotate", C_ANNOT, d != nullptr);
-    add(L"Pages", C_PAGES, d != nullptr);
-    add(L"Tools", C_TOOLS, d != nullptr);
+    group(L"Edit PDF", C_EDITPDF, I_EDIT, d != nullptr);
+    group(L"Annotate", C_ANNOT, I_ANNOT, d != nullptr);
+    group(L"Comment", C_COMMENT, I_COMMENT, d != nullptr);
+    group(L"Geometry", C_GEOM, I_GEOM, d != nullptr);
+    group(L"Side by side", C_SBS, I_SBS, d != nullptr);
+    x += 12;
+    icon(C_PREV, I_PREV, d != nullptr);
+    icon(C_NEXT, I_NEXT, d != nullptr);
+    app.pageRect = {x, top + 2, x + 56, bottom - 2};
+    x += 62 + 52;   // page box + "/ n"
+    icon(C_ZOOMOUT, I_ZOUT, d != nullptr);
     {
-        SIZE sz; GetTextExtentPoint32W(dc, L"Menu", 4, &sz);
-        int w = sz.cx + 24;
-        app.buttons.push_back({L"Menu", {width - w - 8, kTabH + 6, width - 8, kTabH + kToolH - 6}, C_MENU, true});
+        wchar_t z[16];
+        swprintf(z, 16, L"%d%%", d ? static_cast<int>(d->zoom * 100 + 0.5) : 100);
+        app.buttons.push_back({z, {x, top, x + 62, bottom}, C_ZOOMMENU, d != nullptr, 0});
+        x += 64;
     }
+    icon(C_ZOOMIN, I_ZIN, d != nullptr);
+    int rx = width - 8;
+    rx -= 34; app.buttons.push_back({L"", {rx, top, rx + 34, bottom}, C_MENU, true, I_MORE});
+    rx -= 36; app.buttons.push_back({L"", {rx, top, rx + 34, bottom}, C_FIND, d != nullptr, I_SEARCH});
 }
 
 void paintHeader(HDC dc, const RECT& client) {
@@ -2277,22 +3434,38 @@ void paintHeader(HDC dc, const RECT& client) {
     }
 
     for (const Button& b : app.buttons) {
-        SetTextColor(dc, b.enabled ? P.text : P.textOff);
-        DrawTextW(dc, b.label.c_str(), -1, const_cast<RECT*>(&b.rc), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        const COLORREF col = b.enabled ? P.text : P.textOff;
+        if (b.enabled && app.hover == b.id) {
+            HBRUSH hb = CreateSolidBrush(P.hover);
+            HGDIOBJ opn = SelectObject(dc, GetStockObject(NULL_PEN)), obr = SelectObject(dc, hb);
+            RoundRect(dc, b.rc.left, b.rc.top, b.rc.right, b.rc.bottom, 8, 8);
+            SelectObject(dc, obr); SelectObject(dc, opn); DeleteObject(hb);
+        }
+        SetTextColor(dc, col);
+        if (b.icon && b.label.empty()) drawIcon(dc, b.rc, b.icon, col);
+        else if (b.icon) {
+            RECT ir{b.rc.left + 8, b.rc.top, b.rc.left + 34, b.rc.bottom};
+            drawIcon(dc, ir, b.icon, col);
+            RECT tr2{b.rc.left + 36, b.rc.top, b.rc.right, b.rc.bottom};
+            DrawTextW(dc, b.label.c_str(), -1, &tr2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        } else DrawTextW(dc, b.label.c_str(), -1, const_cast<RECT*>(&b.rc), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
     Document* d = activeDoc();
     if (d) {
-        SetTextColor(dc, P.text);
-        const Button* prev = nullptr; const Button* zo = nullptr;
-        for (const Button& b : app.buttons) { if (b.id == C_PREV) prev = &b; if (b.id == C_ZOOMOUT) zo = &b; }
+        // page number box and "/ n"
+        HBRUSH pb = CreateSolidBrush(P.panelDark);
+        HPEN bp = CreatePen(PS_SOLID, 1, P.line);
+        HGDIOBJ opn = SelectObject(dc, bp), obr = SelectObject(dc, pb);
+        RoundRect(dc, app.pageRect.left, app.pageRect.top, app.pageRect.right, app.pageRect.bottom, 6, 6);
+        SelectObject(dc, obr); SelectObject(dc, opn); DeleteObject(pb); DeleteObject(bp);
         wchar_t s[64];
-        swprintf(s, 64, L"Page %d / %d", app.viewer.currentPage() + 1, d->pageCount());
-        RECT pr{prev->rc.right + 2, prev->rc.top, prev->rc.right + 88, prev->rc.bottom};
-        app.pageRect = pr;
-        DrawTextW(dc, s, -1, &pr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        swprintf(s, 64, L"%d%%", static_cast<int>(d->zoom * 100 + 0.5));
-        RECT zr{zo->rc.right + 2, zo->rc.top, zo->rc.right + 50, zo->rc.bottom};
-        DrawTextW(dc, s, -1, &zr, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SetTextColor(dc, P.text);
+        swprintf(s, 64, L"%d", app.viewer.currentPage() + 1);
+        DrawTextW(dc, s, -1, &app.pageRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        swprintf(s, 64, L"/ %d", d->pageCount());
+        RECT pr{app.pageRect.right + 6, app.pageRect.top, app.pageRect.right + 56, app.pageRect.bottom};
+        SetTextColor(dc, P.textDim);
+        DrawTextW(dc, s, -1, &pr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
     HPEN pen = CreatePen(PS_SOLID, 1, P.line);
     HGDIOBJ old = SelectObject(dc, pen);
@@ -2300,9 +3473,23 @@ void paintHeader(HDC dc, const RECT& client) {
     SelectObject(dc, old); DeleteObject(pen);
 }
 
+void openUri(const std::wstring& uri) {
+    // only web and mail addresses are opened; a PDF must not be able to start programs
+    auto starts = [&](const wchar_t* p) { return _wcsnicmp(uri.c_str(), p, wcslen(p)) == 0; };
+    if (!(starts(L"http://") || starts(L"https://") || starts(L"mailto:"))) {
+        MessageBoxW(app.wnd, L"This link does not point to a web page, so it was not opened.", kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (MessageBoxW(app.wnd, (L"Open this link in your browser?\n\n" + uri).c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES)
+        ShellExecuteW(app.wnd, L"open", uri.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void onViewer2Change(void*) { syncSideBySide(false); }
+
 void onViewerChange(void*) {
     RECT r{0, 0, 4000, kTabH + kToolH};
     InvalidateRect(app.wnd, &r, FALSE);
+    syncSideBySide(true);
     if (activeDoc() && app.sidebarVisible) app.sidebar.setCurrentPage(app.viewer.currentPage());
 }
 
@@ -2332,6 +3519,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             Document::setTimerWindow(app.viewer.hwnd());
             app.viewer.setOnChange(onViewerChange, nullptr);
             app.viewer.onEvent = onViewerEvent;
+            app.viewer.onJump = onJump;
+            app.viewer.onUri = openUri;
+            app.viewer2.create(h, app.inst);
+            ShowWindow(app.viewer2.hwnd(), SW_HIDE);
+            app.viewer2.setOnChange(onViewer2Change, nullptr);
+            app.viewer.setLayout(app.layout, app.cover);
             app.viewer.setStyle(drawColor(), lineWidth());
             app.sidebar.create(h, app.inst);
             app.sidebar.setOnNavigate(onSidebarNavigate, nullptr);
@@ -2396,14 +3589,32 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             for (const Button& b : app.buttons)
                 if (b.enabled && hit(b.rc, x, y)) {
                     if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
-                    else if (b.id == C_PAGES) showPagesMenu(b.rc);
-                    else if (b.id == C_TOOLS) showToolsMenu(b.rc);
+                    else if (b.id == C_EDITPDF) showToolsMenu(b.rc);
+                    else if (b.id == C_COMMENT) showCommentMenu(b.rc);
+                    else if (b.id == C_GEOM) showGeometryMenu(b.rc);
+                    else if (b.id == C_SBS) showSideBySideMenu(b.rc);
+                    else if (b.id == C_ZOOMMENU) showZoomMenu(b.rc);
                     else if (b.id == C_MENU) showMainMenu(b.rc);
                     else runCommand(b.id);
                     return 0;
                 }
             return 0;
         }
+        case WM_MOUSEMOVE: {
+            int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l), hv = -1;
+            for (const Button& b : app.buttons) if (b.enabled && hit(b.rc, x, y)) hv = b.id;
+            if (hv != app.hover) {
+                app.hover = hv;
+                RECT r{0, kTabH, 4000, kTabH + kToolH};
+                InvalidateRect(h, &r, FALSE);
+                TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, h, 0};
+                TrackMouseEvent(&tme);
+            }
+            return 0;
+        }
+        case WM_MOUSELEAVE:
+            if (app.hover != -1) { app.hover = -1; RECT r{0, kTabH, 4000, kTabH + kToolH}; InvalidateRect(h, &r, FALSE); }
+            return 0;
         case WM_MBUTTONUP: {
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
             for (size_t i = 0; i < app.tabRects.size(); ++i)
@@ -2432,6 +3643,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'L': rotateView(-1); return 0;
+                    case 'R': rotateView(1); return 0;
                     case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
                     case 'P': printDocument(); return 0;
@@ -2440,8 +3653,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;
                     case 'Z': undoRedo(shift); return 0;
                     case 'Y': undoRedo(true); return 0;
-                    case 'H': markupSelection(annot::Markup::Highlight, false); return 0;
-                    case 'K': if (shift) markupSelection(annot::Markup::Strikethrough, false); return 0;
+                    case 'H': if (shift) doFindReplace(); else markupSelection(annot::Markup::Highlight, false); return 0;
+                    case 'K': if (shift) markupSelection(annot::Markup::Strikethrough, false); else commandPalette(); return 0;
                     case 'M':
                         if (app.viewer.hasSelection()) markupSelection(annot::Markup::Highlight, true);
                         else if (d) setTool(Viewer::Tool::Comment);
@@ -2494,7 +3707,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         case WM_SETFOCUS: return 0;
         case WM_SYSKEYDOWN:
-            if (GetKeyState(VK_MENU) < 0 && (w == VK_LEFT || w == VK_RIGHT)) return 0;
+            if (GetKeyState(VK_MENU) < 0 && w == VK_LEFT) { navBack(); return 0; }
+            if (GetKeyState(VK_MENU) < 0 && w == VK_RIGHT) { navForward(); return 0; }
             break;
         case WM_GETMINMAXINFO:
             reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {1130, 420};   // the toolbar needs this much room

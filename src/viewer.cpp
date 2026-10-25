@@ -42,7 +42,8 @@ LRESULT CALLBACK Viewer::proc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 int Viewer::pageX(int i) const {
     RECT rc; GetClientRect(hwnd_, &rc);
-    return contentW_ <= rc.right ? (rc.right - widths_[i]) / 2 : kMargin - doc_->scrollX;
+    const int base = contentW_ <= rc.right ? (rc.right - contentW_) / 2 : -doc_->scrollX;
+    return base + xs_[i];
 }
 
 void Viewer::clearCache() {
@@ -65,28 +66,75 @@ void Viewer::setDocument(Document* d) {
     notify();
 }
 
+void Viewer::setLayout(int layout, bool cover) {
+    layout_ = layout; cover_ = cover;
+    if (!doc_) return;
+    int keep = currentPage();
+    clearCache();
+    relayout();
+    goToPage(keep);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+}
+
 void Viewer::relayout() {
-    tops_.clear(); widths_.clear(); heights_.clear();
+    tops_.clear(); widths_.clear(); heights_.clear(); xs_.clear();
     contentW_ = contentH_ = 0;
     if (!doc_) { updateScrollBars(); return; }
+    const int n = doc_->pageCount();
+    // rows of pages: one, or two side by side
+    std::vector<std::pair<int, int>> rows;   // first page, count
+    if (layout_ == 2) {
+        int i = 0;
+        if (cover_ && n > 0) { rows.push_back({0, 1}); i = 1; }
+        for (; i < n; i += 2) rows.push_back({i, std::min(2, n - i)});
+    } else for (int i = 0; i < n; ++i) rows.push_back({i, 1});
+    RECT rc; GetClientRect(hwnd_, &rc);
     if (doc_->fitWidth) {
-        RECT rc; GetClientRect(hwnd_, &rc);
         double maxW = 1;
-        for (int i = 0; i < doc_->pageCount(); ++i) maxW = std::max<double>(maxW, doc_->pageSize(i).w);
-        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin;
+        for (auto& r : rows) {
+            double w = 0;
+            for (int k = 0; k < r.second; ++k) w += doc_->pageSize(r.first + k).w;
+            if (layout_ == 2 && r.second == 1) w *= 2;   // a lone page keeps the width of half a spread
+            maxW = std::max(maxW, w);
+        }
+        double avail = std::max<LONG>(rc.right, 200) - 2.0 * kMargin - (layout_ == 2 ? kGap : 0);
         doc_->zoom = std::clamp(avail / (maxW * 96.0 / 72.0), kMinZoom, kMaxZoom);
     }
     const double s = pxPerPt();
-    int y = kMargin;
-    for (int i = 0; i < doc_->pageCount(); ++i) {
-        int w = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).w * s)));
-        int h = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).h * s)));
-        tops_.push_back(y); widths_.push_back(w); heights_.push_back(h);
-        contentW_ = std::max(contentW_, w + 2 * kMargin);
-        y += h + kGap;
+    tops_.assign(n, 0); widths_.assign(n, 1); heights_.assign(n, 1); xs_.assign(n, 0);
+    for (int i = 0; i < n; ++i) {
+        widths_[i] = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).w * s)));
+        heights_[i] = std::max(1, static_cast<int>(std::lround(doc_->pageSize(i).h * s)));
     }
-    contentH_ = y - kGap + kMargin;
+    // content width: widest row
+    for (auto& r : rows) {
+        int w = 0;
+        for (int k = 0; k < r.second; ++k) w += widths_[r.first + k] + (k ? kGap : 0);
+        if (layout_ == 2 && r.second == 1 && !(cover_ && r.first == 0 && n > 1)) {}
+        contentW_ = std::max(contentW_, w + 2 * kMargin);
+    }
+    int y = kMargin, lastGap = kGap;
+    for (auto& r : rows) {
+        int rowH = 0, rowW = 0;
+        for (int k = 0; k < r.second; ++k) { rowH = std::max(rowH, heights_[r.first + k]); rowW += widths_[r.first + k] + (k ? kGap : 0); }
+        int x = (contentW_ - rowW) / 2;
+        if (layout_ == 2 && r.second == 1 && cover_ && r.first == 0 && n > 1) x = (contentW_ + kGap) / 2;   // the cover sits on the right-hand side
+        for (int k = 0; k < r.second; ++k) {
+            const int p = r.first + k;
+            tops_[p] = y; xs_[p] = x;
+            x += widths_[p] + kGap;
+        }
+        lastGap = layout_ == 0 ? std::max<int>(kGap, rc.bottom - rowH - kMargin) : kGap;
+        y += rowH + lastGap;
+    }
+    contentH_ = y - lastGap + kMargin;
     updateScrollBars();
+}
+
+bool Viewer::pageRect(int page, RECT& out) const {
+    if (!doc_ || page < 0 || page >= static_cast<int>(tops_.size())) return false;
+    out = {pageX(page), tops_[page] - doc_->scrollY, pageX(page) + widths_[page], tops_[page] - doc_->scrollY + heights_[page]};
+    return true;
 }
 
 void Viewer::updateScrollBars() {
@@ -160,6 +208,8 @@ int Viewer::currentPage() const {
 void Viewer::goToPage(int index) {
     if (!doc_ || tops_.empty()) return;
     index = std::clamp(index, 0, static_cast<int>(tops_.size()) - 1);
+    const int from = currentPage();
+    if (onJump && from != index) onJump(from, index);
     doc_->scrollY = tops_[index] - kMargin;
     clampScroll();
     updateScrollBars();
@@ -314,6 +364,74 @@ void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip
             if (end >= start) paintRange(start, end - start + 1, RGB(0x30, 0x80, 0xFF), 90);
         }
     }
+    drawMeasuring(dc, page);
+}
+
+void Viewer::drawMeasuring(HDC dc, int page) {
+    auto toScreen = [&](const annot::PointD& p, POINT& out) {
+        FPDF_PAGE pg = doc_->page(page);
+        int x, y;
+        pdfium::api().FPDF_PageToDevice(pg, 0, 0, widths_[page], heights_[page], 0, p.x, p.y, &x, &y);
+        out = {x + pageX(page), y + tops_[page] - doc_->scrollY};
+    };
+    HPEN pen = CreatePen(PS_SOLID, 2, RGB(0x00, 0x90, 0x60));
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    SetBkMode(dc, TRANSPARENT);
+    SetTextColor(dc, RGB(0x00, 0x60, 0x40));
+    HFONT f = CreateFontW(-15, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    HGDIOBJ of = SelectObject(dc, f);
+    auto dot = [&](POINT p) { Ellipse(dc, p.x - 3, p.y - 3, p.x + 4, p.y + 4); };
+    auto label = [&](POINT p, const std::wstring& t) {
+        SIZE sz; GetTextExtentPoint32W(dc, t.c_str(), static_cast<int>(t.size()), &sz);
+        RECT r{p.x + 6, p.y - sz.cy - 4, p.x + 6 + sz.cx + 8, p.y - 2};
+        fillAlpha(dc, r, RGB(0xFF, 0xFF, 0xFF), 220);
+        DrawTextW(dc, t.c_str(), -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    };
+    for (const Measure& m : measures_) {
+        if (m.page != page) continue;
+        POINT a, b, c;
+        toScreen(m.a, a); toScreen(m.b, b);
+        MoveToEx(dc, a.x, a.y, nullptr); LineTo(dc, b.x, b.y);
+        dot(a); dot(b);
+        if (m.angle) { toScreen(m.c, c); MoveToEx(dc, a.x, a.y, nullptr); LineTo(dc, c.x, c.y); dot(c); label(a, m.text); }
+        else label({(a.x + b.x) / 2, (a.y + b.y) / 2}, m.text);
+    }
+    if (hasPending_ && pendingPage_ == page) {   // protractor: the vertex and the first arm wait for the second arm
+        POINT v, a;
+        toScreen(pendingVertex_, v); dot(v);
+        if (hasArm_) { toScreen(pendingArm_, a); MoveToEx(dc, v.x, v.y, nullptr); LineTo(dc, a.x, a.y); dot(a); }
+    }
+    if (showRulers_) {
+        const double perUnit = units_ == 0 ? 72.0 / 25.4 : units_ == 1 ? 72.0 / 2.54 : units_ == 2 ? 72.0 : 1.0;   // points per unit
+        const int step = units_ == 3 ? 50 : 1;
+        const double px = pxPerPt();
+        const int ox = pageX(page), oy = tops_[page] - doc_->scrollY;
+        HPEN tp = CreatePen(PS_SOLID, 1, RGB(0x30, 0x30, 0x30));
+        SelectObject(dc, tp);
+        HFONT sf = CreateFontW(-10, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+        SelectObject(dc, sf);
+        SetTextColor(dc, RGB(0x30, 0x30, 0x30));
+        RECT strip{ox, oy, ox + widths_[page], oy + 16}, side{ox, oy, ox + 16, oy + heights_[page]};
+        fillAlpha(dc, strip, RGB(0xFF, 0xF3, 0xB0), 210);
+        fillAlpha(dc, side, RGB(0xFF, 0xF3, 0xB0), 210);
+        const int major = units_ == 3 ? 100 : (units_ == 2 ? 1 : 10);
+        for (int u = 0; u * step * perUnit * px < std::max(widths_[page], heights_[page]); ++u) {
+            const int tick = u * step;
+            const int d = static_cast<int>(tick * perUnit * px);
+            const bool big = tick % major == 0;
+            const int len = big ? 10 : (tick % (major / 2 ? major / 2 : 1) == 0 ? 7 : 4);
+            if (d < widths_[page]) { MoveToEx(dc, ox + d, oy, nullptr); LineTo(dc, ox + d, oy + len); }
+            if (d < heights_[page]) { MoveToEx(dc, ox, oy + d, nullptr); LineTo(dc, ox + len, oy + d); }
+            if (big && tick > 0) {
+                wchar_t t[16]; swprintf(t, 16, L"%d", tick);
+                if (d < widths_[page]) TextOutW(dc, ox + d + 2, oy + 3, t, static_cast<int>(wcslen(t)));
+                if (d < heights_[page]) TextOutW(dc, ox + 11, oy + d + 1, t, static_cast<int>(wcslen(t)));
+            }
+        }
+        DeleteObject(SelectObject(dc, f)); DeleteObject(tp);
+    }
+    SelectObject(dc, of); DeleteObject(f);
+    SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
 }
 
 void Viewer::setMatches(std::vector<TextHit> hits, int current) {
@@ -352,6 +470,7 @@ bool Viewer::charAt(int cx, int cy, int& page, int& ch, bool nearest) const {
     const int contentY = cy + doc_->scrollY;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), contentY) - tops_.begin()) - 1;
     idx = std::clamp(idx, 0, static_cast<int>(tops_.size()) - 1);
+    if (idx > 0 && tops_[idx - 1] == tops_[idx] && cx < pageX(idx)) --idx;   // left page of a spread
     if (!nearest && (contentY > tops_[idx] + heights_[idx] || cx < pageX(idx) || cx > pageX(idx) + widths_[idx]))
         return false;
     const auto& api = pdfium::api();
@@ -503,10 +622,13 @@ bool Viewer::pageAt(int cx, int cy, int& page) const {
     if (!doc_ || tops_.empty()) return false;
     const int contentY = cy + doc_->scrollY;
     int idx = static_cast<int>(std::upper_bound(tops_.begin(), tops_.end(), contentY) - tops_.begin()) - 1;
-    if (idx < 0 || contentY > tops_[idx] + heights_[idx]) return false;
-    if (cx < pageX(idx) || cx > pageX(idx) + widths_[idx]) return false;
-    page = idx;
-    return true;
+    for (int i = idx; i >= 0 && i >= idx - 1; --i) {   // two pages can share a row
+        if (contentY < tops_[i] || contentY > tops_[i] + heights_[i]) continue;
+        if (cx < pageX(i) || cx > pageX(i) + widths_[i]) continue;
+        page = i;
+        return true;
+    }
+    return false;
 }
 
 bool Viewer::toPage(int cx, int cy, int page, annot::PointD& out) const {
@@ -576,13 +698,15 @@ std::vector<Viewer::PageRects> Viewer::selectionRects() {
 void Viewer::drawPreview(HDC dc) {
     if (!drawing_) return;
     const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
-    HPEN pen = CreatePen(tool_ == Tool::Redact ? PS_DASH : PS_SOLID, tool_ == Tool::Redact ? 1 : w, tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : penColor_);
+    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox;
+    const COLORREF previewCol = tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : boxTool ? RGB(0x30, 0x80, 0xFF) : (tool_ == Tool::Ruler || tool_ == Tool::Protractor) ? RGB(0x00, 0x90, 0x60) : penColor_;
+    HPEN pen = CreatePen(boxTool ? PS_DASH : PS_SOLID, boxTool || tool_ == Tool::Ruler || tool_ == Tool::Protractor ? 1 : w, previewCol);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
     switch (tool_) {
-        case Tool::Rectangle: case Tool::Redact: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
+        case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
-        case Tool::Line: case Tool::Arrow:
+        case Tool::Line: case Tool::Arrow: case Tool::Ruler: case Tool::Protractor:
             MoveToEx(dc, drawStart_.x, drawStart_.y, nullptr); LineTo(dc, drawNow_.x, drawNow_.y); break;
         case Tool::Pen:
             if (!drawPts_.empty()) {
@@ -707,6 +831,11 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     if (ft == FPDF_FORMFIELD_TEXTFIELD) cur = IDC_IBEAM;
                     else if (ft >= 0) cur = IDC_HAND;
                 }
+                if (tool_ == Tool::None) {
+                    POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
+                    int dp; std::wstring u;
+                    if (cur == IDC_IBEAM && linkAt(p.x, p.y, dp, u)) cur = IDC_HAND;
+                }
                 SetCursor(LoadCursor(nullptr, cur));
                 return TRUE;
             }
@@ -725,6 +854,14 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     SetCapture(hwnd_);
                 }
                 return 0;
+            }
+            {
+                int destPage, fpg = 0; std::wstring uri; annot::PointD fpt;
+                if (!(doc_->hasForm() && formFieldAt(cx, cy, fpg, fpt) >= 0) && linkAt(cx, cy, destPage, uri)) {
+                    if (destPage >= 0) goToPage(destPage);
+                    else if (onUri) onUri(uri);
+                    return 0;
+                }
             }
             clearSelection();
             clearAnnotSelection();
@@ -856,7 +993,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (toPage(cx, cy, drawPage_, end) && onEvent) {
                     Event e; e.page = drawPage_; e.tool = tool_;
                     const bool moved = std::abs(cx - drawStart_.x) + std::abs(cy - drawStart_.y) > 3;
-                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture || tool_ == Tool::Stamp) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
+                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture || tool_ == Tool::Stamp || tool_ == Tool::TableDelete || tool_ == Tool::TablePlace || tool_ == Tool::TableEdit) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
                     else if (moved) {
                         e.kind = Event::Draw;
                         e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};
@@ -927,4 +1064,37 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return SendMessageW(GetParent(hwnd_), m, w, l);   // shortcuts live in the main window
     }
     return DefWindowProcW(hwnd_, m, w, l);
+}
+
+bool Viewer::linkAt(int cx, int cy, int& destPage, std::wstring& uri) const {
+    destPage = -1; uri.clear();
+    int page; annot::PointD pt;
+    if (!doc_ || !pageAt(cx, cy, page) || !toPage(cx, cy, page, pt)) return false;
+    const auto& api = pdfium::api();
+    FPDF_PAGE pg = doc_->page(page);
+    FPDF_LINK link = api.FPDFLink_GetLinkAtPoint(pg, pt.x, pt.y);
+    if (!link) return false;
+    FPDF_ACTION act = api.FPDFLink_GetAction(link);
+    if (act) {
+        const unsigned long type = api.FPDFAction_GetType(act);
+        if (type == PDFACTION_URI) {
+            unsigned long n = api.FPDFAction_GetURIPath(doc_->handle(), act, nullptr, 0);
+            if (n > 1) {
+                std::string buf(n, '\0');
+                api.FPDFAction_GetURIPath(doc_->handle(), act, buf.data(), n);
+                buf.resize(n - 1);
+                uri.assign(buf.begin(), buf.end());
+                return true;
+            }
+            return false;
+        }
+        if (type == PDFACTION_GOTO) {
+            FPDF_DEST dest = api.FPDFAction_GetDest(doc_->handle(), act);
+            if (dest) { destPage = api.FPDFDest_GetDestPageIndex(doc_->handle(), dest); return destPage >= 0; }
+        }
+        return false;
+    }
+    FPDF_DEST dest = api.FPDFLink_GetDest(doc_->handle(), link);
+    if (dest) { destPage = api.FPDFDest_GetDestPageIndex(doc_->handle(), dest); return destPage >= 0; }
+    return false;
 }

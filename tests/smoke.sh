@@ -222,11 +222,32 @@ run --menucheck "$(W menus.txt)" "$(W rich.pdf)"; rc=$?
 check "no menu item runs another item's command" "[ $rc -eq 0 ] && grep -q 'document=yes' '$work/menus.txt'"
 [ $rc -ne 0 ] && sed 's/^/       /' "$work/menus.txt"
 
+echo "paragraph editing"
+pc() { python3 "$root/tests/paracheck.py" "$@"; }
+run --paratest "$(W para.pdf)" "$(W para_same.pdf)" "$(W para_same.txt)" 100 760 same
+check "unchanged text is set again word for word in place" "pc same '$work/para.pdf' '$work/para_same.pdf'"
+check "the paragraph's own font is kept" "pc fonts '$work/para.pdf' '$work/para_same.pdf'"
+run --paratest "$(W para.pdf)" "$(W para_j.pdf)" "$(W para_j.txt)" 100 690 same
+check "justified paragraph recognised" "grep -q 'align=3' '$work/para_j.txt'"
+check "justified paragraph set again in place" "pc same '$work/para.pdf' '$work/para_j.pdf'"
+run --paratest "$(W para.pdf)" "$(W para_long.pdf)" "$(W para_long.txt)" 100 760 append "Two more sentences make this paragraph longer. It now needs at least one more line than before."
+check "longer paragraph: nothing overlaps" "pc overlap '$work/para.pdf' '$work/para_long.pdf'"
+check "longer paragraph: the next one moved down" "pc moved '$work/para.pdf' '$work/para_long.pdf'"
+run --paratest "$(W foot.pdf)" "$(W foot_out.pdf)" "$(W foot.txt)" 100 62 append "One two three four five six seven eight nine ten eleven twelve. More words that keep going on and on so that the paragraph needs many more lines than the page can hold."; rc=$?
+run --paratest "$(W spacing.pdf)" "$(W spacing_out.pdf)" "$(W spacing.txt)" 100 763 append "More words."
+check "other text keeps word and letter spacing, kerning and rise" "pc others '$work/spacing.pdf' '$work/spacing_out.pdf'"
+run --pdfa "$(W spacing.pdf)" "$(W spacing_a.pdf)"
+if grep -q 'pictures=0' "$work/spacing_a.pdf.txt"; then   # fonts to embed instead of Helvetica are installed (else: kept as a picture)
+  check "PDF/A: spaced and kerned text keeps every word in place" "pc xpos '$work/spacing.pdf' '$work/spacing_a.pdf'"
+else echo "  skip PDF/A word places: no font to embed for Helvetica in this Wine prefix"; fi
+check "PDF/A: the text reads the same" "diff <(pdftotext -layout '$work/spacing.pdf' -) <(pdftotext -layout '$work/spacing_a.pdf' -) >/dev/null"
+check "no room on the page: refused, nothing written" "[ $rc -eq 6 ] && grep -q refused '$work/foot.txt' && [ ! -e '$work/foot_out.pdf' ]"
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""
 
 
-rm -rf "$work"
+[ -n "${KEEP:-}" ] && echo "work kept: $work" || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOME FAILED"
 exit $fail

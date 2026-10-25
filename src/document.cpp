@@ -425,6 +425,16 @@ void Document::cancelChange() {
     if (undo_.empty() && redo_.empty()) dirty_ = false;   // nothing else was changed in this session
 }
 
+bool Document::rollbackChange() {
+    if (undo_.empty()) return false;
+    Snapshot snap = std::move(undo_.back());
+    undo_.pop_back();
+    undoBytes_ -= snap.bytes.size();
+    const bool ok = restoreFrom(snap);
+    if (undo_.empty() && redo_.empty()) dirty_ = false;
+    return ok;
+}
+
 bool Document::restoreFrom(const Snapshot& snap) {
     std::vector<unsigned char> copy = snap.bytes;
     if (load(std::move(copy), password_) != OpenResult::Ok) return false;

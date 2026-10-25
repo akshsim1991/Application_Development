@@ -80,6 +80,13 @@
     X(FPDFBitmap_Destroy)        \
     X(FPDFText_LoadPage)         \
     X(FPDFText_ClosePage)        \
+    X(FPDFText_GetTextObject)    \
+    X(FPDFText_IsGenerated)      \
+    X(FPDFText_HasUnicodeMapError) \
+    X(FPDFText_GetCharOrigin)    \
+    X(FPDFPageObj_GetClipPath)   \
+    X(FPDFClipPath_CountPaths)   \
+    X(FPDFPageObj_GetStrokeWidth) \
     X(FPDFText_CountChars)       \
     X(FPDFText_GetText)          \
     X(FPDFText_GetCharIndexAtPos) \
@@ -108,6 +115,9 @@
     X(FPDFAnnot_GetColor)        \
     X(FPDFAnnot_SetRect)         \
     X(FPDFAnnot_GetRect)         \
+    X(FPDFAnnot_CountAttachmentPoints) \
+    X(FPDFAnnot_GetAttachmentPoints) \
+    X(FPDFAnnot_SetAttachmentPoints) \
     X(FPDFAnnot_AppendAttachmentPoints) \
     X(FPDFAnnot_SetBorder)       \
     X(FPDFAnnot_SetFlags)        \
@@ -144,6 +154,7 @@
     X(FPDFTextObj_GetFontSize)   \
     X(FPDFFont_GetBaseFontName)  \
     X(FPDFFont_GetIsEmbedded)    \
+    X(FPDFFont_GetFontData) \
     X(FPDFFont_GetFlags)         \
     X(FPDFPageObj_GetMatrix)     \
     X(FPDFPageObj_SetMatrix)     \

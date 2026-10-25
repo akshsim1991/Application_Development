@@ -313,4 +313,40 @@ void show(HWND parent, HINSTANCE inst, const Report& r, const std::wstring& titl
     SetActiveWindow(parent);
 }
 
+std::wstring squeeze(const std::wstring& s) {   // lower case, letters and digits only: "Times New Roman" -> "timesnewroman"
+    std::wstring r;
+    for (wchar_t c : s) if (iswalnum(c)) r += static_cast<wchar_t>(towlower(c));
+    return r;
+}
+
+// The installed font family a PDF font name stands for, or "" when it is not installed. "ABCDEF+Calibri-Bold",
+// "Calibri,Bold", "ArialMT" and "TimesNewRomanPSMT" become Calibri, Calibri, Arial and Times New Roman.
+std::wstring installedFace(const std::string& pdfName) {
+    static std::vector<std::wstring> families;
+    static bool listed = false;
+    if (!listed) {
+        listed = true;
+        HDC dc = GetDC(nullptr);
+        LOGFONTW lf{};
+        lf.lfCharSet = DEFAULT_CHARSET;
+        EnumFontFamiliesExW(dc, &lf, [](const LOGFONTW* f, const TEXTMETRICW*, DWORD, LPARAM out) -> int {
+            if (f->lfFaceName[0] != L'@' && f->lfCharSet != SYMBOL_CHARSET) reinterpret_cast<std::vector<std::wstring>*>(out)->push_back(f->lfFaceName);
+            return 1;
+        }, reinterpret_cast<LPARAM>(&families), 0);
+        ReleaseDC(nullptr, dc);
+    }
+    std::string n = pdfName;
+    const size_t plus = n.find('+');
+    if (plus == 6) n = n.substr(7);   // subset prefix
+    n = n.substr(0, n.find_first_of(",-"));
+    std::wstring w(n.begin(), n.end());
+    w = squeeze(w);
+    for (const wchar_t* tail : {L"psmt", L"mt", L"ps", L"regular", L"roman"})
+        if (w.size() > wcslen(tail) + 2 && w.compare(w.size() - wcslen(tail), std::wstring::npos, tail) == 0) { w.resize(w.size() - wcslen(tail)); break; }
+    if (w.empty()) return L"";
+    for (const auto& f : families) if (squeeze(f) == w) return f;
+    return L"";
+}
+
+
 } // namespace fontlist

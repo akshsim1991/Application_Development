@@ -23,6 +23,12 @@ struct Spec {
     std::vector<COLORREF> palette;           // colours offered in the style bar
     std::vector<std::wstring> paletteNames;
     POINT click{-1, -1};         // where the text was clicked (viewer client coordinates): the caret starts there
+    std::string pdfFont;         // the document's name for the font: the edit box uses that font when it is installed
+    bool baselineBox = false;    // the located box starts where the text starts, with its top on the first baseline
+    double wrapPt = 0;           // paragraphs: the width the lines are wrapped at, in points (0: the box's width)
+    // The width of a text (start to the last letter's right edge, in points) as it will be set on the page in a style.
+    // The edit box's font is matched to it, so the box breaks lines where the page will.
+    std::function<double(const std::wstring& text, const Style& style)> measure;
 };
 
 class Editor {
@@ -61,6 +67,7 @@ private:
     Commit commit_;
     RECT box_{};
     double ppp_ = 1;
+    double fit_ = 1;             // edit box font width / page font width, what is left after matching
     int barH_ = 0, barW_ = 0;
     bool closing_ = false;
 };

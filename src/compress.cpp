@@ -1,4 +1,5 @@
 #include "compress.hpp"
+#include "contentgen.hpp"
 #include <windows.h>
 #include <objbase.h>
 #include <propidl.h>
@@ -130,7 +131,7 @@ int pass(Document& d, int dpi, int quality, bool grey, const CLSID& clsid) {
             }
             api.FPDFBitmap_Destroy(bmp);
         }
-        if (pageChanged) api.FPDFPage_GenerateContent(pg);
+        if (pageChanged) contentgen::generate(d.handle(), pg);
     }
     return replaced;
 }

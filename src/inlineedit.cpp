@@ -1,4 +1,5 @@
 #include "inlineedit.hpp"
+#include "fontlist.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
@@ -101,9 +102,43 @@ void Editor::start(const Spec& spec, Locate locate, Commit commit) {
 
 void Editor::applyFont() {
     if (textFont_) DeleteObject(textFont_);
+    // the document's font when it is installed and the style is still the original one, else a common face of the family
+    const bool original = style_.family == spec_.style.family && style_.bold == spec_.style.bold && style_.italic == spec_.style.italic;
+    std::wstring face = original ? fontlist::installedFace(spec_.pdfFont) : L"";
+    if (face.empty()) face = kFaces[std::clamp(style_.family, 0, 2)];
     const int px = std::max(6, static_cast<int>(std::lround(style_.sizePt * ppp_)));
-    textFont_ = CreateFontW(-px, 0, 0, 0, style_.bold ? FW_BOLD : FW_NORMAL, style_.italic, FALSE, FALSE, DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
-                            CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, kFaces[std::clamp(style_.family, 0, 2)]);
+    auto make = [&](int width) {
+        return CreateFontW(-px, width, 0, 0, style_.bold ? FW_BOLD : FW_NORMAL, style_.italic, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS,
+                           CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH, face.c_str());
+    };
+    textFont_ = make(0);
+    // Match the widths to the page: the same text must be as wide in the box as it will be on the page, or the box breaks
+    // lines in other places. The font is narrowed or widened, and what rounding leaves over is made up in the box width.
+    fit_ = 1;
+    std::wstring sample;
+    for (wchar_t c : spec_.text) if (c != L'\r') sample += c == L'\n' ? L' ' : c;
+    const double want = spec_.measure && !sample.empty() ? spec_.measure(sample, style_) * ppp_ : 0;
+    if (want > 4) {
+        HDC dc = GetDC(viewer_);
+        auto widthOf = [&](HFONT f, TEXTMETRICW* tm) {
+            HGDIOBJ old = SelectObject(dc, f);
+            SIZE ext{};
+            GetTextExtentPoint32W(dc, sample.c_str(), static_cast<int>(sample.size()), &ext);
+            if (tm) GetTextMetricsW(dc, tm);
+            SelectObject(dc, old);
+            return static_cast<double>(ext.cx);
+        };
+        TEXTMETRICW tm{};
+        double have = widthOf(textFont_, &tm);
+        if (have > 0 && std::fabs(want / have - 1) > 0.01 && tm.tmAveCharWidth > 0) {
+            HFONT f = make(std::max(1, static_cast<int>(std::lround(tm.tmAveCharWidth * want / have))));
+            const double have2 = f ? widthOf(f, nullptr) : 0;
+            if (have2 > 0 && std::fabs(have2 / want - 1) < std::fabs(have / want - 1)) { DeleteObject(textFont_); textFont_ = f; have = have2; }
+            else if (f) DeleteObject(f);
+        }
+        if (have > 0) fit_ = have / want;
+        ReleaseDC(viewer_, dc);
+    }
     if (edit_) { SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(textFont_), TRUE); InvalidateRect(edit_, nullptr, TRUE); }
 }
 
@@ -127,14 +162,13 @@ void Editor::makeEdit() {
     else style |= ES_AUTOHSCROLL;
     edit_ = CreateWindowExW(0, L"EDIT", text.c_str(), style, 0, 0, 10, 10, wnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(ID_EDIT)), inst_, nullptr);
     SendMessageW(edit_, WM_SETFONT, reinterpret_cast<WPARAM>(textFont_), FALSE);
-    SendMessageW(edit_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(1, 1));
+    SendMessageW(edit_, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, MAKELPARAM(0, 0));   // the text starts where it does on the page
     oldEdit_ = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(edit_, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(editProc)));
     if (sel0 || sel1) SendMessageW(edit_, EM_SETSEL, sel0, sel1);
 }
 
 void Editor::layout() {
     if (!wnd_ || !edit_) return;
-    // the edit box covers the text, and grows with it
     HDC dc = GetDC(edit_);
     HGDIOBJ old = SelectObject(dc, textFont_);
     TEXTMETRICW tm{};
@@ -143,45 +177,54 @@ void Editor::layout() {
     std::wstring text(static_cast<size_t>(n) + 1, L'\0');
     GetWindowTextW(edit_, text.data(), n + 1);
     text.resize(static_cast<size_t>(n));
-    int w = box_.right - box_.left + 6, h = box_.bottom - box_.top + 6;
-    if (!spec_.paragraph) {
+    // The edit box lies exactly over the text: the first line on the first baseline, as wide as the page's line width
+    // (paragraphs) or as the text (a line). It grows with the text.
+    const int textX = box_.left, textY = spec_.baselineBox ? box_.top - tm.tmAscent : box_.top;
+    int w = 0, h = 0, wrap = 0;
+    if (spec_.paragraph) {
+        // Lines break at the page's line width, plus a little: the screen font's letters are rounded to whole pixels, and a
+        // line that exactly fills the width on the page must not break early in the box. The box itself also covers the
+        // whole paragraph as it is on the page, so none of the old text shows beside or below it.
+        wrap = spec_.wrapPt > 0 ? static_cast<int>(std::lround(spec_.wrapPt * ppp_ * fit_ * 1.006)) + 3 : box_.right - box_.left + 6;
+        wrap = std::max(wrap, static_cast<int>(tm.tmAveCharWidth * 12));
+        w = std::max(wrap, static_cast<int>(box_.right - box_.left) + 3);
+        RECT er;
+        GetClientRect(edit_, &er);
+        if (er.right != w) SetWindowPos(edit_, nullptr, 0, 0, w, std::max<int>(er.bottom, tm.tmHeight), SWP_NOMOVE | SWP_NOZORDER | SWP_NOREDRAW);
+        RECT fr{0, 0, wrap, 30000};
+        SendMessageW(edit_, EM_SETRECTNP, 0, reinterpret_cast<LPARAM>(&fr));   // lines are counted at this width
+        const int lines = std::max(1, static_cast<int>(SendMessageW(edit_, EM_GETLINECOUNT, 0, 0)));
+        h = lines * tm.tmHeight + 2;
+        if (spec_.baselineBox) h = std::max(h, static_cast<int>(box_.bottom - box_.top) + static_cast<int>(tm.tmHeight) + 2);
+    } else {
         SIZE ext{};
         GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &ext);
-        w = std::max(w, static_cast<int>(ext.cx + tm.tmAveCharWidth * 2 + 8));
-        h = std::max(h, static_cast<int>(tm.tmHeight + 6));
-    } else {
-        w = std::max(w, static_cast<int>(tm.tmAveCharWidth * 12));
-        const int lines = static_cast<int>(SendMessageW(edit_, EM_GETLINECOUNT, 0, 0));
-        h = std::max(h, static_cast<int>(lines * tm.tmHeight + 8));
+        w = std::max(static_cast<int>(box_.right - box_.left) + 2, static_cast<int>(ext.cx + tm.tmAveCharWidth * 2));
+        h = tm.tmHeight + 2;
     }
     SelectObject(dc, old);
     ReleaseDC(edit_, dc);
-    RECT vr;
-    GetClientRect(viewer_, &vr);
-    // the bar goes above the text, or below it when there is no room above
-    const int ex = box_.left - 3, ey = box_.top - 3;
-    const bool barBelow = ey - barH_ - 2 < 0;
-    const int left = std::min(ex - 2, ex - 2), top = barBelow ? ey - 2 : ey - barH_ - 2;
-    const int width = std::max(w + 4, barW_), height = h + 4 + barH_;
-    const int editY = barBelow ? 2 : barH_ + 2;
-    MoveWindow(wnd_, left, top, width, height, TRUE);
-    MoveWindow(edit_, 2, editY, w, h, TRUE);
+    // the bar goes above the text, or below it when there is no room above; a 3-pixel frame goes round the edit box
+    const int pad = 3;
+    const bool barBelow = textY - pad - barH_ < 0;
+    const int left = textX - pad, top = barBelow ? textY - pad : textY - pad - barH_;
+    const int frameY = barBelow ? 0 : barH_, barY = barBelow ? h + 2 * pad : 0;
+    MoveWindow(wnd_, left, top, std::max(w + 2 * pad, barW_), h + 2 * pad + barH_, TRUE);
+    MoveWindow(edit_, pad, frameY + pad, w, h, TRUE);
+    if (wrap > 0) { RECT fr{0, 0, wrap, h}; SendMessageW(edit_, EM_SETRECT, 0, reinterpret_cast<LPARAM>(&fr)); }   // resizing reset it
     for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
         if (!c) continue;
         RECT r;
         GetWindowRect(c, &r);
         MapWindowPoints(nullptr, wnd_, reinterpret_cast<POINT*>(&r), 2);
-        const int ch = r.bottom - r.top;
-        SetWindowPos(c, nullptr, r.left, (barBelow ? h + 4 : 0) + 4, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
-        (void)ch;
+        SetWindowPos(c, nullptr, r.left, barY + 4, 0, 0, SWP_NOSIZE | SWP_NOZORDER);
     }
     // only the bar and the framed edit box are part of the window, so the page stays visible around them
-    HRGN rgn = CreateRectRgn(0, editY - 2, w + 4, editY + h + 2);
-    HRGN bar = CreateRectRgn(0, barBelow ? h + 4 : 0, barW_, (barBelow ? h + 4 : 0) + barH_);
+    HRGN rgn = CreateRectRgn(0, frameY, w + 2 * pad, frameY + h + 2 * pad);
+    HRGN bar = CreateRectRgn(0, barY, barW_, barY + barH_);
     CombineRgn(rgn, rgn, bar, RGN_OR);
     DeleteObject(bar);
     SetWindowRgn(wnd_, rgn, TRUE);
-    (void)vr;
 }
 
 void Editor::reposition() {
@@ -288,7 +331,7 @@ LRESULT Editor::handle(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (id == ID_EDIT && code == EN_CHANGE) { layout(); return 0; }
             if (id == ID_OK) { commit(); return 0; }
             if (id == ID_NO) { cancel(); return 0; }
-            if ((id == ID_FAM || id == ID_COL) && code == CBN_SELCHANGE) { readBar(); applyFont(); SetFocus(edit_); return 0; }
+            if ((id == ID_FAM || id == ID_COL) && code == CBN_SELCHANGE) { readBar(); applyFont(); layout(); SetFocus(edit_); return 0; }
             if (id == ID_ALIGN && code == CBN_SELCHANGE) { readBar(); makeEdit(); layout(); SetFocus(edit_); return 0; }
             if (id == ID_SIZE && (code == CBN_SELCHANGE || code == CBN_EDITCHANGE)) {
                 if (code == CBN_SELCHANGE) {   // the box shows the new choice only after this message
@@ -315,7 +358,8 @@ LRESULT CALLBACK Editor::editProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_GETDLGCODE: return DLGC_WANTALLKEYS | CallWindowProcW(old, h, m, w, l);
         case WM_KEYDOWN:
             if (w == VK_ESCAPE) { e->cancel(); return 0; }
-            if (w == VK_RETURN && (!e->spec_.paragraph || ctrl)) { e->commit(); return 0; }
+            // applied once this key is handled, like the Apply button: a message the commit shows then gets the keyboard
+            if (w == VK_RETURN && (!e->spec_.paragraph || ctrl)) { PostMessageW(e->wnd_, WM_COMMAND, MAKEWPARAM(ID_OK, BN_CLICKED), 0); return 0; }
             if (w == 'A' && ctrl) { SendMessageW(h, EM_SETSEL, 0, -1); return 0; }
             break;
         case WM_CHAR:

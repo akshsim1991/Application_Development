@@ -36,6 +36,7 @@ add_executable(FeatherPDF WIN32
   src/pdfa.cpp
   src/fontlist.cpp
   src/inlineedit.cpp
+  src/contentgen.cpp
   src/icons.cpp
   resources/FeatherPDF.rc)
 

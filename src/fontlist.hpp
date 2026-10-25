@@ -29,6 +29,12 @@ std::wstring pageList(const std::vector<int>& pages);
 // The report as text (tab-separated table plus the page notes).
 std::wstring asText(const Report& r);
 
+// Lower case, letters and digits only: "Times New Roman" -> "timesnewroman".
+std::wstring squeeze(const std::wstring& s);
+// The installed font family a PDF font name stands for, or "" when it is not installed. "ABCDEF+Calibri-Bold",
+// "Calibri,Bold", "ArialMT" and "TimesNewRomanPSMT" become Calibri, Calibri, Arial and Times New Roman.
+std::wstring installedFace(const std::string& pdfName);
+
 // Shows the report in a window with a table, Copy and Close.
 void show(HWND parent, HINSTANCE inst, const Report& r, const std::wstring& title);
 

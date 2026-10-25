@@ -53,6 +53,7 @@ struct TextHit {
     unsigned long flags = 0;
     double left = 0, bottom = 0, right = 0, top = 0;   // bounds on the page
     double shownSizePt = 0;                             // the size as drawn (font size times the object's scale)
+    double originX = 0, baseline = 0;                   // where the text starts, on its baseline (page coordinates)
 };
 
 // The text object under a page point, preferring the smallest one. index == -1 when there is none.
@@ -60,6 +61,8 @@ TextHit textAt(Document& d, int page, double x, double y);
 // Replaces the text of an existing object. Characters the original (embedded) font may lack are drawn in a
 // similar standard font instead, at the same place and size. An empty `text` deletes the object.
 bool replaceText(Document& d, int page, int objectIndex, const std::wstring& text, bool track = true);
+// The width of `text` set in the font and size of a text object (from its start to the last letter's right edge, points).
+double objectTextWidth(Document& d, int page, int objectIndex, const std::wstring& text);
 
 // Replaces `find` by `with` inside every text object of the document (a match must lie within one object).
 // One undo step. Returns the number of replacements; `pages` lists the pages that changed.
@@ -75,12 +78,29 @@ struct ParagraphHit {
     double left = 0, top = 0, width = 0, lineHeight = 0;   // page coordinates / points
     TextStyle style;                // the closest standard font, size and colour
     int lines = 0;
+    // Exact geometry, for setting the text again where it was: the first line's baseline starts at (originX, baseline);
+    // lines are `lineStep` apart; text is wrapped at `wrapWidth` from the origin. Measured in the paragraph's own font.
+    double originX = 0, baseline = 0, lineStep = 0, wrapWidth = 0;
+    double firstIndent = 0, restIndent = 0;   // where the first line and the other lines start, from originX
+    double sizeExact = 0;           // the size as drawn (style.sizePt is rounded to half a point)
+    Align align = Align::Left;      // as the lines are set now
+    bool upright = true;            // the text runs left to right, not turned
+    std::string fontName;           // the PDF's name for that font
 };
-// The paragraph (consecutive lines with the same size and left edge) around a page point.
-ParagraphHit paragraphAt(Document& d, int page, double x, double y);
-// Replaces the paragraph by `text` set in `style` inside the same width. One undo step. False when the text uses characters
-// the standard fonts lack (the document is then unchanged).
-bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style, Align align);
+// The paragraph (consecutive lines with the same size and left edge) around a page point; with `lineOnly`, only the line
+// there (every text object on that baseline that belongs to it).
+ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnly = false);
+// Replaces the paragraph by `text` set in `style` inside the same width, starting on the same baseline. The paragraph's own
+// font is kept when the family, weight and slant are unchanged; a word with letters it lacks (an embedded font may hold only
+// the letters the document uses) is set in the closest standard font. When the paragraph gets longer, what is below it in
+// the same column moves down. One undo step. False, with the reason in `why` when known, when the text cannot be set or does
+// not fit on the page; the document is then unchanged.
+// With `oneLine`, the text stays on one line however long it gets (line breaks become spaces).
+bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style, Align align,
+                      std::wstring* why = nullptr, bool oneLine = false);
+// The width of `text` on one line (from its start to the right edge of the last letter, in points) as replaceParagraph would
+// set it in `style`. 0 when it cannot be set.
+double paragraphTextWidth(Document& d, const ParagraphHit& hit, const std::wstring& text, const TextStyle& style);
 
 // ---- more page tools ----
 // Pages with no text and (almost) nothing drawn. Scanned pages count as blank when they are nearly white.

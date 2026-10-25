@@ -23,7 +23,7 @@ bool Viewer::registerClass(HINSTANCE inst) {
 }
 
 HWND Viewer::create(HWND parent, HINSTANCE inst) {
-    hwnd_ = CreateWindowExW(0, kClass, L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPSIBLINGS,
+    hwnd_ = CreateWindowExW(0, kClass, L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                             0, 0, 0, 0, parent, nullptr, inst, this);
     return hwnd_;
 }

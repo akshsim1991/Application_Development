@@ -1,4 +1,5 @@
 #include "ocr.hpp"
+#include "contentgen.hpp"
 #include <windows.h>
 #include <algorithm>
 #include <cmath>
@@ -161,7 +162,7 @@ Result run(Document& d, const std::vector<int>& pages, const std::wstring& langu
             pd.FPDFPage_InsertObject(pg, o);
             ++added;
         }
-        pd.FPDFPage_GenerateContent(pg);
+        contentgen::generate(d.handle(), pg);
         d.resetText(p);
         res.words += added;
         ++res.pagesDone;

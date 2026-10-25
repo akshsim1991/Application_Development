@@ -91,6 +91,8 @@ public:
     void markModified() { dirty_ = true; ++revision_; }   // for documents restored with changes that were never saved
     void beginChange();
     void cancelChange();
+    // Puts the document back as it was at the last beginChange() and forgets that step (for a change that failed half-way).
+    bool rollbackChange();
     bool canUndo() const { return !undo_.empty(); }
     bool canRedo() const { return !redo_.empty(); }
     bool undo();

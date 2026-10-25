@@ -1,4 +1,5 @@
 #include "redact.hpp"
+#include "contentgen.hpp"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -54,7 +55,7 @@ int apply(Document& d, int dpi) {
         api.FPDFBitmap_Destroy(bmp);
         if (!ok) { if (img) api.FPDFPageObj_Destroy(img); continue; }
         api.FPDFPage_InsertObject(pg, img);
-        api.FPDFPage_GenerateContent(pg);
+        contentgen::generate(d.handle(), pg);
         ++done;
     }
     if (!done) { d.cancelChange(); return 0; }

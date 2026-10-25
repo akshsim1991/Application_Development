@@ -1,4 +1,5 @@
 #include "picture.hpp"
+#include "contentgen.hpp"
 #include <windows.h>
 #include <objbase.h>
 #include <propidl.h>
@@ -138,7 +139,7 @@ bool transformAboutCentre(Document& d, int page, const std::vector<int>& objs, d
     os.clear();
     if (!boundsOf(pg, objs, os, l, bo, r, t)) { d.cancelChange(); return false; }
     for (FPDF_PAGEOBJECT o : os) api.FPDFPageObj_Transform(o, a, b, c, dd, cx - (a * cx + c * cy), cy - (b * cx + dd * cy));
-    api.FPDFPage_GenerateContent(pg);
+    contentgen::generate(d.handle(), pg);
     d.resetText(page);
     return true;
 }
@@ -213,7 +214,7 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
                 api.FPDFImageObj_SetMatrix(img, (pX.first - p0.first) * wPt, (pX.second - p0.second) * wPt,
                                            (pY.first - p0.first) * hPt, (pY.second - p0.second) * hPt, p0.first, p0.second);
                 api.FPDFPage_InsertObject(pg, img);
-                api.FPDFPage_GenerateContent(pg);
+                contentgen::generate(d.handle(), pg);
                 ok = true;
             }
         }
@@ -255,7 +256,7 @@ bool restackGroup(Document& d, int page, std::vector<int>& objs, bool toFront) {
         if (toFront) { api.FPDFPage_InsertObject(pg, os[k]); objs.push_back(n - static_cast<int>(os.size()) + static_cast<int>(k)); }
         else { api.FPDFPage_InsertObjectAtIndex(pg, os[k], k); objs.push_back(static_cast<int>(k)); }
     }
-    api.FPDFPage_GenerateContent(pg);
+    contentgen::generate(d.handle(), pg);
     d.resetText(page);
     return true;
 }
@@ -281,7 +282,7 @@ template <class F> bool repaintPicture(Document& d, int page, int obj, F change)
     double L = l, B = b, R = l + w / k, T = t;   // the rendered box (it may be a pixel larger than the bounds)
     B = T - h / k;
     if (!change(px, w, h, k, L, B, R, T) || w < 1 || h < 1 || !setPixels(pg, o, px, w, h, L, B, R, T)) { d.undo(); return false; }
-    pdfium::api().FPDFPage_GenerateContent(pg);
+    contentgen::generate(d.handle(), pg);
     return true;
 }
 } // namespace
@@ -360,7 +361,7 @@ bool replacePicture(Document& d, int page, int obj, const std::wstring& path, st
         }
     }
     if (!loaded) { d.undo(); error = L"The picture could not be put on the page."; return false; }
-    api.FPDFPage_GenerateContent(pg);
+    contentgen::generate(d.handle(), pg);
     return true;
 }
 

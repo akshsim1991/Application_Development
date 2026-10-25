@@ -756,7 +756,8 @@ POINT clickPoint(int page, const annot::PointD& p) {
     return {r.left, r.top};
 }
 
-void editLineInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT click) {
+// One text object, where it is: for turned text, which is not set again as a line.
+void editObjectTextInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT click) {
     inlineedit::Spec sp;
     sp.text = hit.text;
     sp.click = click;
@@ -768,9 +769,12 @@ void editLineInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT c
     sp.style.italic = nm.find("italic") != std::string::npos || nm.find("oblique") != std::string::npos || (hit.flags & 64);
     sp.style.sizePt = hit.shownSizePt > 0 ? hit.shownSizePt : hit.sizePt;
     sp.style.color = hit.color;
-    const annot::RectD box{hit.left, hit.bottom, hit.right, hit.top};
+    sp.pdfFont = hit.fontName;
+    sp.baselineBox = true;
     Document* doc = &d;
     const int index = hit.index;
+    sp.measure = [doc, page, index](const std::wstring& t, const inlineedit::Style&) { return activeDoc() == doc ? pageobj::objectTextWidth(*doc, page, index, t) : 0.0; };
+    const annot::RectD box{hit.originX, hit.bottom, std::max(hit.right, hit.originX + 1), hit.baseline};
     const std::wstring original = hit.text;
     app.inlineEd.start(sp,
         [doc, page, box](RECT& r, double& ppp) {
@@ -789,6 +793,44 @@ void editLineInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT c
         });
 }
 
+// A line of text, where it is: every object on the clicked baseline that belongs to the line, set again exactly like a
+// paragraph (same font where it can draw the letters, same baseline), but always on one line.
+void editLineInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT click) {
+    inlineedit::Spec sp;
+    sp.text = hit.text;
+    sp.click = click;
+    sp.style.family = static_cast<int>(hit.style.family);
+    sp.style.bold = hit.style.bold;
+    sp.style.italic = hit.style.italic;
+    sp.style.sizePt = hit.style.sizePt;
+    sp.style.color = hit.style.color;
+    sp.pdfFont = hit.fontName;
+    sp.baselineBox = true;
+    Document* doc = &d;
+    const pageobj::ParagraphHit h = hit;
+    sp.measure = [doc, h](const std::wstring& t, const inlineedit::Style&) { return activeDoc() == doc ? pageobj::paragraphTextWidth(*doc, h, t, h.style) : 0.0; };
+    const annot::RectD box{hit.originX, hit.baseline, hit.originX + std::max(1.0, hit.wrapWidth), hit.baseline};
+    app.inlineEd.start(sp,
+        [doc, box, page = hit.page](RECT& r, double& ppp) {
+            if (activeDoc() != doc) return false;
+            r = app.viewer.screenRect(page, box);
+            ppp = app.viewer.pixelsPerPoint();
+            return true;
+        },
+        [doc, h](const std::wstring& text, const inlineedit::Style&) {
+            if (activeDoc() != doc) return true;
+            std::wstring flat;   // a line stays one line: line breaks are not kept
+            for (wchar_t ch : text) flat += (ch == L'\r' || ch == L'\n') ? L' ' : ch;
+            if (flat == h.text) return true;
+            std::wstring why;
+            if (pageobj::replaceParagraph(*doc, h, flat, h.style, pageobj::Align::Left, &why, true)) { afterChange(h.page); return true; }
+            app.viewer.documentChanged();   // a failed change puts the document back by reloading it
+            refresh();
+            MessageBoxW(app.wnd, why.empty() ? L"The text could not be changed." : why.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+            return false;
+        });
+}
+
 void editParagraphInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT click) {
     inlineedit::Spec sp;
     sp.paragraph = true;
@@ -799,11 +841,23 @@ void editParagraphInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT c
     sp.style.italic = hit.style.italic;
     sp.style.sizePt = hit.style.sizePt;
     sp.style.color = hit.style.color;
+    sp.style.align = static_cast<int>(hit.align);
     for (size_t i = 0; i < std::size(kPalette); ++i) { sp.palette.push_back(kPalette[i]); sp.paletteNames.push_back(kPaletteNames[i]); }
-    const double lh = hit.lineHeight > 0 ? hit.lineHeight : hit.style.sizePt * 1.2;
-    const annot::RectD box{hit.left, hit.top - lh * std::max(1, hit.lines), hit.left + hit.width, hit.top};
+    sp.pdfFont = hit.fontName;
+    sp.baselineBox = true;
+    sp.wrapPt = hit.wrapWidth;
+    // the box starts at the paragraph's left edge, its top on the first baseline
+    const annot::RectD box{hit.originX, hit.baseline - hit.lineStep * std::max(0, hit.lines - 1), hit.originX + hit.wrapWidth, hit.baseline};
     Document* doc = &d;
     const pageobj::ParagraphHit h = hit;
+    sp.measure = [doc, h](const std::wstring& t, const inlineedit::Style& st) {
+        if (activeDoc() != doc) return 0.0;
+        pageobj::TextStyle ts = h.style;
+        ts.family = static_cast<pageobj::Family>(st.family);
+        ts.sizePt = st.sizePt;
+        ts.bold = st.bold; ts.italic = st.italic;
+        return pageobj::paragraphTextWidth(*doc, h, t, ts);
+    };
     app.inlineEd.start(sp,
         [doc, box, page = hit.page](RECT& r, double& ppp) {
             if (activeDoc() != doc) return false;
@@ -819,14 +873,13 @@ void editParagraphInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT c
             ts.bold = st.bold; ts.italic = st.italic;
             ts.color = st.color;
             const bool same = text == h.text && ts.family == h.style.family && std::fabs(ts.sizePt - h.style.sizePt) < 0.05 && ts.bold == h.style.bold &&
-                              ts.italic == h.style.italic && ts.color == h.style.color && st.align == 0;
+                              ts.italic == h.style.italic && ts.color == h.style.color && st.align == static_cast<int>(h.align);
             if (same) return true;
-            if (!pageobj::isLatin(text)) {
-                MessageBoxW(app.wnd, L"Paragraphs can use letters, numbers and common symbols of Western languages. Please remove other characters.", kAppName, MB_OK | MB_ICONINFORMATION);
-                return false;
-            }
-            if (pageobj::replaceParagraph(*doc, h, text, ts, static_cast<pageobj::Align>(st.align))) { app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); return true; }
-            MessageBoxW(app.wnd, L"The paragraph could not be changed.", kAppName, MB_OK | MB_ICONWARNING);
+            std::wstring why;
+            if (pageobj::replaceParagraph(*doc, h, text, ts, static_cast<pageobj::Align>(st.align), &why)) { app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); return true; }
+            app.viewer.documentChanged();   // a failed change puts the document back by reloading it
+            refresh();
+            MessageBoxW(app.wnd, why.empty() ? L"The paragraph could not be changed." : why.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
             return false;
         });
 }
@@ -893,12 +946,14 @@ void onViewerEvent(const Viewer::Event& e) {
                 break;
             }
             if (e.tool == Viewer::Tool::EditText) {
+                const pageobj::ParagraphHit line = pageobj::paragraphAt(*d, e.page, e.pts.front().x, e.pts.front().y, true);
+                if (line.found && line.upright) { editLineInPlace(*d, line, clickPoint(e.page, e.pts.front())); break; }
                 pageobj::TextHit hit = pageobj::textAt(*d, e.page, e.pts.front().x, e.pts.front().y);
                 if (hit.index < 0) {
                     MessageBoxW(app.wnd, L"No editable text was found there. Click directly on a line of text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
                     break;
                 }
-                editLineInPlace(*d, e.page, hit, clickPoint(e.page, e.pts.front()));
+                editObjectTextInPlace(*d, e.page, hit, clickPoint(e.page, e.pts.front()));
                 break;
             }
             std::wstring text;
@@ -5643,6 +5698,23 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                && annot::addCloud(doc, 0, {320, 620, 500, 760}, RGB(0x20, 0x40, 0xD0), 1.5)
                && annot::addCallout(doc, 0, {150, 500}, {300, 420}, L"Check this figure", RGB(0x10, 0x80, 0x30));
         if (!ok) return 5;
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--paratest") {   // --paratest in.pdf out.pdf report.txt x y same|append [text] : edits the paragraph at (x, y) on page 1
+        if (files.size() < 7) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const pageobj::ParagraphHit h = pageobj::paragraphAt(doc, 0, _wtof(files[4].c_str()), _wtof(files[5].c_str()));
+        if (!h.found) return 5;
+        const std::wstring text = files[6] == L"append" && files.size() > 7 ? h.text + L" " + files[7] : h.text;
+        std::wstring why;
+        const bool ok = pageobj::replaceParagraph(doc, h, text, h.style, h.align, &why);
+        char line[512];
+        snprintf(line, sizeof line, "lines=%d align=%d wrap=%.2f step=%.2f origin=%.2f,%.2f result=%s\n", h.lines, static_cast<int>(h.align), h.wrapWidth, h.lineStep,
+                 h.originX, h.baseline, ok ? "ok" : "refused");
+        const std::string rep = line + std::string(why.begin(), why.end());
+        Document::writeFile(files[3], std::vector<unsigned char>(rep.begin(), rep.end()));
+        if (!ok) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {

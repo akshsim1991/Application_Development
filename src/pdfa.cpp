@@ -1,4 +1,5 @@
 #include "pdfa.hpp"
+#include "contentgen.hpp"
 #include <windows.h>
 #include <objbase.h>
 #include <algorithm>
@@ -173,7 +174,7 @@ bool pictureOnly(Document& d, int page) {
         else if (api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
     }
     api.FPDFPage_InsertObjectAtIndex(pg, img, 0);
-    api.FPDFPage_GenerateContent(pg);
+    contentgen::generate(d.handle(), pg);
     d.resetText(page);
     return true;
 }
@@ -292,8 +293,21 @@ bool convert(Document& src, bool allPictures, std::vector<unsigned char>& out, R
     };
     for (int p = 0; p < w.pageCount(); ++p) {
         FPDF_PAGE pg = w.page(p);
-        FPDF_TEXTPAGE tp = w.text(p);
         if (!pg) continue;
+        // Text in fonts that are not embedded is set again below in an embedded font, as plain strings: split it first
+        // wherever spacing or kerning places letters, so every letter stays where it was.
+        // Only when every such font has a replacement: otherwise the page is kept as a picture and nothing is set again.
+        bool loose = false, replaceable = true;
+        for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n && replaceable && !allPictures; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT || api.FPDFTextObj_GetTextRenderMode(o) == FPDF_TEXTRENDERMODE_INVISIBLE) continue;
+            FPDF_FONT f = api.FPDFTextObj_GetFont(o);
+            if (!f || api.FPDFFont_GetIsEmbedded(f)) continue;
+            loose = true;
+            replaceable = !fontFileFor(baseName(f)).empty();
+        }
+        if (loose && replaceable && contentgen::prepare(w.handle(), pg, true)) w.resetText(p);
+        FPDF_TEXTPAGE tp = w.text(p);
         // annotations left after flattening: links stay (printable), the rest go
         for (int i = api.FPDFPage_GetAnnotCount(pg) - 1; i >= 0; --i) {
             FPDF_ANNOTATION a = api.FPDFPage_GetAnnot(pg, i);
@@ -325,7 +339,12 @@ bool convert(Document& src, bool allPictures, std::vector<unsigned char>& out, R
                 std::vector<unsigned short> buf(nb / 2 + 1, 0);
                 if (nb) api.FPDFTextObj_GetText(o, tp, buf.data(), nb);
                 std::wstring text(buf.begin(), buf.begin() + (nb >= 2 ? nb / 2 - 1 : 0));
-                if (text.empty()) { picture = true; break; }
+                // PDFium's text adds a space where the next object starts further on; it is not in this object
+                while (text.size() > 1 && text.back() == L' ') text.pop_back();
+                if (text.find_first_not_of(L" ") == std::wstring::npos) {   // draws nothing: not needed
+                    if (api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
+                    continue;
+                }
                 float size = 12;
                 api.FPDFTextObj_GetFontSize(o, &size);
                 FPDF_FONT nf = fontFor(it->second, !plainAscii(text));
@@ -344,7 +363,7 @@ bool convert(Document& src, bool allPictures, std::vector<unsigned char>& out, R
                 if (api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
                 ++r.fontsReplaced;
             }
-            if (!swap.empty()) { api.FPDFPage_GenerateContent(pg); w.resetText(p); }
+            if (!swap.empty()) { contentgen::generate(w.handle(), pg); w.resetText(p); }
         }
         if (picture) {
             if (!pictureOnly(w, p)) { error = L"Page " + std::to_wstring(p + 1) + L" could not be turned into a picture."; return false; }

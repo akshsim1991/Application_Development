@@ -209,6 +209,14 @@ if [ -n "${VERAPDF:-}" ]; then
   check "veraPDF: PDF/A-2b passes"  "'$VERAPDF' --flavour 2b --format text '$work/arch-a.pdf' 2>/dev/null | grep -q '^PASS'"
 else echo "  skip veraPDF check (set VERAPDF to the veraPDF command line)"; fi
 
+echo "fonts used"
+run --fonts "$(W rich.pdf)" "$(W fonts.txt)"
+check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$work/fonts.txt'"
+run --fonts "$(W scan.pdf)" "$(W fonts-scan.txt)"
+check "scanned page has no text"    "grep -q 'Pages without any text (scanned; OCR can find their words): 1' '$work/fonts-scan.txt'"
+run --fonts "$(W scan_ocr.pdf)" "$(W fonts-ocr.txt)"
+check "OCR layer is invisible text" "grep -q 'invisible only (OCR text layer)' '$work/fonts-ocr.txt'"
+
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""

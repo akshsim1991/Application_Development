@@ -46,6 +46,7 @@
 #include "picture.hpp"
 #include "printing.hpp"
 #include "pdfa.hpp"
+#include "fontlist.hpp"
 
 namespace {
 
@@ -108,7 +109,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
 void formReset(); void flattenDocument(); void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
-void sanitizeDialog(); void pdfaDialog(); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
+void sanitizeDialog(); void pdfaDialog(); void showFonts(Document& d); void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
 void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int cmd); void addPictureItems(HMENU m);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
@@ -230,7 +231,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -1873,19 +1874,27 @@ struct Progress {
 
 void doOcr(Document& d) {
     std::wstring why;
-    if (!ocr::available(why)) { MessageBoxW(app.wnd, why.c_str(), kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    if (!ocr::available(why)) {
+        if (MessageBoxW(app.wnd, (why + L"\n\nShow the fonts used in this PDF instead? (Pages without any fonts are scans.)").c_str(), kAppName, MB_YESNO | MB_ICONINFORMATION) == IDYES) showFonts(d);
+        return;
+    }
     auto langs = ocr::languages();
-    std::vector<FormField> f(4);
+    std::vector<FormField> f(5);
     f[0] = {FormField::Note, L"", {}, L"Finds the words on scanned pages and adds them invisibly, so the pages can be searched, selected and copied. The pages look exactly the same."};
     f[1] = {FormField::Choice, L"Language:", {}, L"", 0};
     for (auto& l : langs) f[1].choices.push_back(l);
     f[2] = {FormField::Text, L"Pages (empty = all):", {}, L""};
     f[3] = {FormField::Check, L"Skip pages that already have text"}; f[3].checked = true;
+    f[4] = {FormField::Check, L"First show the fonts used in this PDF (and which pages are scans)"};
     g_formDoc = &d;
     bool ok = showForm(app.wnd, app.inst, L"Recognise text (OCR)", f, L"Recognise", [](const std::vector<FormField>& v) { return badPages(v[2].text); });
     g_formDoc = nullptr;
     if (!ok) return;
     std::vector<int> pages = pagesFromText(d, f[2].text);
+    if (f[4].checked) {
+        showFonts(d);
+        if (MessageBoxW(app.wnd, L"Recognise the text now?", L"Recognise text (OCR)", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    }
     ocr::Result r;
     {
         Progress progress(L"Starting text recognition...");
@@ -2243,6 +2252,7 @@ void toolsDispatch(int cmd) {
         case N_BATCH: batchDialog(); break;
         case N_SANITIZE: sanitizeDialog(); break;
         case N_PDFA: pdfaDialog(); break;
+        case N_FONTS: showFonts(*d); break;
         case F_EXPORT: formExport(); break;
         case F_FILL: formFillFromCsv(); break;
         case F_TEXT: startFormField(Viewer::Tool::FormText); break;
@@ -2284,6 +2294,7 @@ void showToolsMenu(const RECT& anchor) {
     add(N_BOOKMARK, L"Add a bookmark for this page...");
     sep();
     add(T_OCR, L"Recognise text (OCR)...");
+    add(N_FONTS, L"Fonts used in this PDF...");
     add(T_WATERMARK, L"Watermark...");
     add(T_NUMBERS, L"Page numbers...");
     sep();
@@ -4299,6 +4310,13 @@ void formAutoDetect() {
 }
 
 // ---- privacy: remove hidden data ----
+void showFonts(Document& d) {
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const fontlist::Report r = fontlist::build(d);
+    SetCursor(old);
+    fontlist::show(app.wnd, app.inst, r, L"Fonts used in " + d.title());
+}
+
 void pdfaDialog() {
     Document* d = activeDoc();
     if (!d) return;
@@ -4542,6 +4560,7 @@ void commandPalette() {
         add(L"Password protection", [] { toolsDispatch(T_PROTECT); });
         add(L"Remove hidden data (metadata, attachments, scripts)", [] { sanitizeDialog(); });
         add(L"Save a PDF/A copy for archiving (also text and pictures)", [] { pdfaDialog(); });
+        add(L"Fonts used in this PDF (and pages that need OCR)", [] { if (Document* d = activeDoc()) showFonts(*d); });
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
@@ -5404,6 +5423,16 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::string u(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end()));
         return ok && Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--fonts") {   // --fonts in.pdf report.txt : the fonts used, and pages without text
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const std::wstring t = fontlist::asText(fontlist::build(doc));
+        const int n = WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u.data(), n, nullptr, nullptr);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
         if (files.size() < 3) return 2;

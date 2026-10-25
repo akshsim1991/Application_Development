@@ -2,7 +2,7 @@
 
 Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Done** = works in 2.13 · **Partly** = part of it, see the note · **Missing** = not built. Tested under Wine (printing through a CUPS test printer); Windows voices and live time-stamp servers were not testable there.
 
-**Overall: 196 done, 85 partly, 219 missing (of 500).**
+**Overall: 197 done, 86 partly, 217 missing (of 500).**
 
 | Module | Done | Partly | Missing |
 |---|---|---|---|
@@ -18,7 +18,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 10. Digital Signatures | 9 | 4 | 2 |
 | 11. Security and Privacy | 16 | 1 | 3 |
 | 12. PDF Compression and Optimization | 8 | 1 | 6 |
-| 13. PDF Repair and Diagnostics | 0 | 4 | 11 |
+| 13. PDF Repair and Diagnostics | 1 | 5 | 9 |
 | 14. PDF Comparison | 12 | 2 | 1 |
 | 15. AI-Powered Features | 1 | 4 | 20 |
 | 16. Batch Processing and Automation | 6 | 2 | 17 |
@@ -29,7 +29,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 21. User Interface and Customization | 7 | 5 | 8 |
 | 22. Collaboration and Integrations | 1 | 3 | 16 |
 | 23. Advanced Competitive Features | 2 | 6 | 12 |
-| **Total** | **196** | **85** | **219** |
+| **Total** | **197** | **86** | **217** |
 
 ## 1. PDF Reading and Navigation
 
@@ -378,11 +378,11 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 281 | Detect corrupted PDFs | Partly | Clear message when a file cannot be opened |
 | 282 | Repair recoverable PDF structures | Partly | Damaged files that open are rewritten cleanly when saved |
 | 283 | Rebuild damaged cross-reference tables | Partly | Same |
-| 284 | Detect missing fonts | Missing |  |
+| 284 | Detect missing fonts | Done | Fonts used in this PDF: every font, whether it is embedded, and its pages |
 | 285 | Detect broken hyperlinks | Missing |  |
 | 286 | Detect invalid objects | Missing |  |
 | 287 | Inspect PDF structure | Missing |  |
-| 288 | Inspect embedded resources | Missing |  |
+| 288 | Inspect embedded resources | Partly | Fonts only (type, embedded, subset, pages) |
 | 289 | Inspect PDF streams | Missing |  |
 | 290 | Validate PDF standards | Missing |  |
 | 291 | Identify oversized images | Missing |  |

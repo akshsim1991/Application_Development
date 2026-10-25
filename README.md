@@ -34,7 +34,8 @@ from pictures, new PDF from a text or Markdown file.
 and presentation mode, watermark, page numbers, compress (recompresses large pictures), password protection with AES-256 and
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
-OCR for scanned pages (Tesseract, adds an invisible text layer), read aloud (Windows voices), print (preview, 1-9 pages per
+OCR for scanned pages (Tesseract, adds an invisible text layer; can first list the fonts used and which pages are scans), fonts used in a PDF
+(type, embedded or not, subset, visible or invisible text, pages), read aloud (Windows voices), print (preview, 1-9 pages per
 sheet, greyscale, two-sided, the printer's own Properties dialog), remove hidden data (metadata, attachments, scripts,
 hidden comments) with a report of what was removed, save a PDF/A-2b copy for archiving, document properties,
 export as PNG / JPEG pictures, plain text, Markdown, Word (.docx) and Excel (.xlsx / .csv, tables only).
@@ -61,6 +62,7 @@ FeatherPDF.exe --topdf in.txt|in.md out.pdf                 plain text or Markdo
 FeatherPDF.exe --sanitize in.pdf out.pdf [comments] [bookmarks]   remove hidden data (report in out.pdf.txt)
 FeatherPDF.exe --pages in.pdf out.pdf reverse|noblanks|nodupes|header|background
 FeatherPDF.exe --pdfa in.pdf|in.txt|in.md out.pdf [pictures]      PDF/A-2b copy (report in out.pdf.txt)
+FeatherPDF.exe --fonts in.pdf report.txt                  fonts used, pages without text (scans)
 ```
 
 Test modes used by `tests/smoke.sh`: `--formtest`, `--annottest`, `--pictest`, `--printsheet`.
@@ -110,7 +112,7 @@ generated sample files and checks the results with independent tools (Poppler, p
 page numbers, text boxes, text editing · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
 `protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
 `formdialog.*` reusable dialogs · `formcreate.*` / `formdata.*` creating and filling form fields · `textpdf.*` text and
-Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` print layout and preview · `pdfa.*` PDF/A-2b ·
+Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` print layout and preview · `pdfa.*` PDF/A-2b · `fontlist.*` fonts report ·
 `pdfedit.hpp` small raw PDF edits · `pdfium_api.*` run-time binding to pdfium.dll.
 
 ## Not in 2.13 yet

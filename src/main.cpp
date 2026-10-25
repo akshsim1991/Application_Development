@@ -19,6 +19,9 @@
 #include "outline.hpp"
 #include "foldersearch.hpp"
 #include "batch.hpp"
+#include "formcreate.hpp"
+#include "formdata.hpp"
+#include "exporter.hpp"
 #include <commctrl.h>
 #include <shlobj.h>
 #include <sstream>
@@ -97,6 +100,7 @@ Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nu
 
 // features implemented further down
 void lookUpKind(int kind); void readAloud(); void syncSideBySide(bool fromFirst); void linkOnSelection(); void openUri(const std::wstring& uri);
+void formExport(); void formFillFromCsv(); void startFormField(Viewer::Tool t); bool formFieldDraw(Document& d, const Viewer::Event& e); void formAutoDetect();
 void searchFolder(); void batchDialog(); void writeSession(); void clearSession(); bool restoreSession();
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
@@ -218,7 +222,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_RED_CHECK = 999, N_BATCH = 998, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -2059,6 +2063,12 @@ void toolsDispatch(int cmd) {
         case N_BOOKMARK: addBookmarkHere(); break;
         case N_BW: doGreyscale(); break;
         case N_BATCH: batchDialog(); break;
+        case F_EXPORT: formExport(); break;
+        case F_FILL: formFillFromCsv(); break;
+        case F_TEXT: startFormField(Viewer::Tool::FormText); break;
+        case F_CHECK: startFormField(Viewer::Tool::FormCheck); break;
+        case F_COMBO: startFormField(Viewer::Tool::FormCombo); break;
+        case F_AUTO: formAutoDetect(); break;
         default:
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
@@ -2088,6 +2098,15 @@ void showToolsMenu(const RECT& anchor) {
     add(T_WATERMARK, L"Watermark...");
     add(T_NUMBERS, L"Page numbers...");
     sep();
+    HMENU frm = CreatePopupMenu();
+    AppendMenuW(frm, MF_STRING, F_EXPORT, L"Export the answers to Excel or CSV...");
+    AppendMenuW(frm, MF_STRING, F_FILL, L"Fill from a spreadsheet (CSV)...");
+    AppendMenuW(frm, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormText ? MF_CHECKED : 0), F_TEXT, L"Add a text field");
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormCheck ? MF_CHECKED : 0), F_CHECK, L"Add a check box");
+    AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormCombo ? MF_CHECKED : 0), F_COMBO, L"Add a drop-down list");
+    AppendMenuW(frm, MF_STRING, F_AUTO, L"Find fields in a flat form...");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(frm), L"Fillable form");
     HMENU red = CreatePopupMenu();
     AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
     AppendMenuW(red, MF_STRING, T_RED_SEL, L"Mark selected text");
@@ -2978,6 +2997,7 @@ void measureDraw(const Viewer::Event& e) {
 bool featureDraw(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
         case Viewer::Tool::Ruler: case Viewer::Tool::Protractor: measureDraw(e); return true;
+        case Viewer::Tool::FormText: case Viewer::Tool::FormCheck: case Viewer::Tool::FormCombo: return formFieldDraw(d, e);
         case Viewer::Tool::Link: {
             annot::RectD r{std::min(e.pts[0].x, e.pts[1].x), std::min(e.pts[0].y, e.pts[1].y), std::max(e.pts[0].x, e.pts[1].x), std::max(e.pts[0].y, e.pts[1].y)};
             std::wstring url;
@@ -3586,6 +3606,189 @@ void batchDialog() {
     MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | (r.failed ? MB_ICONWARNING : MB_ICONINFORMATION));
 }
 
+// ---- forms: export, fill from a spreadsheet, create fields, find blanks ----
+std::wstring readTextFile(const std::wstring& path) {
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return {};
+    LARGE_INTEGER sz{};
+    GetFileSizeEx(f, &sz);
+    std::string raw(static_cast<size_t>(sz.QuadPart), '\0');
+    DWORD got = 0;
+    ReadFile(f, raw.data(), static_cast<DWORD>(raw.size()), &got, nullptr);
+    CloseHandle(f);
+    raw.resize(got);
+    if (raw.size() >= 2 && static_cast<unsigned char>(raw[0]) == 0xFF && static_cast<unsigned char>(raw[1]) == 0xFE)   // UTF-16 little endian
+        return std::wstring(reinterpret_cast<const wchar_t*>(raw.data() + 2), (raw.size() - 2) / 2);
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, raw.data(), static_cast<int>(raw.size()), nullptr, 0);
+    UINT cp = CP_UTF8;
+    if (n <= 0) { cp = CP_ACP; n = MultiByteToWideChar(CP_ACP, 0, raw.data(), static_cast<int>(raw.size()), nullptr, 0); }
+    std::wstring w(n, L'\0');
+    MultiByteToWideChar(cp, 0, raw.data(), static_cast<int>(raw.size()), w.data(), n);
+    return w;
+}
+
+void formExport() {
+    Document* d = activeDoc();
+    if (!d) return;
+    auto rows = formdata::answers(*d);
+    if (rows.empty()) { MessageBoxW(app.wnd, L"This document has no form fields to read.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    wchar_t buf[MAX_PATH * 2];
+    std::wstring base = d->title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(buf, (base + L" - answers.xlsx").c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Save the answers as";
+    ofn.lpstrFilter = L"Excel workbook (*.xlsx)\0*.xlsx\0CSV, opens in Excel (*.csv)\0*.csv\0";
+    ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2; ofn.lpstrDefExt = L"xlsx";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    const std::wstring path = buf;
+    const bool xlsx = path.size() > 5 && _wcsicmp(path.c_str() + path.size() - 5, L".xlsx") == 0;
+    std::wstring err;
+    if (!exporter::writeRows(rows, xlsx, path, err)) { MessageBoxW(app.wnd, err.empty() ? L"The file could not be saved." : err.c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    MessageBoxW(app.wnd, (std::to_wstring(rows[0].size()) + L" answers were saved.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+void formFillFromCsv() {
+    Document* d = activeDoc();
+    if (!d) return;
+    const auto fields = formdata::list(*d);
+    if (fields.empty()) { MessageBoxW(app.wnd, L"This document has no form fields to fill in. Use Fillable form > Find fields in a flat form to make some.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    std::vector<wchar_t> buf(MAX_PATH * 2, 0);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Choose the spreadsheet (a CSV file; the first row holds the field names)";
+    ofn.lpstrFilter = L"CSV files (*.csv;*.txt)\0*.csv;*.txt\0";
+    ofn.lpstrFile = buf.data(); ofn.nMaxFile = static_cast<DWORD>(buf.size());
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetOpenFileNameW(&ofn)) return;
+    auto rows = formdata::parseCsv(readTextFile(buf.data()));
+    if (rows.size() < 2) { MessageBoxW(app.wnd, L"The file needs a first row with the field names and at least one row of answers. Save the sheet from Excel as CSV.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    std::set<std::wstring> names;
+    for (const auto& f : fields) names.insert(f.name);
+    std::wstring unmatched;
+    int matched = 0;
+    for (const auto& h : rows[0]) { if (names.count(h)) ++matched; else if (!h.empty()) unmatched += (unmatched.empty() ? L"" : L", ") + h; }
+    if (!matched) {
+        std::wstring have;
+        for (const auto& n : names) have += (have.empty() ? L"" : L", ") + n;
+        MessageBoxW(app.wnd, (L"None of the column names matches a field of this document.\n\nThe fields are called: " + have).c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    std::wstring folder;
+    if (!browseFolder(L"Choose the folder for the filled-in copies (one file per row)", folder)) return;
+    std::vector<unsigned char> original;
+    if (!d->serialize(original)) { MessageBoxW(app.wnd, L"The document could not be prepared.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    std::wstring base = d->title();
+    size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    ProgressWin pw;
+    progressOpen(pw, L"Filling in the form");
+    int done = 0, failed = 0;
+    for (size_t r = 1; r < rows.size(); ++r) {
+        if (!progressStep(pw, static_cast<int>(r - 1), static_cast<int>(rows.size() - 1), L"Row " + std::to_wstring(r))) break;
+        std::map<std::wstring, std::wstring> values;
+        for (size_t c = 0; c < rows[0].size() && c < rows[r].size(); ++c) values[rows[0][c]] = rows[r][c];
+        Document copy;
+        std::vector<unsigned char> bytes = original;
+        if (copy.load(std::move(bytes), {}) != OpenResult::Ok) { ++failed; continue; }
+        formdata::setValues(copy, values);
+        std::vector<unsigned char> out;
+        std::wstring label = rows[r].empty() ? L"" : rows[r][0];
+        for (auto& ch : label) if (wcschr(L"\\/:*?\"<>|", ch)) ch = L'_';
+        if (label.size() > 40) label.resize(40);
+        std::wstring file = folder + L"\\" + base + L" - " + std::to_wstring(r) + (label.empty() ? L"" : L" " + label) + L".pdf";
+        if (copy.serialize(out) && Document::writeFile(file, out) == SaveResult::Ok) ++done; else ++failed;
+    }
+    progressClose(pw);
+    std::wstring msg = std::to_wstring(done) + L" filled-in copies were saved in the chosen folder";
+    if (failed) msg += L"; " + std::to_wstring(failed) + L" could not be made";
+    msg += L".";
+    if (!unmatched.empty()) msg += L"\n\nColumns that matched no field and were ignored: " + unmatched;
+    MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+bool addFieldSpecs(Document& d, const std::vector<formcreate::Spec>& specs) {
+    std::vector<unsigned char> bytes, out;
+    std::wstring err;
+    if (!d.serialize(bytes) || !formcreate::add(bytes, specs, out, err)) {
+        MessageBoxW(app.wnd, (L"The fields could not be added. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    d.beginChange();
+    if (d.reload(std::move(out)) != OpenResult::Ok) {
+        d.cancelChange();
+        MessageBoxW(app.wnd, L"The fields could not be added to this document.", kAppName, MB_OK | MB_ICONWARNING);
+        return false;
+    }
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    refresh();
+    return true;
+}
+
+void startFormField(Viewer::Tool t) {
+    if (!activeDoc()) return;
+    if (app.tool != t) setTool(t);
+}
+
+bool formFieldDraw(Document& d, const Viewer::Event& e) {
+    formcreate::Spec sp;
+    sp.page = e.page;
+    sp.left = std::min(e.pts[0].x, e.pts[1].x); sp.right = std::max(e.pts[0].x, e.pts[1].x);
+    sp.bottom = std::min(e.pts[0].y, e.pts[1].y); sp.top = std::max(e.pts[0].y, e.pts[1].y);
+    if (sp.right - sp.left < 6 || sp.top - sp.bottom < 6) return true;
+    std::set<std::wstring> used;
+    for (const auto& f : formdata::list(d)) used.insert(f.name);
+    const wchar_t* what = e.tool == Viewer::Tool::FormText ? L"text field" : e.tool == Viewer::Tool::FormCheck ? L"check box" : L"drop-down list";
+    std::wstring suggestion = e.tool == Viewer::Tool::FormText ? L"Text" : e.tool == Viewer::Tool::FormCheck ? L"Check" : L"Choice";
+    for (int k = 1; used.count(suggestion + std::to_wstring(k)); ++k) {}
+    int k = 1;
+    while (used.count(suggestion + std::to_wstring(k))) ++k;
+    std::wstring name = suggestion + std::to_wstring(k);
+    std::wstring in;
+    while (askText(L"Form field", std::wstring(L"Name of the ") + what + L" (it must be different from the other fields).", false, in, name.c_str())) {
+        if (in.empty() || used.count(in)) { MessageBoxW(app.wnd, L"Type a name that no other field has.", kAppName, MB_OK | MB_ICONINFORMATION); name = in; continue; }
+        sp.name = in;
+        sp.kind = e.tool == Viewer::Tool::FormText ? formcreate::Spec::Text : e.tool == Viewer::Tool::FormCheck ? formcreate::Spec::Check : formcreate::Spec::Combo;
+        if (sp.kind == formcreate::Spec::Combo) {
+            std::wstring opts;
+            if (!askText(L"Drop-down list", L"The choices, one per line.", false, opts, L"Yes\r\nNo", true)) break;
+            opts = fromEdit(opts);
+            size_t pos = 0;
+            while (pos <= opts.size()) {
+                size_t z = opts.find(L'\r', pos);
+                std::wstring line = opts.substr(pos, z == std::wstring::npos ? std::wstring::npos : z - pos);
+                if (!line.empty()) sp.options.push_back(line);
+                if (z == std::wstring::npos) break;
+                pos = z + 1;
+            }
+            if (sp.options.empty()) break;
+        } else if (sp.kind == formcreate::Spec::Text && sp.top - sp.bottom > 40) sp.multiline = true;
+        addFieldSpecs(d, {sp});
+        break;
+    }
+    setTool(e.tool);
+    return true;
+}
+
+void formAutoDetect() {
+    Document* d = activeDoc();
+    if (!d) return;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    auto specs = formdata::detect(*d);
+    SetCursor(old);
+    if (specs.empty()) { MessageBoxW(app.wnd, L"No blanks were found. Feather PDF looks for lines of underscores, a rule after a label that ends with a colon, and small squares with text after them.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    int text = 0, check = 0;
+    std::wstring sample;
+    for (const auto& s : specs) { (s.kind == formcreate::Spec::Text ? text : check)++; if (sample.size() < 160) sample += L"\n  " + s.name; }
+    std::wstring msg = L"Found " + std::to_wstring(text) + L" text field(s) and " + std::to_wstring(check) + L" check box(es):" + sample + (specs.size() > 6 ? L"\n  ..." : L"") + L"\n\nAdd them as fillable fields?";
+    if (MessageBoxW(app.wnd, msg.c_str(), L"Find fields", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    addFieldSpecs(*d, specs);
+}
+
 // ---- command palette (Ctrl+K) ----
 struct PaletteCmd { std::wstring name; std::function<void()> run; };
 struct PaletteState { std::vector<PaletteCmd> all; std::vector<int> shown; HWND edit = nullptr, list = nullptr; bool done = false; int chosen = -1; };
@@ -3666,6 +3869,14 @@ void commandPalette() {
     add(L"Open a file", [] { runCommand(C_OPEN); });
     add(L"Search all my PDFs in a folder", [] { searchFolder(); });
     add(L"Batch: process a whole folder", [] { batchDialog(); });
+    if (d) {
+        add(L"Form: export the answers to Excel or CSV", [] { formExport(); });
+        add(L"Form: fill from a spreadsheet", [] { formFillFromCsv(); });
+        add(L"Form: add a text field", [] { startFormField(Viewer::Tool::FormText); });
+        add(L"Form: add a check box", [] { startFormField(Viewer::Tool::FormCheck); });
+        add(L"Form: add a drop-down list", [] { startFormField(Viewer::Tool::FormCombo); });
+        add(L"Form: find fields in a flat form", [] { formAutoDetect(); });
+    }
     add(L"New PDF from pictures", [] { newPdfFromPictures(); });
     if (d) {
         add(L"Save", [] { saveActive(); });
@@ -4354,6 +4565,46 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, log.c_str(), -1, u.data(), n, nullptr, nullptr);
         Document::writeFile(files[1] + L".log", std::vector<unsigned char>(u.begin(), u.end()));
         return r.failed ? 5 : 0;
+    }
+    if (!files.empty() && (files[0] == L"--formdetect" || files[0] == L"--formexport" || files[0] == L"--formfill")) {
+        // --formdetect in.pdf out.pdf        adds fillable fields where a flat form has blanks
+        // --formexport in.pdf out.csv|xlsx   writes the answers
+        // --formfill in.pdf data.csv outdir  one filled-in copy per row of the CSV file
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        if (files[0] == L"--formdetect") {
+            auto specs = formdata::detect(doc);
+            std::vector<unsigned char> bytes, out;
+            std::wstring err;
+            std::wstring dump;
+            for (const auto& sp : specs) dump += (sp.kind == formcreate::Spec::Text ? L"text|" : L"check|") + sp.name + L"|" + std::to_wstring(sp.page + 1) + L"\n";
+            { int n = WideCharToMultiByte(CP_UTF8, 0, dump.c_str(), -1, nullptr, 0, nullptr, nullptr); std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0'); if (n > 1) WideCharToMultiByte(CP_UTF8, 0, dump.c_str(), -1, u.data(), n, nullptr, nullptr); Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end())); }
+            if (specs.empty() || !doc.serialize(bytes) || !formcreate::add(bytes, specs, out, err)) return 5;
+            return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+        }
+        if (files[0] == L"--formexport") {
+            auto rows = formdata::answers(doc);
+            if (rows.empty()) return 5;
+            std::wstring err;
+            const std::wstring& o = files[2];
+            return exporter::writeRows(rows, o.size() > 5 && _wcsicmp(o.c_str() + o.size() - 5, L".xlsx") == 0, o, err) ? 0 : 4;
+        }
+        if (files.size() < 4) return 2;
+        auto rows = formdata::parseCsv(readTextFile(files[2]));
+        std::vector<unsigned char> original;
+        if (rows.size() < 2 || !doc.serialize(original)) return 5;
+        CreateDirectoryW(files[3].c_str(), nullptr);
+        for (size_t r = 1; r < rows.size(); ++r) {
+            std::map<std::wstring, std::wstring> values;
+            for (size_t c = 0; c < rows[0].size() && c < rows[r].size(); ++c) values[rows[0][c]] = rows[r][c];
+            Document copy;
+            std::vector<unsigned char> bytes = original, out;
+            if (copy.load(std::move(bytes), {}) != OpenResult::Ok) return 6;
+            formdata::setValues(copy, values);
+            if (!copy.serialize(out) || Document::writeFile(files[3] + L"\\row" + std::to_wstring(r) + L".pdf", out) != SaveResult::Ok) return 4;
+        }
+        return 0;
     }
     if (!files.empty() && files[0] == L"--checksig") {
         if (files.size() < 3) return 2;

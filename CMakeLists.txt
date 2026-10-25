@@ -26,6 +26,8 @@ add_executable(FeatherPDF WIN32
   src/outline.cpp
   src/foldersearch.cpp
   src/batch.cpp
+  src/formcreate.cpp
+  src/formdata.cpp
   src/picture.cpp
   resources/FeatherPDF.rc)
 

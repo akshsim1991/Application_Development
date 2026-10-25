@@ -619,4 +619,11 @@ Result run(Document& d, const std::vector<int>& pages, Format f, const std::wstr
     return res;
 }
 
+bool writeRows(const std::vector<std::vector<std::wstring>>& rows, bool xlsx, const std::wstring& path, std::wstring& error) {
+    Table t;
+    t.rows = rows;
+    std::string data = xlsx ? writeXlsx({t}) : writeCsv({t});
+    return writeFileBytes(path, data, error);
+}
+
 } // namespace exporter

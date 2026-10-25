@@ -15,6 +15,16 @@
 // Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
 #define PDFIUM_FUNCS(X)          \
     X(FPDF_InitLibrary)          \
+    X(FPDFPathSegment_GetPoint) \
+    X(FPDFPath_GetPathSegment) \
+    X(FPDFPath_CountSegments) \
+    X(FPDFAnnot_GetOptionLabel) \
+    X(FPDFAnnot_GetOptionCount) \
+    X(FPDFAnnot_GetFormFieldExportValue) \
+    X(FPDFAnnot_IsChecked) \
+    X(FPDFAnnot_GetFormFieldType) \
+    X(FPDFAnnot_GetFormFieldValue) \
+    X(FPDFAnnot_GetFormFieldName) \
     X(FPDFDest_GetLocationInPage) \
     X(FPDFPageObj_RemoveMark) \
     X(FPDFPageObjMark_GetName) \

@@ -25,4 +25,7 @@ std::vector<Table> findTables(Document& d, const std::vector<int>& pages);
 
 const wchar_t* extension(Format f);
 
+// Writes a table (rows of cells) as an Excel file (.xlsx) or a CSV file that Excel opens.
+bool writeRows(const std::vector<std::vector<std::wstring>>& rows, bool xlsx, const std::wstring& path, std::wstring& error);
+
 } // namespace exporter

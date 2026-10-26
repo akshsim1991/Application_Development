@@ -291,7 +291,7 @@ story += [P("Select text by dragging over it, then press <b>Ctrl+H</b> to highli
             "To add a note, choose Comment > Add comment (Ctrl+M) and click where the note belongs.")]
 story += [picture("highlight.png", 150, "Highlighted text. Right-click a highlight or comment to edit or delete it.")]
 story += bullets([
-    "<b>Shapes:</b> Annotate > Rectangle, Ellipse, Line, Arrow, Pen, Polygon (click the corners, double-click to finish), Cloud (drag a box) and Callout (drag from the point to where the text goes).",
+    "<b>Shapes:</b> Annotate > Rectangle, Ellipse, Line, Arrow, Pen, Polygon (click the corners, double-click to finish), Cloud (drag a box) and Callout (drag from the point to where the text goes; double-click a callout to change its text).",
     "<b>Stamps:</b> Annotate > Stamp offers Approved, Draft, Confidential and others, stamps with the date and time, and custom text. Click on the page where the stamp should go.",
     "<b>Colours and line widths</b> for new annotations are at the bottom of the Annotate menu.",
     "<b>Notes summary</b> (Comment menu) collects every highlight and comment into one Markdown file.",

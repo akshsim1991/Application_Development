@@ -38,6 +38,9 @@ void stamp(FPDF_ANNOTATION a, const std::wstring& comment) {
     if (!comment.empty()) { auto c = wide(comment); p.FPDFAnnot_SetStringValue(a, "Contents", c.data()); }
 }
 
+// On callouts: "tipX tipY atX atY colour", so the text can be changed and the callout drawn again in the same place
+constexpr const char* kCalloutKey = "FeatherCallout";
+
 void setRect(FPDF_ANNOTATION a, const RectD& r) {
     FS_RECTF f;
     f.left = static_cast<float>(r.left);   f.right = static_cast<float>(r.right);
@@ -147,6 +150,7 @@ std::vector<Info> list(Document& d, int page) {
         inf.subtype = p.FPDFAnnot_GetSubtype(a);
         FS_RECTF r{};
         if (p.FPDFAnnot_GetRect(a, &r)) inf.rect = {r.left, r.bottom, r.right, r.top};
+        inf.callout = inf.subtype == FPDF_ANNOT_STAMP && p.FPDFAnnot_GetStringValue(a, kCalloutKey, nullptr, 0) >= 4;
         unsigned long bytes = p.FPDFAnnot_GetStringValue(a, "Contents", nullptr, 0);
         if (bytes >= 4) {
             std::vector<unsigned short> buf(bytes / 2 + 1);
@@ -300,7 +304,9 @@ bool addCloud(Document& d, int page, const RectD& r, COLORREF color, double widt
     return addInk(d, page, {pts}, color, width);
 }
 
-bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color) {
+namespace {
+// replace >= 0: the callout takes the place of that annotation, in the same undo step
+bool makeCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color, int replace) {
     if (text.empty()) return false;
     const auto& p = api();
     // lines of text that fit 220 pt
@@ -371,7 +377,32 @@ bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring
             y -= lh;
         }
         stamp(a, text);
-        return true;
+        wchar_t spec[96];
+        swprintf(spec, 96, L"%.2f %.2f %.2f %.2f %06lX", tip.x, tip.y, at.x, at.y, static_cast<unsigned long>(color & 0xFFFFFF));
+        auto ws = wide(spec);
+        p.FPDFAnnot_SetStringValue(a, kCalloutKey, ws.data());
+        return replace < 0 || p.FPDFPage_RemoveAnnot(d.page(page), replace);
     });
+}
+} // namespace
+
+bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color) {
+    return makeCallout(d, page, tip, at, text, color, -1);
+}
+
+bool setCalloutText(Document& d, int page, int index, const std::wstring& text) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg || text.empty()) return false;
+    const auto& p = api();
+    FPDF_ANNOTATION a = p.FPDFPage_GetAnnot(pg, index);
+    if (!a) return false;
+    std::vector<unsigned short> buf(p.FPDFAnnot_GetStringValue(a, kCalloutKey, nullptr, 0) / 2 + 1);
+    p.FPDFAnnot_GetStringValue(a, kCalloutKey, buf.data(), static_cast<unsigned long>(buf.size() * 2));
+    p.FPDFPage_CloseAnnot(a);
+    std::wstring spec(buf.begin(), buf.end());
+    PointD tip{}, at{};
+    unsigned long colour = 0;
+    if (swscanf(spec.c_str(), L"%lf %lf %lf %lf %lx", &tip.x, &tip.y, &at.x, &at.y, &colour) != 5) return false;
+    return makeCallout(d, page, tip, at, text, static_cast<COLORREF>(colour), index);
 }
 } // namespace annot

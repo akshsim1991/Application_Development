@@ -324,7 +324,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 
 // Annotate menu command ids (kept apart from toolbar command ids).
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
-              M_DELETE, M_EDIT_COMMENT, M_COPY,
+              M_DELETE, M_EDIT_COMMENT, M_COPY, M_EDIT_CALLOUT,
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
@@ -804,6 +804,21 @@ void editComment(Document& d, int page, int index) {
     if (annot::setContents(d, page, index, text)) afterChange(page);
 }
 
+void deleteAnnotation(Document& d, int page, int index);
+
+void editCallout(Document& d, int page, int index) {
+    std::wstring cur;
+    for (const auto& a : annot::list(d, page)) if (a.index == index) cur = a.contents;
+    std::wstring text;
+    if (!askText(L"Callout", L"The text in the box (Enter for a new line).", false, text, toEdit(cur).c_str(), true)) return;
+    text = fromEdit(text);
+    if (text == cur) return;
+    if (text.find_first_not_of(L" \r\n\t") == std::wstring::npos) { deleteAnnotation(d, page, index); return; }   // emptied: the callout goes
+    if (!pageobj::isLatin(text)) { MessageBoxW(app.wnd, L"Callouts can use letters, numbers and common symbols of Western languages.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    if (annot::setCalloutText(d, page, index, text)) { app.viewer.clearAnnotSelection(); afterChange(page); }
+    else MessageBoxW(app.wnd, L"The callout could not be changed.", kAppName, MB_OK | MB_ICONWARNING);
+}
+
 void deleteAnnotation(Document& d, int page, int index) {
     if (annot::remove(d, page, index)) { app.viewer.clearAnnotSelection(); afterChange(page); }
 }
@@ -1084,17 +1099,23 @@ void onViewerEvent(const Viewer::Event& e) {
             break;
         }
         case Viewer::Event::DoubleClick:
-            for (const auto& a : annot::list(*d, e.page))
-                if (a.index == e.annot && annot::hasComment(a.subtype)) { editComment(*d, e.page, e.annot); break; }
+            for (const auto& a : annot::list(*d, e.page)) {
+                if (a.index != e.annot) continue;
+                if (a.callout) editCallout(*d, e.page, e.annot);
+                else if (annot::hasComment(a.subtype)) editComment(*d, e.page, e.annot);
+                break;
+            }
             break;
         case Viewer::Event::ContextMenu: {
             HMENU m = CreatePopupMenu();
             int subtype = 0;
+            bool callout = false;
             if (e.annot >= 0)
-                for (const auto& a : annot::list(*d, e.page)) if (a.index == e.annot) subtype = a.subtype;
+                for (const auto& a : annot::list(*d, e.page)) if (a.index == e.annot) { subtype = a.subtype; callout = a.callout; }
             if (subtype) {
+                if (callout) AppendMenuW(m, MF_STRING, M_EDIT_CALLOUT, L"Edit callout text...");
                 if (annot::hasComment(subtype)) AppendMenuW(m, MF_STRING, M_EDIT_COMMENT, subtype == FPDF_ANNOT_TEXT ? L"Edit comment..." : L"Add or edit comment...");
-                AppendMenuW(m, MF_STRING, M_DELETE, (std::wstring(L"Delete this ") + annot::typeName(subtype)).c_str());
+                AppendMenuW(m, MF_STRING, M_DELETE, (std::wstring(L"Delete this ") + (callout ? L"callout" : annot::typeName(subtype))).c_str());
                 AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
             }
             int markIdx = -1;
@@ -1158,9 +1179,9 @@ void onViewerEvent(const Viewer::Event& e) {
                     break;
                 }
             }
-            if (cmd >= M_EDIT_COMMENT || cmd == 0) {}
             switch (cmd) {
                 case M_EDIT_COMMENT: editComment(*d, e.page, e.annot); break;
+                case M_EDIT_CALLOUT: editCallout(*d, e.page, e.annot); break;
                 case M_DELETE: deleteAnnotation(*d, e.page, e.annot); break;
                 case M_COPY: app.viewer.copySelection(); break;
                 case M_RED_REMOVE: d->redactions.erase(d->redactions.begin() + markIdx); app.viewer.setMarks(&d->redactions); break;
@@ -5691,13 +5712,14 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u.data(), n, nullptr, nullptr);
         return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
-    if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1
+    if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1, the callout's text then changed
         if (files.size() < 3) return 2;
         Document doc;
         if (doc.open(files[1]) != OpenResult::Ok) return 3;
         bool ok = annot::addPolygon(doc, 0, {{100, 700}, {200, 760}, {260, 690}, {180, 640}}, RGB(0xD0, 0x20, 0x20), 2)
                && annot::addCloud(doc, 0, {320, 620, 500, 760}, RGB(0x20, 0x40, 0xD0), 1.5)
-               && annot::addCallout(doc, 0, {150, 500}, {300, 420}, L"Check this figure", RGB(0x10, 0x80, 0x30));
+               && annot::addCallout(doc, 0, {150, 500}, {300, 420}, L"Check this figure", RGB(0x10, 0x80, 0x30))
+               && annot::setCalloutText(doc, 0, 2, L"Check this figure\nand the table");
         if (!ok) return 5;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }

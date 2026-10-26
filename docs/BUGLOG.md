@@ -350,3 +350,18 @@ features.
   (WM_DROPFILES calls openFile for each file), so it was checked through the command line, as Wine cannot simulate a
   drop from xdotool.
 - Also checked: a PNG gives "not a PDF document"; a .md file handed over becomes a new PDF (n.pdf, heading and italics).
+
+### B-033 A callout's text could not be changed
+- **Status:** Fixed
+- **Root cause:** double-click and the right-click menu offered editing only for notes and text markup. A callout (a box with
+  a leader line, drawn as a picture so every viewer shows it) could only be deleted, and its menu item read "Delete this
+  stamp". A spelling mistake meant deleting the callout and drawing it again.
+- **Fix:** a callout now keeps where it points, where its box sits and its colour. Double-click (or right-click > Edit
+  callout text...) shows the text; OK draws the callout again with the new text in the same place and colour, as one undo
+  step. Emptying the text deletes the callout. The menu reads "Delete this callout". Non-Western characters are refused,
+  as when drawing one. The dead line `if (cmd >= M_EDIT_COMMENT || cmd == 0) {}` was removed from the menu code.
+- **Verified:** drawn "First text", double-click: the dialog shows it; new text of two lines: the box grows, the arrow still
+  points at the same word, the border stays red; Ctrl+Z back to "First text", Ctrl+Y forward; saved: one Stamp with the new
+  Contents; reopened after a restart: double-click edits it; emptied: removed. Smoke test "callout text changed in place"
+  (one callout, new text, colour kept).
+- Callouts drawn before this version keep only "Delete": where they point was not recorded.

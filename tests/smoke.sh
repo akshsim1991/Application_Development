@@ -251,6 +251,7 @@ check "no room on the page: refused, nothing written" "[ $rc -eq 6 ] && grep -q 
 echo "comment shapes"
 run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""
+check "callout text changed in place" "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');a=p.pages[0].Annots;c=[x for x in a if '/FeatherCallout' in x];assert len(c)==1 and str(c[0].Contents)=='Check this figure\\nand the table' and str(c[0].FeatherCallout).endswith('308010'), c\""
 
 
 [ -n "${KEEP:-}" ] && echo "work kept: $work" || rm -rf "$work"

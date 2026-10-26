@@ -19,6 +19,7 @@ struct Info {
     int subtype = 0;                                  // FPDF_ANNOT_*
     RectD rect{};
     std::wstring contents;
+    bool callout = false;                             // a callout made here: its text can be changed (setCalloutText)
 };
 
 // Highlight / underline / strikethrough / squiggly over text rectangles (page coordinates).
@@ -34,6 +35,8 @@ bool addPolygon(Document& d, int page, const std::vector<PointD>& pts, COLORREF 
 bool addCloud(Document& d, int page, const RectD& r, COLORREF color, double width);
 // A text box with a leader line and arrowhead pointing at `tip`; the box sits next to `at`.
 bool addCallout(Document& d, int page, PointD tip, PointD at, const std::wstring& text, COLORREF color);
+// Draws the callout again with new text, in the same place and colour (it moves to the top of the other annotations).
+bool setCalloutText(Document& d, int page, int index, const std::wstring& text);
 // A clickable box that opens a web page.
 bool addLink(Document& d, int page, const RectD& r, const std::string& uri);
 

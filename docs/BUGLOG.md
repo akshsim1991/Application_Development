@@ -203,10 +203,39 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 - **Fix:** the note is measured as the dialog will draw it, wrapped at the dialog's width.
 - **Verified:** About shows all of its text (screenshot), with "Version 2.14.2, built 26 October 2026".
 
-## Found, not yet corrected
+## 2.14 sweep
 
-### O-001 Clicking beside the text with Edit text / Edit paragraph shows a message box every time
-- **Status:** Open (sweep). A hint in the status bar would not interrupt.
+### B-018 Page Down and Page Up did nothing on a long page
+- **Status:** Fixed (was O-002)
+- **Root cause:** Page Down / Page Up meant "next / previous page", so on the last page, or in a one-page document whose page
+  is taller than the window, they did nothing at all.
+- **Fix:** they move one screen (90 %, so the reader keeps their place), and go to the next page's top instead when it starts
+  within that screen, so pages stay aligned at "fit page". Single-page layout turns the page at the end as before.
+- **Verified:** one-page document: Page Down middle → bottom → stays; Page Up back to the top. Five pages at fit page:
+  page 1 → 2 → 3 → back to 2, each aligned (screenshots). Home / Ctrl+Home / End work.
 
-### O-002 Page Up, Page Down, Ctrl+Home do not scroll the page
-- **Status:** Open (sweep). Seen on single-page documents in this test run; the keys reached the window but nothing moved.
+### B-019 Every click beside the text with Edit text / Edit paragraph raised a message box
+- **Status:** Fixed (was O-001)
+- **Root cause:** a miss showed a modal message that had to be closed each time.
+- **Fix:** a short notice at the bottom of the page view, which goes away by itself after a few seconds or on a click; the
+  next click on text works at once.
+- **Verified:** GUI: a click on empty space shows the notice; a click on text then opens the editor; the notice disappears.
+
+### B-020 Messages pointed to menus that do not exist
+- **Status:** Fixed
+- **Root cause:** texts written for an earlier menu ("Tools > Digital signatures", "Tools > Password protection",
+  "Fillable form > ...").
+- **Fix:** they name the real places (Edit PDF > Digital signatures > Show the signatures, Edit PDF > Remove password
+  protection, Edit PDF > Fillable form > ...). Every "X > Y" in the program's messages was checked against the menus.
+
+### B-021 Recent files: same names could not be told apart, missing files stayed, "&" vanished; tests changed the list
+- **Status:** Fixed
+- **Root cause:** the … > Open recent submenu showed bare file names; choosing a file that no longer exists showed an error
+  and kept it; "&" in a name is a menu access key ("R&D.pdf" showed as "RD.pdf"); and the --menucheck test opened its
+  sample like a user, so it was added to Recent files and the settings were written.
+- **Fix:** both recent-file menus use one label: the name, with the folder when another recent file has the same name, and
+  "&" doubled; opening goes through one function that removes a missing file with a message. The test mode leaves
+  settings, recent files and the recovery session untouched.
+- **Verified:** settings file byte-identical after --menucheck; menu shows "report.pdf C:\test\a" / "report.pdf
+  C:\test\b" and "R&D.pdf" (screenshot); choosing the missing one shows the message and removes it, after which the other
+  "report.pdf" shows without its folder.

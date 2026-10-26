@@ -73,6 +73,7 @@ struct App {
     int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
     Viewer::Tool tool = Viewer::Tool::None;
     std::vector<std::wstring> recent;
+    bool testMode = false;                            // --menucheck: leave the user's settings, recent files and session alone
     std::wstring pendingPicture, pendingStamp;
     COLORREF pendingStampColour = RGB(0xE5, 0x39, 0x35);
     bool fullscreen = false;
@@ -138,25 +139,29 @@ void applyTheme();
 struct MenuCheck {
     bool on = false;
     std::wstring report;   // problems found
+    std::wstring listing;  // every item, for testing them one by one
     int menus = 0, items = 0;
 };
 MenuCheck g_menuCheck;
 RECT g_menuExclude{};   // screen rectangle a menu must not cover (the button that opened it); empty: none
 
-void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>& seen) {
+void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>& seen, const std::wstring& keys = L"") {
     const int n = GetMenuItemCount(m);
+    int pos = 0;   // position as the arrow keys count it (separators are skipped)
     for (int i = 0; i < n; ++i) {
         wchar_t text[256] = L"";
         MENUITEMINFOW mi{sizeof(mi)};
-        mi.fMask = MIIM_ID | MIIM_SUBMENU | MIIM_FTYPE | MIIM_STRING;
+        mi.fMask = MIIM_ID | MIIM_SUBMENU | MIIM_FTYPE | MIIM_STRING | MIIM_STATE;
         mi.dwTypeData = text;
         mi.cch = 255;
         if (!GetMenuItemInfoW(m, static_cast<UINT>(i), TRUE, &mi)) continue;
         std::wstring label = text;
         if (label.find(L'\t') != std::wstring::npos) label.resize(label.find(L'\t'));
-        if (mi.hSubMenu) { collectMenu(mi.hSubMenu, path + L" > " + label, seen); continue; }
         if (mi.fType & MFT_SEPARATOR) continue;
+        const std::wstring here = keys + (keys.empty() ? L"" : L",") + std::to_wstring(pos++);
+        if (mi.hSubMenu) { collectMenu(mi.hSubMenu, path + L" > " + label, seen, here); continue; }
         ++g_menuCheck.items;
+        g_menuCheck.listing += path + L"\t" + here + L"\t" + label + ((mi.fState & MFS_DISABLED) ? L"\t(greyed)" : L"") + L"\n";
         auto it = seen.find(mi.wID);
         if (mi.wID == 0) g_menuCheck.report += L"no command number: " + path + L" > " + label + L"\n";
         else if (it != seen.end()) g_menuCheck.report += L"same command number " + std::to_wstring(mi.wID) + L": \"" + it->second + L"\" and \"" + path + L" > " + label + L"\"\n";
@@ -461,6 +466,7 @@ void loadSettings() {
 }
 
 void saveSettings() {
+    if (app.testMode) return;
     const std::wstring p = settingsPath();
     if (p.empty()) return;
     auto put = [&](const wchar_t* sec, const wchar_t* key, int v) { WritePrivateProfileStringW(sec, key, std::to_wstring(v).c_str(), p.c_str()); };
@@ -496,6 +502,7 @@ void saveSettings() {
 }
 
 void addRecent(const std::wstring& path) {
+    if (app.testMode) return;
     app.recent.erase(std::remove_if(app.recent.begin(), app.recent.end(), [&](const std::wstring& r) { return _wcsicmp(r.c_str(), path.c_str()) == 0; }), app.recent.end());
     app.recent.insert(app.recent.begin(), path);
     if (app.recent.size() > 10) app.recent.resize(10);
@@ -542,7 +549,7 @@ void openFile(const std::wstring& pathIn) {
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
     if (badSig) MessageBoxW(app.wnd, L"A digital signature in this document does not match: the document was changed after it was signed (or the signature is damaged). "
-                                     L"Do not trust its content. Tools > Digital signatures shows the details.", kAppName, MB_OK | MB_ICONWARNING);
+                                     L"Do not trust its content. Edit PDF > Digital signatures > Show the signatures gives the details.", kAppName, MB_OK | MB_ICONWARNING);
 }
 
 void openDialog() {
@@ -751,6 +758,65 @@ void deleteAnnotation(Document& d, int page, int index) {
 
 void openRecentMenu(POINT screenPt);
 
+// ---- short notices at the bottom of the window, for small things that need no answer ----
+LRESULT CALLBACK noticeProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+        case WM_PAINT: {
+            PAINTSTRUCT ps;
+            HDC dc = BeginPaint(h, &ps);
+            RECT rc;
+            GetClientRect(h, &rc);
+            HBRUSH b = CreateSolidBrush(RGB(0x30, 0x33, 0x38));
+            FillRect(dc, &rc, b);
+            DeleteObject(b);
+            wchar_t t[512] = L"";
+            GetWindowTextW(h, t, 512);
+            SetBkMode(dc, TRANSPARENT);
+            SetTextColor(dc, RGB(0xF2, 0xF2, 0xF2));
+            HGDIOBJ of = SelectObject(dc, app.font);
+            InflateRect(&rc, -14, 0);
+            DrawTextW(dc, t, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+            SelectObject(dc, of);
+            EndPaint(h, &ps);
+            return 0;
+        }
+        case WM_TIMER: KillTimer(h, 1); ShowWindow(h, SW_HIDE); return 0;
+        case WM_LBUTTONDOWN: ShowWindow(h, SW_HIDE); return 0;   // a click dismisses it
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+// Shows `text` for a few seconds at the bottom of the page view.
+void notice(const std::wstring& text) {
+    static HWND n = nullptr;
+    if (!n) {
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = noticeProc;
+        wc.hInstance = app.inst;
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.lpszClassName = L"FeatherNotice";
+        RegisterClassExW(&wc);
+        n = CreateWindowExW(0, L"FeatherNotice", L"", WS_CHILD | WS_CLIPSIBLINGS, 0, 0, 10, 10, app.wnd, nullptr, app.inst, nullptr);
+        if (!n) { MessageBoxW(app.wnd, text.c_str(), kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    }
+    SetWindowTextW(n, text.c_str());
+    HDC dc = GetDC(n);
+    HGDIOBJ of = SelectObject(dc, app.font);
+    SIZE ext{};
+    GetTextExtentPoint32W(dc, text.c_str(), static_cast<int>(text.size()), &ext);
+    TEXTMETRICW tm{};
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, of);
+    ReleaseDC(n, dc);
+    RECT vr;
+    GetWindowRect(app.viewer.hwnd(), &vr);
+    MapWindowPoints(nullptr, app.wnd, reinterpret_cast<POINT*>(&vr), 2);
+    const int w = std::min<int>(ext.cx + 32, vr.right - vr.left - 40), h = tm.tmHeight + 16;
+    SetWindowPos(n, HWND_TOP, (vr.left + vr.right - w) / 2, vr.bottom - h - 24, w, h, SWP_SHOWWINDOW);
+    InvalidateRect(n, nullptr, TRUE);
+    SetTimer(n, 1, 4500, nullptr);
+}
+
 // ---- editing text where it is on the page ----
 POINT clickPoint(int page, const annot::PointD& p) {
     const RECT r = app.viewer.screenRect(page, {p.x, p.y, p.x, p.y});
@@ -951,7 +1017,7 @@ void onViewerEvent(const Viewer::Event& e) {
                 if (line.found && line.upright) { editLineInPlace(*d, line, clickPoint(e.page, e.pts.front())); break; }
                 pageobj::TextHit hit = pageobj::textAt(*d, e.page, e.pts.front().x, e.pts.front().y);
                 if (hit.index < 0) {
-                    MessageBoxW(app.wnd, L"No editable text was found there. Click directly on a line of text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
+                    notice(L"No text there. Click directly on a line of text (scanned pages are pictures: use text recognition first).");
                     break;
                 }
                 editObjectTextInPlace(*d, e.page, hit, clickPoint(e.page, e.pts.front()));
@@ -2042,27 +2108,52 @@ void doOcr(Document& d) {
 }
 
 
+// A recent file in a menu: its name, with its folder when another recent file has the same name. "&" is doubled, or the
+// menu would show it as an underlined access key.
+std::wstring recentLabel(size_t i, bool withFolder) {
+    const std::wstring& p = app.recent[i];
+    const size_t cut = p.find_last_of(L"\\/");
+    const std::wstring name = cut == std::wstring::npos ? p : p.substr(cut + 1);
+    bool clash = false;
+    for (size_t j = 0; j < app.recent.size() && !clash; ++j) {
+        if (j == i) continue;
+        const size_t c = app.recent[j].find_last_of(L"\\/");
+        clash = _wcsicmp((c == std::wstring::npos ? app.recent[j] : app.recent[j].substr(c + 1)).c_str(), name.c_str()) == 0;
+    }
+    std::wstring label = name;
+    if ((withFolder || clash) && cut != std::wstring::npos) {
+        std::wstring folder = p.substr(0, cut);
+        if (folder.size() > 60) folder = folder.substr(0, 24) + L"\x2026" + folder.substr(folder.size() - 33);   // the drive and the last folders
+        label += L"    " + folder;
+    }
+    std::wstring out;
+    for (wchar_t c : label) { out += c; if (c == L'&') out += L'&'; }
+    return out;
+}
+
+// Opens recent file `i`; one that no longer exists is taken off the list.
+void openRecent(size_t i) {
+    if (i >= app.recent.size()) return;
+    const std::wstring p = app.recent[i];
+    if (GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) {
+        MessageBoxW(app.wnd, (L"\"" + p + L"\" no longer exists, so it was removed from the list.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+        app.recent.erase(app.recent.begin() + static_cast<std::ptrdiff_t>(i));
+        updateEmptyText();
+        saveSettings();
+        return;
+    }
+    openFile(p);
+}
+
 void openRecentMenu(POINT screenPt) {
     HMENU m = CreatePopupMenu();
     if (app.recent.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No recent files");
-    for (size_t i = 0; i < app.recent.size(); ++i) {
-        std::wstring name = app.recent[i].substr(app.recent[i].find_last_of(L"\\/") + 1);
-        std::wstring label = name + L"    " + app.recent[i].substr(0, app.recent[i].size() - name.size());
-        if (label.size() > 90) label = name;
-        AppendMenuW(m, MF_STRING, T_RECENT + i, label.c_str());
-    }
+    for (size_t i = 0; i < app.recent.size(); ++i) AppendMenuW(m, MF_STRING, T_RECENT + i, recentLabel(i, true).c_str());
     if (!app.recent.empty()) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, T_RECENT_CLEAR, L"Clear the list"); }
     int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, screenPt.x, screenPt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
     if (cmd == T_RECENT_CLEAR) { app.recent.clear(); updateEmptyText(); saveSettings(); }
-    else if (cmd >= T_RECENT && cmd < T_RECENT + 10 && cmd - T_RECENT < static_cast<int>(app.recent.size())) {
-        std::wstring p = app.recent[static_cast<size_t>(cmd - T_RECENT)];
-        if (GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) {
-            MessageBoxW(app.wnd, (L"\"" + p + L"\" no longer exists, so it was removed from the list.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
-            app.recent.erase(app.recent.begin() + (cmd - T_RECENT));
-            updateEmptyText();
-        } else openFile(p);
-    }
+    else if (cmd >= T_RECENT && cmd < T_RECENT + 10) openRecent(static_cast<size_t>(cmd - T_RECENT));
 }
 
 void registerAsViewer() {
@@ -2151,7 +2242,7 @@ void makeOwnCertificate() {
 
 void signDocument(Document& d) {
     if (d.isProtected()) {
-        MessageBoxW(app.wnd, L"Remove the password protection first (Tools > Password protection), then sign. A signed file cannot be changed afterwards.", kAppName, MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(app.wnd, L"Remove the password protection first (Edit PDF > Remove password protection), then sign. A signed file cannot be changed afterwards.", kAppName, MB_OK | MB_ICONINFORMATION);
         return;
     }
     std::vector<FormField> f(7);
@@ -2757,10 +2848,7 @@ void showMainMenu(const RECT& anchor) {
     // Only what the toolbar, the zoom box, the tool menus and the right-click menu do not already offer.
     add(MM_OPEN, L"Open...\tCtrl+O");
     HMENU rec = CreatePopupMenu();
-    for (size_t i = 0; i < app.recent.size(); ++i) {
-        size_t s = app.recent[i].find_last_of(L"\\/");
-        AppendMenuW(rec, MF_STRING, MM_RECENT + i, (s == std::wstring::npos ? app.recent[i] : app.recent[i].substr(s + 1)).c_str());
-    }
+    for (size_t i = 0; i < app.recent.size(); ++i) AppendMenuW(rec, MF_STRING, MM_RECENT + i, recentLabel(i, false).c_str());
     if (app.recent.empty()) AppendMenuW(rec, MF_STRING | MF_GRAYED, 0, L"(none)");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(rec), L"Open recent");
     {
@@ -2860,7 +2948,7 @@ void showMainMenu(const RECT& anchor) {
             if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
             else if (cmd >= MM_COL && cmd < MM_COL + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - MM_COL));
             else if (cmd >= MM_THEME && cmd < MM_THEME + 3) { app.theme = cmd - MM_THEME; applyTheme(); saveSettings(); }
-            else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100 && static_cast<size_t>(cmd - MM_RECENT) < app.recent.size()) openFile(app.recent[cmd - MM_RECENT]);
+            else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100) openRecent(static_cast<size_t>(cmd - MM_RECENT));
     }
 }
 
@@ -2882,6 +2970,7 @@ std::wstring sessionDir() {
 }
 
 void clearSession() {
+    if (app.testMode) return;
     const std::wstring dir = sessionDir();
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
@@ -2893,6 +2982,7 @@ void clearSession() {
 }
 
 void writeSession() {
+    if (app.testMode) return;
     if (app.tabs.empty()) { clearSession(); return; }
     const std::wstring dir = sessionDir();
     CreateDirectoryW(dir.c_str(), nullptr);
@@ -3542,7 +3632,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
         case Viewer::Tool::EditPara: {
             pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, e.pts.front().x, e.pts.front().y);
             if (!hit.found) {
-                MessageBoxW(app.wnd, L"No paragraph of text was found there. Click directly on the text. Scanned pages are pictures and have no editable text.", kAppName, MB_OK | MB_ICONINFORMATION);
+                notice(L"No paragraph there. Click directly on the text (scanned pages are pictures: use text recognition first).");
                 return true;
             }
             editParagraphInPlace(d, hit, clickPoint(e.page, e.pts.front()));
@@ -4236,7 +4326,7 @@ void formFillFromCsv() {
     Document* d = activeDoc();
     if (!d) return;
     const auto fields = formdata::list(*d);
-    if (fields.empty()) { MessageBoxW(app.wnd, L"This document has no form fields to fill in. Use Fillable form > Find fields in a flat form to make some.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    if (fields.empty()) { MessageBoxW(app.wnd, L"This document has no form fields to fill in. Use Edit PDF > Fillable form > Find fields in a flat form to make some.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
     std::vector<wchar_t> buf(MAX_PATH * 2, 0);
     OPENFILENAMEW ofn{sizeof(ofn)};
     ofn.hwndOwner = app.wnd;
@@ -4448,7 +4538,7 @@ void pdfaDialog() {
 void sanitizeDialog() {
     Document* d = activeDoc();
     if (!d) return;
-    if (d->isProtected()) { MessageBoxW(app.wnd, L"Remove the password protection first (Edit PDF > Password protection), clean the document, then protect it again.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    if (d->isProtected()) { MessageBoxW(app.wnd, L"Remove the password protection first (Edit PDF > Remove password protection), clean the document, then protect it again.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
     std::vector<FormField> f(7);
     f[0] = {FormField::Note, L"", {}, L"Removes data people do not see but that travels with the file. The pages look the same."};
     f[1] = {FormField::Check, L"Document information and metadata (author, title, software, dates)", {}, L"", 0, true};
@@ -5137,8 +5227,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     else if (app.tool != Viewer::Tool::None) setTool(app.tool);
                     else { app.viewer.clearSelection(); app.viewer.clearAnnotSelection(); }
                     return 0;
-                case VK_NEXT: app.viewer.stepPage(1); return 0;
-                case VK_PRIOR: app.viewer.stepPage(-1); return 0;
+                case VK_NEXT: app.viewer.pageKey(1); return 0;
+                case VK_PRIOR: app.viewer.pageKey(-1); return 0;
                 case VK_HOME: app.viewer.goToPage(0); return 0;
                 case VK_END: app.viewer.goToPage(d->pageCount() - 1); return 0;
                 case VK_DOWN: app.viewer.scrollBy(60); return 0;
@@ -5608,6 +5698,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (!files.empty() && files[0] == L"--menucheck") {
         if (files.size() < 3) return 2;
         menuCheckOut = files[1];
+        app.testMode = true;
         files = {files[2]};
     }
     HWND existing = menuCheckOut.empty() ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
@@ -5665,7 +5756,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             app.tool = Viewer::Tool::None; app.sel.page = -1; app.sel.objects.clear();
         }
         g_menuCheck.on = false;
-        std::wstring rep = L"menus=" + std::to_wstring(g_menuCheck.menus) + L" items=" + std::to_wstring(g_menuCheck.items) + L" document=" + (doc ? L"yes" : L"no") + L"\n" + g_menuCheck.report;
+        std::wstring rep = L"menus=" + std::to_wstring(g_menuCheck.menus) + L" items=" + std::to_wstring(g_menuCheck.items) + L" document=" + (doc ? L"yes" : L"no") + L"\n" + g_menuCheck.report +
+                           L"--- every item: menu, keys (arrow-key positions, a comma enters a submenu), label\n" + g_menuCheck.listing;
         const int n = WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, nullptr, 0, nullptr, nullptr);
         std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);

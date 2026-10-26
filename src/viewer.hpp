@@ -73,6 +73,7 @@ public:
     void setLayout(int layout, bool cover);
     // The next / previous page, or spread in the two-page layout (dir = +1 or -1).
     void stepPage(int dir);
+    void pageKey(int dir);           // Page Down / Page Up: one screen, or to the next page when it starts within that screen
     int layout() const { return layout_; }
     bool cover() const { return cover_; }
     std::function<void(int from, int to)> onJump;                 // goToPage moved to another page

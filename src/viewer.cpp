@@ -174,6 +174,26 @@ void Viewer::stepPage(int dir) {
     goToPage(rows_[static_cast<size_t>(next)].first);
 }
 
+void Viewer::pageKey(int dir) {
+    if (!doc_ || tops_.empty()) return;
+    RECT rc; GetClientRect(hwnd_, &rc);
+    const int screen = std::max(40, static_cast<int>(rc.bottom) * 9 / 10);   // a little overlap keeps the reader's place
+    if (layout_ == 0) { scrollBy(dir * screen); return; }   // single page: scrolling turns the page at its end
+    const int y = doc_->scrollY;
+    if (dir > 0) {   // the next page top below the current view, if it is within one screen
+        for (size_t i = 0; i < tops_.size(); ++i) {
+            const int top = tops_[i] - kMargin;
+            if (top > y + 1) { if (top <= y + static_cast<int>(rc.bottom)) { goToPage(static_cast<int>(i)); return; } break; }
+        }
+    } else {
+        for (size_t i = tops_.size(); i-- > 0;) {
+            const int top = tops_[i] - kMargin;
+            if (top < y - 1) { if (top >= y - static_cast<int>(rc.bottom)) { goToPage(static_cast<int>(i)); return; } break; }
+        }
+    }
+    scrollBy(dir * screen);
+}
+
 bool Viewer::pageRect(int page, RECT& out) const {
     if (!doc_ || page < 0 || page >= static_cast<int>(tops_.size())) return false;
     out = {pageX(page), tops_[page] - doc_->scrollY, pageX(page) + widths_[page], tops_[page] - doc_->scrollY + heights_[page]};

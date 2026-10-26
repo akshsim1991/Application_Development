@@ -3193,6 +3193,7 @@ void reloadFromDisk() {
     Document* d = activeDoc();
     if (!d || d->path().empty()) return;
     if (d->dirty() && MessageBoxW(app.wnd, L"This document has changes that are not saved. Reloading from disk throws them away. Reload anyway?", kAppName, MB_YESNO | MB_ICONWARNING) != IDYES) return;
+    if (app.inlineEd.active()) app.inlineEd.cancel();   // its text goes with the other unsaved changes
     const double zoom = d->zoom; const int sy = d->scrollY; const bool fw = d->fitWidth;
     std::string pw;
     OpenResult r = d->open(d->path());
@@ -3202,10 +3203,10 @@ void reloadFromDisk() {
     }
     if (r != OpenResult::Ok) { MessageBoxW(app.wnd, Document::describe(r, d->path()).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
     d->zoom = zoom; d->scrollY = sy; d->fitWidth = fw;
+    // the file may hold other pages now: selected objects and redaction marks belonged to the old ones
+    app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr);
     setActiveDocument(d);
-    app.viewer.documentChanged();
-    app.sidebar.refresh();
-    refresh();
+    afterDocReplaced();
 }
 
 // ---- find and replace ----

@@ -440,3 +440,15 @@ features.
 - **Verified:** form.pdf exported as PNG: the Name field's background reads 204,215,255, its own /MK /BG colour (before:
   210,220,255), and its text 39,40,43 (before: about 115). Copy page as image in the running program: the clipboard
   picture shows 204,215,255; the page on screen, redrawn after zooming, still shows the tint (210,220,255).
+
+### B-040 Reload from disk kept redaction marks and selected objects from the old content
+- **Status:** Fixed
+- **Root cause:** reloading replaced the document but, unlike undo, did not clear what pointed into the old pages:
+  redaction marks stayed where they were and would black out whatever the new file has there when applied; objects
+  picked with the Select tool stayed selected by number on pages that may now hold other objects. An in-place edit open at
+  the time would have been applied to the reloaded pages.
+- **Fix:** reloading clears the marks and the object selection, refreshes the side panel and search as undo does, and
+  drops an in-place edit (its text is among the unsaved changes the reload throws away, after the usual question).
+- **Verified:** five.pdf, a redaction mark drawn over two lines, the file replaced on disk by word.pdf, … > Reload from
+  disk: the old build shows the red mark over word.pdf's text; the fixed build shows the new page with no mark. A search
+  for "fusion" is run again on the new content ("No results").

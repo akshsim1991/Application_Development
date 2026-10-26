@@ -391,3 +391,26 @@ features.
   the file shows "... by using EXTRA" (before the fix: nothing happened, the file unchanged). With the Pages panel open,
   " ZED" typed, right-click on thumbnail 1: the line is applied and the menu opens; Delete page: 4 pages; Ctrl+Z: 5 again
   with both edits.
+
+### B-036 Text typed into a form field was not saved, and closing did not ask
+- **Status:** Fixed
+- **Root cause:** a field hands its text to the document only when it loses the keyboard. Ctrl+S checked for changes
+  first: with only typing done there were none, so nothing was saved (the title showed no unsaved mark either); after
+  other changes, the file got the field's old text while the screen showed the new. Closing the tab or the window lost
+  the typing the same way, and printing showed the old value. Same family as B-034 and B-035.
+- **Fix:** before saving (Ctrl+S, Save as, the toolbar), closing, printing, any click on the tab bar or toolbar and page
+  panel actions, text still being typed is handed over: the in-place editor's text and the form field's. The field loses
+  the keyboard as it would on a click elsewhere, so Page Down and other keys work again afterwards.
+- **Verified:** form.pdf, Name field, "Jane Doe!" typed, Ctrl+S: the file's /V is "Jane Doe!" (before: unchanged,
+  "Akshaya Simha"; with an earlier checkbox change: "Jane Doe" without the last character typed). Page Down then scrolls.
+  " X" typed, click on the tab's cross: "Do you want to save the changes" appears with the title marked unsaved.
+
+### B-037 Backspace did nothing in form fields, and Enter did not close a drop-down list
+- **Status:** Fixed
+- **Root cause:** PDFium receives Backspace and Enter as characters, but the viewer passed on only characters from the
+  space upwards. A wrong letter could only be removed with Delete or by selecting it; a choice from an open drop-down list
+  made with the arrow keys could not be confirmed, and multi-line fields got no new line.
+- **Fix:** Backspace and Enter characters go to the field too, except with Ctrl held (Ctrl+H and Ctrl+M give the same
+  codes and are shortcuts).
+- **Verified:** "Akshaya Simha", End, Backspace x5, Home, Delete x2: "shaya " shown and saved. Country list opened,
+  Down Down Enter: the list closes on Italy, and Italy is saved. Tab from Name moves to the checkbox, Space toggles it.

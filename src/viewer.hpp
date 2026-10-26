@@ -68,6 +68,9 @@ public:
     bool selectedAnnot(int& page, int& index) const;
     bool formFocused() const { return formFocus_; }
     void clearAnnotSelection();
+    // A form field being typed in keeps its text to itself until it loses the keyboard: this hands the text to the
+    // document (before saving). Null: whatever document is shown.
+    void endFormInput(const Document* d = nullptr);
 
     // Page layout: 0 one page at a time, 1 continuous, 2 two pages side by side (cover = first page alone).
     void setLayout(int layout, bool cover);

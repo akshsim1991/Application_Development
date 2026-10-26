@@ -1310,7 +1310,9 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (dragging_) { dragging_ = false; ReleaseCapture(); }
             return 0;
         case WM_CHAR:
-            if (formFocus_ && doc_ && w >= 0x20) {
+            // Backspace and Enter reach fields as characters too (deleting, a new line, closing a list); Ctrl+H and
+            // Ctrl+M give the same codes and are shortcuts instead
+            if (formFocus_ && doc_ && (w >= 0x20 || ((w == L'\b' || w == L'\r') && GetKeyState(VK_CONTROL) >= 0))) {
                 pdfium::api().FORM_OnChar(doc_->form(), doc_->page(formPage_), static_cast<int>(w), 0);
                 return 0;
             }
@@ -1369,6 +1371,13 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             return SendMessageW(GetParent(hwnd_), m, w, l);   // shortcuts live in the main window
     }
     return DefWindowProcW(hwnd_, m, w, l);
+}
+
+void Viewer::endFormInput(const Document* d) {
+    if (!formFocus_ || !doc_ || (d && doc_ != d) || !doc_->hasForm()) return;
+    pdfium::api().FORM_ForceToKillFocus(doc_->form());
+    formFocus_ = false;
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 bool Viewer::linkAt(int cx, int cy, int& destPage, std::wstring& uri) const {

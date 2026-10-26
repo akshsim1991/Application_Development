@@ -258,9 +258,14 @@ void refresh() {
 
 void runSearch(bool keepPosition);
 
-// Applies text being edited in place before another action takes over; false when it could not be applied (the reason
-// was shown and the editor stays open).
-bool finishInlineEdit() { return !app.inlineEd.active() || app.inlineEd.commit(); }
+// Hands over text still being typed (an in-place edit, a form field) before another action takes over: until then it
+// is not part of the document. False when the in-place edit could not be applied (the reason was shown, the editor stays).
+bool finishInput() {
+    if (app.inlineEd.active() && !app.inlineEd.commit()) return false;
+    app.viewer.endFormInput();
+    app.viewer2.endFormInput();
+    return true;
+}
 
 void setActiveDocument(Document* d) {
     if (app.inlineEd.active()) app.inlineEd.commit();
@@ -628,6 +633,7 @@ void afterDocReplaced() {
 bool saveAsDialog(Document& d);
 
 bool saveDocument(Document& d, const std::wstring& path) {
+    if (!finishInput()) return false;   // text still being typed is part of what is saved
     if (path.empty()) return saveAsDialog(d);   // a new document has no file yet
     SaveResult r = d.saveAs(path);
     std::wstring name = path.substr(path.find_last_of(L"\\/") + 1);
@@ -670,16 +676,16 @@ bool saveAsDialog(Document& d) {
 
 bool saveActive() {
     Document* d = activeDoc();
-    if (!d) return false;
+    if (!d || !finishInput()) return false;   // typing in a field or on the page counts as a change once handed over
     if (!d->dirty()) return true;
     return saveDocument(*d, d->path());
 }
 
 // Asks about unsaved changes. Returns false when the user cancels.
 bool confirmClose(Document& d) {
-    // text being edited in place belongs to the document on screen: apply it first, so it counts as a change
+    // text still being typed (on the page, in a form field) is applied first, so it counts as a change
     // (if it cannot be applied, the reason was shown and the editor stays open: nothing closes)
-    if (app.inlineEd.active() && &d == activeDoc() && !app.inlineEd.commit()) return false;
+    if (!finishInput()) return false;
     if (!d.dirty()) return true;
     std::wstring q = L"Do you want to save the changes to \"" + d.title() + L"\" before closing?\n\nChoose No to throw the changes away.";
     switch (MessageBoxW(app.wnd, q.c_str(), kAppName, MB_YESNOCANCEL | MB_ICONQUESTION)) {
@@ -1858,7 +1864,7 @@ void openUserGuide() {
 void printDocument() {
     Document* d = activeDoc();
     if (!d) return;
-    if (app.inlineEd.active() && !app.inlineEd.commit()) return;
+    if (!finishInput()) return;   // text still being typed prints as shown
     printing::run(app.wnd, app.inst, *d, app.viewer.currentPage());
 }
 
@@ -2837,7 +2843,7 @@ void deleteThumbPages(Document& d, const std::vector<int>& pages) {
 
 void showThumbMenu(int clicked, POINT pt) {
     Document* d = activeDoc();
-    if (!d || !finishInlineEdit()) return;
+    if (!d || !finishInput()) return;
     std::vector<int> pages = app.sidebar.selectedPages();
     if (pages.empty()) pages = {clicked};
     const bool many = pages.size() > 1;
@@ -2893,7 +2899,7 @@ void showThumbMenu(int clicked, POINT pt) {
 
 void onThumbReorder(const std::vector<int>& pages, int before) {
     Document* d = activeDoc();
-    if (d && finishInlineEdit() && d->movePages(pages, before)) afterPagesChanged();
+    if (d && finishInput() && d->movePages(pages, before)) afterPagesChanged();
 }
 
 // ---- the main ("...") menu ----
@@ -5146,10 +5152,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             // release to land on whatever menu item had opened under the pointer.
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
             app.pressed = -1;
-            if (app.inlineEd.active()) {   // Save, a tab, a menu...: the edit on the page is applied first
-                if (!finishInlineEdit()) return 0;
-                UpdateWindow(h);   // the buttons are laid out when painted: Save and Undo are enabled now
-            }
+            // Save, a tab, a menu...: text still being typed (on the page, in a form field) is applied first
+            if (!finishInput()) return 0;
+            UpdateWindow(h);   // the buttons are laid out when painted: Save and Undo are live for this click
+
             for (size_t i = 0; i < app.closeRects.size(); ++i)
                 if (hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)

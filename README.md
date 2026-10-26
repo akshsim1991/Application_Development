@@ -11,7 +11,7 @@ in About and in the file's Properties. It is a native C++ Win32 application on t
 
 ## Features
 
-**Reading** · icon toolbar like 2.12, light / dark / Windows theme, one-page / continuous / two-page layouts, back and forward, reload from disk, clickable links, side by side view (left and right or top and bottom, scrolling linked or separate, every tool and the right-click menu
+**Reading** · tabs in the title bar, a grouped toolbar that highlights the tool in use, page number and zoom typed into boxes, a start page with Open PDF, a drop area and recent files, a status bar (page, page size, tool, saved state), sizes that follow the display's scaling, light / dark / Windows theme, one-page / continuous / two-page layouts, back and forward, reload from disk, clickable links, side by side view (left and right or top and bottom, scrolling linked or separate, every tool and the right-click menu
 on both sides; closing either file returns to one document), command palette (Ctrl+K), tabs, continuous scrolling, zoom (buttons, Ctrl+wheel, Ctrl +/−), fit width / fit page, page numbers and
 Go to page, bookmarks panel, page thumbnails, search with all matches highlighted, text selection and copy, dark and
 dimmed page colours, password-protected files, drag and drop, recent files, one window for every launch.
@@ -119,7 +119,7 @@ generated sample files and checks the results with independent tools (Poppler, p
 
 ## Code map
 
-`src/main.cpp` window, tabs, toolbar, menus, commands · `viewer.*` page view, selection, tools, form input ·
+`src/main.cpp` window, tabs, toolbar, status bar, menus, commands · `startpage.*` the start page · `viewer.*` page view, selection, tools, form input ·
 `document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
 page numbers, text boxes, text and paragraph editing · `contentgen.*` writing page content without losing text spacing ·
 `inlineedit.*` the edit box over the page · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·

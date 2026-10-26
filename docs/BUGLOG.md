@@ -324,3 +324,29 @@ features.
   list moves); closing the current tab still shows the next one.
 - **Verified:** three tabs, mixed current, click the cross on word: mixed stays, the tab bar shows five and mixed, mixed
   highlighted; Ctrl+W then shows five at fit width. In Side by side (mixed and five), closing word: mixed left, five right.
+
+### B-030 A file named relative to another folder opened the wrong file, or none, in the running window
+- **Status:** Fixed
+- **Root cause:** a second launch hands its files to the window already open, as given on its command line. A relative
+  name (`FeatherPDF five.pdf` typed in another folder) was then resolved against the running copy's folder.
+- **Fix:** the second launch makes each name a full path in its own folder before handing it over.
+- **Verified:** the copy before the fix, started from another folder, then `five.pdf` run from C:\test: "could not be read";
+  after the fix the same steps open five.pdf in a new tab.
+
+### B-031 A second launch waited until a message in the running window was closed
+- **Status:** Fixed
+- **Root cause:** the handed-over file was opened inside the message that delivers it, so any prompt (password, "not a PDF
+  document", a damaged signature) kept the launching program, such as Explorer opening a file, waiting until it was
+  answered.
+- **Fix:** the file is remembered and opened just after the message returns.
+- **Verified:** a second launch with a PNG returns at once (1 s, exit 0) while the running window shows "not a PDF
+  document".
+
+### B-032 Opening or dropping a folder said it "may have been moved, deleted, or be in use"
+- **Status:** Fixed
+- **Fix:** a folder is recognised and the message says so: "test" is a folder. Open a PDF document inside it. (C:\test\ with
+  a trailing backslash names the folder too.)
+- **Verified:** C:\test\ on the command line shows the new message; dropping goes through the same opening code
+  (WM_DROPFILES calls openFile for each file), so it was checked through the command line, as Wine cannot simulate a
+  drop from xdotool.
+- Also checked: a PNG gives "not a PDF document"; a .md file handed over becomes a new PDF (n.pdf, heading and italics).

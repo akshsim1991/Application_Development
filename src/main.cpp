@@ -56,6 +56,7 @@ namespace {
 constexpr int kTabH = 34, kToolH = 40, kFindH = 38, kSideW = 230;
 enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
+constexpr UINT kMsgOpenHandedOver = WM_APP + 1;   // opens the files a second launch handed over
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; };
 enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
@@ -75,6 +76,7 @@ struct App {
     std::vector<std::wstring> recent;
     bool testMode = false;                            // --menucheck: leave the user's settings, recent files and session alone
     std::wstring pendingPicture, pendingStamp;
+    std::vector<std::wstring> handedOver;             // files from a second launch, opened once its message has returned
     COLORREF pendingStampColour = RGB(0xE5, 0x39, 0x35);
     bool fullscreen = false;
     WINDOWPLACEMENT savedPlace{sizeof(WINDOWPLACEMENT)};
@@ -522,6 +524,14 @@ bool openTextAsPdf(const std::wstring& path);
 void openFile(const std::wstring& pathIn) {
     wchar_t full[MAX_PATH * 2];
     std::wstring path = GetFullPathNameW(pathIn.c_str(), MAX_PATH * 2, full, nullptr) ? full : pathIn;
+    const DWORD attr = GetFileAttributesW(path.c_str());
+    if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        std::wstring name = path;
+        while (name.size() > 3 && (name.back() == L'\\' || name.back() == L'/')) name.pop_back();
+        if (name.size() > 3) name = name.substr(name.find_last_of(L"\\/") + 1);
+        MessageBoxW(app.wnd, (L"\"" + name + L"\" is a folder. Open a PDF document inside it.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
     {   // a text or Markdown file becomes a new PDF
         const size_t dot = path.find_last_of(L'.');
         std::wstring ext = dot == std::wstring::npos ? L"" : path.substr(dot);
@@ -5186,8 +5196,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         case WM_COPYDATA: {   // a second launch hands its file to this window
             auto* cds = reinterpret_cast<COPYDATASTRUCT*>(l);
-            if (cds->dwData == 1) openFile(std::wstring(static_cast<const wchar_t*>(cds->lpData), cds->cbData / sizeof(wchar_t)));
+            if (cds->dwData != 1) return FALSE;
+            // opened after returning: a password prompt or a message would otherwise keep the launching program waiting
+            app.handedOver.emplace_back(static_cast<const wchar_t*>(cds->lpData), cds->cbData / sizeof(wchar_t));
+            if (app.handedOver.size() == 1) PostMessageW(h, kMsgOpenHandedOver, 0, 0);
             return TRUE;
+        }
+        case kMsgOpenHandedOver: {
+            std::vector<std::wstring> files;
+            files.swap(app.handedOver);
+            for (const auto& f : files) openFile(f);
+            return 0;
         }
         case WM_KEYDOWN: {
             const bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0;
@@ -5733,6 +5752,8 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     HWND existing = menuCheckOut.empty() ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
     if (existing) {
         for (auto& f : files) {
+            wchar_t full[MAX_PATH * 2];   // a relative name means this launch's folder, not the running copy's
+            if (GetFullPathNameW(f.c_str(), MAX_PATH * 2, full, nullptr)) f = full;
             COPYDATASTRUCT cds{1, static_cast<DWORD>(f.size() * sizeof(wchar_t)), const_cast<wchar_t*>(f.c_str())};
             SendMessageW(existing, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&cds));
         }

@@ -305,3 +305,12 @@ features.
   other pairs balance.
 - Checked and correct: a truncated file ("damaged or has no pages"), random data ("not a PDF document"), a PDF with junk
   after its end (opens), a password-protected file (prompt, wrong password asks again, Cancel returns).
+
+### B-028 Closing one side of Side by side left the other at half-window zoom
+- **Status:** Fixed
+- **Root cause:** in Side by side each document is fitted to half the window. Closing either tab ended Side by side, but
+  the remaining document kept the zoom it had for half the window, so it filled less than half the full view (49% instead
+  of 145% on a letter page at 1280 px).
+- **Fix:** when closing a tab ends Side by side, the remaining document is fitted to the window width again.
+- **Verified:** five.pdf and mixed.pdf side by side, Ctrl+W on either one: the other fills the window at fit width (145%);
+  closing a third, unrelated tab still leaves Side by side as it was.

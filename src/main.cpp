@@ -300,7 +300,9 @@ void rememberPosition(const Document& d) {
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     if (!confirmClose(*app.tabs[i])) return;
-    if (app.sbs && (app.tabs[i].get() == app.sbsDoc || i == app.active)) endSideBySide();   // back to one document
+    const bool endsSbs = app.sbs && (app.tabs[i].get() == app.sbsDoc || i == app.active);
+    Document* survivor = endsSbs ? (app.tabs[i].get() == app.sbsDoc ? activeDoc() : app.sbsDoc) : nullptr;
+    if (endsSbs) endSideBySide();   // back to one document
     rememberPosition(*app.tabs[i]);
     if (i == app.active) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
@@ -309,6 +311,8 @@ void closeTab(int i) {
         app.active = std::min(i, static_cast<int>(app.tabs.size()) - 1);
         setActiveDocument(app.tabs[app.active].get());
     }
+    // the other side had the zoom of half the window: it fills the whole view again
+    if (survivor && activeDoc() == survivor) { survivor->fitWidth = true; app.viewer.fitWidth(); }
     refresh();
 }
 

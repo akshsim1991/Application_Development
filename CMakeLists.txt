@@ -39,6 +39,7 @@ add_executable(FeatherPDF WIN32
   src/contentgen.cpp
   src/buildinfo.cpp
   src/icons.cpp
+  src/startpage.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${PDFIUM_DIR}/include" "${CMAKE_BINARY_DIR}")

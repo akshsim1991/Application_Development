@@ -49,17 +49,20 @@
 #include "fontlist.hpp"
 #include "buildinfo.hpp"
 #include "inlineedit.hpp"
+#include "startpage.hpp"
 #include "icons.hpp"
 
 namespace {
 
-constexpr int kTabH = 34, kToolH = 40, kFindH = 38, kSideW = 230;
 enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 constexpr UINT kMsgOpenHandedOver = WM_APP + 1;   // opens the files a second launch handed over
 
-struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; };
-enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
+// kind: a toolbar button, or one of the window buttons (minimise, maximise, close) drawn in the tab row
+struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
+enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU,
+           C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE, C_TAB = 2000 /* + tab index: hover and tips */, C_TABCLOSE = 3000 /* + tab index */ };
+enum { ID_PAGE_BOX = 220, ID_ZOOM_BOX };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -85,10 +88,18 @@ struct App {
     pageobj::TextStyle textStyle{pageobj::Family::Sans, false, false, 14, RGB(0x20, 0x20, 0x20)};
     std::vector<std::unique_ptr<Document>> tabs;   // an empty vector means the "New tab" screen
     int active = -1;
-    HFONT font = nullptr, fontBold = nullptr;
+    HFONT font = nullptr, fontBold = nullptr, fontSmall = nullptr;
+    int dpi = 96;                                     // the window's screen: every size below is scaled from 96
     std::vector<Button> buttons;
     std::vector<RECT> tabRects, closeRects;
-    RECT plusRect{}, pageRect{};
+    RECT plusRect{}, pageRect{}, zoomRect{}, ofRect{}, iconRect{};   // the page and zoom boxes, "of n", the program icon
+    HWND pageBox = nullptr, zoomBox = nullptr;        // editable page number and zoom
+    WNDPROC boxProc = nullptr;
+    HWND startPage = nullptr;                         // shown instead of the pages while no document is open
+    HWND tips = nullptr;                              // tooltips of the toolbar and tab row
+    std::wstring tipKey;                              // the tools registered with it, to redo them only on change
+    bool windowActive = true;
+    bool compact = false;                             // the toolbar shows icons without labels (narrow window)
     int hover = -1;
     int pressed = -1;          // the toolbar button (or -2 - tab close button) pressed and not yet released
     int theme = 2;            // 0 light, 1 dark, 2 like Windows
@@ -115,6 +126,15 @@ struct App {
 } app;
 
 Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nullptr; }
+
+// Sizes are designed at 96 dots per inch and scaled to the window's screen.
+int px(int v) { return MulDiv(v, app.dpi, 96); }
+int tabH() { return px(40); }          // the tab row, which is also the title bar
+int toolH() { return px(48); }
+int findH() { return px(42); }
+int statusH() { return px(26); }
+int sideW() { return px(230); }
+int headerH() { return tabH() + toolH(); }
 
 
 // features implemented further down
@@ -190,29 +210,36 @@ int trackMenu(HMENU m, UINT flags, int x, int y, int reserved, HWND owner, const
 
 void relayoutChildren() {
     RECT rc; GetClientRect(app.wnd, &rc);
+    const bool none = app.tabs.empty();
+    if (app.startPage) ShowWindow(app.startPage, none && !app.fullscreen ? SW_SHOWNA : SW_HIDE);
+    ShowWindow(app.viewer.hwnd(), none ? SW_HIDE : SW_SHOWNA);
+    for (HWND b : {app.pageBox, app.zoomBox}) if (b) ShowWindow(b, none || app.fullscreen ? SW_HIDE : SW_SHOWNA);
     if (app.fullscreen) {   // only the pages, edge to edge
         MoveWindow(app.viewer.hwnd(), 0, 0, rc.right, rc.bottom, TRUE);
         MoveWindow(app.sidebar.hwnd(), 0, 0, 0, 0, FALSE);
         if (app.viewer2.hwnd()) ShowWindow(app.viewer2.hwnd(), SW_HIDE);
         return;
     }
-    int top = kTabH + kToolH;
+    int top = headerH();
     if (app.findVisible) {
-        int x = 8;
-        MoveWindow(app.findEdit, x, top + 6, 260, 26, TRUE); x += 268;
-        MoveWindow(app.findPrev, x, top + 6, 56, 26, TRUE); x += 60;
-        MoveWindow(app.findNext, x, top + 6, 56, 26, TRUE); x += 64;
-        MoveWindow(app.findCase, x, top + 6, 100, 26, TRUE); x += 108;
-        MoveWindow(app.findCount, x, top + 11, 160, 20, TRUE); x += 164;
-        MoveWindow(app.findClose, std::max(x, static_cast<int>(rc.right) - 64), top + 6, 56, 26, TRUE);
-        top += kFindH;
+        const int y = top + px(7), hgt = px(28);
+        int x = px(10);
+        MoveWindow(app.findEdit, x, y, px(260), hgt, TRUE); x += px(268);
+        MoveWindow(app.findPrev, x, y, px(60), hgt, TRUE); x += px(64);
+        MoveWindow(app.findNext, x, y, px(60), hgt, TRUE); x += px(68);
+        MoveWindow(app.findCase, x, y, px(104), hgt, TRUE); x += px(112);
+        MoveWindow(app.findCount, x, y + px(5), px(170), px(20), TRUE); x += px(174);
+        MoveWindow(app.findClose, std::max(x, static_cast<int>(rc.right) - px(70)), y, px(60), hgt, TRUE);
+        top += findH();
     }
+    const int bottom = std::max<int>(top, rc.bottom - statusH());   // the status bar
     int left = 0;
     if (app.sidebarVisible) {
-        MoveWindow(app.sidebar.hwnd(), 0, top, kSideW, std::max<LONG>(0, rc.bottom - top), TRUE);
-        left = kSideW;
+        MoveWindow(app.sidebar.hwnd(), 0, top, sideW(), bottom - top, TRUE);
+        left = sideW();
     }
-    const int total = std::max<LONG>(0, rc.right - left), height = std::max<LONG>(0, rc.bottom - top);
+    if (app.startPage) MoveWindow(app.startPage, left, top, std::max<LONG>(0, rc.right - left), bottom - top, TRUE);
+    const int total = std::max<LONG>(0, rc.right - left), height = bottom - top;
     if (app.sbs && app.viewer2.hwnd()) {
         // two places, left / right or top / bottom; the active document may sit in either
         RECT a, b;
@@ -269,7 +296,9 @@ bool finishInput() {
 
 void setActiveDocument(Document* d) {
     if (app.inlineEd.active()) app.inlineEd.commit();
+    const bool startShown = app.startPage && IsWindowVisible(app.startPage);
     app.viewer.setDocument(d);
+    if (startShown == !app.tabs.empty() && app.wnd) relayoutChildren();   // the start page goes or comes back
     app.viewer.setMarks(d ? &d->redactions : nullptr);
     app.sidebar.setDocument(d);
     app.curMatch = -1; app.matchTotal = 0;
@@ -437,10 +466,8 @@ std::wstring settingsPath() {
     return dir + L"\\settings.ini";
 }
 
-void updateEmptyText() {
-    std::wstring t = L"Open a PDF with Ctrl+O, or drop a file here.";
-    if (!app.recent.empty()) t += L"\n\nRight-click here to open one of your recent files.";
-    app.viewer.setEmptyText(t);
+void updateEmptyText() {   // the start page lists the recent files
+    if (app.startPage) startpage::setRecent(app.startPage, app.recent);
 }
 
 void loadSettings() {
@@ -745,6 +772,7 @@ void setTool(Viewer::Tool t) {
     if (app.inlineEd.active()) app.inlineEd.commit();
     app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
     app.viewer.setTool(app.tool);
+    InvalidateRect(app.wnd, nullptr, FALSE);   // the toolbar group of the tool and the status bar show it
     if (const wchar_t* hint = toolHint(app.tool)) notice(hint);
     if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
     applyStyle();
@@ -2792,6 +2820,7 @@ void applyTheme() {
     const wchar_t* cls = dark ? L"DarkMode_Explorer" : L"Explorer";
     for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findClose, app.findCase}) if (c) SetWindowTheme(c, cls, nullptr);
     app.sidebar.applyTheme();
+    if (app.startPage) startpage::themeChanged(app.startPage);
     RedrawWindow(app.wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE);
 }
 
@@ -4876,141 +4905,452 @@ void commandPalette() {
     if (st.chosen >= 0) st.all[st.chosen].run();
 }
 
-// ---- header drawing: tabs + toolbar. Icons are drawn with GDI lines, so nothing depends on icon fonts. ----
-enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE };
+// ---- the header: the tab row (which is also the title bar) and the toolbar; the status bar at the bottom ----
+enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE,
+            I_FILE, I_DROP, I_PLUS, I_CHEVRON };   // same numbering as icons::
 
-void drawIcon(HDC dc, RECT r, int icon, COLORREF col) { icons::draw(dc, r, icon, col); }   // same numbering as icons::
+std::vector<int> g_separators;   // x of the thin lines between toolbar groups
+
+// The toolbar group whose tool is in use: highlighted, so it is clear where the clicks on the page go.
+int activeGroup() {
+    using T = Viewer::Tool;
+    switch (app.tool) {
+        case T::None: case T::CopyArea: return 0;
+        case T::Comment: return C_COMMENT;
+        case T::Ruler: case T::Protractor: return C_GEOM;
+        case T::AddText: case T::Rectangle: case T::Ellipse: case T::Line: case T::Arrow: case T::Pen: case T::Polygon:
+        case T::Cloud: case T::Callout: case T::Stamp: case T::Picture: case T::Link: return C_ANNOT;
+        default: return C_EDITPDF;
+    }
+}
+bool highlighted(int id) { return (id != 0 && id == activeGroup()) || (id == C_SBS && app.sbs); }
+
+const wchar_t* toolName(Viewer::Tool t) {
+    using T = Viewer::Tool;
+    switch (t) {
+        case T::Comment: return L"Comment"; case T::Rectangle: return L"Rectangle"; case T::Ellipse: return L"Ellipse";
+        case T::Line: return L"Line"; case T::Arrow: return L"Arrow"; case T::Pen: return L"Pen"; case T::Redact: return L"Mark areas to redact";
+        case T::AddText: return L"Add text"; case T::EditText: return L"Edit text"; case T::Picture: return L"Insert picture";
+        case T::Stamp: return L"Stamp"; case T::Link: return L"Link"; case T::CopyArea: return L"Copy area"; case T::CropBox: return L"Crop";
+        case T::TableDelete: return L"Delete table"; case T::TablePlace: return L"Insert table"; case T::TableEdit: return L"Edit table";
+        case T::EditPara: return L"Edit paragraph"; case T::Select: return L"Move or resize"; case T::Polygon: return L"Polygon";
+        case T::Cloud: return L"Cloud"; case T::Callout: return L"Callout"; case T::FormRadio: return L"Radio button";
+        case T::FormList: return L"List field"; case T::FormDate: return L"Date field"; case T::FormText: return L"Text field";
+        case T::FormCheck: return L"Check box"; case T::FormCombo: return L"Drop-down list"; case T::Ruler: return L"Ruler";
+        case T::Protractor: return L"Protractor"; case T::PicCrop: return L"Crop picture"; case T::None: break;
+    }
+    return L"";
+}
+
+int textWidth(HDC dc, HFONT f, const std::wstring& t) {
+    HGDIOBJ old = SelectObject(dc, f);
+    SIZE sz{};
+    GetTextExtentPoint32W(dc, t.c_str(), static_cast<int>(t.size()), &sz);
+    SelectObject(dc, old);
+    return sz.cx;
+}
+
+std::wstring tipFor(int id) {
+    switch (id) {
+        case C_OPEN: return L"Open a PDF (Ctrl+O)";
+        case C_SAVE: return L"Save (Ctrl+S)";
+        case C_UNDO: return L"Undo (Ctrl+Z)";
+        case C_REDO: return L"Redo (Ctrl+Y)";
+        case C_EDITPDF: return L"Edit text, pictures, pages and forms";
+        case C_ANNOT: return L"Highlight, draw, add text, stamps and signatures";
+        case C_COMMENT: return L"Comments and notes";
+        case C_GEOM: return L"Measure distances and angles";
+        case C_SBS: return L"Show two documents side by side";
+        case C_PREV: return L"Previous page (Page Up)";
+        case C_NEXT: return L"Next page (Page Down)";
+        case C_ZOOMOUT: return L"Zoom out";
+        case C_ZOOMIN: return L"Zoom in";
+        case C_ZOOMMENU: return L"Zoom presets, fit width, fit page";
+        case C_FIND: return L"Find in the document (Ctrl+F)";
+        case C_MENU: return L"More: files, view, settings and help";
+        case C_NEWTAB: return L"Open a PDF in a new tab (Ctrl+O)";
+        case C_CAPMIN: return L"Minimise";
+        case C_CAPMAX: return IsZoomed(app.wnd) ? L"Restore down" : L"Maximise";
+        case C_CAPCLOSE: return L"Close";
+        case ID_PAGE_BOX: return L"Page number: type a page and press Enter (Ctrl+G)";
+        case ID_ZOOM_BOX: return L"Zoom: type a percentage and press Enter";
+    }
+    if (id >= C_TABCLOSE && id < C_TABCLOSE + 1000) return L"Close this tab (Ctrl+W)";
+    if (id >= C_TAB && id < C_TAB + 1000 && static_cast<size_t>(id - C_TAB) < app.tabs.size()) {
+        const Document& d = *app.tabs[static_cast<size_t>(id - C_TAB)];
+        return d.path().empty() ? d.title() + L" (not saved yet)" : d.path();
+    }
+    return L"";
+}
+
+// The tooltips follow the buttons; they are registered again only when the buttons moved.
+void syncTips() {
+    if (!app.tips) return;
+    std::wstring key;
+    auto add = [&](int id, const RECT& r) { key += std::to_wstring(id) + L":" + std::to_wstring(r.left) + L"," + std::to_wstring(r.top) + L"," + std::to_wstring(r.right) + L";"; };
+    for (const Button& b : app.buttons) add(b.id, b.rc);
+    for (size_t i = 0; i < app.tabRects.size(); ++i) { add(C_TAB + static_cast<int>(i), app.tabRects[i]); add(C_TABCLOSE + static_cast<int>(i), app.closeRects[i]); }
+    add(C_NEWTAB, app.plusRect);
+    if (key == app.tipKey) return;
+    app.tipKey = key;
+    while (SendMessageW(app.tips, TTM_GETTOOLCOUNT, 0, 0) > 0) {
+        TTTOOLINFOW ti{sizeof(ti)};
+        if (!SendMessageW(app.tips, TTM_ENUMTOOLSW, 0, reinterpret_cast<LPARAM>(&ti))) break;
+        SendMessageW(app.tips, TTM_DELTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+    auto reg = [&](UINT id, const RECT& r) {
+        TTTOOLINFOW ti{sizeof(ti)};
+        ti.uFlags = TTF_SUBCLASS;
+        ti.hwnd = app.wnd;
+        ti.uId = id;
+        ti.rect = r;
+        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(app.tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+    };
+    // the close buttons first: a tab's own tip must not cover its close button's
+    for (size_t i = 0; i < app.tabRects.size(); ++i) reg(C_TABCLOSE + static_cast<UINT>(i), app.closeRects[i]);
+    for (size_t i = 0; i < app.tabRects.size(); ++i) reg(C_TAB + static_cast<UINT>(i), app.tabRects[i]);
+    reg(C_NEWTAB, app.plusRect);
+    for (const Button& b : app.buttons) reg(static_cast<UINT>(b.id), b.rc);
+    for (HWND box : {app.pageBox, app.zoomBox}) {
+        TTTOOLINFOW ti{sizeof(ti)};
+        ti.uFlags = TTF_SUBCLASS | TTF_IDISHWND;
+        ti.hwnd = app.wnd;
+        ti.uId = reinterpret_cast<UINT_PTR>(box);
+        ti.lpszText = LPSTR_TEXTCALLBACKW;
+        SendMessageW(app.tips, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+    }
+}
+
+void placeBox(HWND box, const RECT& frame, int rightInset) {
+    if (!box) return;
+    TEXTMETRICW tm{};
+    HDC dc = GetDC(box);
+    HGDIOBJ of = SelectObject(dc, app.font);
+    GetTextMetricsW(dc, &tm);
+    SelectObject(dc, of);
+    ReleaseDC(box, dc);
+    const int hgt = tm.tmHeight + 2;
+    RECT want{frame.left + px(4), (frame.top + frame.bottom - hgt) / 2, frame.right - px(4) - rightInset, (frame.top + frame.bottom - hgt) / 2 + hgt};
+    RECT now; GetWindowRect(box, &now);
+    MapWindowPoints(nullptr, app.wnd, reinterpret_cast<POINT*>(&now), 2);
+    if (!EqualRect(&now, &want)) SetWindowPos(box, nullptr, want.left, want.top, want.right - want.left, want.bottom - want.top, SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
+// The page and zoom boxes show the view, except while they are being typed in.
+void syncBoxes(bool force) {
+    Document* d = activeDoc();
+    for (HWND box : {app.pageBox, app.zoomBox}) {
+        if (!box || (!force && GetFocus() == box)) continue;
+        std::wstring want;
+        if (d) want = box == app.pageBox ? std::to_wstring(app.viewer.currentPage() + 1) : std::to_wstring(static_cast<int>(d->zoom * 100 + 0.5)) + L"%";
+        wchar_t now[32] = L"";
+        GetWindowTextW(box, now, 32);
+        if (want != now) SetWindowTextW(box, want.c_str());
+    }
+}
 
 void layoutHeader(HDC dc, int width) {
-    app.buttons.clear(); app.tabRects.clear(); app.closeRects.clear();
+    app.buttons.clear(); app.tabRects.clear(); app.closeRects.clear(); g_separators.clear();
     Document* d = activeDoc();
-    SelectObject(dc, app.font);
+    const int th = tabH();
 
-    int x = 8;
-    for (size_t i = 0; i < app.tabs.size(); ++i) {
-        SIZE sz; std::wstring t = tabLabel(*app.tabs[i]);
-        GetTextExtentPoint32W(dc, t.c_str(), static_cast<int>(t.size()), &sz);
-        int w = std::clamp<int>(sz.cx + 44, 90, 240);
-        app.tabRects.push_back({x, 4, x + w, kTabH});
-        app.closeRects.push_back({x + w - 26, 10, x + w - 8, 28});
-        x += w + 2;
+    // the tab row: the program icon, the tabs, the + button, and the window buttons at the right
+    const int capW = px(46);
+    const int capLeft = width - 3 * capW;
+    app.buttons.push_back({L"", {capLeft, 0, capLeft + capW, th}, C_CAPMIN, true, 0, true});
+    app.buttons.push_back({L"", {capLeft + capW, 0, capLeft + 2 * capW, th}, C_CAPMAX, true, 0, true});
+    app.buttons.push_back({L"", {capLeft + 2 * capW, 0, width, th}, C_CAPCLOSE, true, 0, true});
+    const int is = px(18);
+    app.iconRect = {px(12), (th - is) / 2 + px(2), px(12) + is, (th - is) / 2 + px(2) + is};
+    int x = app.iconRect.right + px(10);
+    const int tabTop = px(8), mid = (tabTop + th) / 2, cs = px(16);
+    if (app.tabs.empty()) x += textWidth(dc, app.font, kAppName) + px(10);
+    const int plusW = px(30);
+    const int room = capLeft - px(16) - plusW - x;
+    std::vector<int> ws;
+    int sum = 0;
+    for (const auto& t : app.tabs) {
+        const int w = std::clamp(textWidth(dc, app.font, tabLabel(*t)) + px(14) + px(8) + cs + px(10), px(120), px(240));
+        ws.push_back(w);
+        sum += w + px(2);
     }
-    app.plusRect = {x + 4, 8, x + 28, 30};
+    if (!ws.empty() && sum > room) {   // many tabs: all get narrower, as far as a readable minimum
+        const int each = std::max(px(76), room / static_cast<int>(ws.size()) - px(2));
+        for (int& w : ws) w = std::min(w, each);
+    }
+    for (int w : ws) {
+        app.tabRects.push_back({x, tabTop, x + w, th});
+        app.closeRects.push_back({x + w - px(10) - cs, mid - cs / 2, x + w - px(10), mid - cs / 2 + cs});
+        x += w + px(2);
+    }
+    app.plusRect = {x + px(4), mid - px(14), x + px(4) + px(28), mid + px(14)};
 
-    const int top = kTabH + 4, bottom = kTabH + kToolH - 4;
-    auto icon = [&](int id, int ic, bool enabled) {
-        app.buttons.push_back({L"", {x, top, x + 34, bottom}, id, enabled, ic});
-        x += 36;
-    };
-    auto group = [&](const wchar_t* label, int id, int ic, bool enabled) {
-        SIZE sz; GetTextExtentPoint32W(dc, label, static_cast<int>(wcslen(label)), &sz);
-        int w = 12 + 22 + 6 + sz.cx + 12;
-        app.buttons.push_back({label, {x, top, x + w, bottom}, id, enabled, ic});
-        x += w + 2;
-    };
-    x = 8;
+    // the toolbar: file | undo | tool groups ........ page | zoom | find, more
+    const int top = th + (toolH() - px(36)) / 2, bottom = top + px(36);
+    const int sep = px(13), iconW = px(36);
+    static const struct { const wchar_t* label; int id, icon; } groups[] = {
+        {L"Edit PDF", C_EDITPDF, I_EDIT}, {L"Annotate", C_ANNOT, I_ANNOT}, {L"Comment", C_COMMENT, I_COMMENT},
+        {L"Geometry", C_GEOM, I_GEOM}, {L"Side by side", C_SBS, I_SBS}};
+    auto groupW = [&](const wchar_t* label, bool compact) { return compact ? px(40) : px(10) + px(20) + px(6) + textWidth(dc, app.font, label) + px(12); };
+    const std::wstring ofText = d ? L"of " + std::to_wstring(d->pageCount()) : L"";
+    const int ofW = std::max(textWidth(dc, app.font, L"of 999"), textWidth(dc, app.font, ofText)) + px(10);
+    const int rightW = px(32) + px(50) + ofW + px(32) + sep + px(32) + px(84) + px(32) + sep + iconW + px(42) + px(10);
+    int leftW = px(8) + 4 * iconW + 2 * sep;
+    for (const auto& g : groups) leftW += groupW(g.label, false) + px(2);
+    app.compact = leftW + rightW + px(16) > width;
+    x = px(8);
+    auto icon = [&](int id, int ic, bool enabled) { app.buttons.push_back({L"", {x, top, x + iconW, bottom}, id, enabled, ic}); x += iconW; };
+    auto separator = [&] { g_separators.push_back(x + sep / 2); x += sep; };
     icon(C_OPEN, I_OPEN, true);
     icon(C_SAVE, I_SAVE, d && d->dirty());
+    separator();
     icon(C_UNDO, I_UNDO, d && d->canUndo());
     icon(C_REDO, I_REDO, d && d->canRedo());
-    x += 10;
-    group(L"Edit PDF", C_EDITPDF, I_EDIT, d != nullptr);
-    group(L"Annotate", C_ANNOT, I_ANNOT, d != nullptr);
-    group(L"Comment", C_COMMENT, I_COMMENT, d != nullptr);
-    group(L"Geometry", C_GEOM, I_GEOM, d != nullptr);
-    group(L"Side by side", C_SBS, I_SBS, d != nullptr);
-    x += 12;
-    icon(C_PREV, I_PREV, d != nullptr);
-    icon(C_NEXT, I_NEXT, d != nullptr);
-    app.pageRect = {x, top + 2, x + 56, bottom - 2};
-    x += 62 + 52;   // page box + "/ n"
-    icon(C_ZOOMOUT, I_ZOUT, d != nullptr);
-    {
-        wchar_t z[16];
-        swprintf(z, 16, L"%d%%", d ? static_cast<int>(d->zoom * 100 + 0.5) : 100);
-        app.buttons.push_back({z, {x, top, x + 62, bottom}, C_ZOOMMENU, d != nullptr, 0});
-        x += 64;
+    separator();
+    for (const auto& g : groups) {
+        const int w = groupW(g.label, app.compact);
+        app.buttons.push_back({app.compact ? L"" : g.label, {x, top, x + w, bottom}, g.id, d != nullptr, g.icon});
+        x += w + px(2);
     }
-    icon(C_ZOOMIN, I_ZIN, d != nullptr);
-    int rx = width - 8;
-    rx -= 34; app.buttons.push_back({L"", {rx, top, rx + 34, bottom}, C_MENU, true, I_MORE});
-    rx -= 36; app.buttons.push_back({L"", {rx, top, rx + 34, bottom}, C_FIND, d != nullptr, I_SEARCH});
+    // right-hand cluster, laid out from the right edge
+    int rx = width - px(10);
+    rx -= px(42); app.buttons.push_back({L"", {rx, top, rx + px(42), bottom}, C_MENU, true, I_MORE});
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_FIND, d != nullptr, I_SEARCH});
+    rx -= sep; g_separators.push_back(rx + sep / 2);
+    rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_ZOOMIN, d != nullptr, I_ZIN});
+    rx -= px(84);
+    app.zoomRect = {rx, top + px(3), rx + px(84), bottom - px(3)};
+    app.buttons.push_back({L"", {app.zoomRect.right - px(24), app.zoomRect.top, app.zoomRect.right, app.zoomRect.bottom}, C_ZOOMMENU, d != nullptr, I_CHEVRON});
+    rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_ZOOMOUT, d != nullptr, I_ZOUT});
+    rx -= sep; g_separators.push_back(rx + sep / 2);
+    rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_NEXT, d != nullptr, I_NEXT});
+    rx -= ofW; app.ofRect = {rx, top, rx + ofW, bottom};
+    rx -= px(50); app.pageRect = {rx, top + px(3), rx + px(50), bottom - px(3)};
+    rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_PREV, d != nullptr, I_PREV});
+    placeBox(app.pageBox, app.pageRect, 0);
+    placeBox(app.zoomBox, app.zoomRect, px(24));
+    syncTips();
+}
+
+// a box with rounded top corners, open at the bottom (a tab joined to the toolbar under it)
+void tabShape(HDC dc, const RECT& r, COLORREF fill) {
+    const int rad = px(9);
+    HRGN clip = CreateRectRgn(r.left, r.top, r.right, r.bottom);
+    SaveDC(dc);
+    ExtSelectClipRgn(dc, clip, RGN_AND);
+    HBRUSH b = CreateSolidBrush(fill);
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, GetStockObject(NULL_PEN));
+    RoundRect(dc, r.left, r.top, r.right + 1, r.bottom + rad * 2, rad * 2, rad * 2);
+    SelectObject(dc, ob); SelectObject(dc, op);
+    RestoreDC(dc, -1);
+    DeleteObject(b); DeleteObject(clip);
+}
+
+void roundFill(HDC dc, const RECT& r, int radius, COLORREF fill, COLORREF border, bool withBorder) {
+    HBRUSH b = CreateSolidBrush(fill);
+    HPEN pen = withBorder ? CreatePen(PS_SOLID, 1, border) : nullptr;
+    HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, pen ? static_cast<HGDIOBJ>(pen) : GetStockObject(NULL_PEN));
+    RoundRect(dc, r.left, r.top, r.right + (pen ? 0 : 1), r.bottom + (pen ? 0 : 1), radius, radius);
+    SelectObject(dc, ob); SelectObject(dc, op);
+    DeleteObject(b);
+    if (pen) DeleteObject(pen);
+}
+
+void hline(HDC dc, int x1, int x2, int y, COLORREF c) {
+    HPEN pen = CreatePen(PS_SOLID, 1, c);
+    HGDIOBJ op = SelectObject(dc, pen);
+    MoveToEx(dc, x1, y, nullptr); LineTo(dc, x2, y);
+    SelectObject(dc, op); DeleteObject(pen);
+}
+
+void vline(HDC dc, int x, int y1, int y2, COLORREF c) {
+    HPEN pen = CreatePen(PS_SOLID, 1, c);
+    HGDIOBJ op = SelectObject(dc, pen);
+    MoveToEx(dc, x, y1, nullptr); LineTo(dc, x, y2);
+    SelectObject(dc, op); DeleteObject(pen);
+}
+
+// minimise, maximise / restore and close, drawn as thin crisp lines like Windows' own
+void captionGlyph(HDC dc, const RECT& r, int id, COLORREF c) {
+    const int g = px(10), cx = (r.left + r.right) / 2, cy = (r.top + r.bottom) / 2, x0 = cx - g / 2, y0 = cy - g / 2;
+    HPEN pen = CreatePen(PS_SOLID, std::max(1, px(1)), c);
+    HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+    if (id == C_CAPMIN) { MoveToEx(dc, x0, cy, nullptr); LineTo(dc, x0 + g, cy); }
+    else if (id == C_CAPMAX) {
+        if (IsZoomed(app.wnd)) {   // restore: two overlapping windows
+            const int o = px(2);
+            Rectangle(dc, x0, y0 + o, x0 + g - o + 1, y0 + g + 1);
+            MoveToEx(dc, x0 + o, y0 + o, nullptr); LineTo(dc, x0 + o, y0); LineTo(dc, x0 + g, y0); LineTo(dc, x0 + g, y0 + g - o); LineTo(dc, x0 + g - o, y0 + g - o);
+        } else Rectangle(dc, x0, y0, x0 + g + 1, y0 + g + 1);
+    } else {
+        MoveToEx(dc, x0, y0, nullptr); LineTo(dc, x0 + g + 1, y0 + g + 1);
+        MoveToEx(dc, x0 + g, y0, nullptr); LineTo(dc, x0 - 1, y0 + g + 1);
+    }
+    SelectObject(dc, ob); SelectObject(dc, op);
+    DeleteObject(pen);
 }
 
 void paintHeader(HDC dc, const RECT& client) {
     layoutHeader(dc, client.right);
+    syncBoxes(false);
     const Palette& P = pal();
-    HBRUSH tabBg = CreateSolidBrush(P.tabBar);
-    HBRUSH toolBg = CreateSolidBrush(P.toolbar);
-    RECT tr{0, 0, client.right, kTabH}, br{0, kTabH, client.right, kTabH + kToolH};
+    const int th = tabH();
+    RECT tr{0, 0, client.right, th}, br{0, th, client.right, headerH()};
+    HBRUSH tabBg = CreateSolidBrush(P.tabBar), toolBg = CreateSolidBrush(P.toolbar);
     FillRect(dc, &tr, tabBg); FillRect(dc, &br, toolBg);
-    if (app.findVisible) {   // the find bar sits between the toolbar and the page area
-        RECT fr{0, kTabH + kToolH, client.right, kTabH + kToolH + kFindH};
+    if (app.findVisible) {   // the find bar sits between the toolbar and the pages
+        RECT fr{0, headerH(), client.right, headerH() + findH()};
         FillRect(dc, &fr, toolBg);
+        hline(dc, 0, client.right, headerH() + findH() - 1, P.line);
     }
     DeleteObject(tabBg); DeleteObject(toolBg);
     SetBkMode(dc, TRANSPARENT);
     SelectObject(dc, app.font);
 
+    // the tab row
+    if (HICON ic = reinterpret_cast<HICON>(GetClassLongPtrW(app.wnd, GCLP_HICONSM)))
+        DrawIconEx(dc, app.iconRect.left, app.iconRect.top, ic, app.iconRect.right - app.iconRect.left, app.iconRect.bottom - app.iconRect.top, 0, nullptr, DI_NORMAL);
+    const COLORREF capText = app.windowActive ? P.text : P.textDim;
     if (app.tabs.empty()) {
-        RECT r{8, 4, 128, kTabH};
-        HBRUSH w = CreateSolidBrush(P.tabActive); FillRect(dc, &r, w); DeleteObject(w);
-        SetTextColor(dc, P.text);
-        DrawTextW(dc, L"New tab", -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        SetTextColor(dc, capText);
+        RECT r{app.iconRect.right + px(10), 0, app.plusRect.left, th};
+        DrawTextW(dc, kAppName, -1, &r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
     }
+    hline(dc, 0, client.right, th - 1, P.line);   // under the tab row; the active tab opens into the toolbar
     for (size_t i = 0; i < app.tabRects.size(); ++i) {
-        bool act = static_cast<int>(i) == app.active;
-        HBRUSH w = CreateSolidBrush(act ? P.tabActive : P.tabIdle);
-        FillRect(dc, &app.tabRects[i], w); DeleteObject(w);
-        RECT t = app.tabRects[i]; t.left += 12; t.right -= 30;
-        SetTextColor(dc, P.text);
-        DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
-        SetTextColor(dc, P.textDim);
-        DrawTextW(dc, L"x", -1, &app.closeRects[i], DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        const RECT& r = app.tabRects[i];
+        const bool act = static_cast<int>(i) == app.active;
+        const bool hov = app.hover == C_TAB + static_cast<int>(i) || app.hover == C_TABCLOSE + static_cast<int>(i);
+        if (act) {
+            tabShape(dc, r, P.toolbar);
+            vline(dc, r.left, r.top + px(9), r.bottom, P.line);
+            vline(dc, r.right - 1, r.top + px(9), r.bottom, P.line);
+        } else if (hov) tabShape(dc, RECT{r.left, r.top, r.right, r.bottom - 1}, P.tabIdle);
+        else if (i + 1 < app.tabRects.size() && static_cast<int>(i + 1) != app.active)
+            vline(dc, r.right + px(1), r.top + px(8), r.bottom - px(8), P.line);   // between two idle tabs
+        RECT t{r.left + px(14), r.top, app.closeRects[i].left - px(6), r.bottom};
+        SelectObject(dc, act ? app.fontBold : app.font);
+        SetTextColor(dc, act ? P.text : P.textDim);
+        DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        const bool closeHot = app.hover == C_TABCLOSE + static_cast<int>(i);
+        icons::closeBadge(dc, app.closeRects[i], closeHot ? RGB(0xF0, 0x3E, 0x3E) : RGB(0xD9, 0x30, 0x30));
     }
-    if (!app.tabs.empty()) {
-        SetTextColor(dc, P.textDim);
-        DrawTextW(dc, L"+", -1, &app.plusRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    SelectObject(dc, app.font);
+    {
+        const bool hov = app.hover == C_NEWTAB;
+        if (hov) roundFill(dc, app.plusRect, px(8), P.tabIdle, 0, false);
+        icons::draw(dc, app.plusRect, I_PLUS, hov ? P.text : P.textDim, px(18));
     }
 
+    // buttons: the window buttons in the tab row, the rest in the toolbar
     for (const Button& b : app.buttons) {
-        const COLORREF col = b.enabled ? P.text : P.textOff;
-        if (b.enabled && app.hover == b.id) {
-            HBRUSH hb = CreateSolidBrush(P.hover);
-            HGDIOBJ opn = SelectObject(dc, GetStockObject(NULL_PEN)), obr = SelectObject(dc, hb);
-            RoundRect(dc, b.rc.left, b.rc.top, b.rc.right, b.rc.bottom, 8, 8);
-            SelectObject(dc, obr); SelectObject(dc, opn); DeleteObject(hb);
+        const bool hov = b.enabled && app.hover == b.id, down = app.pressed == b.id;
+        if (b.caption) {
+            if (hov || down) {
+                RECT r = b.rc;
+                HBRUSH hb = CreateSolidBrush(b.id == C_CAPCLOSE ? (down ? RGB(0x94, 0x1F, 0x14) : RGB(0xC4, 0x2B, 0x1C)) : (down ? P.line : P.tabIdle));
+                FillRect(dc, &r, hb); DeleteObject(hb);
+            }
+            captionGlyph(dc, b.rc, b.id, b.id == C_CAPCLOSE && (hov || down) ? RGB(0xFF, 0xFF, 0xFF) : capText);
+            continue;
         }
-        SetTextColor(dc, col);
-        if (b.icon && b.label.empty()) drawIcon(dc, b.rc, b.icon, col);
-        else if (b.icon) {
-            RECT ir{b.rc.left + 8, b.rc.top, b.rc.left + 34, b.rc.bottom};
-            drawIcon(dc, ir, b.icon, col);
-            RECT tr2{b.rc.left + 36, b.rc.top, b.rc.right, b.rc.bottom};
-            DrawTextW(dc, b.label.c_str(), -1, &tr2, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        } else DrawTextW(dc, b.label.c_str(), -1, const_cast<RECT*>(&b.rc), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        const bool hl = b.enabled && highlighted(b.id);
+        if (b.id == C_ZOOMMENU) {   // the drop-down part of the zoom box: drawn with the box below
+            continue;
+        }
+        if (down) roundFill(dc, b.rc, px(8), P.line, 0, false);
+        else if (hl) roundFill(dc, b.rc, px(8), P.accentSoft, P.accent, false);
+        else if (hov) roundFill(dc, b.rc, px(8), P.hover, 0, false);
+        const COLORREF col = !b.enabled ? P.textOff : hl ? P.accentText : P.text;
+        const int ic = px(20);
+        if (b.label.empty()) icons::draw(dc, b.rc, b.icon, col, ic);
+        else {
+            icons::draw(dc, RECT{b.rc.left + px(12), b.rc.top, b.rc.left + px(12) + ic, b.rc.bottom}, b.icon, col, ic);
+            RECT t{b.rc.left + px(12) + ic + px(7), b.rc.top, b.rc.right, b.rc.bottom};
+            SetTextColor(dc, col);
+            DrawTextW(dc, b.label.c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        }
     }
+    for (int sx : g_separators) vline(dc, sx, th + px(14), headerH() - px(14), P.line);
+
+    // the page and zoom boxes (their numbers are edit controls on top)
     Document* d = activeDoc();
     if (d) {
-        // page number box and "/ n"
-        HBRUSH pb = CreateSolidBrush(P.panelDark);
-        HPEN bp = CreatePen(PS_SOLID, 1, P.line);
-        HGDIOBJ opn = SelectObject(dc, bp), obr = SelectObject(dc, pb);
-        RoundRect(dc, app.pageRect.left, app.pageRect.top, app.pageRect.right, app.pageRect.bottom, 6, 6);
-        SelectObject(dc, obr); SelectObject(dc, opn); DeleteObject(pb); DeleteObject(bp);
-        wchar_t s[64];
-        SetTextColor(dc, P.text);
-        swprintf(s, 64, L"%d", app.viewer.currentPage() + 1);
-        DrawTextW(dc, s, -1, &app.pageRect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        swprintf(s, 64, L"/ %d", d->pageCount());
-        RECT pr{app.pageRect.right + 6, app.pageRect.top, app.pageRect.right + 56, app.pageRect.bottom};
+        roundFill(dc, app.pageRect, px(8), P.field, P.line, true);
+        roundFill(dc, app.zoomRect, px(8), P.field, P.line, true);
+        for (const Button& b : app.buttons)
+            if (b.id == C_ZOOMMENU) {
+                const bool hov = app.hover == b.id || app.pressed == b.id;
+                RECT r{b.rc.left + 1, b.rc.top + 1, b.rc.right - 1, b.rc.bottom - 1};
+                if (hov) roundFill(dc, r, px(6), P.hover, 0, false);
+                icons::draw(dc, b.rc, I_CHEVRON, P.text, px(16));
+            }
         SetTextColor(dc, P.textDim);
-        DrawTextW(dc, s, -1, &pr, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        RECT o = app.ofRect; o.left += px(7);
+        DrawTextW(dc, (L"of " + std::to_wstring(d->pageCount())).c_str(), -1, &o, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    } else {   // nothing open: the boxes are there, greyed like the buttons beside them
+        for (const RECT* r : {&app.pageRect, &app.zoomRect}) {
+            roundFill(dc, *r, px(8), P.toolbar, P.line, true);
+            SetTextColor(dc, P.textOff);
+            DrawTextW(dc, L"\x2013", -1, const_cast<RECT*>(r), DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
     }
-    HPEN pen = CreatePen(PS_SOLID, 1, P.line);
-    HGDIOBJ old = SelectObject(dc, pen);
-    MoveToEx(dc, 0, kTabH + kToolH - 1, nullptr); LineTo(dc, client.right, kTabH + kToolH - 1);
-    SelectObject(dc, old); DeleteObject(pen);
+    hline(dc, 0, client.right, headerH() - 1, P.line);   // between the toolbar and the pages
+}
+
+// a page size in millimetres, with its name when it is a standard one
+std::wstring pageSizeText(const PageSize& ps) {
+    const double w = ps.w * 25.4 / 72, h = ps.h * 25.4 / 72;
+    static const struct { const wchar_t* name; double w, h; } known[] = {
+        {L"A3", 297, 420}, {L"A4", 210, 297}, {L"A5", 148, 210}, {L"Letter", 215.9, 279.4}, {L"Legal", 215.9, 355.6}, {L"Tabloid", 279.4, 431.8}};
+    wchar_t t[96];
+    swprintf(t, 96, L"%.0f \x00D7 %.0f mm", w, h);
+    std::wstring out = t;
+    for (const auto& k : known)
+        if ((std::fabs(w - k.w) < 1.5 && std::fabs(h - k.h) < 1.5) || (std::fabs(w - k.h) < 1.5 && std::fabs(h - k.w) < 1.5)) {
+            out += std::wstring(L" (") + k.name + (w > h ? L", landscape)" : L")");
+            break;
+        }
+    return out;
+}
+
+void paintStatus(HDC dc, const RECT& client) {
+    const Palette& P = pal();
+    RECT r{0, client.bottom - statusH(), client.right, client.bottom};
+    HBRUSH bg = CreateSolidBrush(P.toolbar);
+    FillRect(dc, &r, bg);
+    DeleteObject(bg);
+    hline(dc, 0, client.right, r.top, P.line);
+    SetBkMode(dc, TRANSPARENT);
+    SelectObject(dc, app.fontSmall);
+    RECT t{r.left + px(12), r.top + 1, r.right - px(12), r.bottom};
+    Document* d = activeDoc();
+    if (!d) {
+        SetTextColor(dc, P.textDim);
+        DrawTextW(dc, L"No document open", -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Feather PDF " FEATHER_VERSION, -1, &t, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        return;
+    }
+    const int page = app.viewer.currentPage();
+    std::wstring left = L"Page " + std::to_wstring(page + 1) + L" of " + std::to_wstring(d->pageCount());
+    if (page >= 0 && page < d->pageCount()) left += L"   \x00B7   " + pageSizeText(d->pageSize(page));
+    if (app.tool != Viewer::Tool::None) left += std::wstring(L"   \x00B7   Tool: ") + toolName(app.tool) + L" (Esc stops)";
+    if (app.sbs) left += L"   \x00B7   Side by side";
+    SetTextColor(dc, P.textDim);
+    DrawTextW(dc, left.c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
+    const wchar_t* state = d->dirty() ? L"Unsaved changes" : d->path().empty() ? L"Not saved yet" : L"All changes saved";
+    SetTextColor(dc, d->dirty() ? P.text : P.textDim);
+    DrawTextW(dc, state, -1, &t, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+    if (d->dirty()) {   // a small dot before the words
+        const int tw = textWidth(dc, app.fontSmall, state), cy = (r.top + r.bottom) / 2, dot = px(7);
+        RECT c{t.right - tw - px(8) - dot, cy - dot / 2, t.right - tw - px(8), cy - dot / 2 + dot};
+        HBRUSH ab = CreateSolidBrush(P.accent);
+        HGDIOBJ ob = SelectObject(dc, ab), op = SelectObject(dc, GetStockObject(NULL_PEN));
+        Ellipse(dc, c.left, c.top, c.right + 1, c.bottom + 1);
+        SelectObject(dc, ob); SelectObject(dc, op);
+        DeleteObject(ab);
+    }
 }
 
 void openUri(const std::wstring& uri) {
@@ -5041,8 +5381,11 @@ bool onViewer2Press(UINT msg, WPARAM w, LPARAM l) {
 
 void onViewerChange(void*) {
     app.inlineEd.reposition();
-    RECT r{0, 0, 4000, kTabH + kToolH};
+    RECT r{0, 0, 30000, headerH()};
     InvalidateRect(app.wnd, &r, FALSE);
+    RECT c; GetClientRect(app.wnd, &c);
+    RECT st{0, c.bottom - statusH(), c.right, c.bottom};   // the page number in the status bar
+    InvalidateRect(app.wnd, &st, FALSE);
     syncSideBySide(true);
     if (activeDoc() && app.sidebarVisible) app.sidebar.setCurrentPage(app.viewer.currentPage());
 }
@@ -5059,20 +5402,76 @@ LRESULT CALLBACK findEditProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 bool hit(const RECT& r, int x, int y) { return x >= r.left && x < r.right && y >= r.top && y < r.bottom; }
 
+// The dots per inch of the screen the window is on (Windows 10 and later report it per monitor).
+int windowDpi(HWND h) {
+    using Fn = UINT(WINAPI*)(HWND);
+    static Fn fn = reinterpret_cast<Fn>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow")));
+    UINT dpi = fn && h ? fn(h) : 0;
+    if (!dpi) { HDC dc = GetDC(nullptr); dpi = static_cast<UINT>(GetDeviceCaps(dc, LOGPIXELSY)); ReleaseDC(nullptr, dc); }
+    return dpi >= 48 ? static_cast<int>(dpi) : 96;
+}
+
+// The window's fonts at its current dots per inch: 10.5 pt text, bold for the active tab, 9 pt in the status bar.
+void makeUiFonts() {
+    for (HFONT* f : {&app.font, &app.fontBold, &app.fontSmall}) if (*f) { DeleteObject(*f); *f = nullptr; }
+    LOGFONTW lf{};
+    lf.lfHeight = -MulDiv(105, app.dpi, 720);
+    lf.lfQuality = CLEARTYPE_QUALITY;
+    wcscpy_s(lf.lfFaceName, L"Segoe UI");
+    app.font = CreateFontIndirectW(&lf);
+    lf.lfWeight = FW_SEMIBOLD;
+    app.fontBold = CreateFontIndirectW(&lf);
+    lf.lfWeight = FW_NORMAL;
+    lf.lfHeight = -MulDiv(90, app.dpi, 720);
+    app.fontSmall = CreateFontIndirectW(&lf);
+}
+
+// The page and zoom boxes: Enter goes there, Esc or leaving the box puts back what the view shows.
+void applyBox(HWND box) {
+    Document* d = activeDoc();
+    wchar_t t[32] = L"";
+    GetWindowTextW(box, t, 32);
+    if (d && box == app.pageBox) {
+        const int n = _wtoi(t);
+        if (n >= 1 && n <= d->pageCount()) app.viewer.goToPage(n - 1);
+        else notice(L"There is no page " + std::wstring(t) + L": this document has " + std::to_wstring(d->pageCount()) + (d->pageCount() == 1 ? L" page." : L" pages."));
+    } else if (d && box == app.zoomBox) {
+        const double z = _wtof(t);   // "150", "150%" and "62.5" all work
+        if (z > 0) app.viewer.setZoom(std::clamp(z / 100.0, Viewer::kMinZoom, Viewer::kMaxZoom));
+        else notice(L"Type the zoom as a percentage, for example 150.");
+    }
+    SetFocus(app.viewer.hwnd());   // leaving the box shows the page and zoom as they now are
+}
+
+LRESULT CALLBACK boxEditProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+        case WM_KEYDOWN:
+            if (w == VK_RETURN) { applyBox(h); return 0; }
+            if (w == VK_ESCAPE) { SetFocus(app.viewer.hwnd()); return 0; }
+            break;
+        case WM_CHAR:
+            if (w == VK_RETURN || w == VK_ESCAPE || w == L'\t') return 0;   // no beep
+            break;
+        case WM_SETFOCUS: {
+            const LRESULT r = CallWindowProcW(app.boxProc, h, m, w, l);
+            PostMessageW(h, EM_SETSEL, 0, -1);   // typing replaces the number
+            return r;
+        }
+        case WM_KILLFOCUS: {
+            const LRESULT r = CallWindowProcW(app.boxProc, h, m, w, l);
+            syncBoxes(true);
+            return r;
+        }
+    }
+    return CallWindowProcW(app.boxProc, h, m, w, l);
+}
+
 LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
         case WM_CREATE: {
             app.wnd = h;
-            LOGFONTW lf{};
-            {   // the screen's dots per inch (the DC is given back)
-                HDC sdc = GetDC(h);
-                lf.lfHeight = -MulDiv(10, GetDeviceCaps(sdc, LOGPIXELSY), 72);
-                ReleaseDC(h, sdc);
-            }
-            wcscpy_s(lf.lfFaceName, L"Segoe UI");
-            app.font = CreateFontIndirectW(&lf);
-            lf.lfWeight = FW_BOLD;
-            app.fontBold = CreateFontIndirectW(&lf);
+            app.dpi = windowDpi(h);
+            makeUiFonts();
             app.viewer.create(h, app.inst);
             app.inlineEd.create(app.viewer.hwnd(), app.inst);
             Document::setTimerWindow(app.viewer.hwnd());
@@ -5100,7 +5499,25 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose})
                 SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
             app.editProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(app.findEdit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(findEditProc)));
+            // the page number and zoom in the toolbar can be typed into
+            app.pageBox = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | ES_CENTER | ES_AUTOHSCROLL | ES_NUMBER, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_PAGE_BOX), app.inst, nullptr);
+            app.zoomBox = CreateWindowExW(0, L"EDIT", L"", WS_CHILD | ES_CENTER | ES_AUTOHSCROLL, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_ZOOM_BOX), app.inst, nullptr);
+            for (HWND b : {app.pageBox, app.zoomBox}) {
+                SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+                SendMessageW(b, EM_SETLIMITTEXT, 6, 0);
+                app.boxProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(b, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(boxEditProc)));
+            }
+            app.startPage = startpage::create(h, app.inst, {
+                [] { openDialog(); },
+                [](size_t i) { openRecent(i); },
+                [](size_t i) { if (i < app.recent.size()) { app.recent.erase(app.recent.begin() + static_cast<std::ptrdiff_t>(i)); updateEmptyText(); saveSettings(); } },
+                [] { app.recent.clear(); updateEmptyText(); saveSettings(); }});
+            startpage::setDpi(app.startPage, app.dpi);
+            app.tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT,
+                                       CW_USEDEFAULT, CW_USEDEFAULT, h, nullptr, app.inst, nullptr);
+            if (app.tips) SendMessageW(app.tips, TTM_SETMAXTIPWIDTH, 0, px(420));
             DragAcceptFiles(h, TRUE);
+            SetWindowPos(h, nullptr, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);   // no caption: the tab row is the title bar
             return 0;
         }
         case WM_SIZE: relayoutChildren(); InvalidateRect(h, nullptr, FALSE); return 0;
@@ -5122,6 +5539,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_CTLCOLOREDIT: case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: {
             HDC cdc = reinterpret_cast<HDC>(w);
             SetTextColor(cdc, pal().text);
+            if (reinterpret_cast<HWND>(l) == app.pageBox || reinterpret_cast<HWND>(l) == app.zoomBox) {   // inside the toolbar's boxes
+                static HBRUSH fb = nullptr; static COLORREF fc = CLR_INVALID;
+                if (fc != pal().field) { if (fb) DeleteObject(fb); fb = CreateSolidBrush(pal().field); fc = pal().field; }
+                SetBkColor(cdc, pal().field);
+                return reinterpret_cast<LRESULT>(fb);
+            }
             SetBkColor(cdc, m == WM_CTLCOLOREDIT ? (pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)) : pal().toolbar);
             if (m == WM_CTLCOLOREDIT) { static HBRUSH eb = nullptr; if (eb) DeleteObject(eb); eb = CreateSolidBrush(pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)); return reinterpret_cast<LRESULT>(eb); }
             return reinterpret_cast<LRESULT>(app.ctlBrush);
@@ -5135,7 +5558,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             HDC screenDc = BeginPaint(h, &ps);
             RECT rc; GetClientRect(h, &rc);
             PaintBuf buf(screenDc, rc, ps.rcPaint);
-            if (!app.fullscreen) paintHeader(buf.dc, rc);
+            if (!app.fullscreen) { paintHeader(buf.dc, rc); paintStatus(buf.dc, rc); }
             if (app.sbs && !app.fullscreen && app.viewer2.hwnd()) {   // an accent line along the active side, in the gap
                 RECT a, o;
                 GetWindowRect(app.viewer.hwnd(), &a);
@@ -5160,6 +5583,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             // release to land on whatever menu item had opened under the pointer.
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
             app.pressed = -1;
+            if (app.tips) SendMessageW(app.tips, TTM_POP, 0, 0);   // a tip must not sit over the menu that opens
             // Save, a tab, a menu...: text still being typed (on the page, in a form field) is applied first
             if (!finishInput()) return 0;
             UpdateWindow(h);   // the buttons are laid out when painted: Save and Undo are live for this click
@@ -5168,8 +5592,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)
                 if (hit(app.tabRects[i], x, y)) { switchTab(static_cast<int>(i)); return 0; }
-            if (!app.tabs.empty() && hit(app.plusRect, x, y)) { runCommand(C_NEWTAB); return 0; }
-            if (activeDoc() && hit(app.pageRect, x, y)) { runCommand(C_GOTO); return 0; }
+            if (hit(app.plusRect, x, y)) { app.pressed = C_NEWTAB; SetCapture(h); InvalidateRect(h, nullptr, FALSE); return 0; }
             for (const Button& b : app.buttons)
                 if (b.enabled && hit(b.rc, x, y)) { app.pressed = b.id; SetCapture(h); InvalidateRect(h, &b.rc, FALSE); return 0; }
             return 0;
@@ -5185,6 +5608,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (i < app.closeRects.size() && hit(app.closeRects[i], x, y)) closeTab(static_cast<int>(i));
                 return 0;
             }
+            if (pressed == C_NEWTAB) {
+                InvalidateRect(h, nullptr, FALSE);
+                if (hit(app.plusRect, x, y)) runCommand(C_NEWTAB);
+                return 0;
+            }
             for (const Button& b : app.buttons) {
                 if (b.id != pressed) continue;
                 InvalidateRect(h, &b.rc, FALSE);
@@ -5192,6 +5620,9 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 RECT scr = b.rc;
                 MapWindowPoints(h, nullptr, reinterpret_cast<POINT*>(&scr), 2);
                 g_menuExclude = scr;   // its menu must not open over it
+                if (b.id == C_CAPMIN) { g_menuExclude = RECT{}; ShowWindow(h, SW_MINIMIZE); return 0; }
+                if (b.id == C_CAPMAX) { g_menuExclude = RECT{}; ShowWindow(h, IsZoomed(h) ? SW_RESTORE : SW_MAXIMIZE); return 0; }
+                if (b.id == C_CAPCLOSE) { g_menuExclude = RECT{}; PostMessageW(h, WM_CLOSE, 0, 0); return 0; }
                 if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
                 else if (b.id == C_EDITPDF) showToolsMenu(b.rc);
                 else if (b.id == C_COMMENT) showCommentMenu(b.rc);
@@ -5211,18 +5642,79 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_MOUSEMOVE: {
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l), hv = -1;
             for (const Button& b : app.buttons) if (b.enabled && hit(b.rc, x, y)) hv = b.id;
+            for (size_t i = 0; i < app.tabRects.size() && hv == -1; ++i)
+                if (hit(app.tabRects[i], x, y)) hv = hit(app.closeRects[i], x, y) ? C_TABCLOSE + static_cast<int>(i) : C_TAB + static_cast<int>(i);
+            if (hv == -1 && hit(app.plusRect, x, y)) hv = C_NEWTAB;
             if (hv != app.hover) {
                 app.hover = hv;
-                RECT r{0, kTabH, 4000, kTabH + kToolH};
+                RECT r{0, 0, 30000, headerH()};
                 InvalidateRect(h, &r, FALSE);
                 TRACKMOUSEEVENT tme{sizeof(tme), TME_LEAVE, h, 0};
                 TrackMouseEvent(&tme);
             }
             return 0;
         }
-        case WM_MOUSELEAVE:
-            if (app.hover != -1) { app.hover = -1; RECT r{0, kTabH, 4000, kTabH + kToolH}; InvalidateRect(h, &r, FALSE); }
+        case WM_MOUSELEAVE: case WM_NCMOUSEMOVE:
+            if (app.hover != -1) { app.hover = -1; RECT r{0, 0, 30000, headerH()}; InvalidateRect(h, &r, FALSE); }
+            break;
+        case WM_NCCALCSIZE:
+            if (w && !app.fullscreen) {
+                // the usual frame at the sides and the bottom (Windows' resize borders and shadow), but no caption:
+                // the tab row is the title bar
+                auto* p = reinterpret_cast<NCCALCSIZE_PARAMS*>(l);
+                const RECT before = p->rgrc[0];
+                DefWindowProcW(h, m, w, l);
+                p->rgrc[0].top = before.top;
+                if (IsZoomed(h)) p->rgrc[0].top += p->rgrc[0].left - before.left;   // maximised, the window overhangs the screen by its frame
+                return 0;
+            }
+            break;
+        case WM_NCHITTEST: {
+            const LRESULT r = DefWindowProcW(h, m, w, l);
+            if (r != HTCLIENT || app.fullscreen) return r;
+            POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+            ScreenToClient(h, &p);
+            RECT rc; GetClientRect(h, &rc);
+            const int edge = px(6);
+            if (!IsZoomed(h) && p.y < edge) return p.x < edge * 3 ? HTTOPLEFT : p.x >= rc.right - edge * 3 ? HTTOPRIGHT : HTTOP;
+            if (p.y >= tabH()) return HTCLIENT;
+            if (hit(app.iconRect, p.x, p.y)) return HTSYSMENU;
+            for (const RECT& t : app.tabRects) if (hit(t, p.x, p.y)) return HTCLIENT;
+            if (hit(app.plusRect, p.x, p.y)) return HTCLIENT;
+            for (const Button& b : app.buttons) if (b.caption && hit(b.rc, p.x, p.y)) return HTCLIENT;
+            return HTCAPTION;   // the empty part of the tab row moves the window; a double click maximises it
+        }
+        case WM_ACTIVATE: {
+            app.windowActive = LOWORD(w) != WA_INACTIVE;
+            RECT r{0, 0, 30000, tabH()};
+            InvalidateRect(h, &r, FALSE);
+            break;
+        }
+        case WM_DPICHANGED: {   // moved to a screen with other scaling: fonts and sizes follow
+            app.dpi = LOWORD(w) >= 48 ? LOWORD(w) : 96;
+            makeUiFonts();
+            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose, app.pageBox, app.zoomBox})
+                if (c) SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+            startpage::setDpi(app.startPage, app.dpi);
+            app.tipKey.clear();
+            const RECT* r = reinterpret_cast<const RECT*>(l);
+            SetWindowPos(h, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top, SWP_NOZORDER | SWP_NOACTIVATE);
+            relayoutChildren();
+            InvalidateRect(h, nullptr, FALSE);
             return 0;
+        }
+        case WM_NOTIFY: {
+            auto* nm = reinterpret_cast<NMHDR*>(l);
+            if (app.tips && nm->hwndFrom == app.tips && nm->code == TTN_GETDISPINFOW) {
+                auto* di = reinterpret_cast<NMTTDISPINFOW*>(l);
+                static std::wstring tip;
+                const UINT_PTR id = nm->idFrom;
+                tip = (di->uFlags & TTF_IDISHWND) ? tipFor(reinterpret_cast<HWND>(id) == app.pageBox ? ID_PAGE_BOX : ID_ZOOM_BOX) : tipFor(static_cast<int>(id));
+                di->lpszText = const_cast<wchar_t*>(tip.c_str());
+                return 0;
+            }
+            break;
+        }
         case WM_MBUTTONUP: {
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
             for (size_t i = 0; i < app.tabRects.size(); ++i)
@@ -5344,9 +5836,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (GetKeyState(VK_MENU) < 0 && w == VK_LEFT) { navBack(); return 0; }
             if (GetKeyState(VK_MENU) < 0 && w == VK_RIGHT) { navForward(); return 0; }
             break;
-        case WM_GETMINMAXINFO:
-            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {1130, 420};   // the toolbar needs this much room
+        case WM_GETMINMAXINFO: {   // the toolbar fits (its groups shown as icons), but never more than the screen holds
+            MONITORINFO mi{sizeof(mi)};
+            GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi);
+            reinterpret_cast<MINMAXINFO*>(l)->ptMinTrackSize = {std::min<LONG>(px(900), mi.rcWork.right - mi.rcWork.left),
+                                                                std::min<LONG>(px(460), mi.rcWork.bottom - mi.rcWork.top)};
             return 0;
+        }
         case WM_CLOSE:
             for (auto& t : app.tabs) if (!confirmClose(*t)) return 0;
             DestroyWindow(h);
@@ -5821,6 +6317,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     InitCommonControlsEx(&icc);
     Viewer::registerClass(inst);
     Sidebar::registerClasses(inst);
+    startpage::registerClass(inst);
 
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = wndProc;
@@ -5831,8 +6328,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     wc.lpszClassName = L"FeatherPdfMain";
     RegisterClassExW(&wc);
 
+    const int sysDpi = windowDpi(nullptr);   // the first size follows the screen's scaling
     HWND w = CreateWindowExW(0, wc.lpszClassName, kAppName, WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-                             CW_USEDEFAULT, CW_USEDEFAULT, 1200, 780, nullptr, nullptr, inst, nullptr);
+                             CW_USEDEFAULT, CW_USEDEFAULT, MulDiv(1240, sysDpi, 96), MulDiv(800, sysDpi, 96), nullptr, nullptr, inst, nullptr);
     loadSettings();
     // the viewers were made before the settings were read: give them the saved page layout now
     app.viewer.setLayout(app.layout, app.cover);

@@ -34,19 +34,22 @@ void roundRect(GraphicsPath& p, REAL x, REAL y, REAL w, REAL h, REAL r) {
 } // namespace
 
 void paint(Graphics& g, int icon, COLORREF colour);
+void paintBadge(Graphics& g, COLORREF fill);
 
-void draw(HDC dc, const RECT& r, int icon, COLORREF colour) {
-    if (!ready() || icon == None) return;
-    // drawn four times larger into a transparent bitmap, then averaged down: smooth edges whatever GDI+ does itself
-    const int S = 24, K = 4, B = S * K;
+// Drawn four times larger into a transparent bitmap, then averaged down and blended in: smooth edges whatever GDI+
+// does itself on the target. `painter` draws on a 24-unit square.
+template <typename Fn>
+void smooth(HDC dc, const RECT& r, int size, Fn painter) {
+    if (!ready() || size < 4) return;
+    const int S = size, K = 4, B = S * K;
     Bitmap bmp(B, B, PixelFormat32bppPARGB);
     {
         Graphics g(&bmp);
         g.Clear(Color(0, 0, 0, 0));
         g.SetSmoothingMode(SmoothingModeAntiAlias);
-        g.ScaleTransform(static_cast<REAL>(K), static_cast<REAL>(K));
-        g.TranslateTransform(2, 2);   // the 20 x 20 grid in the middle
-        paint(g, icon, colour);
+        const REAL k = static_cast<REAL>(K) * static_cast<REAL>(S) / 24.0f;   // the 24-unit design grid to pixels
+        g.ScaleTransform(k, k);
+        painter(g);
     }
     BitmapData bd;
     Rect all(0, 0, B, B);
@@ -212,7 +215,60 @@ void paint(Graphics& g, int icon, COLORREF colour) {
         case More:
             for (int i = 0; i < 3; ++i) g.FillEllipse(&fill, 2.6f + i * 6.0f, 8.6f, 2.8f, 2.8f);
             break;
+        case File:   // a page with a folded corner and a few lines
+            p.StartFigure();
+            p.AddLine(11.5f, 2.5f, 4.5f, 2.5f);
+            p.AddLine(4.5f, 2.5f, 4.5f, 17.5f);
+            p.AddLine(4.5f, 17.5f, 15.5f, 17.5f);
+            p.AddLine(15.5f, 17.5f, 15.5f, 6.5f);
+            p.CloseFigure();
+            g.DrawPath(&pen, &p);
+            g.DrawLine(&pen, 11.5f, 2.5f, 11.5f, 6.5f);
+            g.DrawLine(&pen, 11.5f, 6.5f, 15.5f, 6.5f);
+            g.DrawLine(&pen, 7.5f, 10.5f, 12.5f, 10.5f);
+            g.DrawLine(&pen, 7.5f, 13.5f, 12.5f, 13.5f);
+            break;
+        case Drop:   // an arrow going down into a tray
+            g.DrawLine(&pen, 10.0f, 2.5f, 10.0f, 11.5f);
+            g.DrawLine(&pen, 6.5f, 8.0f, 10.0f, 11.5f);
+            g.DrawLine(&pen, 13.5f, 8.0f, 10.0f, 11.5f);
+            p.StartFigure();
+            p.AddLine(2.5f, 11.5f, 2.5f, 16.5f);
+            p.AddLine(2.5f, 16.5f, 17.5f, 16.5f);
+            p.AddLine(17.5f, 16.5f, 17.5f, 11.5f);
+            g.DrawPath(&pen, &p);
+            break;
+        case Plus:
+            g.DrawLine(&pen, 10.0f, 4.0f, 10.0f, 16.0f);
+            g.DrawLine(&pen, 4.0f, 10.0f, 16.0f, 10.0f);
+            break;
+        case ChevronDown:
+            g.DrawLine(&pen, 5.5f, 8.0f, 10.0f, 12.5f);
+            g.DrawLine(&pen, 10.0f, 12.5f, 14.5f, 8.0f);
+            break;
     }
+}
+
+void paintBadge(Graphics& g, COLORREF fillColour) {   // on the 24-unit square: a 23-unit circle, a cross of 10
+    SolidBrush fill(Color(255, GetRValue(fillColour), GetGValue(fillColour), GetBValue(fillColour)));
+    g.FillEllipse(&fill, 0.5f, 0.5f, 23.0f, 23.0f);
+    Pen cross(Color(255, 255, 255, 255), 2.6f);
+    cross.SetStartCap(LineCapRound);
+    cross.SetEndCap(LineCapRound);
+    g.DrawLine(&cross, 7.5f, 7.5f, 16.5f, 16.5f);
+    g.DrawLine(&cross, 7.5f, 16.5f, 16.5f, 7.5f);
+}
+
+void draw(HDC dc, const RECT& r, int icon, COLORREF colour, int size) {
+    if (icon == None) return;
+    smooth(dc, r, size, [&](Graphics& g) {
+        g.TranslateTransform(2, 2);   // the 20 x 20 grid in the middle
+        paint(g, icon, colour);
+    });
+}
+
+void closeBadge(HDC dc, const RECT& r, COLORREF fillColour) {
+    smooth(dc, r, std::min(r.right - r.left, r.bottom - r.top), [&](Graphics& g) { paintBadge(g, fillColour); });
 }
 
 } // namespace icons

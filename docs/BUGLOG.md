@@ -365,3 +365,15 @@ features.
   Contents; reopened after a restart: double-click edits it; emptied: removed. Smoke test "callout text changed in place"
   (one callout, new text, colour kept).
 - Callouts drawn before this version keep only "Delete": where they point was not recorded.
+
+### B-034 Closing a tab or the window during an in-place edit threw the typed text away without asking
+- **Status:** Fixed
+- **Root cause:** the "save the changes?" check looked only at changes already made to the document. Text typed into the
+  in-place editor (Edit text, Edit paragraph) is applied only when the editor closes, which happened after the check, as
+  the document was being let go: with no earlier changes the tab closed silently and the edit was lost.
+- **Fix:** before the check, the edit in progress is applied, so it counts as a change. If it cannot be applied (the
+  reason is shown), the editor stays open and nothing closes.
+- **Verified:** five.pdf, Ctrl+E, a line, " EXTRA" typed, click the tab's cross: before the fix the tab closed and the
+  start screen showed; after, the line reads "... by using EXTRA" and the save question appears; Cancel keeps the tab.
+  A second line edited (" MORE"), Alt+F4: the question appears with both changes on the page; Yes: saved and closed, and
+  pdftotext of the file shows both lines changed.

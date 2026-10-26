@@ -673,6 +673,9 @@ bool saveActive() {
 
 // Asks about unsaved changes. Returns false when the user cancels.
 bool confirmClose(Document& d) {
+    // text being edited in place belongs to the document on screen: apply it first, so it counts as a change
+    // (if it cannot be applied, the reason was shown and the editor stays open: nothing closes)
+    if (app.inlineEd.active() && &d == activeDoc() && !app.inlineEd.commit()) return false;
     if (!d.dirty()) return true;
     std::wstring q = L"Do you want to save the changes to \"" + d.title() + L"\" before closing?\n\nChoose No to throw the changes away.";
     switch (MessageBoxW(app.wnd, q.c_str(), kAppName, MB_YESNOCANCEL | MB_ICONQUESTION)) {

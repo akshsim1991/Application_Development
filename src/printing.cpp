@@ -61,6 +61,7 @@ void drawCells(FPDF_BITMAP bmp, Document& d, const Layout& l, const std::vector<
         const int x = static_cast<int>(std::lround((originX + c.x) * scale)), y = static_cast<int>(std::lround((originY + c.y) * scale));
         const int w = std::max(1, static_cast<int>(std::lround(c.w * scale))), h = std::max(1, static_cast<int>(std::lround(c.h * scale)));
         api.FPDF_RenderPageBitmap(bmp, pg, x, y, w, h, c.rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
+        if (d.hasForm()) api.FPDF_FFLDraw(d.form(), bmp, pg, x, y, w, h, c.rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);   // the form fields
         if (l.perSheet > 1) {   // thin frame so the pages are easy to tell apart
             auto box = [&](int l0, int t0, int r0, int b0) {
                 l0 = std::max(0, l0); t0 = std::max(0, t0); r0 = std::min(bw, r0); b0 = std::min(bh, b0);
@@ -100,6 +101,42 @@ void blit(HDC dc, int x, int y, int w, int h, const std::vector<unsigned char>& 
     StretchDIBits(dc, x, y, w, h, 0, 0, pw, ph, px.data(), &bi, DIB_RGB_COLORS, SRCCOPY);
 }
 
+// PDFium draws form fields only into pictures (FPDF_FFLDraw), never onto a printer: each field's box is printed as a
+// small picture of that part of the page, and the rest of the page stays sharp vector output.
+void drawFields(HDC dc, Document& d, FPDF_PAGE pg, const Cell& c, double ppp) {
+    if (!d.hasForm()) return;
+    const auto& api = pdfium::api();
+    const int rot = c.rotate ? 1 : 0;
+    const RECT cell{c.x, c.y, c.x + c.w, c.y + c.h};
+    const double s = std::min(1.0, (300.0 / 72.0) / ppp);   // at most 300 dots per inch: plenty for a field
+    const int n = api.FPDFPage_GetAnnotCount(pg);
+    for (int i = 0; i < n; ++i) {
+        FPDF_ANNOTATION a = api.FPDFPage_GetAnnot(pg, i);
+        if (!a) continue;
+        FS_RECTF r{};
+        const bool widget = api.FPDFAnnot_GetSubtype(a) == FPDF_ANNOT_WIDGET && api.FPDFAnnot_GetRect(a, &r);
+        api.FPDFPage_CloseAnnot(a);
+        if (!widget) continue;
+        int x1, y1, x2, y2;
+        api.FPDF_PageToDevice(pg, c.x, c.y, c.w, c.h, rot, r.left, r.top, &x1, &y1);
+        api.FPDF_PageToDevice(pg, c.x, c.y, c.w, c.h, rot, r.right, r.bottom, &x2, &y2);
+        RECT box{std::min(x1, x2) - 2, std::min(y1, y2) - 2, std::max(x1, x2) + 2, std::max(y1, y2) + 2};
+        if (!IntersectRect(&box, &box, &cell)) continue;
+        const int bw = std::max(1, static_cast<int>(std::lround((box.right - box.left) * s)));
+        const int bh = std::max(1, static_cast<int>(std::lround((box.bottom - box.top) * s)));
+        if (static_cast<long long>(bw) * bh > 25'000'000) continue;
+        FPDF_BITMAP bmp = api.FPDFBitmap_CreateEx(bw, bh, FPDFBitmap_BGRx, nullptr, 0);
+        if (!bmp) continue;
+        api.FPDFBitmap_FillRect(bmp, 0, 0, bw, bh, 0xFFFFFFFF);
+        const int ox = static_cast<int>(std::lround((c.x - box.left) * s)), oy = static_cast<int>(std::lround((c.y - box.top) * s));
+        const int ow = std::max(1, static_cast<int>(std::lround(c.w * s))), oh = std::max(1, static_cast<int>(std::lround(c.h * s)));
+        api.FPDF_RenderPageBitmap(bmp, pg, ox, oy, ow, oh, rot, FPDF_ANNOT | FPDF_PRINTING);
+        api.FPDF_FFLDraw(d.form(), bmp, pg, ox, oy, ow, oh, rot, FPDF_ANNOT | FPDF_PRINTING);
+        blit(dc, box.left, box.top, box.right - box.left, box.bottom - box.top, packed(bmp), bw, bh);
+        api.FPDFBitmap_Destroy(bmp);
+    }
+}
+
 } // namespace
 
 Paper paperOf(HDC dc) {
@@ -130,6 +167,7 @@ void printSheet(HDC dc, Document& d, const Layout& l, int sheet, const Paper& p)
             FPDF_PAGE pg = d.page(c.page);
             if (!pg) continue;
             api.FPDF_RenderPage(dc, pg, c.x, c.y, c.w, c.h, c.rotate ? 1 : 0, FPDF_ANNOT | FPDF_PRINTING);
+            drawFields(dc, d, pg, c, p.ppp);
             if (l.perSheet > 1) {
                 HGDIOBJ op = SelectObject(dc, GetStockObject(BLACK_PEN)), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
                 Rectangle(dc, c.x, c.y, c.x + c.w, c.y + c.h);
@@ -558,6 +596,11 @@ LRESULT CALLBACK printProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
 } // namespace
 
 bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage) {
+    struct NoTint {   // the preview and the paper show form fields without the on-screen tint
+        Document& d;
+        explicit NoTint(Document& x) : d(x) { d.setFieldHighlight(false); }
+        ~NoTint() { d.setFieldHighlight(true); }
+    } noTint(d);
     static bool registered = false;
     if (!registered) {
         WNDCLASSEXW wc{sizeof(wc)};

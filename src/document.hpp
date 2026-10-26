@@ -51,6 +51,7 @@ public:
     // ---- fillable forms ----
     FPDF_FORMHANDLE form() const { return form_; }
     bool hasForm() const { return form_ != nullptr; }
+    void setFieldHighlight(bool on);                  // the tint behind form fields (off while printing)
     // Draws a page into a bitmap as shown on screen: content, annotations, and form fields when the document has them.
     void renderPage(int page, FPDF_BITMAP bmp, int x, int y, int w, int h, bool annotations = true);
     // Call when the user starts interacting with a field (mouse press): remembers the state so the edit can be undone.

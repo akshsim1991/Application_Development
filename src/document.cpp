@@ -83,8 +83,14 @@ void Document::initForm() {
     formInfo_->FFI_GetRotation = FormCallbacks::getRotation;
     form_ = api.FPDFDOC_InitFormFillEnvironment(doc_, formInfo_.get());
     if (!form_) { formInfo_.reset(); return; }
+    setFieldHighlight(true);
+}
+
+void Document::setFieldHighlight(bool on) {
+    if (!form_) return;
+    const auto& api = pdfium::api();
     api.FPDF_SetFormFieldHighlightColor(form_, 0, 0xFFE4DD);   // light blue behind fields, so they can be found
-    api.FPDF_SetFormFieldHighlightAlpha(form_, 100);
+    api.FPDF_SetFormFieldHighlightAlpha(form_, on ? 100 : 0);
 }
 
 void Document::exitForm() {

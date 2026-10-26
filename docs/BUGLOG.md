@@ -414,3 +414,18 @@ features.
   codes and are shortcuts).
 - **Verified:** "Akshaya Simha", End, Backspace x5, Home, Delete x2: "shaya " shown and saved. Country list opened,
   Down Down Enter: the list closes on Italy, and Italy is saved. Tab from Name moves to the checkbox, Space toggles it.
+
+### B-038 Form fields were missing from the print preview and from the printed page
+- **Status:** Fixed
+- **Root cause:** PDFium's page rendering never draws form fields (widget annotations); only its form-filling drawing
+  (FPDF_FFLDraw) does, and only into pictures. The viewer did both; printing did only the first, so a filled-in form
+  printed blank: labels without names, ticks, choices or the fields' boxes.
+- **Fix:** the preview (and greyscale printing, which prints a picture) draws the fields after the page. Colour
+  printing keeps the page as sharp vector output and prints each field's box as a small picture of that part of the page
+  (at most 300 dpi), placed with PDFium's own page-to-device mapping, so it lines up when the page is turned to fit the
+  paper. The on-screen tint behind fields is switched off while the Print window is open; a field's own background colour
+  (/MK /BG) prints, as it should.
+- **Verified:** form.pdf with "PRINTME" typed into Name (B-036), Ctrl+P: the preview shows all fields (before: none);
+  printed to the CUPS PDF printer: name, tick, "France" and the Pro radio button on the page, aligned at 200 dpi zoom.
+  Landscape paper chosen: printed rotated with the fields in place. A two-page file (portrait page, then the form turned
+  90°) on portrait paper: sheet 2 turned to fit, fields aligned in the preview and on paper.

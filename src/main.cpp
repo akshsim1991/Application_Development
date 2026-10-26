@@ -258,6 +258,10 @@ void refresh() {
 
 void runSearch(bool keepPosition);
 
+// Applies text being edited in place before another action takes over; false when it could not be applied (the reason
+// was shown and the editor stays open).
+bool finishInlineEdit() { return !app.inlineEd.active() || app.inlineEd.commit(); }
+
 void setActiveDocument(Document* d) {
     if (app.inlineEd.active()) app.inlineEd.commit();
     app.viewer.setDocument(d);
@@ -2833,7 +2837,7 @@ void deleteThumbPages(Document& d, const std::vector<int>& pages) {
 
 void showThumbMenu(int clicked, POINT pt) {
     Document* d = activeDoc();
-    if (!d) return;
+    if (!d || !finishInlineEdit()) return;
     std::vector<int> pages = app.sidebar.selectedPages();
     if (pages.empty()) pages = {clicked};
     const bool many = pages.size() > 1;
@@ -2889,7 +2893,7 @@ void showThumbMenu(int clicked, POINT pt) {
 
 void onThumbReorder(const std::vector<int>& pages, int before) {
     Document* d = activeDoc();
-    if (d && d->movePages(pages, before)) afterPagesChanged();
+    if (d && finishInlineEdit() && d->movePages(pages, before)) afterPagesChanged();
 }
 
 // ---- the main ("...") menu ----
@@ -5142,6 +5146,10 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             // release to land on whatever menu item had opened under the pointer.
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
             app.pressed = -1;
+            if (app.inlineEd.active()) {   // Save, a tab, a menu...: the edit on the page is applied first
+                if (!finishInlineEdit()) return 0;
+                UpdateWindow(h);   // the buttons are laid out when painted: Save and Undo are enabled now
+            }
             for (size_t i = 0; i < app.closeRects.size(); ++i)
                 if (hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)

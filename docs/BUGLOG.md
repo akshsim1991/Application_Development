@@ -377,3 +377,17 @@ features.
   start screen showed; after, the line reads "... by using EXTRA" and the save question appears; Cancel keeps the tab.
   A second line edited (" MORE"), Alt+F4: the question appears with both changes on the page; Yes: saved and closed, and
   pdftotext of the file shows both lines changed.
+
+### B-035 During an in-place edit, Save did nothing and page actions ignored the edit
+- **Status:** Fixed
+- **Root cause:** the text in the in-place editor becomes a change only when the editor closes. The toolbar and tab bar
+  acted on the document as it was: Save was greyed (no change yet), so a click on it did nothing and the file stayed as
+  before while the user believed it saved; the page panel's menu and drag-to-reorder worked on pages while the editor
+  still held text for one of them.
+- **Fix:** a click anywhere on the tab bar or toolbar, a right-click on a page thumbnail and a thumbnail drag first apply
+  the edit (if it cannot be applied, the reason is shown and nothing else happens); the toolbar is then redrawn so Save
+  and Undo are live for that same click.
+- **Verified:** five.pdf, Ctrl+E, " EXTRA" typed, one click on Save: the title loses its unsaved mark and pdftotext of
+  the file shows "... by using EXTRA" (before the fix: nothing happened, the file unchanged). With the Pages panel open,
+  " ZED" typed, right-click on thumbnail 1: the line is applied and the menu opens; Delete page: 4 pages; Ctrl+Z: 5 again
+  with both edits.

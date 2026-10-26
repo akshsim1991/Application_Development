@@ -24,7 +24,7 @@ int apply(Document& d, int dpi) {
         FPDF_BITMAP bmp = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRA, px.data(), w * 4);
         if (!bmp) continue;
         api.FPDFBitmap_FillRect(bmp, 0, 0, w, h, 0xFFFFFFFF);
-        d.renderPage(p, bmp, 0, 0, w, h);
+        d.renderOutput(p, bmp, 0, 0, w, h);
         // Black out the marked areas (converted from page space to this bitmap's pixels).
         for (const auto& m : d.redactions) {
             if (m.page != p) continue;

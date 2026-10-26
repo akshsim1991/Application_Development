@@ -441,7 +441,7 @@ bool copyPageToClipboard(Document& d, int page, void* owner, int dpi) {
     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), static_cast<int>(stride));
     if (!fb) { GlobalUnlock(g); GlobalFree(g); return false; }
     api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-    d.renderPage(page, fb, 0, 0, w, h);
+    d.renderOutput(page, fb, 0, 0, w, h);
     api.FPDFBitmap_Destroy(fb);
     unsigned char* dst = mem + sizeof(BITMAPINFOHEADER);
     for (int y = 0; y < h; ++y) memcpy(dst + static_cast<size_t>(y) * stride, px.data() + static_cast<size_t>(h - 1 - y) * stride, stride);   // bottom-up
@@ -488,7 +488,7 @@ bool copyAreaToClipboard(Document& d, int page, double l, double b, double r, do
     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), static_cast<int>(stride));
     if (!fb) return false;
     api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-    d.renderPage(page, fb, -left, -top, fw, fh);
+    d.renderOutput(page, fb, -left, -top, fw, fh);
     api.FPDFBitmap_Destroy(fb);
     HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, sizeof(BITMAPINFOHEADER) + stride * h);
     if (!g) return false;

@@ -429,3 +429,14 @@ features.
   printed to the CUPS PDF printer: name, tick, "France" and the Pro radio button on the page, aligned at 200 dpi zoom.
   Landscape paper chosen: printed rotated with the fields in place. A two-page file (portrait page, then the form turned
   90°) on portrait paper: sheet 2 turned to fit, fields aligned in the preview and on paper.
+
+### B-039 Exported and copied pictures carried the on-screen tint over form fields
+- **Status:** Fixed
+- **Root cause:** the viewer lays a light blue tint over form fields so they can be found. Export as pictures, Copy page
+  / area as image, the compare view, blank and duplicate page detection, and redaction's "make the pages pictures" used the
+  same drawing, so the tint was baked into their pictures. It also greyed the fields' text (about 115 instead of near
+  black); with redaction it ended up permanently in the saved PDF.
+- **Fix:** those pictures are drawn with the fields as they are in the file, without the tint; the screen keeps it.
+- **Verified:** form.pdf exported as PNG: the Name field's background reads 204,215,255, its own /MK /BG colour (before:
+  210,220,255), and its text 39,40,43 (before: about 115). Copy page as image in the running program: the clipboard
+  picture shows 204,215,255; the page on screen, redrawn after zooming, still shows the tint (210,220,255).

@@ -18,7 +18,7 @@ bool render(Document& d, int page, int w, int h, std::vector<unsigned char>& px)
     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), w * 4);
     if (!fb) return false;
     api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
-    d.renderPage(page, fb, 0, 0, w, h);
+    d.renderOutput(page, fb, 0, 0, w, h);
     api.FPDFBitmap_Destroy(fb);
     return true;
 }

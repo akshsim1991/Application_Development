@@ -1367,7 +1367,7 @@ std::vector<unsigned char> greyThumb(Document& d, int page, int& w, int& h, doub
     std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4, 255), g(static_cast<size_t>(w) * h);
     const auto& api = pdfium::api();
     FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), w * 4);
-    if (fb) { api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF); d.renderPage(page, fb, 0, 0, w, h); api.FPDFBitmap_Destroy(fb); }
+    if (fb) { api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF); d.renderOutput(page, fb, 0, 0, w, h); api.FPDFBitmap_Destroy(fb); }
     for (size_t i = 0; i < g.size(); ++i) g[i] = static_cast<unsigned char>((px[i * 4] + px[i * 4 + 1] * 2 + px[i * 4 + 2]) / 4);
     return g;
 }

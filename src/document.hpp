@@ -54,6 +54,8 @@ public:
     void setFieldHighlight(bool on);                  // the tint behind form fields (off while printing)
     // Draws a page into a bitmap as shown on screen: content, annotations, and form fields when the document has them.
     void renderPage(int page, FPDF_BITMAP bmp, int x, int y, int w, int h, bool annotations = true);
+    // For pictures that leave the screen (export, copying, redaction, comparison): form fields without the tint.
+    void renderOutput(int page, FPDF_BITMAP bmp, int x, int y, int w, int h);
     // Call when the user starts interacting with a field (mouse press): remembers the state so the edit can be undone.
     void formBeforeInput();
     std::function<void(int page)> onFormInvalidate;   // a field changed how it looks

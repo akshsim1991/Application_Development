@@ -128,6 +128,12 @@ void Document::renderPage(int page, FPDF_BITMAP bmp, int x, int y, int w, int h,
     if (form_ && annotations) api.FPDF_FFLDraw(form_, bmp, pg, x, y, w, h, 0, FPDF_ANNOT);
 }
 
+void Document::renderOutput(int page, FPDF_BITMAP bmp, int x, int y, int w, int h) {
+    setFieldHighlight(false);
+    renderPage(page, bmp, x, y, w, h);
+    setFieldHighlight(true);
+}
+
 Document::Document() = default;
 
 Document::~Document() {

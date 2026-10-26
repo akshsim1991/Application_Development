@@ -282,3 +282,26 @@ Geometry, Side by side, zoom box, the page's right-click menu, the thumbnails' r
 documented shortcuts were pressed one by one (36), each followed by a screenshot and a check that the program still runs.
 Findings: B-021 to B-025. Greyed items (they need a selection or a second document) are covered by the GUI tests of their
 features.
+
+### B-026 Every page read stayed in memory until the document was closed
+- **Status:** Fixed
+- **Root cause:** loaded pages and their text were cached for reuse and never released: reading a 400-page document to the
+  end used 190 MB (about 330 KB per page), growing with every page.
+- **Fix:** only the 64 most recently used pages stay loaded; older ones are closed (their text first, the form engine told)
+  when a new page loads, and loaded again when needed. A page whose objects the Select tool split in memory (B-011) is
+  kept.
+- **Verified:** 400 pages read and back: 87 MB, flat; pages reload and render; a search over all 400 pages finds all 100
+  matches (poppler finds 100).
+
+### B-027 Smaller defects found in the file sweep
+- **Status:** Fixed
+- An empty (0-byte) file was reported as "not a PDF document"; it now says the file is empty and may not have been saved or
+  copied completely.
+- When saving failed (read-only file or folder, disk full), the changes could only be kept by finding Save as: the message
+  now offers to save under another name or folder at once. Verified: a read-only file, Ctrl+S, Yes, new name: saved, tab
+  renamed, nothing unsaved.
+- The main window and the side panel each took a screen device context to read the DPI and never gave it back (Windows has
+  only a few shared ones). Found by a scan of every function for unbalanced create/delete and get/release pairs; the
+  other pairs balance.
+- Checked and correct: a truncated file ("damaged or has no pages"), random data ("not a PDF document"), a PDF with junk
+  after its end (opens), a password-protected file (prompt, wrong password asks again, Cancel returns).

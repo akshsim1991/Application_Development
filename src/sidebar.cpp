@@ -25,7 +25,11 @@ HWND Sidebar::create(HWND parent, HINSTANCE inst) {
                             reinterpret_cast<HMENU>(1), inst, nullptr);
     thumbs_ = CreateWindowExW(0, kThumbClass, L"", WS_CHILD | WS_VSCROLL, 0, 0, 0, 0, hwnd_, nullptr, inst, this);
     LOGFONTW lf{};
-    lf.lfHeight = -MulDiv(9, GetDeviceCaps(GetDC(hwnd_), LOGPIXELSY), 72);
+    {   // the screen's dots per inch (the DC is given back)
+                HDC sdc = GetDC(hwnd_);
+                lf.lfHeight = -MulDiv(9, GetDeviceCaps(sdc, LOGPIXELSY), 72);
+                ReleaseDC(hwnd_, sdc);
+            }
     wcscpy_s(lf.lfFaceName, L"Segoe UI");
     font_ = CreateFontIndirectW(&lf);
     SendMessageW(tree_, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);

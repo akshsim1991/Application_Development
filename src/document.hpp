@@ -101,6 +101,8 @@ public:
 
     // ---- page operations (each one is a single undo step; page numbers are 0-based) ----
     void resetText(int page);   // forget the cached text of a page whose content changed
+    // Keeps a loaded page from being closed to save memory (its objects were changed in memory without writing them).
+    void pinPage(int page);
     void refreshPages() { closePages(); rebuildPages(); }   // drop cached pages and text after content changed
     bool deletePages(std::vector<int> pages);          // refuses to delete every page
     bool insertBlankPage(int after, int templatePage); // `after` = -1 inserts at the start
@@ -148,6 +150,13 @@ private:
     void trimUndo();
     std::vector<FPDF_PAGE> pages_;
     std::vector<FPDF_TEXTPAGE> texts_;
+    // Loaded pages are kept for reuse, the most recently used ones only: a long document read to the end would otherwise
+    // keep every page in memory.
+    std::vector<unsigned> lastUse_;
+    std::vector<char> pinned_;
+    unsigned useTick_ = 0;
+    void closePage(int i);
+    void trimPages(int keep);
 
     FPDF_FORMHANDLE form_ = nullptr;
     struct FormInfo;

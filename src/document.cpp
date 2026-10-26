@@ -139,6 +139,8 @@ void Document::closePages() {
     }
     texts_.clear();
     pages_.clear();
+    lastUse_.clear();
+    pinned_.clear();
 }
 
 std::wstring Document::title() const {
@@ -215,7 +217,12 @@ std::wstring Document::describe(OpenResult r, const std::wstring& path) {
     switch (r) {
         case OpenResult::FileUnreadable: return name + L" could not be read. It may have been moved, deleted, or be in use.";
         case OpenResult::TooLarge: return name + L" is too large to open (over 4 GB).";
-        case OpenResult::NotPdf: return name + L" is not a PDF document.";
+        case OpenResult::NotPdf: {
+            WIN32_FILE_ATTRIBUTE_DATA fa{};
+            if (GetFileAttributesExW(path.c_str(), GetFileExInfoStandard, &fa) && fa.nFileSizeLow == 0 && fa.nFileSizeHigh == 0)
+                return name + L" is empty (0 bytes): there is nothing in it to open. It may not have been saved or copied completely.";
+            return name + L" is not a PDF document.";
+        }
         case OpenResult::PasswordNeeded: return name + L" is protected. Enter the password to open it.";
         case OpenResult::WrongPassword: return L"That password did not open " + name + L".";
         case OpenResult::Unsupported: return name + L" uses an encryption method that is not supported.";
@@ -224,13 +231,45 @@ std::wstring Document::describe(OpenResult r, const std::wstring& path) {
     }
 }
 
+namespace { constexpr int kKeepPages = 64; }   // loaded pages kept at most (a few MB of text and drawing data each at worst)
+
 FPDF_PAGE Document::page(int i) {
     if (i < 0 || i >= pageCount()) return nullptr;
+    if (lastUse_.size() != pages_.size()) { lastUse_.assign(pages_.size(), 0); pinned_.assign(pages_.size(), 0); }
     if (!pages_[i]) {
+        trimPages(i);
         pages_[i] = pdfium::api().FPDF_LoadPage(doc_, i);
         if (pages_[i] && form_) pdfium::api().FORM_OnAfterLoadPage(pages_[i], form_);
     }
+    lastUse_[i] = ++useTick_;
     return pages_[i];
+}
+
+void Document::pinPage(int i) {
+    if (lastUse_.size() != pages_.size()) { lastUse_.assign(pages_.size(), 0); pinned_.assign(pages_.size(), 0); }
+    if (i >= 0 && i < static_cast<int>(pinned_.size())) pinned_[i] = 1;
+}
+
+void Document::closePage(int i) {
+    const auto& api = pdfium::api();
+    if (texts_[i]) { api.FPDFText_ClosePage(texts_[i]); texts_[i] = nullptr; }
+    if (pages_[i]) {
+        if (form_) api.FORM_OnBeforeClosePage(pages_[i], form_);
+        api.FPDF_ClosePage(pages_[i]);
+        pages_[i] = nullptr;
+    }
+}
+
+// Before page `keep` is loaded: when too many pages are loaded, the ones unused longest are closed (never `keep` or a
+// pinned page). Down to three quarters, so this does not run for every new page.
+void Document::trimPages(int keep) {
+    std::vector<std::pair<unsigned, int>> loaded;
+    for (size_t k = 0; k < pages_.size(); ++k)
+        if (pages_[k] && static_cast<int>(k) != keep && !pinned_[k]) loaded.push_back({lastUse_[k], static_cast<int>(k)});
+    if (static_cast<int>(loaded.size()) < kKeepPages) return;
+    std::sort(loaded.begin(), loaded.end());
+    const size_t drop = loaded.size() - static_cast<size_t>(kKeepPages * 3 / 4);
+    for (size_t k = 0; k < drop; ++k) closePage(loaded[k].second);
 }
 
 void Document::resetText(int i) {

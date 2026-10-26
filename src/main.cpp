@@ -621,6 +621,11 @@ bool saveDocument(Document& d, const std::wstring& path) {
         case SaveResult::DiskFull: msg = L" could not be saved because the disk is full. Free some space and try again."; break;
         default: msg = L" could not be saved: the document could not be prepared for writing."; break;
     }
+    if (r == SaveResult::CannotWrite || r == SaveResult::DiskFull) {   // the changes are still here: offer another place
+        const std::wstring q = L"\"" + name + L"\"" + msg + L"\n\nSave it under another name or in another folder instead?";
+        if (MessageBoxW(app.wnd, q.c_str(), kAppName, MB_YESNO | MB_ICONWARNING) == IDYES) return saveAsDialog(d);
+        return false;
+    }
     MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
     return false;
 }
@@ -5002,7 +5007,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_CREATE: {
             app.wnd = h;
             LOGFONTW lf{};
-            lf.lfHeight = -MulDiv(10, GetDeviceCaps(GetDC(h), LOGPIXELSY), 72);
+            {   // the screen's dots per inch (the DC is given back)
+                HDC sdc = GetDC(h);
+                lf.lfHeight = -MulDiv(10, GetDeviceCaps(sdc, LOGPIXELSY), 72);
+                ReleaseDC(h, sdc);
+            }
             wcscpy_s(lf.lfFaceName, L"Segoe UI");
             app.font = CreateFontIndirectW(&lf);
             lf.lfWeight = FW_BOLD;

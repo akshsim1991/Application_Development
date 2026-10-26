@@ -1262,7 +1262,7 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
     if (!pg) return g;
     // the picked objects are remembered by number while they are moved: split the text that writing the page again would
     // split now, so the numbers stay right
-    if (contentgen::prepare(d.handle(), pg)) d.resetText(page);
+    if (contentgen::prepare(d.handle(), pg)) { d.resetText(page); d.pinPage(page); }   // kept loaded: the split is not written yet
     const auto& api = pdfium::api();
     auto bounds = [&](const std::vector<int>& idx) {
         float L = 1e9f, B = 1e9f, R = -1e9f, T = -1e9f;

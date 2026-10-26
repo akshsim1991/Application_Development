@@ -313,4 +313,14 @@ features.
   of 145% on a letter page at 1280 px).
 - **Fix:** when closing a tab ends Side by side, the remaining document is fitted to the window width again.
 - **Verified:** five.pdf and mixed.pdf side by side, Ctrl+W on either one: the other fills the window at fit width (145%);
-  closing a third, unrelated tab still leaves Side by side as it was.
+  closing a third, unrelated tab leaves Side by side as it was (after B-029).
+
+### B-029 Closing a tab to the left of the current one switched to another document
+- **Status:** Fixed
+- **Root cause:** after closing any tab, the tab now at the closed position was made the current one, even when the closed
+  tab was not the current one. With word, five and mixed open and mixed shown, closing word showed five. In Side by side
+  (mixed next to five) this put five on both sides.
+- **Fix:** closing a tab that is not the current one leaves the current document on screen (only its position in the tab
+  list moves); closing the current tab still shows the next one.
+- **Verified:** three tabs, mixed current, click the cross on word: mixed stays, the tab bar shows five and mixed, mixed
+  highlighted; Ctrl+W then shows five at fit width. In Side by side (mixed and five), closing word: mixed left, five right.

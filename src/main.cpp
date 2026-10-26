@@ -78,7 +78,7 @@ struct App {
     std::wstring pendingPicture, pendingStamp;
     std::vector<std::wstring> handedOver;             // files from a second launch, opened once its message has returned
     COLORREF pendingStampColour = RGB(0xE5, 0x39, 0x35);
-    bool fullscreen = false;
+    bool fullscreen = false, presenting = false;      // presenting: full screen, one page at a time (F5)
     WINDOWPLACEMENT savedPlace{sizeof(WINDOWPLACEMENT)};
     LONG savedStyle = 0;
     bool pictureHintShown = false;
@@ -2420,7 +2420,13 @@ void signDocument(Document& d) {
 
 
 void setFullscreen(bool on, bool presentation) {
-    if (on == app.fullscreen) { if (on && presentation) app.viewer.fitPage(); return; }
+    app.presenting = on && presentation;
+    app.viewer.setPresenting(app.presenting);
+    const int keep = activeDoc() ? app.viewer.currentPage() : -1;   // the page being read stays on screen
+    if (on == app.fullscreen) {
+        if (on && presentation) { app.viewer.setLayout(0, app.cover); app.viewer.fitPage(); if (keep >= 0) app.viewer.goToPage(keep); }
+        return;
+    }
     if (on) {
         GetWindowPlacement(app.wnd, &app.savedPlace);
         app.savedStyle = GetWindowLong(app.wnd, GWL_STYLE);
@@ -2446,6 +2452,7 @@ void setFullscreen(bool on, bool presentation) {
     else if (!on) app.viewer.setLayout(app.layout, app.cover);
     if (on) { if (presentation) app.viewer.fitPage(); else app.viewer.fitWidth(); }
     else if (activeDoc()) app.viewer.fitWidth();
+    if (keep >= 0) app.viewer.goToPage(keep);
 }
 
 void startStamp(const std::wstring& text, COLORREF col) {
@@ -5295,6 +5302,13 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
             if (w == VK_F1) { openUserGuide(); return 0; }
             if (!d) return 0;
+            if (app.presenting && !ctrl) {   // slides: forward and back by whole pages
+                switch (w) {
+                    case VK_RIGHT: case VK_DOWN: case VK_NEXT: case VK_RETURN: app.viewer.stepPage(1); return 0;
+                    case VK_SPACE: app.viewer.stepPage(shift ? -1 : 1); return 0;
+                    case VK_LEFT: case VK_UP: case VK_PRIOR: case VK_BACK: app.viewer.stepPage(-1); return 0;
+                }
+            }
             switch (w) {
                 case VK_F11: setFullscreen(!app.fullscreen, false); return 0;
                 case VK_F5: setFullscreen(true, true); return 0;
@@ -5314,6 +5328,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     else if (app.tool != Viewer::Tool::None) setTool(app.tool);
                     else { app.viewer.clearSelection(); app.viewer.clearAnnotSelection(); }
                     return 0;
+                case VK_RIGHT: case VK_LEFT: app.viewer.stepPage(w == VK_RIGHT ? 1 : -1); return 0;
                 case VK_NEXT: app.viewer.pageKey(1); return 0;
                 case VK_PRIOR: app.viewer.pageKey(-1); return 0;
                 case VK_HOME: app.viewer.goToPage(0); return 0;

@@ -452,3 +452,18 @@ features.
 - **Verified:** five.pdf, a redaction mark drawn over two lines, the file replaced on disk by word.pdf, … > Reload from
   disk: the old build shows the red mark over word.pdf's text; the fixed build shows the new page with no mark. A search
   for "fusion" is run again on the new content ("No results").
+
+### B-041 Presentation mode: arrows and clicks did not turn pages, and leaving it lost the place
+- **Status:** Fixed
+- **Root cause:** the program did not know a presentation was running (only that it was full screen), so slides were
+  scrolled like a document: Right and Left did nothing (they did nothing outside presentations either), Down moved 60
+  pixels, the wheel scrolled part of a page, a click started a text selection; Space worked only because 400 pixels
+  happened to reach the next page. On leaving full screen or a presentation, the restored layout and zoom put the view
+  wherever the old scroll position fell, often a blank lower part of some page.
+- **Fix:** in a presentation, Right, Down, Page Down, Space and Enter go to the next page; Left, Up, Page Up, Backspace
+  and Shift+Space to the previous one; a click goes forward (links and form fields still take their clicks); each wheel
+  notch turns one page. Outside presentations, Left and Right turn pages. Entering or leaving full screen or a
+  presentation keeps the page being read.
+- **Verified:** five.pdf, F5 then Right, Right, Left, Down, click, wheel down, wheel up: pages 2, 3, 2, 3, 4, 5, 4
+  (pdftotext confirms each page's first line). Right twice in the normal view: page 3; F5 starts there; Right, Esc: the
+  normal view shows page 4 (before: a blank area); F11 and Esc: page 4 again. Guide and README list the keys.

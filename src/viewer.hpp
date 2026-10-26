@@ -77,6 +77,7 @@ public:
     // The next / previous page, or spread in the two-page layout (dir = +1 or -1).
     void stepPage(int dir);
     void pageKey(int dir);           // Page Down / Page Up: one screen, or to the next page when it starts within that screen
+    void setPresenting(bool on) { presenting_ = on; wheelAcc_ = 0; }   // a click or a wheel notch turns the page
     int layout() const { return layout_; }
     bool cover() const { return cover_; }
     std::function<void(int from, int to)> onJump;                 // goToPage moved to another page
@@ -176,6 +177,8 @@ private:
     int selAnnotPage_ = -1, selAnnotIndex_ = -1;
     bool formFocus_ = false, formCapture_ = false;   // a form field has the keyboard / is being pressed
     int formPage_ = 0;
+    bool presenting_ = false;
+    int wheelAcc_ = 0;                                // presentation: wheel movement not yet a whole notch
     int formFieldAt(int cx, int cy, int& page, annot::PointD& pt) const;   // field type under the point, or -1
     int anchorPage_ = 0, anchorChar_ = 0;
     void (*onChange_)(void*) = nullptr;

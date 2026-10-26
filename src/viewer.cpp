@@ -1017,6 +1017,12 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_MOUSEWHEEL: {
             if (!doc_) return 0;
             int delta = GET_WHEEL_DELTA_WPARAM(w);
+            if (presenting_ && !(GET_KEYSTATE_WPARAM(w) & MK_CONTROL)) {   // one page per notch, never half a page
+                wheelAcc_ += delta;
+                while (wheelAcc_ >= WHEEL_DELTA) { wheelAcc_ -= WHEEL_DELTA; stepPage(-1); }
+                while (wheelAcc_ <= -WHEEL_DELTA) { wheelAcc_ += WHEEL_DELTA; stepPage(1); }
+                return 0;
+            }
             if (GET_KEYSTATE_WPARAM(w) & MK_CONTROL) {
                 // zoom around the mouse pointer; 10 % per wheel notch, in proportion for finer wheels and touchpads
                 POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
@@ -1112,6 +1118,10 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     else if (onUri) onUri(uri);
                     return 0;
                 }
+            }
+            if (presenting_) {   // a click turns to the next page, unless it is meant for a form field
+                int fpg = 0; annot::PointD fpt;
+                if (!(doc_->hasForm() && (formFocus_ || formFieldAt(cx, cy, fpg, fpt) >= 0))) { stepPage(1); return 0; }
             }
             clearSelection();
             clearAnnotSelection();

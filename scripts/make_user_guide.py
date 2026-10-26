@@ -278,7 +278,7 @@ story += bullets([
     "Open files with <b>Ctrl+O</b>, by dragging them onto the window, or from Explorer (“Open with” Feather PDF). A second file opens in a new tab of the same window.",
     "Move through the document with the scroll bar, the mouse wheel, PgUp / PgDn, Home / End, or by typing a page number in the page box.",
     "Zoom with the toolbar, Ctrl+wheel or Ctrl+plus / minus. Ctrl+2 fits the width, Ctrl+0 fits the page, Ctrl+1 shows the actual size.",
-    "Choose single page, continuous or two-page layout in … > Page layout. Full screen is F11, presentation mode is F5.",
+    "Choose single page, continuous or two-page layout in … > Page layout. Full screen is F11, presentation mode is F5: in a presentation a click, the wheel, Space, Enter, Page Down or the arrow keys move a whole page at a time, and Esc ends it on the page you reached.",
     "Light, dark or Windows theme, and normal, dark or dimmed page colours, are in the … menu.",
     "Back and forward (Alt+Left / Alt+Right) return to where you were after following a link or jumping to a page.",
     "Feather remembers the page you were reading in every file and opens it there next time.",
@@ -449,7 +449,7 @@ story += [P("6. Keyboard shortcuts", "h1")]
 keys = [
     ("Files and tabs", [("Ctrl+O", "Open"), ("Ctrl+S", "Save"), ("Ctrl+Shift+S", "Save as"), ("Ctrl+W", "Close tab"), ("Ctrl+Tab", "Next tab"),
                         ("Ctrl+P", "Print (with preview)"), ("Ctrl+D", "Document properties"), ("F1", "This user guide"), ("Ctrl+Q", "Quit")]),
-    ("Moving around", [("PgUp / PgDn", "Previous / next page"), ("Home / End", "First / last page"), ("Ctrl+G", "Go to page"),
+    ("Moving around", [("PgUp / PgDn", "Previous / next page"), ("Left / Right", "Previous / next page"), ("Home / End", "First / last page"), ("Ctrl+G", "Go to page"),
                        ("Alt+Left / Alt+Right", "Back / forward"), ("Ctrl+B", "Bookmarks panel"), ("Ctrl+Shift+B", "Thumbnails panel")]),
     ("View", [("Ctrl+2", "Fit width"), ("Ctrl+0", "Fit page"), ("Ctrl+1", "Actual size"), ("Ctrl+wheel", "Zoom"), ("Ctrl+L / Ctrl+R", "Rotate view"),
               ("F11", "Full screen"), ("F5", "Presentation")]),

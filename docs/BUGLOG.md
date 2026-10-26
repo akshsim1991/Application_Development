@@ -196,6 +196,13 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 - **Verified:** before: 2 of 20 files failed in poppler; after: 60 files × poppler (user and owner password) × qpdf, no
   failure. Smoke test "25 protected files all open with both passwords".
 
+### B-017 Long explanations in dialogs were cut off (About, and every form with a note)
+- **Status:** Fixed
+- **Root cause:** a dialog note was made as tall as its number of line breaks, so a paragraph that wraps over several lines
+  lost its last lines (About ended in the middle of "Free to use and share, always").
+- **Fix:** the note is measured as the dialog will draw it, wrapped at the dialog's width.
+- **Verified:** About shows all of its text (screenshot), with "Version 2.14.2, built 26 October 2026".
+
 ## Found, not yet corrected
 
 ### O-001 Clicking beside the text with Edit text / Edit paragraph shows a message box every time

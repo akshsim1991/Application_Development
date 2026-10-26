@@ -1,14 +1,19 @@
 ; Inno Setup script for Feather PDF. Build with: ISCC installer\FeatherPDF.iss  (after building FeatherPDF.exe)
 #define AppName "Feather PDF"
-#define AppVersion "2.13.0"
 #define AppExe "FeatherPDF.exe"
 #define BuildDir "..\build"
+; the version comes from the program itself (CMakeLists.txt sets it), so the two cannot differ
+#define AppVersion GetStringFileInfo(AddBackslash(SourcePath) + BuildDir + "\" + AppExe, "ProductVersion")
+#if AppVersion == ""
+  #error FeatherPDF.exe has no version: build it first
+#endif
 
 [Setup]
 AppId={{B6F5A1E2-7D43-4C8E-9A5B-FEA7E2C0D913}
 AppName={#AppName}
 AppVersion={#AppVersion}
 AppVerName={#AppName} {#AppVersion}
+VersionInfoVersion={#AppVersion}
 AppPublisher=Akshaya Simha
 DefaultDirName={code:DefaultDir}
 DefaultGroupName={#AppName}

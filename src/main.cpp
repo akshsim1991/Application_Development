@@ -47,6 +47,7 @@
 #include "printing.hpp"
 #include "pdfa.hpp"
 #include "fontlist.hpp"
+#include "buildinfo.hpp"
 #include "inlineedit.hpp"
 #include "icons.hpp"
 
@@ -2630,7 +2631,7 @@ void applyTheme() {
 // ---- About and Settings ----
 void showAbout() {
     std::vector<FormField> f(1);
-    f[0] = {FormField::Note, L"", {}, L"Feather PDF\nVersion 2.13.0\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
+    f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L", built ") + buildDate() + L"\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
     showForm(app.wnd, app.inst, L"About Feather PDF", f, L"!Close");
 }
 

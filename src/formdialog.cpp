@@ -28,10 +28,15 @@ void layout(HWND h, State* st) {
         FormField& f = (*st->fields)[i];
         HWND ctl = nullptr;
         if (f.kind == FormField::Note) {
-            int lines = 1;
-            for (wchar_t c : f.text) if (c == L'\n') ++lines;
-            const int nh = unit * (lines + 1) + unit / 2;
-            ctl = CreateWindowExW(0, L"STATIC", f.text.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT, pad, y, w - 2 * pad, nh, h, nullptr, st->inst, nullptr);
+            // as tall as the text is when wrapped at the dialog's width (long lines wrap, not only the line breaks count)
+            RECT tr{0, 0, w - 2 * pad, 0};
+            HDC mdc = GetDC(h);
+            HGDIOBJ mo = SelectObject(mdc, font);
+            DrawTextW(mdc, f.text.c_str(), -1, &tr, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EXPANDTABS);
+            SelectObject(mdc, mo);
+            ReleaseDC(h, mdc);
+            const int nh = static_cast<int>(tr.bottom) + unit / 2;
+            ctl = CreateWindowExW(0, L"STATIC", f.text.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX, pad, y, w - 2 * pad, nh, h, nullptr, st->inst, nullptr);
             y += nh + unit / 2;
         } else if (f.kind == FormField::Check) {
             ctl = CreateWindowExW(0, L"BUTTON", f.label.c_str(), WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX, pad, y, w - 2 * pad, unit + 6, h,

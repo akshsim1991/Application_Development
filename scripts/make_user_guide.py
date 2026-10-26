@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.13"
+VERSION = "2.14.2"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -197,17 +197,18 @@ story += [table([["", ""],
                  ["Your work is safe", "Unsaved changes are kept in the background and offered again after a crash"]],
                 [38, 132], header=False)]
 story += [P("What's new in %s" % VERSION, "h2")]
+story += [P("Version %s is a quality release: every reported problem was traced to its cause, fixed and tested, and a "
+            "search for hidden defects found and fixed more. The full list is in the bug log that comes with the source." % VERSION)]
 story += bullets([
-    "<b>Edit text where it is on the page.</b> Click a line or a paragraph and type in the box that opens right over it, in the same font, size and colour.",
-    "<b>Side by side, done properly.</b> Both documents get every tool and the right-click menu; scroll them together or separately; left and right or top and bottom.",
-    "<b>Picture tools.</b> Turn, flip, crop, replace, adjust brightness and contrast, make black and white, save as PNG, paste and change the stacking order.",
-    "<b>Print preview</b> with a scroll bar and sheet numbers, greyscale and two-sided printing, and the printer's own Properties dialog.",
-    "<b>Privacy and archiving.</b> Remove hidden data with a report of what was removed; save PDF/A-2b copies for long-term archiving.",
-    "<b>More page tools.</b> Reverse the order, remove blank pages, find duplicates, headers and footers, background colour.",
-    "<b>Forms.</b> Radio buttons, list boxes and date fields; reset a form; flatten a completed one.",
-    "<b>Comments.</b> Polygons, clouds, callouts and date stamps; flatten comments into the page.",
-    "<b>Fonts report.</b> See every font a PDF uses and which pages are scans that need text recognition.",
-    "<b>Text and Markdown to PDF</b>, a redesigned protractor, and new, sharper toolbar icons.",
+    "<b>Editing keeps the page as it was.</b> Edit paragraph and Edit text break lines exactly where the page will, in the document's own font; "
+    "applied text keeps its font, size, colour, baselines and justification. New letters a document's font lacks are set in the same installed font. "
+    "A paragraph that grows moves the text below it down instead of covering it.",
+    "<b>Other text no longer shifts</b> when you edit a page: justified and letter-spaced lines elsewhere keep their exact places.",
+    "<b>Zoom follows the mouse pointer:</b> what is under the pointer stays there while you zoom with Ctrl and the wheel.",
+    "<b>One Print window</b> with a live preview of every sheet; the preview follows the page range as you type.",
+    "<b>Password protection</b> is reliable: before, about one protected file in ten could not be opened.",
+    "<b>PDF/A</b> keeps spacing and kerning when it replaces fonts, and no longer turns pages into pictures needlessly.",
+    "<b>The … menu</b> opens without running a command by accident and no longer repeats the toolbar.",
 ])
 story += [PageBreak()]
 
@@ -248,7 +249,7 @@ icons = [
     ("zoomout", "Zoom out", "Makes the pages smaller.", "Ctrl+−"),
     ("zoomin", "Zoom in", "Makes the pages larger.", "Ctrl++"),
     ("search", "Search", "Opens the search bar; every match is highlighted. F3 and Shift+F3 step through them.", "Ctrl+F"),
-    ("more", "More (…)", "Files, printing and print preview, view options, theme, side by side, settings and About.", ""),
+    ("more", "More (…)", "Files, printing, view options, theme, side by side, settings and About.", ""),
 ]
 rows = [["Icon", "Name", "What it does", "Key"]]
 for key, name, what, sc in icons:
@@ -299,14 +300,18 @@ story += bullets([
 
 story += [P("Editing text in place", "h2")]
 story += [P("Choose <b>Edit PDF > Edit text</b> (Ctrl+E) for a single line, or <b>Edit paragraph</b> (F2) for a whole paragraph, "
-            "then click the text. An edit box opens exactly over it, in a matching font, size and colour, with the cursor where you clicked. "
-            "Type your changes directly.")]
+            "then click the text. An edit box opens exactly over it, on the same baseline, in the document's own font when it is installed "
+            "(else a matching one), at the same size and colour, with the cursor where you clicked. Lines in the box break where they will "
+            "break on the page. Type your changes directly.")]
 story += [picture("para.png", 160, "Editing a paragraph in place, with the style bar above it.")]
 story += bullets([
     "For paragraphs, the <b>style bar</b> above the box changes the font, size, bold, italic, colour and alignment. The box shows the result at once.",
     "<b>Enter</b> applies a line; <b>Ctrl+Enter</b> or <b>Apply</b> applies a paragraph. <b>Esc</b> cancels.",
     "Clicking anywhere else applies the change, so you can click straight on the next line to keep editing.",
-    "The paragraph is set again to fit the same width. Find and replace (Ctrl+Shift+H) changes text across the whole document.",
+    "The paragraph is set again in the same width and on the same baselines, in its own font, size and colour; a justified paragraph stays justified. "
+    "Letters the document's font does not contain are set in the same font installed on your PC (or the closest standard font).",
+    "When a paragraph gets longer, the text below it moves down. If the page has no room for it, Feather PDF says so and leaves the page unchanged.",
+    "Find and replace (Ctrl+Shift+H) changes text across the whole document.",
 ])
 
 story += [P("Pictures", "h2")]
@@ -357,13 +362,14 @@ story += bullets([
 ])
 
 story += [P("Printing", "h2")]
-story += [P("Press <b>Ctrl+P</b>. Choose the printer, the pages, copies, how many pages per sheet (1, 2, 4, 6 or 9), fit or actual size, "
-            "orientation, colour or black and white, and one-sided or two-sided printing. Tick <b>Open the printer's own settings</b> "
-            "to change paper trays and other printer options first.")]
-story += [picture("print.png", 140, "The Print dialog.")]
-story += [P("With <b>Show a preview first</b> ticked, or with <b>… > Print preview</b> (Ctrl+Shift+P), you see every sheet exactly as it will "
-            "print. Move through the sheets with Previous / Next, the scroll bar, the mouse wheel or the arrow keys, or type a sheet number.")]
-story += [picture("preview.png", 140, "Print preview with two pages per sheet.")]
+story += [P("Press <b>Ctrl+P</b>. One window holds everything: the settings on the left and, on the right, every sheet exactly as "
+            "it will print. All pages are shown at first; type pages such as <b>1-3, 5, 8-</b> and the preview follows as you type. "
+            "Choose the printer, copies, how many pages per sheet (1, 2, 4, 6 or 9), fit or actual size, orientation, colour or "
+            "black and white, and one-sided or two-sided printing; the preview changes at once. <b>Printer settings</b> opens the "
+            "printer's own options, such as the paper tray. Scroll through the sheets with the scroll bar, the mouse wheel or "
+            "Page Up / Page Down; each shows which pages it carries. While a long document prints, a small window counts the "
+            "sheets and <b>Cancel</b> stops the job.")]
+story += [picture("print.png", 150, "The Print window: settings on the left, every sheet as it will print on the right.")]
 
 story += [P("Security, signatures and redaction", "h2")]
 story += bullets([
@@ -418,7 +424,7 @@ features = [
                "Find blanks in flat forms", "Fill copies from a CSV sheet", "Export answers to CSV or Excel", "Reset a form", "Flatten a form"]),
     ("Measuring and comparing", ["Ruler and protractor", "Units and drawing scale", "Rulers on the page", "Keep measurements",
                                  "Side by side (left / right, top / bottom)", "Linked or separate scrolling", "Compare text", "Visual overlay compare"]),
-    ("Printing", ["Print preview with sheet numbers", "1, 2, 4, 6 or 9 pages per sheet", "Fit or actual size", "Greyscale printing",
+    ("Printing", ["Live preview of every sheet while choosing settings", "1, 2, 4, 6 or 9 pages per sheet", "Fit or actual size", "Greyscale printing",
                   "Two-sided printing", "Printer Properties", "Copies and page ranges"]),
     ("Security and privacy", ["AES-256 password protection", "Permission limits", "Digital signatures with time stamps", "Visible signature stamps",
                               "Make your own certificate", "Check signatures", "Redaction with a check", "Remove hidden data with a report"]),
@@ -442,7 +448,7 @@ story += [ft, PageBreak()]
 story += [P("6. Keyboard shortcuts", "h1")]
 keys = [
     ("Files and tabs", [("Ctrl+O", "Open"), ("Ctrl+S", "Save"), ("Ctrl+Shift+S", "Save as"), ("Ctrl+W", "Close tab"), ("Ctrl+Tab", "Next tab"),
-                        ("Ctrl+P", "Print"), ("Ctrl+Shift+P", "Print preview"), ("Ctrl+D", "Document properties"), ("F1", "This user guide"), ("Ctrl+Q", "Quit")]),
+                        ("Ctrl+P", "Print (with preview)"), ("Ctrl+D", "Document properties"), ("F1", "This user guide"), ("Ctrl+Q", "Quit")]),
     ("Moving around", [("PgUp / PgDn", "Previous / next page"), ("Home / End", "First / last page"), ("Ctrl+G", "Go to page"),
                        ("Alt+Left / Alt+Right", "Back / forward"), ("Ctrl+B", "Bookmarks panel"), ("Ctrl+Shift+B", "Thumbnails panel")]),
     ("View", [("Ctrl+2", "Fit width"), ("Ctrl+0", "Fit page"), ("Ctrl+1", "Actual size"), ("Ctrl+wheel", "Zoom"), ("Ctrl+L / Ctrl+R", "Rotate view"),

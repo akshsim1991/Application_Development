@@ -3,8 +3,10 @@
 A free, lightweight PDF viewer and editor for Windows. Free forever: no subscriptions, no trials, no license keys,
 no nag screens, and you may share it with anyone.
 
-Version **2.13.0** is a rebuild from scratch (the 2.12 source was lost; the old installer is kept in the repo root for
-reference). It is a native C++ Win32 application on top of [PDFium](https://pdfium.googlesource.com/pdfium/): one
+Version **2.14.2** is a quality release of the 2.13 rebuild: every reported problem and every defect found while testing
+is recorded with its cause, fix and test in [docs/BUGLOG.md](docs/BUGLOG.md). (2.13 was a rebuild from scratch:
+the 2.12 source was lost; the old installer is kept in the repo root for reference.) The version and the build date show
+in About and in the file's Properties. It is a native C++ Win32 application on top of [PDFium](https://pdfium.googlesource.com/pdfium/): one
 `FeatherPDF.exe` (about 9 MB including the OCR engine) plus `pdfium.dll`, with no runtime other than Windows itself.
 
 ## Features
@@ -38,8 +40,8 @@ and presentation mode, watermark, page numbers, compress (recompresses large pic
 permission limits (written by Feather PDF itself), digital signatures (sign with a Windows certificate or a .pfx file, make your
 own certificate, check the signatures of a document, warning when a signed file was changed), redaction (mark areas / selected text / search results, then apply),
 OCR for scanned pages (Tesseract, adds an invisible text layer; can first list the fonts used and which pages are scans), fonts used in a PDF
-(type, embedded or not, subset, visible or invisible text, pages), read aloud (Windows voices), print (preview, 1-9 pages per
-sheet, greyscale, two-sided, the printer's own Properties dialog), remove hidden data (metadata, attachments, scripts,
+(type, embedded or not, subset, visible or invisible text, pages), read aloud (Windows voices), print (one window with a live
+preview of every sheet, 1-9 pages per sheet, greyscale, two-sided, the printer's own settings, progress with Cancel), remove hidden data (metadata, attachments, scripts,
 hidden comments) with a report of what was removed, save a PDF/A-2b copy for archiving, document properties,
 export as PNG / JPEG pictures, plain text, Markdown, Word (.docx) and Excel (.xlsx / .csv, tables only).
 
@@ -82,7 +84,7 @@ Ctrl+O open · Ctrl+W close tab · Ctrl+Tab next tab · Ctrl+S save · Ctrl+Shif
 Ctrl+F find · F3 / Shift+F3 next / previous match · Ctrl+G go to page · Ctrl+C copy · Ctrl+A select all ·
 Ctrl+B bookmarks · Ctrl+Shift+B thumbnails · Ctrl+H highlight · Ctrl+U underline · Ctrl+Shift+K strikethrough ·
 Ctrl+M comment · Ctrl+E edit text · Del delete selected annotation · Ctrl+P print · Ctrl+D properties ·
-Ctrl+Shift+P print preview · F1 user guide · Ctrl+Shift+U read aloud · F11 full screen · F5 presentation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
+F1 user guide · Ctrl+Shift+U read aloud · F11 full screen · F5 presentation · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
 
 ## Building
 
@@ -101,7 +103,7 @@ Without `third_party/tesseract` the app still builds; "Recognise text (OCR)" the
 ### Installer
 
 ```
-wine "C:\InnoSetup\ISCC.exe" installer\FeatherPDF.iss      # or ISCC on Windows → dist/FeatherPDF-Setup-2.13.0.exe
+wine "C:\InnoSetup\ISCC.exe" installer\FeatherPDF.iss      # or ISCC on Windows → dist/FeatherPDF-Setup-2.14.2.exe
 ```
 
 Installs for the current user without an administrator prompt (or for all users on request), adds Start menu / optional
@@ -109,25 +111,27 @@ desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
 
 ## Testing
 
-`tests/smoke.sh` runs the command line features (export, compress, protect, OCR, sign / check) under Wine against freshly
+`tests/smoke.sh` runs the command line features (export, compress, protect, OCR, sign / check, paragraph editing, PDF/A,
+menus) under Wine against freshly
 generated sample files and checks the results with independent tools (Poppler, pikepdf, python-docx, openpyxl). Set
 `VERAPDF` to the veraPDF command line to also validate the PDF/A output (`VERAPDF=/path/to/verapdf tests/smoke.sh`).
-`tests/make_samples.py` creates the samples.
+`tests/make_samples.py` creates the samples; `tests/paracheck.py` compares word positions for the editing tests.
 
 ## Code map
 
 `src/main.cpp` window, tabs, toolbar, menus, commands · `viewer.*` page view, selection, tools, form input ·
 `document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
-page numbers, text boxes, text editing · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
+page numbers, text boxes, text and paragraph editing · `contentgen.*` writing page content without losing text spacing ·
+`inlineedit.*` the edit box over the page · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
 `protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
 `formdialog.*` reusable dialogs · `formcreate.*` / `formdata.*` creating and filling form fields · `textpdf.*` text and
-Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` print layout and preview · `pdfa.*` PDF/A-2b · `fontlist.*` fonts report ·
+Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` the Print window, sheet layout and printing · `pdfa.*` PDF/A-2b · `fontlist.*` fonts report ·
 `pdfedit.hpp` small raw PDF edits · `pdfium_api.*` run-time binding to pdfium.dll.
 
-## Not in 2.13 yet
+## Not in 2.14 yet
 
-Booklet and poster printing, spell checking, PDF/UA, and new or edited text in
-non-Western scripts (the built-in Latin fonts are used). Pages made by Redact become pictures. The full status of every
+Booklet and poster printing, spell checking, PDF/UA, and new text in non-Western scripts that the document's own font
+does not already contain (the built-in Latin fonts are used). Pages made by Redact become pictures. The full status of every
 item of the 500-feature list is in `docs/CHECKLIST-500.md`; 2.12 parity is in `docs/PARITY.md`.
 
 ## Third-party software

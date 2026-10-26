@@ -200,7 +200,10 @@ int trackMenu(HMENU m, UINT flags, int x, int y, int reserved, HWND owner, const
         const bool exclude = !IsRectEmpty(&g_menuExclude);
         g_menuExclude = RECT{};
         // TPM_VERTICAL: when the menu does not fit below the button it goes above it, never over it
-        return TrackPopupMenuEx(m, flags | (exclude ? TPM_VERTICAL : 0), x, y, owner, exclude ? &tp : nullptr);
+        if (app.tips) { SendMessageW(app.tips, TTM_ACTIVATE, FALSE, 0); SendMessageW(app.tips, TTM_POP, 0, 0); }   // no tip over the open menu
+        const int r = TrackPopupMenuEx(m, flags | (exclude ? TPM_VERTICAL : 0), x, y, owner, exclude ? &tp : nullptr);
+        if (app.tips) SendMessageW(app.tips, TTM_ACTIVATE, TRUE, 0);
+        return r;
     }
     std::map<UINT, std::wstring> seen;
     ++g_menuCheck.menus;
@@ -5071,19 +5074,23 @@ void layoutHeader(HDC dc, int width) {
     std::vector<int> ws;
     int sum = 0;
     for (const auto& t : app.tabs) {
-        const int w = std::clamp(textWidth(dc, app.font, tabLabel(*t)) + px(14) + px(8) + cs + px(10), px(120), px(240));
+        const int w = std::clamp(textWidth(dc, app.fontBold, tabLabel(*t)) + px(14) + px(8) + cs + px(10), px(120), px(240));   // bold when active
         ws.push_back(w);
         sum += w + px(2);
     }
-    if (!ws.empty() && sum > room) {   // many tabs: all get narrower, as far as a readable minimum
-        const int each = std::max(px(76), room / static_cast<int>(ws.size()) - px(2));
+    if (!ws.empty() && sum > room) {   // many tabs: all get narrower
+        const int each = std::max(px(36), room / static_cast<int>(ws.size()) - px(2));
         for (int& w : ws) w = std::min(w, each);
     }
+    const int limit = capLeft - px(8) - plusW;   // tabs and + never run under the window buttons
     for (int w : ws) {
+        if (x + w > limit) break;   // more tabs than fit even at the narrowest: Ctrl+Tab reaches the rest
         app.tabRects.push_back({x, tabTop, x + w, th});
-        app.closeRects.push_back({x + w - px(10) - cs, mid - cs / 2, x + w - px(10), mid - cs / 2 + cs});
+        const int ci = w < px(64) ? (w - cs) / 2 : w - px(10) - cs;   // the narrowest tabs: the button in the middle
+        app.closeRects.push_back({x + ci, mid - cs / 2, x + ci + cs, mid - cs / 2 + cs});
         x += w + px(2);
     }
+    x = std::min(x, limit);
     app.plusRect = {x + px(4), mid - px(14), x + px(4) + px(28), mid + px(14)};
 
     // the toolbar: file | undo | tool groups ........ page | zoom | find, more
@@ -5131,6 +5138,13 @@ void layoutHeader(HDC dc, int width) {
     placeBox(app.pageBox, app.pageRect, 0);
     placeBox(app.zoomBox, app.zoomRect, px(24));
     syncTips();
+}
+
+// Narrow tabs show their close button only when active or pointed at, leaving the room to the name.
+bool closeShown(size_t i) {
+    if (i >= app.tabRects.size()) return false;
+    const int t = static_cast<int>(i);
+    return app.tabRects[i].right - app.tabRects[i].left >= px(110) || t == app.active || app.hover == C_TAB + t || app.hover == C_TABCLOSE + t;
 }
 
 // a box with rounded top corners, open at the bottom (a tab joined to the toolbar under it)
@@ -5229,12 +5243,15 @@ void paintHeader(HDC dc, const RECT& client) {
         } else if (hov) tabShape(dc, RECT{r.left, r.top, r.right, r.bottom - 1}, P.tabIdle);
         else if (i + 1 < app.tabRects.size() && static_cast<int>(i + 1) != app.active)
             vline(dc, r.right + px(1), r.top + px(8), r.bottom - px(8), P.line);   // between two idle tabs
-        RECT t{r.left + px(14), r.top, app.closeRects[i].left - px(6), r.bottom};
+        const int w = r.right - r.left;
+        const bool showClose = closeShown(i);
+        RECT t{r.left + px(w < px(64) ? 6 : 14), r.top, showClose ? app.closeRects[i].left - px(6) : r.right - px(8), r.bottom};
         SelectObject(dc, act ? app.fontBold : app.font);
         SetTextColor(dc, act ? P.text : P.textDim);
-        DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+        if (!(showClose && w < px(64)))   // a tab only wide enough for its button shows the button alone
+            DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         const bool closeHot = app.hover == C_TABCLOSE + static_cast<int>(i);
-        icons::closeBadge(dc, app.closeRects[i], closeHot ? RGB(0xF0, 0x3E, 0x3E) : RGB(0xD9, 0x30, 0x30));
+        if (showClose) icons::closeBadge(dc, app.closeRects[i], closeHot ? RGB(0xF0, 0x3E, 0x3E) : RGB(0xD9, 0x30, 0x30));
     }
     SelectObject(dc, app.font);
     {
@@ -5589,7 +5606,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             UpdateWindow(h);   // the buttons are laid out when painted: Save and Undo are live for this click
 
             for (size_t i = 0; i < app.closeRects.size(); ++i)
-                if (hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
+                if (closeShown(i) && hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)
                 if (hit(app.tabRects[i], x, y)) { switchTab(static_cast<int>(i)); return 0; }
             if (hit(app.plusRect, x, y)) { app.pressed = C_NEWTAB; SetCapture(h); InvalidateRect(h, nullptr, FALSE); return 0; }

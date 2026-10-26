@@ -467,3 +467,30 @@ features.
 - **Verified:** five.pdf, F5 then Right, Right, Left, Down, click, wheel down, wheel up: pages 2, 3, 2, 3, 4, 5, 4
   (pdftotext confirms each page's first line). Right twice in the normal view: page 3; F5 starts there; Right, Esc: the
   normal view shows page 4 (before: a blank area); F11 and Esc: page 4 again. Guide and README list the keys.
+
+## UI rework (requested points)
+Each point of the request, what was done, and how it was checked (Wine, 1280 x 800 screen; for these checks Wine was set
+to draw window frames itself, `HKCU\Software\Wine\X11 Driver\Decorated=N`, so the window looks as it does on Windows).
+
+| # | Request | Done | Checked |
+|---|---|---|---|
+| - | Tab close button: red circle, white cross | Smooth red badge (drawn 4x and scaled down), brighter when pointed at; narrow tabs show it on the active and pointed-at tab | Zoomed screenshots, light and dark; click closes, tooltip "Close this tab" |
+| 1, 24 | Less space at the top | No Windows caption: the tab row is the title bar (icon, tabs, +, minimise / maximise / close); 40 + 48 px instead of about 30 + 34 + 40 | Drag on the empty row moves the window (0,0 to 60,62); double-click maximises and restores; top edge resizes (y 0 to 58) |
+| 2 | Compact tabs, + button | Tabs fit their name (120 to 240 px), shrink evenly when many are open (to 36 px), never run under the window buttons; + after the last tab | 2, 12 and 26 tabs |
+| 3, 22 | Bigger, consistent icons | 20 px icons, one stroke weight on one grid, scaled with the display | Light, dark, 96 and 144 dpi |
+| 4 | Brighter labels | Labels in the main text colour, not the dimmed one | Dark screenshot |
+| 5, 6, 16, 18 | Spacing, groups, separators, borders | File, Undo / Redo, tools, then page, zoom, find / more at the right, with thin separators; lines under the tab row and the toolbar and over the status bar | Screenshots |
+| 7 | Active tool highlighted | The menu button of the tool in use is tinted (also Side by side while on) | Rectangle: Annotate tinted; Edit paragraph: Edit PDF tinted; status bar names the tool |
+| 8 | Prominent, editable zoom | A zoom box: type 200 and Enter; its arrow opens the presets and fit options | 200% applied; menu opens below the box |
+| 9 | Navigation arrows with context | Previous / next beside the page box and "of n"; the page box takes a number and Enter; tooltips | Page 3 typed: page 3; 99 typed: "There is no page 99: this document has 5 pages." |
+| 10, 11 | Search placement, bigger … | Find and … together at the right, 36 and 42 px wide, 10 px from the edge | Screenshot |
+| 12 to 16 | Empty workspace, welcome text, Open PDF, drop area, recent files | Start page: title, Open PDF button inside a drop area, hint line, recent files (click opens, right-click removes, Clear list); on short windows the drop area shrinks so recent files stay visible | Light, dark, 144 dpi; opening from the list |
+| 17, 25 | Separation, contrast | New palettes: dark title row, lighter toolbar, darker page surround; light theme likewise | Screenshots |
+| 19 | Larger text | 10.5 pt interface font (was 10), 9 pt status bar, larger start page text | Screenshots |
+| 20 | Status bar | Page n of m, page size with its name (A4, Letter...), the tool in use, Side by side, saved state | Typing a page, choosing a tool, an edit (Unsaved changes) |
+| 21 | Scaling on large displays | Every size is designed at 96 dpi and scaled; fonts are remade when the window moves to a screen with other scaling; first window size and minimum size scale (minimum never larger than the screen) | Wine at 144 dpi |
+| 23 | Readable disabled controls | Disabled grey about 4:1 against the toolbar (was near invisible in dark) | Screenshots with nothing open |
+
+Also found and fixed while doing this: tooltips could sit over an opened menu (they are switched off while a menu is
+open); the active tab's name was cut short (widths are measured in its bold font); the guide's pictures and window
+description were redone for the new layout (`scripts/guide_overview.py` marks the overview).

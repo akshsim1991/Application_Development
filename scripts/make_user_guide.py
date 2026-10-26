@@ -209,6 +209,9 @@ story += bullets([
     "<b>Password protection</b> is reliable: before, about one protected file in ten could not be opened.",
     "<b>PDF/A</b> keeps spacing and kerning when it replaces fonts, and no longer turns pages into pictures needlessly.",
     "<b>The … menu</b> opens without running a command by accident and no longer repeats the toolbar.",
+    "<b>A cleaner window:</b> the tabs sit in the title bar, the toolbar is grouped and highlights the tool in use, the page "
+    "number and zoom can be typed in, a start page offers Open PDF and your recent files, and a status bar shows the page, its "
+    "size and whether there are unsaved changes. Everything scales with the display's text size; the dark theme has more contrast.",
 ])
 story += [PageBreak()]
 
@@ -216,16 +219,24 @@ story += [PageBreak()]
 story += [P("2. The window at a glance", "h1")]
 story += [picture("overview.png", 170, "Feather PDF with a document open and the Pages panel showing.")]
 story += [table([["", "Part", "What it is for"],
-                 ["1", "Tabs", "Every open document has a tab. Click a tab to switch, click its × to close it, click + to open another file."],
-                 ["2", "File buttons", "Open, Save, Undo and Redo. Save is available when the document has unsaved changes."],
-                 ["3", "Tool menus", "Edit PDF, Annotate, Comment, Geometry and Side by side. Each opens a menu of related tools."],
-                 ["4", "Page navigation", "Previous and next page, and the page box: type a page number and press Enter."],
-                 ["5", "Zoom", "Zoom out, the zoom level (click it for preset levels and fit options) and zoom in."],
-                 ["6", "Search and more", "Search the document, and the … menu with everything else: files, printing, view, settings."],
-                 ["7", "Side panel", "Bookmarks and page thumbnails (Ctrl+B / Ctrl+Shift+B). Drag thumbnails to move pages."],
-                 ["8", "Page area", "The document. Select text by dragging; right-click for the context menu."],
-                 ["9", "Scroll bar", "Scroll through the document. The mouse wheel scrolls; Ctrl+wheel zooms."]],
+                 ["1", "Tabs", "The top row is also the window's title bar. Every open document has a tab: click it to switch, click its red "
+                               "\u00d7 to close it, click + to open another file. Drag the empty part of the row to move the window; "
+                               "double-click it to maximise."],
+                 ["2", "Window buttons", "Minimise, maximise (or restore) and close Feather PDF."],
+                 ["3", "File buttons", "Open and Save, then Undo and Redo. Save is available when the document has unsaved changes."],
+                 ["4", "Tool menus", "Edit PDF, Annotate, Comment, Geometry and Side by side. Each opens a menu of related tools. The menu "
+                                     "whose tool is in use is highlighted. On a narrow window only their icons show."],
+                 ["5", "Page navigation", "Previous page, the page box (type a page number and press Enter), the number of pages, next page."],
+                 ["6", "Zoom", "Zoom out, the zoom box (type a percentage and press Enter; its arrow lists preset levels and the fit "
+                               "options) and zoom in."],
+                 ["7", "Find and more", "Search the document, and the \u2026 menu with everything else: files, printing, view, settings."],
+                 ["8", "Side panel", "Bookmarks and page thumbnails (Ctrl+B / Ctrl+Shift+B). Drag thumbnails to move pages."],
+                 ["9", "Page area", "The document. Select text by dragging; right-click for the context menu. The scroll bar is at its right."],
+                 ["10", "Status bar", "The page you are on and its size, the tool in use, and whether there are unsaved changes."]],
                 [8, 32, 130])]
+story += [P("When no document is open, the start page shows an <b>Open PDF</b> button in an area you can also drop files on, "
+            "and the files you opened recently: click one to open it, right-click it to remove it from the list.")]
+story += [picture("start.png", 120, "The start page.")]
 story += [PageBreak()]
 
 # ---------- 3 toolbar icons ----------
@@ -276,8 +287,8 @@ story += [P("4. Working with Feather PDF", "h1")]
 story += [P("Opening and reading", "h2")]
 story += bullets([
     "Open files with <b>Ctrl+O</b>, by dragging them onto the window, or from Explorer (“Open with” Feather PDF). A second file opens in a new tab of the same window.",
-    "Move through the document with the scroll bar, the mouse wheel, PgUp / PgDn, Home / End, or by typing a page number in the page box.",
-    "Zoom with the toolbar, Ctrl+wheel or Ctrl+plus / minus. Ctrl+2 fits the width, Ctrl+0 fits the page, Ctrl+1 shows the actual size.",
+    "Move through the document with the scroll bar, the mouse wheel, PgUp / PgDn, the arrow keys, Home / End, or by typing a page number in the page box.",
+    "Zoom with the toolbar, Ctrl+wheel or Ctrl+plus / minus, or type a percentage in the zoom box. Ctrl+2 fits the width, Ctrl+0 fits the page, Ctrl+1 shows the actual size.",
     "Choose single page, continuous or two-page layout in … > Page layout. Full screen is F11, presentation mode is F5: in a presentation a click, the wheel, Space, Enter, Page Down or the arrow keys move a whole page at a time, and Esc ends it on the page you reached.",
     "Light, dark or Windows theme, and normal, dark or dimmed page colours, are in the … menu.",
     "Back and forward (Alt+Left / Alt+Right) return to where you were after following a link or jumping to a page.",

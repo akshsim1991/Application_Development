@@ -1,4 +1,5 @@
 #include "sigpad.hpp"
+#include <cstdio>
 #include <objbase.h>
 #include <propidl.h>
 #include <algorithm>
@@ -73,7 +74,7 @@ struct Pad {
     HWND wnd = nullptr;
     RECT area{16, 16, 536, 236};
 };
-enum { ID_CLEAR = 1, ID_USE, ID_CANCEL };
+enum { ID_CLEAR = 101, ID_USE, ID_CANCEL };   // not 1 and 2: those are IDOK and IDCANCEL, which Enter and Esc send
 
 LRESULT CALLBACK padProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     auto* p = reinterpret_cast<Pad*>(GetWindowLongPtrW(h, GWLP_USERDATA));
@@ -132,8 +133,8 @@ LRESULT CALLBACK padProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         case WM_COMMAND:
             if (LOWORD(w) == ID_CLEAR) { p->strokes.clear(); InvalidateRect(h, nullptr, FALSE); }
-            else if (LOWORD(w) == ID_USE) { if (!p->strokes.empty()) { p->accepted = true; p->done = true; } }
-            else if (LOWORD(w) == ID_CANCEL) p->done = true;
+            else if (LOWORD(w) == ID_USE || LOWORD(w) == IDOK) { if (!p->strokes.empty()) { p->accepted = true; p->done = true; } }   // Enter
+            else if (LOWORD(w) == ID_CANCEL || LOWORD(w) == IDCANCEL) p->done = true;                                            // Esc
             return 0;
         case WM_CLOSE: p->done = true; return 0;
     }
@@ -163,14 +164,22 @@ bool draw(HWND parent, HINSTANCE inst, const std::wstring& pngPath) {
     auto button = [&](const wchar_t* t, int id, int x, int wd) {
         HWND b = CreateWindowExW(0, L"BUTTON", t, WS_CHILD | WS_VISIBLE | WS_TABSTOP, x, 262, wd, 30, wnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst, nullptr);
         SendMessageW(b, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        return b;
     };
     button(L"Clear", ID_CLEAR, 16, 90);
-    button(L"Use this signature", ID_USE, 318, 140);
+    HWND use = button(L"Use this signature", ID_USE, 318, 140);
     button(L"Cancel", ID_CANCEL, 466, 70);
     EnableWindow(parent, FALSE);
     ShowWindow(wnd, SW_SHOW);
+    SetForegroundWindow(wnd);
+    SetFocus(use);   // the keyboard goes to the pad: Esc cancels, Enter uses the signature
     MSG msg;
     while (!pad.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
+        // Esc and Enter directly: IsDialogMessage does not turn them into Cancel / OK for every window that is not a dialog
+        if (msg.message == WM_KEYDOWN && (msg.hwnd == wnd || IsChild(wnd, msg.hwnd)) && (msg.wParam == VK_ESCAPE || msg.wParam == VK_RETURN)) {
+            SendMessageW(wnd, WM_COMMAND, msg.wParam == VK_ESCAPE ? IDCANCEL : IDOK, 0);
+            continue;
+        }
         if (!IsDialogMessageW(wnd, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
     }
     EnableWindow(parent, TRUE);

@@ -58,7 +58,7 @@ enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COU
 constexpr const wchar_t* kAppName = L"Feather PDF";
 
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; };
-enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_PAGES, C_TOOLS, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
+enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU };
 
 struct App {
     HINSTANCE inst = nullptr;
@@ -129,6 +129,7 @@ bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
 void pagesMenuAction(int cmd, const std::vector<int>& sel);
 void toolsDispatch(int cmd);
+void notice(const std::wstring& text);
 void showMainMenu(const RECT& anchor);
 
 std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"") + d.title(); }
@@ -320,7 +321,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_CLEAR,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -678,10 +679,40 @@ double lineWidth() { return kWidths[app.widthIdx]; }
 
 void applyStyle() { app.viewer.setStyle(drawColor(), lineWidth()); }
 
+// What to do with a tool, shown when it is switched on (tools placed by a command say it themselves).
+const wchar_t* toolHint(Viewer::Tool t) {
+    using T = Viewer::Tool;
+    switch (t) {
+        case T::Comment: return L"Click where the comment should go. Esc stops.";
+        case T::Rectangle: case T::Ellipse: case T::Line: case T::Arrow: return L"Drag on the page to draw. Esc stops.";
+        case T::Pen: return L"Hold the mouse button down and draw. Esc stops.";
+        case T::Redact: return L"Drag a box over each area to remove, then Edit PDF > Redact > Apply redactions. Esc stops.";
+        case T::AddText: return L"Click where the text should start. Esc stops.";
+        case T::EditText: return L"Click a line of text to change it. Esc stops.";
+        case T::EditPara: return L"Click a paragraph to change it. Esc stops.";
+        case T::Link: return L"Drag a box over the text or area that should become a link. Esc stops.";
+        case T::CopyArea: return L"Drag a box around the area to copy as a picture. Esc stops.";
+        case T::CropBox: return L"Drag a box around the part of the page to keep. Esc stops.";
+        case T::TableDelete: return L"Click a table that was inserted with Feather PDF to delete it. Esc stops.";
+        case T::TableEdit: return L"Click a table that was inserted with Feather PDF to change it. Esc stops.";
+        case T::TablePlace: return L"Click where the top-left corner of the table should go. Esc cancels.";
+        case T::Select: return L"Click a picture, paragraph or table to pick it, then drag it or its corners. Esc stops.";
+        case T::Polygon: return L"Click each corner; double-click, or click the first corner again, to finish. Esc stops.";
+        case T::Cloud: return L"Drag a box where the cloud should go. Esc stops.";
+        case T::Callout: return L"Drag from the point to where the text goes. Esc stops.";
+        case T::FormText: case T::FormCheck: case T::FormCombo: case T::FormRadio: case T::FormList: case T::FormDate:
+            return L"Drag a box where the field should go. Esc stops.";
+        case T::Ruler: return L"Drag from one point to another to measure. Esc stops.";
+        case T::Protractor: return L"Click the corner of the angle, then a point on each side. Esc stops.";
+        default: return nullptr;   // Picture, Stamp, PicCrop: the command that starts them explains
+    }
+}
+
 void setTool(Viewer::Tool t) {
     if (app.inlineEd.active()) app.inlineEd.commit();
     app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
     app.viewer.setTool(app.tool);
+    if (const wchar_t* hint = toolHint(app.tool)) notice(hint);
     if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
     applyStyle();
 }
@@ -710,7 +741,7 @@ void markupSelection(annot::Markup kind, bool withComment) {
     if (!d) return;
     auto sel = app.viewer.selectionRects();
     if (sel.empty()) {
-        MessageBoxW(app.wnd, L"Select some text first (drag over it), then choose this again.", kAppName, MB_OK | MB_ICONINFORMATION);
+        notice(L"Select some text first (drag over it), then choose this again.");
         return;
     }
     std::wstring comment;
@@ -1165,7 +1196,7 @@ void showAnnotateMenu(const RECT& anchor) {
     {
         std::wstring saved = signaturePathFwd();
         AppendMenuW(sg, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(sg, MF_STRING | (GetFileAttributesW(saved.c_str()) != INVALID_FILE_ATTRIBUTES ? 0 : MF_GRAYED), N_SIG_CLEAR, L"Use my saved signature");
+        AppendMenuW(sg, MF_STRING | (GetFileAttributesW(saved.c_str()) != INVALID_FILE_ATTRIBUTES ? 0 : MF_GRAYED), N_SIG_SAVED, L"Use my saved signature");
     }
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(sg), L"Signature");
     item(T_PICTURE, L"Insert picture...");
@@ -1224,7 +1255,7 @@ void showAnnotateMenu(const RECT& anchor) {
         case A_CALLOUT: setTool(Viewer::Tool::Callout); break;
         case T_PICTURE: toolsDispatch(cmd); break;
         case N_LINK: startLink(); break;
-        case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: case N_SIG_CLEAR: signatureAction(cmd); break;
+        case N_SIG_TYPE: case N_SIG_DRAW: case N_SIG_PIC: case N_SIG_SAVED: signatureAction(cmd); break;
         case M_DELETE: deleteSelectedAnnotation(); break;
     }
 }
@@ -1377,30 +1408,6 @@ std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* 
 
 void pagesMenuAction(int cmd, const std::vector<int>& sel);
 
-void showPagesMenu(const RECT& anchor) {
-    Document* d = activeDoc();
-    if (!d) return;
-    HMENU m = CreatePopupMenu();
-    auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
-    add(P_DELETE, L"Delete pages...", d->pageCount() > 1);
-    add(P_BLANK, L"Insert a blank page after this one");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    add(P_ROT_R, L"Rotate this page right");
-    add(P_ROT_L, L"Rotate this page left");
-    add(P_ROT_ALL, L"Rotate all pages right");
-    add(P_MOVE, L"Move pages...", d->pageCount() > 1);
-    add(P_CROP, L"Crop pages...");
-    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
-    add(P_INSERT, L"Insert pages from a file...");
-    add(P_MERGE, L"Merge PDFs into the end of this document...");
-    add(P_EXTRACT, L"Extract pages into a new file...");
-    POINT pt{anchor.left, anchor.bottom};
-    ClientToScreen(app.wnd, &pt);
-    int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
-    DestroyMenu(m);
-    pagesMenuAction(cmd, {});
-}
-
 Document* g_formDoc = nullptr;   // the document the open form works on (for validating page lists)
 
 std::vector<int> pagesFromText(Document& d, const std::wstring& t) {
@@ -1419,6 +1426,10 @@ std::wstring badPages(const std::wstring& t) {
     return L"The pages are not valid. Leave the box empty for all pages, or type page numbers and ranges such as 1-3, 5, 8-.";
 }
 
+void splitPdf();
+void newPdfFromPictures();
+void cropByBox();
+
 void pagesMenuAction(int cmd, const std::vector<int>& sel) {
     Document* d = activeDoc();
     if (!d) return;
@@ -1429,6 +1440,9 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
         for (int p : sel) curText += (curText.empty() ? L"" : L",") + std::to_wstring(p + 1);
     }
     switch (cmd) {
+        case P_SPLIT: splitPdf(); break;
+        case P_NEWPDF: newPdfFromPictures(); break;
+        case P_CROPBOX: cropByBox(); break;
         case P_REVERSE: if (d->reversePages()) afterPagesChanged(); break;
         case P_BLANKS: {
             HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
@@ -1898,7 +1912,7 @@ void redactionMenuAction(Document& d, int cmd) {
             break;
         case T_RED_SEL: {
             auto sel = app.viewer.selectionRects();
-            if (sel.empty()) { MessageBoxW(app.wnd, L"Select some text first (drag over it), then choose this again.", kAppName, MB_OK | MB_ICONINFORMATION); break; }
+            if (sel.empty()) { notice(L"Select some text first (drag over it), then choose this again."); break; }
             for (const auto& pr : sel) for (const auto& r : pr.rects) d.redactions.push_back({pr.page, r.left, r.bottom, r.right, r.top});
             app.viewer.clearSelection();
             app.viewer.setMarks(&d.redactions);
@@ -2193,7 +2207,7 @@ void startPicture() {
     if (app.tool != Viewer::Tool::Picture) setTool(Viewer::Tool::Picture);
     if (!app.pictureHintShown) {
         app.pictureHintShown = true;
-        MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the picture should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+        notice(L"Click on the page where the top-left corner of the picture should go. Esc cancels.");
     }
 }
 
@@ -2384,7 +2398,7 @@ void startStamp(const std::wstring& text, COLORREF col) {
     app.pendingStamp = text;
     app.pendingStampColour = col;
     if (app.tool != Viewer::Tool::Stamp) setTool(Viewer::Tool::Stamp);
-    MessageBoxW(app.wnd, L"Now click on the page where the stamp should go (its centre lands on the click). Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+    notice(L"Click on the page where the stamp should go (its centre lands on the click). Esc cancels.");
 }
 
 void notesSummary(Document& d) {
@@ -3234,13 +3248,13 @@ void tableInsert() {
     app.pendingTable = pageobj::TableSpec{};
     if (!tableDialog(app.pendingTable, L"Insert table", L"Next")) return;
     if (app.tool != Viewer::Tool::TablePlace) setTool(Viewer::Tool::TablePlace);
-    MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the table should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+    
 }
 
 void tableEdit() {
     if (!activeDoc()) return;
     if (app.tool != Viewer::Tool::TableEdit) setTool(Viewer::Tool::TableEdit);
-    MessageBoxW(app.wnd, L"Click a table that was inserted with Feather PDF. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+    
 }
 
 void tableDelete() { if (activeDoc() && app.tool != Viewer::Tool::TableDelete) setTool(Viewer::Tool::TableDelete); }
@@ -3317,7 +3331,7 @@ void signatureAction(int cmd) {
     if (!d) return;
     const std::wstring png = signaturePath();
     bool ok = false;
-    if (cmd == N_SIG_CLEAR) ok = GetFileAttributesW(png.c_str()) != INVALID_FILE_ATTRIBUTES;   // the one made last time
+    if (cmd == N_SIG_SAVED) ok = GetFileAttributesW(png.c_str()) != INVALID_FILE_ATTRIBUTES;   // the one made last time
     else if (cmd == N_SIG_TYPE) {
         std::wstring name;
         if (!askText(L"Signature", L"Type your name as you sign it.", false, name, L"") || name.empty()) return;
@@ -3336,13 +3350,13 @@ void signatureAction(int cmd) {
         ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
         if (!GetOpenFileNameW(&ofn)) return;
         ok = CopyFileW(buf.data(), (png + L".src").c_str(), FALSE) != 0;
-        if (ok) { app.pendingPicture = buf.data(); setTool(Viewer::Tool::Picture); MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the signature should go. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+        if (ok) { app.pendingPicture = buf.data(); setTool(Viewer::Tool::Picture); notice(L"Click on the page where the top-left corner of the signature should go. Esc cancels."); return; }
     }
     if (!ok) { MessageBoxW(app.wnd, L"The signature could not be made.", kAppName, MB_OK | MB_ICONWARNING); return; }
     app.pendingPicture = png;
     app.pendingPictureWidth = 150;
     if (app.tool != Viewer::Tool::Picture) setTool(Viewer::Tool::Picture);
-    MessageBoxW(app.wnd, L"Now click on the page where the top-left corner of the signature should go. Esc cancels.\n\nThis is a picture of your handwriting. For a signature that proves who signed, use Edit PDF > Digital signatures.", kAppName, MB_OK | MB_ICONINFORMATION);
+    notice(L"Click where the top-left corner of the signature should go (a picture of your handwriting; for proof of who signed, use Digital signatures).");
 }
 
 // ---- geometry ----
@@ -3477,7 +3491,7 @@ void pictureAction(int cmd) {
         case PX_CROP:
             app.cropPic.page = page; app.cropPic.obj = obj;
             setTool(Viewer::Tool::PicCrop);
-            MessageBoxW(app.wnd, L"Drag a box around the part of the picture to keep. Esc cancels.", kAppName, MB_OK | MB_ICONINFORMATION);
+            notice(L"Drag a box around the part of the picture to keep. Esc cancels.");
             return;
         case PX_ADJUST: {
             std::vector<FormField> f(3);
@@ -5746,7 +5760,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         RECT r{0, 0, 10, 10};
         const bool doc = activeDoc() != nullptr;
         showMainMenu(r); showToolsMenu(r); showAnnotateMenu(r); showCommentMenu(r); showGeometryMenu(r);
-        showSideBySideMenu(r); showZoomMenu(r); showPagesMenu(r); openRecentMenu(POINT{0, 0});
+        showSideBySideMenu(r); showZoomMenu(r); openRecentMenu(POINT{0, 0});
         if (doc) {
             showThumbMenu(0, POINT{0, 0});
             Viewer::Event e;

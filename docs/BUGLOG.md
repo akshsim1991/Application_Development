@@ -239,3 +239,46 @@ Wine (1280 x 800 screen) by clicking with the mouse and checking screenshots, un
 - **Verified:** settings file byte-identical after --menucheck; menu shows "report.pdf C:\test\a" / "report.pdf
   C:\test\b" and "R&D.pdf" (screenshot); choosing the missing one shows the message and removes it, after which the other
   "report.pdf" shows without its folder.
+
+### B-022 Edit PDF > Edit pages: three items did nothing
+- **Status:** Fixed
+- **Root cause:** "New PDF from pictures", "Crop by drawing a box" and "Split into several files" were handed to the page
+  commands, which had no case for them; only the command palette, which calls the functions directly, worked. The menu
+  check only looked for numbers used twice, not for numbers nothing handles.
+- **Fix:** the three cases; and `tests/dispatchcheck.py` (in the smoke tests) reads main.cpp and fails when a command put
+  into a menu is not handled by a `case`, a comparison or a range test, following a range into the function it hands the
+  command to.
+- **Verified:** the check reports exactly these three with the previous code and none now; GUI: the items open the
+  picture chooser, switch on the crop tool (with its instruction) and open the Split dialog. A menu nothing could open
+  (the old page menu, all of whose items are in Edit pages) was removed.
+
+### B-023 Signature pad: Esc used the signature and Enter erased it
+- **Status:** Fixed
+- **Root cause:** the pad's buttons were numbered 1, 2, 3, which are the numbers of OK and Cancel: Enter (OK) meant Clear and
+  Esc (Cancel) meant "Use this signature". Esc with an empty pad did nothing, so the pad could not be closed from the
+  keyboard (found by the menu sweep: it stayed open over every later command).
+- **Fix:** the buttons have their own numbers; Esc cancels and Enter uses the signature (handled in the pad's own message
+  loop, as IsDialogMessage does not do it for windows that are not dialogs everywhere); the pad takes the keyboard when it
+  opens.
+- **Verified:** sweep of the Annotate menu: every later item opens its own window again.
+
+### B-024 Tools explained themselves in message boxes, or not at all
+- **Status:** Fixed
+- **Root cause:** inserting a picture, a stamp, a table or a signature showed a modal box with instructions; most other
+  tools (crop by box, link, copy area, shapes, forms, measuring) showed nothing. "Select some text first" was a message box.
+- **Fix:** every tool shows what to do in a short notice when it is switched on (one table of hints, checked against how
+  each tool reads the mouse); the old message boxes became notices.
+- **Verified:** sweep screenshots of the Annotate and Edit PDF menus show the notice for each tool.
+
+### B-025 The Bookmarks panel of a document without bookmarks was blank
+- **Status:** Fixed
+- **Root cause:** the hint "This document has no bookmarks" was drawn behind the (empty) bookmark list.
+- **Fix:** the list is hidden when it is empty, so the hint shows, with how to add a bookmark.
+- **Verified:** screenshot.
+
+### Sweep record: menus and shortcuts
+Every item of every menu was chosen with the mouse and keyboard in a running copy (… menu, Edit PDF, Annotate, Comment,
+Geometry, Side by side, zoom box, the page's right-click menu, the thumbnails' right-click menu: 230 items), and the
+documented shortcuts were pressed one by one (36), each followed by a screenshot and a check that the program still runs.
+Findings: B-021 to B-025. Greyed items (they need a selection or a second document) are covered by the GUI tests of their
+features.

@@ -65,7 +65,7 @@ void Sidebar::layout() {
 
 void Sidebar::setMode(Mode m) {
     mode_ = m;
-    ShowWindow(tree_, m == Mode::Bookmarks ? SW_SHOW : SW_HIDE);
+    ShowWindow(tree_, m == Mode::Bookmarks && hasBookmarks_ > 0 ? SW_SHOW : SW_HIDE);   // else the hint behind it shows
     ShowWindow(thumbs_, m == Mode::Pages ? SW_SHOW : SW_HIDE);
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
@@ -98,6 +98,8 @@ void Sidebar::fillTree() {
     }
     SendMessageW(tree_, WM_SETREDRAW, TRUE, 0);
     InvalidateRect(tree_, nullptr, TRUE);
+    ShowWindow(tree_, mode_ == Mode::Bookmarks && hasBookmarks_ > 0 ? SW_SHOW : SW_HIDE);
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 void Sidebar::clearThumbs() {
@@ -167,9 +169,10 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
                 }
             }
             if (mode_ == Mode::Bookmarks && doc_ && hasBookmarks_ == 0) {
-                RECT r{10, kHeaderH + 20, rc.right - 10, kHeaderH + 80};
+                RECT r{14, kHeaderH + 20, rc.right - 14, kHeaderH + 160};
                 SetTextColor(dc, pal().textDim);
-                DrawTextW(dc, L"This document has no bookmarks.", -1, &r, DT_CENTER | DT_WORDBREAK);
+                DrawTextW(dc, L"This document has no bookmarks.\n\nTo add one, go to the page and choose Edit PDF > Add a bookmark for this page.",
+                          -1, &r, DT_CENTER | DT_WORDBREAK | DT_NOPREFIX);
             }
             buf.done();
             EndPaint(hwnd_, &ps);

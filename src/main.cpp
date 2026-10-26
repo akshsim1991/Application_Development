@@ -163,6 +163,7 @@ void collectMenu(HMENU m, const std::wstring& path, std::map<UINT, std::wstring>
         ++g_menuCheck.items;
         g_menuCheck.listing += path + L"\t" + here + L"\t" + label + ((mi.fState & MFS_DISABLED) ? L"\t(greyed)" : L"") + L"\n";
         auto it = seen.find(mi.wID);
+        if (mi.wID == 0 && (mi.fState & MFS_DISABLED)) continue;   // a greyed placeholder such as "(none)": nothing to run
         if (mi.wID == 0) g_menuCheck.report += L"no command number: " + path + L" > " + label + L"\n";
         else if (it != seen.end()) g_menuCheck.report += L"same command number " + std::to_wstring(mi.wID) + L": \"" + it->second + L"\" and \"" + path + L" > " + label + L"\"\n";
         else seen[mi.wID] = path + L" > " + label;

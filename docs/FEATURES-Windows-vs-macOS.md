@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 42 of 110 (38 %).**
+**macOS: 49 of 111 (44 %).**
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -16,20 +16,20 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 7 | Reading | Warning when a PDF is already open | Yes | **No** |  |
 | 8 | Reading | Password-protected files open (asks the password) | Yes | Yes |  |
 | 9 | Reading | Continuous scrolling of pages | Yes | Yes |  |
-| 10 | Reading | Single page and two-page layouts, cover page | Yes | **No** |  |
+| 10 | Reading | Single page and two-page layouts, cover page | Yes | Yes | added, being checked |
 | 11 | Reading | Zoom in / out, actual size, fit width | Yes | Yes |  |
-| 12 | Reading | Fit page | Yes | **No** |  |
+| 12 | Reading | Fit page | Yes | Yes | added, being checked |
 | 13 | Reading | Zoom typed into a box | Yes | **No** | a menu of zoom steps instead |
 | 14 | Reading | Zoom with Ctrl+wheel / pinch at the pointer | Yes | Yes |  |
 | 15 | Reading | Page number typed into a box, previous / next, first / last | Yes | Yes |  |
 | 16 | Reading | Go to page | Yes | Yes |  |
-| 17 | Reading | Back and forward | Yes | **No** |  |
+| 17 | Reading | Back and forward | Yes | Yes | added, being checked |
 | 18 | Reading | Page thumbnails sidebar (Ctrl+B / ⌘B) | Yes | Yes | added in this batch, being checked |
 | 19 | Reading | Thumbnails: select several, drag to move, right-click menu | Yes | **No** |  |
 | 20 | Reading | Bookmarks panel | Yes | Yes | added in this batch, being checked |
-| 21 | Reading | Search with all matches highlighted (Ctrl+F) | Yes | **No** |  |
-| 22 | Reading | Text selection and copy | Yes | **No** |  |
-| 23 | Reading | Clickable links | Yes | **No** |  |
+| 21 | Reading | Search with all matches highlighted (Ctrl+F) | Yes | Yes | added, being checked |
+| 22 | Reading | Text selection and copy | Yes | Yes | added, being checked |
+| 23 | Reading | Clickable links | Yes | Yes | added, being checked |
 | 24 | Reading | Dark and dimmed page colours | Yes | Yes |  |
 | 25 | Reading | Themes (7) for menus, dialogs, scroll bars | Yes | **No** | follows the Mac's light / dark |
 | 26 | Reading | Colourful toolbar icons | Yes | **No** |  |
@@ -117,3 +117,4 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 108 | Tools | Print (preview, pages per sheet, greyscale, two-sided) | Yes | **No** |  |
 | 109 | Tools | Set as the default PDF app | Yes | **No** | macOS: Finder > Get Info > Open with |
 | 110 | Tools | Command line (export, compress, protect, redact, forms, PDF/A...) | Yes | Yes | sign, OCR, batch, search not yet |
+| 111 | Tools | Auto-update: Help > Update to new version, check at start, update now or later | Yes | Yes | new on both (Windows: being checked here; Mac: being checked); needs the public releases repository |

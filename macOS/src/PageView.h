@@ -11,7 +11,16 @@
 enum FPTool { FPToolNone, FPToolNote, FPToolRectangle, FPToolEllipse, FPToolLine, FPToolArrow, FPToolPen, FPToolPolygon,
               FPToolCloud, FPToolCallout, FPToolStamp, FPToolRedact, FPToolTextBox, FPToolPicture, FPToolCrop, FPToolLink,
               FPToolFormText, FPToolFormCheck, FPToolFormCombo, FPToolFormRadio, FPToolFormList, FPToolFormDate,
-              FPToolSelectObject, FPToolEditText, FPToolEditPara, FPToolEditTable, FPToolPlaceTable };
+              FPToolSelectObject, FPToolEditText, FPToolEditPara, FPToolEditTable, FPToolPlaceTable,
+              FPToolRuler, FPToolProtractor };   // measuring (Tools > Measure): a drag; three clicks (corner, then each side)
+
+// A measurement shown over the page (not part of the document until kept): a distance a-b, or an angle at a between b and c.
+struct FPMeasure {
+    int page = 0;
+    annot::PointD a, b, c;
+    bool angle = false;
+    std::wstring text;
+};
 
 // What a tool did: a drag (two points; the pen gives every point; a polygon its corners), a click, a double-click.
 struct FPToolEvent {
@@ -69,6 +78,12 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 // A rectangle of a page (PDF units) in this view.
 - (NSRect)viewRectOnPage:(int)page rect:(annot::RectD)r;
 - (void)endFormInput;               // the field being typed in lets go of the keyboard
+// Measurements (Tools > Measure) and the rulers along the edges of the pages (units: 0 mm, 1 cm, 2 in, 3 pt).
+- (void)addMeasure:(const FPMeasure&)m;
+- (void)clearMeasures;
+- (const std::vector<FPMeasure>&)measures;
+@property(nonatomic) BOOL showRulers;
+@property(nonatomic) int rulerUnits;
 // The selected text as page rectangles (for highlight, underline...), false when there is none.
 - (BOOL)selectionRects:(std::vector<annot::RectD>&)rects page:(int*)page;
 @end

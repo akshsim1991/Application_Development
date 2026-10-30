@@ -37,6 +37,7 @@ constexpr size_t kCachedPages = 10;
     std::vector<annot::PointD> _toolPts;          // page coordinates
     NSPoint _toolStartView, _toolNowView;
     std::vector<NSPoint> _toolPathView;           // the pen and the polygon, as drawn
+    std::vector<FPMeasure> _measures;
     int _annotPage, _annotIndex;
     BOOL _formFocus, _formCapture;                // a form field has the keyboard / the mouse
     int _formPage;
@@ -555,6 +556,8 @@ constexpr size_t kCachedPages = 10;
         [self drawMarksOnPage:static_cast<int>(i)];
         [self drawRedactionsOnPage:static_cast<int>(i)];
         [self drawAnnotSelectionOnPage:static_cast<int>(i)];
+        [self drawMeasuresOnPage:static_cast<int>(i)];
+        if (_showRulers) [self drawRulersOnPage:static_cast<int>(i)];
     }
     [self drawToolPreview];
 }
@@ -681,6 +684,19 @@ constexpr size_t kCachedPages = 10;
         if (NSPointInRect(p, NSInsetRect([self objectHandle], -3, -3))) _objDrag = FPToolEvent::Resize;
         else if (NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) _objDrag = FPToolEvent::Move;
     }
+    if (_tool == FPToolProtractor) {   // the corner, then a point on each side
+        if (!_toolPts.empty() && page != _toolPage) return;
+        _toolPage = page;
+        _toolPts.push_back({x, y});
+        _toolPathView.push_back(p);
+        if (_toolPts.size() == 3) {
+            [self sendTool:FPToolEvent::Draw];
+            _toolPts.clear();
+            _toolPathView.clear();
+        }
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (_tool == FPToolPolygon) {   // corners one click at a time; a double-click (or Return) ends it
         if (!_toolPts.empty() && page != _toolPage) return;
         _toolPage = page;
@@ -754,9 +770,11 @@ constexpr size_t kCachedPages = 10;
 - (void)drawToolPreview {
     [self drawObjectBox];
     if (_objDrag != FPToolEvent::None) return;
-    if (!_toolDown && !(_tool == FPToolPolygon && !_toolPathView.empty())) return;
+    if (!_toolDown && !((_tool == FPToolPolygon || _tool == FPToolProtractor) && !_toolPathView.empty())) return;
     if (_tool == FPToolSelectObject || _tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable) return;
-    NSColor* c = _tool == FPToolRedact ? NSColor.blackColor : NSColor.controlAccentColor;
+    NSColor* c = _tool == FPToolRedact ? NSColor.blackColor
+               : _tool == FPToolRuler || _tool == FPToolProtractor ? [NSColor colorWithSRGBRed:0 green:0.56 blue:0.38 alpha:1]
+                                                                   : NSColor.controlAccentColor;
     [c setStroke];
     const NSRect box = NSMakeRect(std::min(_toolStartView.x, _toolNowView.x), std::min(_toolStartView.y, _toolNowView.y),
                                   std::fabs(_toolNowView.x - _toolStartView.x), std::fabs(_toolNowView.y - _toolStartView.y));
@@ -764,9 +782,9 @@ constexpr size_t kCachedPages = 10;
     path.lineWidth = std::max(1.0, _lineWidthPt * _zoom);
     switch (_tool) {
         case FPToolEllipse: path = [NSBezierPath bezierPathWithOvalInRect:box]; break;
-        case FPToolLine: case FPToolArrow: case FPToolCallout:
+        case FPToolLine: case FPToolArrow: case FPToolCallout: case FPToolRuler:
             [path moveToPoint:_toolStartView]; [path lineToPoint:_toolNowView]; break;
-        case FPToolPen: case FPToolPolygon:
+        case FPToolPen: case FPToolPolygon: case FPToolProtractor:
             for (size_t i = 0; i < _toolPathView.size(); ++i) i ? [path lineToPoint:_toolPathView[i]] : [path moveToPoint:_toolPathView[i]];
             break;
         default: path = [NSBezierPath bezierPathWithRect:box];
@@ -774,6 +792,82 @@ constexpr size_t kCachedPages = 10;
     if (_tool == FPToolRedact) { [[NSColor colorWithWhite:0 alpha:0.35] setFill]; [path fill]; }
     if (_tool == FPToolCloud || _tool == FPToolCrop || _tool == FPToolLink) { const CGFloat d[] = {6, 4}; [path setLineDash:d count:2 phase:0]; }
     [path stroke];
+}
+
+// ---- measuring ----
+
+- (void)addMeasure:(const FPMeasure&)m { _measures.push_back(m); [self setNeedsDisplay:YES]; }
+- (void)clearMeasures { _measures.clear(); [self setNeedsDisplay:YES]; }
+- (const std::vector<FPMeasure>&)measures { return _measures; }
+- (void)setShowRulers:(BOOL)on { _showRulers = on; [self setNeedsDisplay:YES]; }
+- (void)setRulerUnits:(int)u { _rulerUnits = std::clamp(u, 0, 3); [self setNeedsDisplay:YES]; }
+
+// Green lines with their length or angle in a label, as on Windows.
+- (void)drawMeasuresOnPage:(int)page {
+    NSColor* green = [NSColor colorWithSRGBRed:0 green:0.56 blue:0.38 alpha:1];
+    NSDictionary* attrs = @{NSFontAttributeName : [NSFont systemFontOfSize:11 weight:NSFontWeightSemibold], NSForegroundColorAttributeName : NSColor.whiteColor};
+    for (const FPMeasure& m : _measures) {
+        if (m.page != page) continue;
+        const NSPoint a = [self viewPointOnPage:page x:m.a.x y:m.a.y], b = [self viewPointOnPage:page x:m.b.x y:m.b.y];
+        NSBezierPath* path = [NSBezierPath bezierPath];
+        path.lineWidth = 1.5;
+        [path moveToPoint:b];
+        [path lineToPoint:a];
+        NSPoint at = NSMakePoint((a.x + b.x) / 2, (a.y + b.y) / 2);
+        if (m.angle) {
+            const NSPoint c = [self viewPointOnPage:page x:m.c.x y:m.c.y];
+            [path lineToPoint:c];
+            at = NSMakePoint(a.x + 14, a.y + 6);
+        }
+        [green setStroke];
+        [path stroke];
+        for (NSPoint p : {a, b}) [[NSBezierPath bezierPathWithOvalInRect:NSMakeRect(p.x - 2.5, p.y - 2.5, 5, 5)] stroke];
+        NSString* t = [NSString stringWithUTF8String:platform::utf8(m.text).c_str()] ?: @"";
+        const NSSize s = [t sizeWithAttributes:attrs];
+        const NSRect box = NSMakeRect(at.x + 4, at.y + 4, s.width + 8, s.height + 2);
+        [green setFill];
+        [[NSBezierPath bezierPathWithRoundedRect:box xRadius:3 yRadius:3] fill];
+        [t drawAtPoint:NSMakePoint(box.origin.x + 4, box.origin.y + 1) withAttributes:attrs];
+    }
+}
+
+// Rulers along the top and left edges of the page, in the chosen units (inside the page, so nothing is covered for long).
+- (void)drawRulersOnPage:(int)page {
+    const NSRect r = _rects[static_cast<size_t>(page)];
+    const PageSize& ps = _doc->pageSize(page);
+    if (ps.w <= 0 || ps.h <= 0) return;
+    static const double perUnit[] = {72 / 25.4, 72 / 2.54, 72.0, 1.0};   // points in one unit
+    // tick spacing (units), every how many ticks a long tick, every how many a number
+    static const double tick[] = {1, 0.1, 0.125, 10};
+    static const int longEvery[] = {5, 5, 4, 5}, labelEvery[] = {10, 10, 8, 10};
+    static const double labelValue[] = {10, 1, 1, 100};   // the value a labelled tick adds (mm: 10, 20...; cm: 1, 2...)
+    const int u = std::clamp(_rulerUnits, 0, 3);
+    const double kx = r.size.width / ps.w, ky = r.size.height / ps.h;   // view points per page point
+    const double step = tick[u] * perUnit[u];
+    const CGFloat band = 16;
+    [[NSColor colorWithWhite:1 alpha:0.85] setFill];
+    NSRectFillUsingOperation(NSMakeRect(r.origin.x, r.origin.y, r.size.width, band), NSCompositingOperationSourceOver);
+    NSRectFillUsingOperation(NSMakeRect(r.origin.x, r.origin.y, band, r.size.height), NSCompositingOperationSourceOver);
+    [[NSColor colorWithWhite:0.25 alpha:1] set];
+    NSDictionary* attrs = @{NSFontAttributeName : [NSFont systemFontOfSize:8], NSForegroundColorAttributeName : [NSColor colorWithWhite:0.25 alpha:1]};
+    if (step * std::min(kx, ky) < 2.5) return;   // too small to read
+    NSBezierPath* p = [NSBezierPath bezierPath];
+    p.lineWidth = 0.5;
+    for (int i = 1; i * step < ps.w; ++i) {   // the flipped view: y grows downwards, the top edge is r.origin.y
+        const CGFloat x = std::round(r.origin.x + i * step * kx) + 0.25;
+        const CGFloat len = i % labelEvery[u] == 0 ? 10 : i % longEvery[u] == 0 ? 7 : 4;
+        [p moveToPoint:NSMakePoint(x, r.origin.y)];
+        [p lineToPoint:NSMakePoint(x, r.origin.y + len)];
+        if (i % labelEvery[u] == 0) [[NSString stringWithFormat:@"%g", i / labelEvery[u] * labelValue[u]] drawAtPoint:NSMakePoint(x + 2, r.origin.y + 4) withAttributes:attrs];
+    }
+    for (int i = 1; i * step < ps.h; ++i) {
+        const CGFloat y = std::round(r.origin.y + i * step * ky) + 0.25;
+        const CGFloat len = i % labelEvery[u] == 0 ? 10 : i % longEvery[u] == 0 ? 7 : 4;
+        [p moveToPoint:NSMakePoint(r.origin.x, y)];
+        [p lineToPoint:NSMakePoint(r.origin.x + len, y)];
+        if (i % labelEvery[u] == 0) [[NSString stringWithFormat:@"%g", i / labelEvery[u] * labelValue[u]] drawAtPoint:NSMakePoint(r.origin.x + 2, y + 1) withAttributes:attrs];
+    }
+    [p stroke];
 }
 
 // Pending redaction marks: black frames, half filled (they are applied with Protect > Apply Redactions).

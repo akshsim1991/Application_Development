@@ -504,6 +504,11 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (IBAction)goToPage:(id)sender { [self.window makeFirstResponder:_pageField]; }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    SEL measure = NSSelectorFromString(@"validateMeasure:");   // Measure.mm
+    static NSSet<NSString*>* measuring = [NSSet setWithArray:@[ @"chooseRuler:", @"chooseProtractor:", @"toggleRulers:", @"setMeasureUnits:",
+                                                                @"setMeasureScale:", @"keepMeasurements:", @"clearMeasurements:" ]];
+    if ([measuring containsObject:NSStringFromSelector(item.action)] && [self respondsToSelector:measure])
+        return ((BOOL (*)(id, SEL, NSMenuItem*))objc_msgSend)(self, measure, item);
     SEL sbs = NSSelectorFromString(@"validateSideBySide:");   // SideBySide.mm
     if ([NSStringFromSelector(item.action) rangeOfString:@"ideBySide"].location != NSNotFound && [self respondsToSelector:sbs])
         return ((BOOL (*)(id, SEL, NSMenuItem*))objc_msgSend)(self, sbs, item);

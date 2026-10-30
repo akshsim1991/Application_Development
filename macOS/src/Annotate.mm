@@ -55,6 +55,9 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
 @interface FPWindowController (PagesMore)
 - (void)cropDrawn:(const FPToolEvent&)e;        // PagesMore.mm
 @end
+@interface FPWindowController (Measure)
+- (void)measureDrawn:(const FPToolEvent&)e;     // Measure.mm
+@end
 @interface FPWindowController (Editing)
 - (void)editEvent:(const FPToolEvent&)e;        // Editing.mm
 - (BOOL)cropPictureWith:(const FPToolEvent&)e;
@@ -222,6 +225,7 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
             }
             break;
         case FPToolCrop: if (![self cropPictureWith:e]) [self cropDrawn:e]; break;
+        case FPToolRuler: case FPToolProtractor: [self measureDrawn:e]; break;
         case FPToolTextBox: case FPToolPicture: case FPToolSelectObject: case FPToolEditText: case FPToolEditPara:
         case FPToolEditTable: case FPToolPlaceTable:
             [self editEvent:e];

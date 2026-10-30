@@ -142,7 +142,7 @@ void FPInstallOcrEngine() {
     bar.maxValue = static_cast<double>(pages.size());
     NSButton* stop = [NSButton buttonWithTitle:@"Stop" target:nil action:nil];
     stop.frame = NSMakeRect(292, 26, 88, 32);
-    __block BOOL stopped = NO;
+    BOOL stopped = NO;
     stop.target = NSApp;
     stop.action = @selector(abortModal);
     for (NSView* v in @[ label, bar, stop ]) [panel.contentView addSubview:v];

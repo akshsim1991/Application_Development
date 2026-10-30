@@ -149,7 +149,7 @@ echo "text recognition (OCR)"
 "$prog" --ocr "$W/scan.pdf" "$W/scan_ocr.pdf" eng </dev/null >/dev/null 2>"$W/ocr.err"; rc=$?
 if [ $rc -eq 5 ]; then echo "  skip OCR engine not in this build"; else
 [ $rc -eq 0 ] || echo "  (exit code $rc: $(cat "$W/ocr.err"))"
-check "words recognised"            "text '$W/scan_ocr.pdf' | grep -qi 'supplier shall deliver'"
+check "words recognised"            "text '$W/scan_ocr.pdf' | tr -s ' \\n' ' ' | grep -qi 'supplier shall deliver'"; echo "  (the text found: $(text "$W/scan_ocr.pdf" | tr -s ' \n' ' ' | head -c 300))"
 fi
 
 echo "tables inside a form object (PDFs saved from Word on a Mac)"

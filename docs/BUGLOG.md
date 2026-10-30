@@ -756,3 +756,8 @@ Found and fixed while building it:
 - **Mac build check: OCR found no words on GitHub's Mac.** Those machines are virtual and Vision could not use a
   graphics processor. Recognition now tries again on the processor alone when Vision fails (also for anyone running
   macOS in a virtual machine).
+- **Mac: Properties and Fonts used, again (the first two fixes did not cure it).** The build's pictures stayed the
+  same after both fixes: the form's grid gave a note of several lines the height of one, whatever height the note was
+  given. Now information boxes (Properties, Fonts used, Show Signatures) are the system's own alert sheet, which sizes
+  itself (long reports in a scrolling text area), and in other forms notes sit in a plain column above the fields
+  instead of in the grid. The build check now also pictures a form with a note and fields (Recognise Text).

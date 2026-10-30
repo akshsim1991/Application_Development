@@ -36,6 +36,31 @@ namespace form {
 
 void show(NSWindow* window, const std::wstring& title, Fields given, const std::wstring& okText,
           std::function<std::wstring(const Fields&)> validate, std::function<void(const Fields&)> done) {
+    // Information only (notes and one "!Close" button: Properties, Fonts used, signatures): the system's alert sheet,
+    // which sizes itself to its text; a long report goes in a scrolling text area under the title.
+    if (!okText.empty() && okText[0] == L'!' &&
+        std::all_of(given.begin(), given.end(), [](const Field& f) { return f.kind == Field::Note; })) {
+        std::wstring text;
+        for (const Field& f : given) text += (text.empty() ? L"" : L"\n\n") + f.text;
+        NSAlert* a = [[NSAlert alloc] init];
+        a.messageText = ns(title);
+        [a addButtonWithTitle:ns(okText.substr(1))];
+        const size_t lines = static_cast<size_t>(std::count(text.begin(), text.end(), L'\n')) + 1;
+        if (text.size() > 600 || lines > 14) {
+            NSScrollView* sv = [NSTextView scrollableTextView];
+            sv.frame = NSMakeRect(0, 0, 560, 320);
+            sv.borderType = NSBezelBorder;
+            NSTextView* tv = (NSTextView*)sv.documentView;
+            tv.editable = NO;
+            tv.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+            tv.textColor = NSColor.textColor;
+            tv.string = ns(text);
+            a.accessoryView = sv;
+        } else a.informativeText = ns(text);
+        auto keep = std::make_shared<Fields>(std::move(given));
+        [a beginSheetModalForWindow:window completionHandler:^(NSModalResponse) { if (done) done(*keep); }];
+        return;
+    }
     auto held = std::make_shared<Fields>(std::move(given));   // lives until the sheet closes
     Fields& fields = *held;
     NSPanel* panel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 480, 200) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskDocModalWindow
@@ -49,6 +74,10 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
     grid.rowSpacing = 10;
     grid.columnSpacing = 10;
     NSMutableArray<NSView*>* controls = [NSMutableArray array];
+    NSStackView* notes = [[NSStackView alloc] init];
+    notes.orientation = NSUserInterfaceLayoutOrientationVertical;
+    notes.alignment = NSLayoutAttributeLeading;
+    notes.spacing = 8;
     for (const Field& f : fields) {
         NSView* control = nil;
         NSView* label = [NSGridCell emptyContentView];
@@ -99,18 +128,18 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
                     n.selectable = YES;
                     n.preferredMaxLayoutWidth = 440;
                     [n.widthAnchor constraintEqualToConstant:440].active = YES;
-                    // its height from its text: the grid would give a note of several lines the height of one
-                    const CGFloat h = std::ceil([n.cell cellSizeForBounds:NSMakeRect(0, 0, 440, CGFLOAT_MAX)].height);
-                    [n.heightAnchor constraintEqualToConstant:h].active = YES;
                     control = n;
                 }
                 break;
             }
         }
         [controls addObject:control];
+        if (f.kind == Field::Note) {   // notes above the grid, one under the other: in the grid they got the height of one line
+            [notes addArrangedSubview:control];
+            continue;
+        }
         NSGridRow* row = [grid addRowWithViews:@[ label, control ]];
-        row.rowAlignment = f.kind == Field::Note ? NSGridRowAlignmentNone : NSGridRowAlignmentLastBaseline;
-        if (f.kind == Field::Note) [grid mergeCellsInHorizontalRange:NSMakeRange(0, 2) verticalRange:NSMakeRange(grid.numberOfRows - 1, 1)];
+        row.rowAlignment = NSGridRowAlignmentLastBaseline;
     }
     if (grid.numberOfColumns > 0) [grid columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
 
@@ -127,14 +156,17 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
     ok.keyEquivalent = @"\r";
     cancel.hidden = noCancel;
 
-    for (NSView* v in @[ heading, grid, problem, cancel, ok ]) {
+    for (NSView* v in @[ heading, notes, grid, problem, cancel, ok ]) {
         v.translatesAutoresizingMaskIntoConstraints = NO;
         [root addSubview:v];
     }
     [NSLayoutConstraint activateConstraints:@[
         [heading.topAnchor constraintEqualToAnchor:root.topAnchor constant:20],
         [heading.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
-        [grid.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:16],
+        [notes.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:12],
+        [notes.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
+        [notes.trailingAnchor constraintLessThanOrEqualToAnchor:root.trailingAnchor constant:-20],
+        [grid.topAnchor constraintEqualToAnchor:notes.bottomAnchor constant:notes.arrangedSubviews.count ? 14 : 4],
         [grid.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
         [grid.trailingAnchor constraintLessThanOrEqualToAnchor:root.trailingAnchor constant:-20],
         [problem.topAnchor constraintEqualToAnchor:grid.bottomAnchor constant:12],

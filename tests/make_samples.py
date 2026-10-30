@@ -211,3 +211,47 @@ c.save()
 c = canvas.Canvas(f"{out}/hf_one.pdf", pagesize=A4)
 c.setFont("Helvetica", 10); c.drawString(90, 800, "A title at the top"); c.setFont("Helvetica", 11); body_text(c, 1); c.drawCentredString(297.6, 30, "1")
 c.save()
+
+# 6. a document with two identical pages (1 and 5) among five: their title and closing lines are not a header or footer
+c = canvas.Canvas(f"{out}/hf_dup.pdf", pagesize=A4)
+for p in [1, 2, 3, 4, 1]:
+    heads = {1: "Annual Plant Report 2026", 2: "Production figures", 3: "Maintenance work", 4: "Inspection results"}
+    ends = {1: "Prepared by the plant office.", 2: "Figures are rounded.", 3: "See the appendix for the schedule.", 4: "Results checked in March."}
+    c.setFont("Helvetica-Bold", 16); c.drawString(70, 770, heads[p])
+    c.setFont("Helvetica", 11); body_text(c, p, 730)
+    c.drawString(70, 60, ends[p])
+    c.showPage()
+c.save()
+
+# 7. a Word document (header with three parts, footer "Page X of Y"), made into a PDF by LibreOffice when it is installed
+try:
+    import docx, shutil, subprocess
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    if shutil.which("soffice"):
+        dd = docx.Document()
+        sec = dd.sections[0]
+        sec.header.paragraphs[0].text = "Quarterly Operations Review\tConfidential\t30 October 2026"
+        def field(run, code):
+            a = OxmlElement('w:fldChar'); a.set(qn('w:fldCharType'), 'begin')
+            t = OxmlElement('w:instrText'); t.set(qn('xml:space'), 'preserve'); t.text = code
+            b = OxmlElement('w:fldChar'); b.set(qn('w:fldCharType'), 'end')
+            run._r.append(a); run._r.append(t); run._r.append(b)
+        fp = sec.footer.paragraphs[0]; fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        fp.add_run("Page "); field(fp.add_run(), "PAGE"); fp.add_run(" of "); field(fp.add_run(), "NUMPAGES")
+        random.seed(3)
+        ws = "the plant output rose in the third quarter while maintenance costs fell steadily across all sites".split()
+        for i in range(40): dd.add_paragraph(" ".join(random.choice(ws) for _ in range(60)).capitalize() + ".")
+        dd.save(f"{out}/hf_word.docx")
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", out, f"{out}/hf_word.docx"], capture_output=True, timeout=180)
+except Exception:
+    pass
+
+# 8. headings "Section 2" on page 2, "Section 3" on page 3...: large headings, not page numbers
+c = canvas.Canvas(f"{out}/hf_section.pdf", pagesize=A4)
+for p in range(1, 6):
+    c.setFont("Helvetica-Bold", 16); c.drawString(70, 770, "Section %d" % p)
+    c.setFont("Helvetica", 11); body_text(c, p, 730)
+    c.showPage()
+c.save()

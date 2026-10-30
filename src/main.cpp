@@ -2724,7 +2724,7 @@ void toolsDispatch(int cmd) {
             if (cmd >= PX_ROT_R && cmd <= PX_PASTE) { pictureAction(cmd); break; }
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
-            if (cmd >= P_DELETE && cmd <= P_BGCOLOR) { pagesMenuAction(cmd, {}); break; }
+            if (cmd >= P_DELETE && cmd <= P_HFDELETE) { pagesMenuAction(cmd, {}); break; }
             break;
     }
 }
@@ -2753,6 +2753,8 @@ void showToolsMenu(const RECT& anchor) {
     add(N_FONTS, L"Fonts used in this PDF...");
     add(T_WATERMARK, L"Watermark...");
     add(T_NUMBERS, L"Page numbers...");
+    add(P_HEADER, L"Add headers and footers...");
+    add(P_HFDELETE, L"Delete header and footer...");
     sep();
     HMENU frm = CreatePopupMenu();
     AppendMenuW(frm, MF_STRING, F_EXPORT, L"Export the answers to Excel or CSV...");
@@ -2810,8 +2812,6 @@ void showToolsMenu(const RECT& anchor) {
     padd(P_BLANKS, L"Remove blank pages...", d->pageCount() > 1);
     padd(P_DUPES, L"Find duplicate pages...", d->pageCount() > 1);
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
-    padd(P_HEADER, L"Add headers and footers...");
-    padd(P_HFDELETE, L"Delete header and footer...");
     padd(P_BGCOLOR, L"Background colour...");
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
     padd(P_CROP, L"Crop pages...");

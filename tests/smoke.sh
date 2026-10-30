@@ -293,6 +293,15 @@ hf hf_oddeven "$(W ho.pdf)" ho both all
 check "odd / even layouts found and removed" "grep -q 'odd pages' '$work/ho.txt' && grep -q 'even pages' '$work/ho.txt' && ! pdftotext '$work/ho.pdf' - | grep -q -E 'Chapter 1|Handbook' && pdftotext '$work/ho.pdf' - | grep -q 'Body text of page 2'"
 hf hf_one - h1 both all
 check "one page: nothing found, nothing assumed" "! grep -q '^header\\|^footer' '$work/h1.txt'"
+hf hf_dup - hdup both all
+check "identical pages are not taken for a header or footer" "! grep -q '^header\\|^footer' '$work/hdup.txt'"
+hf hf_section - hsec both all
+check "a heading with the page's number is not a page number" "! grep -q '^header\\|^footer' '$work/hsec.txt'"
+if [ -s "$work/hf_word.pdf" ]; then
+  hf hf_word "$(W hw.pdf)" hw both all
+  check "Word document: header parts and Page X of Y removed, body kept" "grep -q 'Page number' '$work/hw.txt' && ! pdftotext '$work/hw.pdf' - | grep -q -E 'Quarterly Operations|Confidential|Page [0-9] of' && pdftotext '$work/hw.pdf' - | grep -q -i 'plant'"
+else echo "  skip Word document: LibreOffice not installed"; fi
+check "the menu item reaches the command (Edit PDF menu)" "grep -q 'Delete header and footer' '$work/menus.txt'"
 hf hf_xobject "$(W hx.pdf)" hx both "1-2"
 check "shared letterhead removed on the chosen pages only" "! pt hx.pdf 1 | grep -q 'Shared Letterhead' && pt hx.pdf 3 | grep -q 'Shared Letterhead'"
 check "page template kept whole (its body note and fonts intact)" "grep -q 'part of a page template, kept' '$work/hx.txt' && pt hx.pdf 1 | grep -q 'Template note in the body' && pt hx.pdf 4 | grep -q 'Template note in the body'"

@@ -534,6 +534,33 @@ the text reads correctly.
 | 6 | Duplicate PDF detection | Opening a file already open in a tab, by any route (Open, Explorer / second launch, drag and drop, Open recent), compares the file's identity on disk (volume and file number), so another path to the same file is recognised (other capitals, `..`, a mapped drive, a network or short name, a link). "This PDF is already open in Tab 3." with Go to Tab 3 / Cancel; the tab is never reloaded, so unsaved changes stay (the message says so when there are some). Settings > Tabs can go to the tab without asking | five.pdf opened again as `Z:\...\FIVE.pdf` and as `c:\TEST\..\test\Five.PDF`: "already open in Tab 1", then "Tab 2" after the tabs were reordered; Go to Tab 2 showed it |
 | 7 | Every setting ON and OFF, every theme, no new bugs | Smoke tests pass (including the menu check for duplicate items); B-045 found and fixed | As above |
 
+### B-046 Delete header and footer did nothing when chosen from the menu
+- **Status:** Fixed
+- **Root cause:** the Edit PDF menu hands its page commands to the pages handler only for numbers up to the last one
+  that existed before (`cmd <= P_BGCOLOR`); the new command came after it, so the menu item closed the menu and nothing
+  happened. My own test had opened the window from the command palette, which calls the handler directly, and the
+  static check (`tests/dispatchcheck.py`) passed because the handler does have a `case` for it - it cannot see that
+  the menu never forwards the command there.
+- **Fix:** the range runs to the new command. Both header items moved from the Edit pages submenu to the Edit PDF menu
+  beside Watermark and Page numbers, where they are seen. The themed menu items were made as compact as Windows' own:
+  the taller ones had made the Edit PDF menu need scroll arrows on a 800-pixel screen.
+- **Verified:** in the app, from the menu: Plant report.pdf, Add headers and footers (defaults: title, date, "Page n of
+  4"), then Delete header and footer: the three added items found (the document's own title not), Delete, saved: no
+  date or page number left on any page, the title on page 1 kept. The Edit PDF menu fits without scrolling.
+
+### B-047 Delete header and footer: body text and headings taken for headers
+- **Status:** Fixed
+- **Root cause:** found by running it on real documents rather than only the generated samples: five.pdf (pages 1 and 5
+  are the same page) had its title and a closing paragraph listed, because twice among three odd pages counted as an
+  odd-page header; "Closing remark..." counted as a date ("remark" contains "mar"); a 16 pt heading "Section 2" on
+  page 2 counted as a page number; text whose number changed from page to page counted as one repeated text.
+- **Fix:** an item must be on three pages at least (every page of a two- or three-page document) and half of them, or on
+  80 % of the odd (even) pages and none of the others; month names must be whole words; a page number may not be set
+  larger than the document's main text size; other repeated text must be the same, numbers included.
+- **Verified:** smoke tests "identical pages are not taken...", "a heading with the page's number is not a page number"
+  and a Word document made by LibreOffice (header in three parts, footer "Page X of Y": all found and removed, body
+  kept); five.pdf and Plant report.pdf: nothing found; the user guide: its header, rules and page numbers found.
+
 ## Delete Header and Footer (requested points)
 Engine `src/headfoot.cpp`, window `src/hfdialog.cpp`; command line `--hfremove` for the smoke tests ("delete header and
 footer", 15 checks on generated samples: a report with logo / title / date / rules / "Page n of 6" and body text that
@@ -555,7 +582,7 @@ a single page).
 | Shared XObjects | A form wholly in a strip (a letterhead used by every page) is removed from the chosen pages only (the form stays for the others). A piece inside a form that also draws the body (a page template) is listed as "part of a page template, kept": this PDFium cannot write such a form again after a piece is taken out of it, and a first try left the template without its font, so it is never edited | "shared letterhead removed on the chosen pages only", "page template kept whole" |
 | Warn when a region overlaps body content | Pieces of the page's own content inside a drawn area are counted and quoted ("Attention: the area you drew also takes in 6 pieces... for example ..."), pieces across its edge are counted and kept; the confirmation repeats the warning and then defaults to No | "a drawn area over body text is reported"; screenshot |
 | Undo / redo, Save / Save As; bookmarks, links, annotations intact | One undo step; only page content objects are touched | "body text, links and bookmarks kept"; in the app Undo and Redo |
-| In the editing tools, no duplicates | Edit PDF > Edit pages: "Add headers and footers..." (renamed from "Headers and footers...") and "Delete header and footer..."; the command palette has both | Menu check test passes |
+| In the editing tools, no duplicates | Edit PDF menu, beside Watermark and Page numbers: "Add headers and footers..." (renamed from "Headers and footers...", moved out of Edit pages) and "Delete header and footer..."; the command palette has both | Menu check test passes; both chosen from the menu in the app (see B-046) |
 
 ## Installer (requested points)
 The Inno Setup wizard was replaced by a native setup program (`installer/`), because Inno Setup 6.4 cannot draw its

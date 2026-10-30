@@ -111,6 +111,20 @@ std::wstring normalise(const std::wstring& s) {   // digits as '#', runs of spac
     return o;
 }
 
+// the same words, whatever the spaces and capitals
+bool sameWords(const std::wstring& a, const std::wstring& b) {
+    auto clean = [](const std::wstring& s) {
+        std::wstring o;
+        for (wchar_t c : s) {
+            if (std::iswspace(c)) { if (!o.empty() && o.back() != L' ') o += L' '; }
+            else o += static_cast<wchar_t>(std::towlower(c));
+        }
+        while (!o.empty() && o.back() == L' ') o.pop_back();
+        return o;
+    };
+    return clean(a) == clean(b);
+}
+
 std::vector<long> numbersIn(const std::wstring& s) {
     std::vector<long> v;
     for (size_t i = 0; i < s.size();) {
@@ -137,8 +151,18 @@ bool looksLikeDate(const std::wstring& s) {
     std::wstring low;
     for (wchar_t c : s) low += static_cast<wchar_t>(std::towlower(c));
     const auto nums = numbersIn(s);
-    bool month = false;
-    for (const wchar_t* m : months) if (low.find(m) != std::wstring::npos) month = true;
+    bool month = false;   // a month's name as a word of its own ("march", "mar."), not inside another word ("remark")
+    for (const wchar_t* m : months)
+        for (size_t at = low.find(m); at != std::wstring::npos; at = low.find(m, at + 1))
+            if (at == 0 || !std::iswalpha(low[at - 1])) {   // the word starts there: is the whole word a month?
+                size_t e = at;
+                while (e < low.size() && std::iswalpha(low[e])) ++e;
+                static const wchar_t* full[] = {L"january", L"february", L"march", L"april", L"may", L"june", L"july", L"august", L"september", L"october", L"november", L"december", L"sept"};
+                const std::wstring word = low.substr(at, e - at);
+                bool ok = word.size() == 3;
+                for (const wchar_t* f : full) ok = ok || word == f;
+                if (ok) month = true;
+            }
     bool year = false;
     for (long n : nums) if (n >= 1900 && n <= 2199) year = true;
     if (month && (year || nums.size() >= 1)) return true;
@@ -286,7 +310,8 @@ bool samePlace(const Unit& a, const Unit& b) {
     const bool yOk = std::fabs(a.box.t - b.box.t) < tol || std::fabs(a.box.b - b.box.b) < tol;
     const bool xOk = std::fabs(a.box.l - b.box.l) < tol || std::fabs(a.box.r - b.box.r) < tol || std::fabs((a.box.l + a.box.r) - (b.box.l + b.box.r)) / 2 < tol;
     if (!yOk || !xOk) return false;
-    if (a.type == FPDF_PAGEOBJ_TEXT) return normalise(a.text) == normalise(b.text) || (a.scanned && normalise(a.text).size() > 3 && normalise(a.text) == normalise(b.text));
+    // the same text, numbers included (text whose number changes from page to page counts only as a page number)
+    if (a.type == FPDF_PAGEOBJ_TEXT) return sameWords(a.text, b.text);
     // pictures, lines, shapes, forms: the same size
     return std::fabs((a.box.r - a.box.l) - (b.box.r - b.box.l)) < tol && std::fabs((a.box.b - a.box.t) - (b.box.b - b.box.t)) < tol;
 }
@@ -304,9 +329,11 @@ bool shortLabel(const std::wstring& text) {
 }
 
 // the page number in a unit's text, when it follows the pages (the same offset from the page on most of them)
-bool isPageNumber(const std::vector<const Unit*>& us) {
+bool isPageNumber(const std::vector<const Unit*>& us, double bodySize) {
     if (us.size() < 2) return false;
     for (const Unit* u : us) if (!shortLabel(u->text)) return false;
+    // a page number is not set larger than the text of the pages ("Section 2" as a heading on page 2 is not one)
+    if (bodySize > 0) for (const Unit* u : us) if (u->size > bodySize * 1.15 + 0.5) return false;
     // each number position in the text is tried
     size_t most = 0;
     for (const Unit* u : us) most = std::max(most, numbersIn(u->text).size());
@@ -431,6 +458,28 @@ Detection detect(Document& d) {
         }
         if (groupOf[i] < 0) { groupOf[i] = static_cast<int>(groups.size()); groups.push_back({static_cast<int>(i)}); }
     }
+    // the size of most of the document's text (weighted by how much text there is in each size)
+    double bodySize = 0;
+    {
+        std::map<long, long> bySize;
+        for (int p = 0; p < det.pages; ++p) {
+            FPDF_PAGE pg = d.page(p);
+            if (!pg) continue;
+            const int n = api().FPDFPage_CountObjects(pg);
+            for (int i = 0; i < n; ++i) {
+                FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
+                if (api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+                float fs = 0;
+                api().FPDFTextObj_GetFontSize(o, &fs);
+                FS_MATRIX m;
+                if (api().FPDFPageObj_GetMatrix(o, &m)) fs = static_cast<float>(fs * std::sqrt(std::fabs(m.a * m.d - m.b * m.c)));
+                float l, b, r, t;
+                if (fs > 0 && api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) bySize[std::lround(fs * 2)] += std::lround(r - l);
+            }
+        }
+        long best = 0;
+        for (const auto& kv : bySize) if (kv.second > best) { best = kv.second; bodySize = kv.first / 2.0; }
+    }
     // page numbers differ from page to page: units of the same pattern in the same place
     std::vector<std::vector<int>> numberGroups;
     {
@@ -452,7 +501,7 @@ Detection detect(Document& d) {
             }
             std::vector<const Unit*> us;
             for (int m : g) us.push_back(&all[static_cast<size_t>(m)]);
-            if (isPageNumber(us)) numberGroups.push_back(g);
+            if (isPageNumber(us, bodySize)) numberGroups.push_back(g);
         }
     }
     const int pages = det.pages;
@@ -461,12 +510,14 @@ Detection detect(Document& d) {
     auto repeats = [&](const std::vector<int>& g) {
         std::set<int> ps;
         for (int m : g) ps.insert(all[static_cast<size_t>(m)].page);
+        // on three pages at least (two-page documents: both), and on half of them or more; or on nearly every odd
+        // (or every even) page and none of the others - twice is a coincidence (a page repeated in the document), not a header
         const int n = static_cast<int>(ps.size());
-        if (n < 2) return false;
+        if (n < std::min(3, pages) || n < 2) return false;
         if (n * 2 >= pages) return true;
         int o = 0, e = 0;
         for (int p : ps) (p % 2 == 0 ? o : e)++;
-        return (e == 0 && o * 2 >= odd && o >= 2) || (o == 0 && e * 2 >= even && e >= 2);   // odd or even pages only
+        return (e == 0 && o * 10 >= odd * 8 && o >= std::min(3, odd)) || (o == 0 && e * 10 >= even * 8 && e >= std::min(3, even));
     };
     auto addElement = [&](const std::vector<int>& g, Kind kind) {
         Element e;
@@ -502,7 +553,11 @@ Detection detect(Document& d) {
         det.elements.push_back(std::move(e));
     };
     std::vector<char> inNumbers(all.size(), 0);
-    for (const auto& g : numberGroups) { addElement(g, Kind::PageNumber); for (int m : g) inNumbers[static_cast<size_t>(m)] = 1; }
+    for (const auto& g : numberGroups) {
+        if (!repeats(g)) continue;   // page numbers too must be on enough pages
+        addElement(g, Kind::PageNumber);
+        for (int m : g) inNumbers[static_cast<size_t>(m)] = 1;
+    }
     for (const auto& g : groups) {
         bool numbered = false;
         for (int m : g) if (inNumbers[static_cast<size_t>(m)]) numbered = true;

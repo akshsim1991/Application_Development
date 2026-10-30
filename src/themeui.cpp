@@ -459,7 +459,7 @@ void releaseMenus() { g_items.clear(); }
 bool measureMenu(MEASUREITEMSTRUCT* mi) {
     if (mi->CtlType != ODT_MENU || !isOurs(mi->itemData)) return false;
     const auto* it = reinterpret_cast<const MenuItem*>(mi->itemData);
-    if (it->sep) { mi->itemHeight = static_cast<UINT>(px(9)); mi->itemWidth = static_cast<UINT>(px(20)); return true; }
+    if (it->sep) { mi->itemHeight = static_cast<UINT>(px(7)); mi->itemWidth = static_cast<UINT>(px(20)); return true; }
     HDC dc = GetDC(nullptr);
     HGDIOBJ of = SelectObject(dc, g_font ? g_font : GetStockObject(DEFAULT_GUI_FONT));
     SIZE a{}, b{};
@@ -468,7 +468,7 @@ bool measureMenu(MEASUREITEMSTRUCT* mi) {
     SelectObject(dc, of);
     ReleaseDC(nullptr, dc);
     mi->itemWidth = static_cast<UINT>(px(34) + a.cx + (b.cx ? px(36) + b.cx : 0) + px(30));
-    mi->itemHeight = static_cast<UINT>(std::max<int>(px(26), a.cy + px(8)));
+    mi->itemHeight = static_cast<UINT>(std::max<int>(px(22), a.cy + px(5)));   // about Windows' own height, so long menus fit
     return true;
 }
 

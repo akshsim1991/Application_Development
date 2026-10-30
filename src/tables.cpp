@@ -361,6 +361,8 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
                 minL = std::min(minL, ln.l); maxR = std::max(maxR, ln.r); maxT = std::max(maxT, ln.t); minB = std::min(minB, ln.b);
             }
             cell.text = text;
+            cell.baseOff = T - lines.front().base;
+            cell.lines = static_cast<int>(lines.size());
             // style: the first letter's object
             const Char& first = pt.chars[lines.front().chars.front()];
             if (first.obj >= 0) {
@@ -628,6 +630,9 @@ std::vector<Table> detect(Document& d, int page) {
                 t.hRule[best] = 1;
                 if (best == 0) t.rowY[0] = std::max(t.rowY[0], s.at);
                 if (best == t.rows()) t.rowY[best] = std::min(t.rowY[best], s.at);
+                // the rules reach past the text (the cells' padding): the table is as wide as its rules
+                t.colX.front() = std::min(t.colX.front(), s.a);
+                t.colX.back() = std::max(t.colX.back(), s.b);
                 t.lineWidth = s.width; t.lineColor = s.color;
             }
             found.push_back(std::move(t));
@@ -639,8 +644,23 @@ std::vector<Table> detect(Document& d, int page) {
     std::vector<Table> out;
     for (Table& t : found) {
         t.pad = 3;
+        t.foundL = t.left(); t.foundR = t.right(); t.foundT = t.top(); t.foundB = t.bottom();
         if (!fillCells(d, t, pt, fills, nullptr)) { t.cells.clear(); out.push_back(std::move(t)); continue; }
         if (!takeGraphics(t, hs, vs, fills, pg, nullptr)) { t.cells.clear(); out.push_back(std::move(t)); continue; }
+        if (t.scanned) {   // recognised words are sized by their own box (capitals and descenders make it larger): one size for all
+            double size = 0, rowMin = 1e9;
+            for (const Cell& c : t.cells) if (!c.covered && !c.text.empty()) size = std::max(size, c.size);
+            for (int r = 0; r < t.rows(); ++r) rowMin = std::min(rowMin, t.rowY[r] - t.rowY[r + 1]);
+            size = std::min(size, 0.6 * rowMin);
+            for (Cell& c : t.cells) { c.size = size; c.baseOff = -1; c.valign = 1; }   // the scan's baselines are guesses: centre the text
+        }
+        // a row's cells sit alike: the vertical alignment most of them have
+        for (int r = 0; r < t.rows(); ++r) {
+            int votes[3] = {0, 0, 0};
+            for (int c = 0; c < t.cols(); ++c) { const Cell& x = t.at(r, c); if (!x.covered && !x.text.empty() && x.rowSpan == 1) ++votes[x.valign]; }
+            const int v = votes[1] >= votes[0] && votes[1] >= votes[2] ? 1 : votes[0] >= votes[2] ? 0 : 2;
+            for (int c = 0; c < t.cols(); ++c) { Cell& x = t.at(r, c); if (!x.covered && x.rowSpan == 1) x.valign = v; }
+        }
         // scanned: the recognised words are invisible text; they go with the table
         std::sort(t.objects.begin(), t.objects.end());
         t.objects.erase(std::unique(t.objects.begin(), t.objects.end()), t.objects.end());
@@ -730,7 +750,8 @@ Cell blankLike(const Cell& c) {
 void insertRow(Table& t, int at) {
     const int R = t.rows(), C = t.cols();
     at = std::clamp(at, 0, R);
-    const int from = at < R ? at : R - 1;   // the row it copies the look of
+    // the row it copies the look of: the one above (a new row continues the table), the first body row at the top
+    const int from = at == 0 ? std::min(1, R - 1) : at - 1;
     const double h = t.rowY[from] - t.rowY[from + 1];
     std::vector<Cell> row(static_cast<size_t>(C));
     for (int c = 0; c < C; ++c) {
@@ -1002,7 +1023,9 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
         return false;
     }
     if (t.hRule.size() != static_cast<size_t>(t.rows() + 1) || t.vRule.size() != static_cast<size_t>(t.cols() + 1)) initRules(t, true);
-    const double oldL = t0.left(), oldR = t0.right(), oldT = t0.top(), oldB = t0.bottom();
+    const bool found = t0.foundR > t0.foundL;   // a table read from the page (else one made here)
+    const double oldL = found ? t0.foundL : t0.left(), oldR = found ? t0.foundR : t0.right();
+    const double oldT = found ? t0.foundT : t0.top(), oldB = found ? t0.foundB : t0.bottom();
     d.beginChange();
     pg = d.page(t.page);
     std::vector<FPDF_PAGEOBJECT> text, graphics;
@@ -1058,6 +1081,9 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
         if (cell.valign == 1) top = (ct + cb) / 2 + block / 2;
         else if (cell.valign == 2) top = cb + block;
         double y = top - cell.size * 0.82;   // the first baseline: about the letters' height below the top
+        // a cell whose text still takes the lines it had sits where it was found
+        const double rowTop = t.rowY[L.r], rowsH = rowTop - t.rowY[L.r + cell.rowSpan];
+        if (cell.baseOff > 0 && static_cast<int>(L.lines.size()) == cell.lines && cell.baseOff < rowsH) y = rowTop - cell.baseOff;
         for (const std::wstring& line : L.lines) {
             if (!line.empty()) {
                 const double w = L.ts->width(line);
@@ -1102,7 +1128,32 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
             }
         }
     }
-    // 3. the old table goes (last index first, so the others keep theirs); a scanned one is covered with white
+    // 3. a table that got longer moves what is below it (within its width) down, so nothing is drawn over; on a scan the
+    // picture cannot move, so there the table may only grow into free space
+    const double extra = oldB - t.bottom();
+    if (extra > 0.01) {
+        std::vector<int> below;
+        double nextTop = -1e9, lowest = 1e9;
+        const int n = api().FPDFPage_CountObjects(pg);
+        for (int i = 0; i < n; ++i) {
+            if (std::find(t0.objects.begin(), t0.objects.end(), i) != t0.objects.end()) continue;
+            FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
+            float l, b, r, tp;
+            if (!o || !api().FPDFPageObj_GetBounds(o, &l, &b, &r, &tp)) continue;
+            if (tp > oldB + 0.5 || r < std::min(oldL, t.left()) || l > std::max(oldR, t.right())) continue;
+            if (api().FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && (r - l) * (tp - b) > 0.5 * d.pageSize(t.page).w * d.pageSize(t.page).h) continue;   // a page-sized picture
+            below.push_back(i);
+            nextTop = std::max(nextTop, static_cast<double>(tp));
+            lowest = std::min(lowest, static_cast<double>(b));
+        }
+        if (!below.empty() && oldB - nextTop < extra + 4) {   // not enough free space under the table
+            if (t.scanned) return fail(L"The table no longer fits above what is below it on this scanned page. Make the text shorter or the columns wider.");
+            if (lowest - extra < 2) return fail(L"The table got longer, and there is no room on this page to move what is below it down. "
+                                                L"Make the text shorter or the columns wider.");
+            for (int i : below) if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
+        }
+    }
+    // 4. the old table goes (last index first, so the others keep theirs); a scanned one is covered with white
     std::vector<int> objs = t0.objects;
     std::sort(objs.rbegin(), objs.rend());
     for (int i : objs) {

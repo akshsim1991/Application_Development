@@ -30,6 +30,8 @@ struct Cell {
     int align = 0;                    // 0 left, 1 centre, 2 right
     int valign = 1;                   // 0 top, 1 middle, 2 bottom
     int like = -1;                    // a text object of the cell when found (its font is used again), else -1
+    double baseOff = -1;              // from the cell's top to its first baseline as found (kept while the text fits as it did)
+    int lines = 0;                    // its number of lines as found
 };
 
 struct Table {
@@ -43,6 +45,7 @@ struct Table {
     double pad = 3;                   // space between a cell's edge and its text, points
     bool scanned = false;             // part of a picture: drawn again over a white box
     std::vector<int> objects;         // the page objects that make up the table (removed when it is drawn again)
+    double foundL = 0, foundB = 0, foundR = 0, foundT = 0;   // where it was found (edits move the edges above)
     double left() const { return colX.front(); }
     double right() const { return colX.back(); }
     double top() const { return rowY.front(); }

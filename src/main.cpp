@@ -6284,6 +6284,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
                         if (!cell.covered && cell.align) x += cell.align == 1 ? L"<c>" : L"<r>";
                         if (!cell.covered && cell.bold) x += L"<b>";
                         if (!cell.covered && cell.fill != tables::kNoFill) x += L"<f>";
+                        if (!cell.covered && !cell.text.empty()) { wchar_t sz[16]; swprintf(sz, 16, L"<%.1f>", cell.size); x += sz; }
                         rep += x + L"|";
                     }
                     rep += L"\n";

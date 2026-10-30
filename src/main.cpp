@@ -3852,9 +3852,11 @@ void editTable(Document& d, tables::Table t) {
     if (r != tableeditor::Result::Apply) return;
     std::wstring why;
     double grew = 0;
-    if (!tables::write(d, t, &why, &grew)) { MessageBoxW(app.wnd, (L"The table could not be changed. " + why).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    bool shrunk = false;
+    if (!tables::write(d, t, &why, &grew, &shrunk)) { MessageBoxW(app.wnd, (L"The table could not be changed. " + why).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
     afterTableChange(d, t.page);
-    if (grew > 0.5) notice(L"The table got longer; what was below it moved down with it.");
+    if (shrunk) notice(L"There was no room on the page for the table to grow, so the text you changed was set a little smaller to fit. Undo (Ctrl+Z) takes it back.");
+    else if (grew > 0.5) notice(L"The table got longer; what was below it moved down with it.");
 }
 
 bool featureDraw(Document& d, const Viewer::Event& e) {
@@ -6698,9 +6700,15 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             else if (op == L"delete") { del = true; i += 1; }
             else return 2;
         }
-        if (del ? !tables::remove(doc, t) : !tables::write(doc, t, &why)) {
+        bool shrunk = false;
+        double grew = 0;
+        if (del ? !tables::remove(doc, t) : !tables::write(doc, t, &why, &grew, &shrunk)) {
             Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(why.begin(), why.end()));
             return 7;
+        }
+        {   // what happened, for the tests: "grew 12.5" / "shrunk"
+            std::string note = shrunk ? "shrunk\n" : grew > 0.01 ? "grew " + std::to_string(grew) + "\n" : "same height\n";
+            Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(note.begin(), note.end()));
         }
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }

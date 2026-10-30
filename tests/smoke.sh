@@ -270,6 +270,19 @@ for b in outside rows none; do
   run --tableedit "$(W tbl_ruled.pdf)" "$(W te_$b.pdf)" 1 200 700 borders $b; run --tables "$(W te_$b.pdf)" "$(W te_$b.txt)"
   check "lines: $b, found again as the same table" "grep -q 'rows 5 cols 4 editable 1' '$work/te_$b.txt' && grep -q '|Qty<b>.*|1,200<r>' <(tr -d '\\n' < '$work/te_$b.txt')"
 done
+run --tableedit "$(W tbl_full.pdf)" "$(W te_full.pdf)" 1 150 760 cell 2 1 "Night shift with a long note that wraps onto more lines than the row has room for"
+check "no room below: the edit still works, the text set smaller" "[ -s '$work/te_full.pdf' ] && grep -q shrunk '$work/te_full.pdf.txt' && pdftotext '$work/te_full.pdf' - | grep -q 'long note'"
+run --tableedit "$(W tbl_sharedpath.pdf)" "$(W te_sp.pdf)" 1 150 760 cell 1 0 "Washers"
+check "borders drawn with other lines in one drawing: editable, the rest kept" "pdftotext '$work/te_sp.pdf' - | grep -q Washers && python3 -c \"import pikepdf;p=pikepdf.open('$work/te_sp.pdf');ops=[o for o in pikepdf.parse_content_stream(p.pages[0]) if str(o.operator) in ('m','l')];pts=[tuple(round(float(v)) for v in o.operands) for o in ops];assert (70,560) in pts and (525,560) in pts and (70,640) in pts, pts\""
+if [ -s "$work/qp.pdf" ]; then
+  run --tables "$(W qp.pdf)" "$(W qp.txt)"
+  check "exam paper: USN boxes, details and questions are three tables (the letterhead is none)" "[ \$(grep -c '^page' '$work/qp.txt') -eq 3 ] && grep -q 'rows 1 cols 11' '$work/qp.txt' && grep -q 'INTERNAL ASSESSMENT.*{1x4}' '$work/qp.txt' && grep -q 'rows 6 cols 5 editable 1' '$work/qp.txt' && ! grep -q 'ACHARYA' '$work/qp.txt'"
+  run --tableedit "$(W qp.pdf)" "$(W qp_det.pdf)" 1 300 560 cell 2 1 "II / P-cycle" cell 3 1 "30-10-2026"
+  check "exam paper: empty cells filled in, no row grows" "grep -q 'same height' '$work/qp_det.pdf.txt' && pdftotext '$work/qp_det.pdf' - | grep -q '30-10-2026'"
+  run --tableedit "$(W qp.pdf)" "$(W qp_q.pdf)" 1 300 400 cell 4 1 "Explain signed integer representation using two's complement, with examples, and explain how overflow is detected when two large positive numbers are added together."
+  check "exam paper: a longer question; the other questions keep their own letters" "pdftotext '$work/qp_q.pdf' - | grep -q 'overflow is detected' && pdftotext '$work/qp_q.pdf' - | grep -q 'units cooperate while a computer'"
+  check "exam paper: the yellow border stays round question 3 only" "python3 -c \"import pikepdf;p=pikepdf.open('$work/qp_q.pdf');ops=list(pikepdf.parse_content_stream(p.pages[0]));ys=[i for i,o in enumerate(ops) if str(o.operator)=='RG' and abs(float(o.operands[0])-0.94)<0.02];bl=[i for i,o in enumerate(ops) if str(o.operator)=='RG' and float(o.operands[0])<0.05];assert ys and bl\""
+else echo "  skip exam paper: LibreOffice not installed"; fi
 run --tableedit "$(W tbl_rules.pdf)" "$(W te_del.pdf)" 1 300 700 delete
 check "deleted table: text and rules gone" "! pdftotext '$work/te_del.pdf' - | grep -q 'February' && python3 -c \"import pikepdf;p=pikepdf.open('$work/te_del.pdf');c=pikepdf.unparse_content_stream(pikepdf.parse_content_stream(p.pages[0]));assert b' l' not in c and b're' not in c\""
 run --tables "$(W tbl_scan.pdf)" "$(W tbl_scan.txt)"

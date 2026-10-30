@@ -561,6 +561,30 @@ the text reads correctly.
   and a Word document made by LibreOffice (header in three parts, footer "Page X of Y": all found and removed, body
   kept); five.pdf and Plant report.pdf: nothing found; the user guide: its header, rules and page numbers found.
 
+### B-048 Editing a table in a Word-made exam paper failed: "the table got longer, and there is no room on this page"
+- **Status:** Fixed
+- **Root cause:** reported by the user on a Word exam paper (USN boxes, a letterhead, a details table and a questions
+  table). Several faults together:
+  (a) Apply rewrote every cell, untouched ones too, with Feather PDF's own padding; Word's rows are tighter than that,
+  so every row "grew" even when only one date was typed, and on a full page there was no room to push the rest down.
+  (b) Tables that touch (the letterhead box, the details table and the questions table) were read as one grid, so the
+  "table" covered most of the page.
+  (c) Word draws the borders of several tables, and the rule under the letterhead, as one drawing; a table whose border
+  drawing reached outside it was refused as not editable.
+  (d) When the lines were redrawn they all took one colour (the yellow border round question 3 spread to every line),
+  and text typed into an empty cell came out 10 pt in a standard font.
+- **Fix:** cells that were not changed keep their own text objects (only moved if their row or column moves); a row
+  grows only when the edited text needs more lines than it had; when there is still no room on the page the edited
+  text is set a little smaller (down to 64 %) and a notice says so, instead of refusing. Touching tables are told apart
+  where their column lines differ. A shared border drawing is split: the part outside the table is kept as it was.
+  When the grid is unchanged the original lines are kept; otherwise each line piece keeps its own width and colour.
+  Text in an empty cell takes the size, font and colour of the nearest cell with text.
+- **Verified:** smoke tests on an exam-paper lookalike made with Word-style tables (python-docx + LibreOffice): three
+  tables found, letterhead excluded; empty cells filled with no row growing; a longer question grows only its row and
+  the other questions keep their own letters; the yellow border stays round question 3 only; a table on a full page
+  is edited with the text set smaller; one drawing shared by two tables and a rule. In the app: Edit table on the
+  details table, Date typed, Apply: filled in, everything else on the page unchanged, no error.
+
 ## Delete Header and Footer (requested points)
 Engine `src/headfoot.cpp`, window `src/hfdialog.cpp`; command line `--hfremove` for the smoke tests ("delete header and
 footer", 15 checks on generated samples: a report with logo / title / date / rules / "Page n of 6" and body text that

@@ -32,6 +32,21 @@ struct Cell {
     int like = -1;                    // a text object of the cell when found (its font is used again), else -1
     double baseOff = -1;              // from the cell's top to its first baseline as found (kept while the text fits as it did)
     int lines = 0;                    // its number of lines as found
+    // as it was found on the page: a cell that is not changed keeps its own text objects (fonts, letters, places), moved
+    // only when its row or column moves
+    std::vector<int> objs;            // its text objects (page indices)
+    bool sharedObjs = false;          // one of them also holds text of another cell (then it is set again when either changes)
+    bool found = false;               // read from the page (the fields below are set)
+    std::wstring origText;
+    double origSize = 0;
+    pageobj::Family origFamily = pageobj::Family::Sans;
+    bool origBold = false, origItalic = false;
+    COLORREF origColor = 0;
+    int origAlign = 0, origValign = 1;
+    double fL = 0, fR = 0, fT = 0, fB = 0;    // its block's edges as found
+    int fRowSpan = 1, fColSpan = 1;
+    COLORREF fFill = 0xFFFFFFFF;
+    double textW = 0;                         // the width its text took
 };
 
 struct Table {
@@ -42,9 +57,18 @@ struct Table {
     std::vector<char> hRule, vRule;   // a line along each row edge (rows + 1) and column edge (cols + 1); none inside merged cells
     double lineWidth = 0.75;
     COLORREF lineColor = RGB(0, 0, 0);
+    // the pieces of line as found (each with its own width and colour: a thick coloured rule round one row stays so),
+    // and for each row and column edge the edge it was found as (-1: added since)
+    struct Piece { bool horizontal; double at, a, b, width; COLORREF colour; };
+    std::vector<Piece> pieces;
+    std::vector<int> hOrig, vOrig;
+    // the grid as found: while it is the same, the table's own line drawings are kept as they are
+    std::vector<double> foundColX, foundRowY;
+    std::vector<char> foundH, foundV;
     double pad = 3;                   // space between a cell's edge and its text, points
     bool scanned = false;             // part of a picture: drawn again over a white box
     std::vector<int> objects;         // the page objects that make up the table (removed when it is drawn again)
+    std::vector<int> sharedPaths;     // of those, line drawings that also draw outside the table: only their part inside goes
     double foundL = 0, foundB = 0, foundR = 0, foundT = 0;   // where it was found (edits move the edges above)
     double left() const { return colX.front(); }
     double right() const { return colX.back(); }
@@ -83,7 +107,8 @@ void moveTo(Table& t, double left, double top);
 
 // Removes the table's objects and draws `t` in their place; one undo step. False, with the reason, when it could not be
 // drawn (the document is then unchanged). Rows grow when their text needs more room (`grewBy`, points).
-bool write(Document& d, const Table& t, std::wstring* why = nullptr, double* grewBy = nullptr);
+// `shrunk`: set when edited text had to be set smaller to fit on the page (there was no room below for the table to grow).
+bool write(Document& d, const Table& t, std::wstring* why = nullptr, double* grewBy = nullptr, bool* shrunk = nullptr);
 // Removes the table (on a scanned page it is covered with white). One undo step.
 bool remove(Document& d, const Table& t);
 

@@ -7,6 +7,7 @@
 #include <functional>
 #include <map>
 #include <numeric>
+#include <set>
 
 namespace tables {
 namespace {
@@ -308,6 +309,18 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
         inCell[static_cast<size_t>(ar) * C + ac].push_back(static_cast<int>(i));
         if (ch.obj >= 0) objIn[static_cast<size_t>(ch.obj)] = 1;
     }
+    // the text objects of each cell (an object holding letters of two cells ties them together)
+    {
+        std::map<int, std::set<int>> cellsOfObj;
+        for (size_t k = 0; k < inCell.size(); ++k)
+            for (int i : inCell[k]) if (pt.chars[i].obj >= 0) cellsOfObj[pt.chars[i].obj].insert(static_cast<int>(k));
+        for (const auto& kv : cellsOfObj)
+            for (int k : kv.second) {
+                Cell& cell = t.cells[static_cast<size_t>(k)];
+                cell.objs.push_back(kv.first);
+                if (kv.second.size() > 1) cell.sharedObjs = true;
+            }
+    }
     // every text object with a letter inside must lie inside: else removing it would take text outside the table with it
     for (size_t o = 0; o < objIn.size(); ++o) {
         if (!objIn[o]) continue;
@@ -361,6 +374,7 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
                 minL = std::min(minL, ln.l); maxR = std::max(maxR, ln.r); maxT = std::max(maxT, ln.t); minB = std::min(minB, ln.b);
             }
             cell.text = text;
+            cell.textW = maxR - minL;
             cell.baseOff = T - lines.front().base;
             cell.lines = static_cast<int>(lines.size());
             // style: the first letter's object
@@ -456,9 +470,14 @@ bool takeGraphics(Table& t, const std::vector<Seg>& hs, const std::vector<Seg>& 
         float l, b, r, tp;
         FPDF_PAGEOBJECT po = api().FPDFPage_GetObject(pg, o);
         if (!po || !api().FPDFPageObj_GetBounds(po, &l, &b, &r, &tp)) continue;
+        // a drawing that also draws outside the table (Word and LibreOffice draw many borders as one): only its part
+        // inside the table is taken; the rest is drawn again as it was
         if (!inside(l, b, r, tp)) {
-            if (why) *why = L"This table's lines are drawn together with other parts of the page, so it cannot be changed safely.";
-            return false;
+            if (api().FPDFPageObj_GetType(po) != FPDF_PAGEOBJ_PATH) {
+                if (why) *why = L"This table's lines are drawn together with other parts of the page, so it cannot be changed safely.";
+                return false;
+            }
+            t.sharedPaths.push_back(o);
         }
         t.objects.push_back(o);
     }
@@ -561,6 +580,49 @@ void cleanEdges(std::vector<double>& e, double minGap) {   // edges too close (d
 
 // ---------------------------------------------------------------- detection
 
+// Tables drawn one right on top of the other (a box of boxes over a framed note over a form, as in an exam paper made in
+// Word) touch, so their lines make one grid. Between two bands of rows, a change in the outer edges (or column edges
+// that do not fit each other) means a different table: the grid is cut there, each part a table of its own.
+std::vector<std::pair<std::vector<Seg>, std::vector<Seg>>> splitStacked(const std::vector<Seg>& ch, const std::vector<Seg>& cv) {
+    std::vector<double> ys;
+    for (const Seg& sg : ch) ys.push_back(sg.at);
+    std::vector<double> rowY = cluster(ys, 1.6);
+    std::sort(rowY.rbegin(), rowY.rend());   // top first
+    auto xsAt = [&](double y) {   // the vertical lines across height y
+        std::vector<double> xs;
+        for (const Seg& sg : cv) if (sg.a <= y && sg.b >= y) xs.push_back(sg.at);
+        std::sort(xs.begin(), xs.end());
+        return cluster(xs, 1.6);
+    };
+    auto subset = [](const std::vector<double>& a, const std::vector<double>& b) {   // every edge of a is in b
+        for (double x : a) { bool in = false; for (double y : b) if (std::fabs(x - y) < 2) in = true; if (!in) return false; }
+        return true;
+    };
+    for (size_t k = 1; k + 1 < rowY.size(); ++k) {
+        const std::vector<double> up = xsAt((rowY[k - 1] + rowY[k]) / 2), down = xsAt((rowY[k] + rowY[k + 1]) / 2);
+        if (up.size() < 2 || down.size() < 2) continue;
+        const bool edges = std::fabs(up.front() - down.front()) > 3 || std::fabs(up.back() - down.back()) > 3;
+        if (!edges && (subset(up, down) || subset(down, up))) continue;
+        // cut at rowY[k]: the line there belongs to both parts, each vertical line to the part it is in
+        const double y = rowY[k];
+        std::vector<Seg> h1, v1, h2, v2;
+        for (Seg sg : ch) {
+            const bool atCut = std::fabs(sg.at - y) <= 1.6;   // only the line along the cut is shared: each part takes its own width of it
+            if (sg.at >= y - 1.6) { Seg a = sg; if (atCut) { a.a = std::max(a.a, up.front() - 2); a.b = std::min(a.b, up.back() + 2); } if (a.b - a.a > 1) h1.push_back(a); }
+            if (sg.at <= y + 1.6) { Seg b = sg; if (atCut) { b.a = std::max(b.a, down.front() - 2); b.b = std::min(b.b, down.back() + 2); } if (b.b - b.a > 1) h2.push_back(b); }
+        }
+        for (Seg sg : cv) {
+            if (sg.b > y + 1.6) { Seg a = sg; a.a = std::max(a.a, y); v1.push_back(a); }
+            if (sg.a < y - 1.6) { Seg b = sg; b.b = std::min(b.b, y); v2.push_back(b); }
+        }
+        auto out = splitStacked(h1, v1);
+        auto more = splitStacked(h2, v2);
+        out.insert(out.end(), more.begin(), more.end());
+        return out;
+    }
+    return {{ch, cv}};
+}
+
 std::vector<Table> detect(Document& d, int page) {
     std::vector<Table> found;
     FPDF_PAGE pg = d.page(page);
@@ -597,13 +659,9 @@ std::vector<Table> detect(Document& d, int page) {
     for (size_t i = 0; i < H; ++i) comps[find(static_cast<int>(i))].first.push_back(static_cast<int>(i));
     for (size_t j = 0; j < V; ++j) comps[find(static_cast<int>(H + j))].second.push_back(static_cast<int>(j));
     std::vector<char> used(pt.chars.size(), 0);
-    for (auto& kv : comps) {
-        const auto& hi = kv.second.first;
-        const auto& vi = kv.second.second;
-        if (hi.size() < 2 || vi.size() < 2) continue;
-        std::vector<Seg> ch, cv;
-        for (int i : hi) ch.push_back(hs[i]);
-        for (int j : vi) cv.push_back(vs[j]);
+    // one grid of lines: a table (lines that touch but belong to tables stacked one on the other are cut apart first)
+    auto buildGrid = [&](const std::vector<Seg>& ch, const std::vector<Seg>& cv) {
+        if (ch.size() < 2 || cv.size() < 2) return;
         std::vector<double> xs, ys;
         for (const Seg& s : cv) xs.push_back(s.at);
         for (const Seg& s : ch) ys.push_back(s.at);
@@ -611,12 +669,12 @@ std::vector<Table> detect(Document& d, int page) {
         std::reverse(rowY.begin(), rowY.end());
         cleanEdges(colX, 3.0);
         cleanEdges(rowY, 3.0);
-        if (colX.size() < 2 || rowY.size() < 2) continue;
+        if (colX.size() < 2 || rowY.size() < 2) return;
         Table t;
         t.page = page;
         t.scanned = scanned;
         t.colX = colX; t.rowY = rowY;
-        if (t.right() - t.left() < 20 || t.top() - t.bottom() < 8) continue;
+        if (t.right() - t.left() < 20 || t.top() - t.bottom() < 8) return;
         // only the frame: the columns or rows come from the text inside
         std::vector<int> inside;
         for (size_t i = 0; i < pt.chars.size(); ++i) {
@@ -628,8 +686,8 @@ std::vector<Table> detect(Document& d, int page) {
         const bool colsFromLines = t.colX.size() > 2, rowsFromLines = t.rowY.size() > 2;
         if (!colsFromLines && lines.size() >= 2) t.colX = columnsFromText(lines, t.left(), t.right());
         if (!rowsFromLines && lines.size() >= 2) t.rowY = rowsFromText(lines, t.top(), t.bottom());
-        if (t.rows() * t.cols() < 2) continue;   // one box: a frame, not a table
-        if (!colsFromLines && t.cols() < 2) continue;   // a box around a paragraph (one column of text lines)
+        if (t.rows() * t.cols() < 2) return;   // one box: a frame, not a table
+        if (!colsFromLines && t.cols() < 2) return;   // a box around a paragraph (one column of text lines)
         t.cells.assign(static_cast<size_t>(t.rows()) * t.cols(), Cell{});
         markMerges(t, ch, cv, colsFromLines, rowsFromLines);
         initRules(t, true);
@@ -639,6 +697,15 @@ std::vector<Table> detect(Document& d, int page) {
         lineStyle(t, ch, cv);
         for (int i : inside) used[i] = 1;
         found.push_back(std::move(t));
+    };
+    for (auto& kv : comps) {
+        const auto& hi = kv.second.first;
+        const auto& vi = kv.second.second;
+        if (hi.size() < 2 || vi.size() < 2) continue;
+        std::vector<Seg> ch, cv;
+        for (int i : hi) ch.push_back(hs[i]);
+        for (int j : vi) cv.push_back(vs[j]);
+        for (auto& part : splitStacked(ch, cv)) buildGrid(part.first, part.second);
     }
 
     // 2. tables without lines (or with horizontal rules only): text lines whose pieces line up in columns
@@ -709,6 +776,42 @@ std::vector<Table> detect(Document& d, int page) {
             const int v = votes[1] >= votes[0] && votes[1] >= votes[2] ? 1 : votes[0] >= votes[2] ? 0 : 2;
             for (int c = 0; c < t.cols(); ++c) { Cell& x = t.at(r, c); if (!x.covered && x.rowSpan == 1) x.valign = v; }
         }
+        // an empty cell writes like its neighbours: the nearest text in its row (else in its column) gives font and size
+        for (int r = 0; r < t.rows(); ++r)
+            for (int c = 0; c < t.cols(); ++c) {
+                Cell& x = t.at(r, c);
+                if (x.covered || !x.text.empty()) continue;
+                const Cell* from = nullptr;
+                for (int dc = 1; dc < t.cols() && !from; ++dc)
+                    for (int cc : {c - dc, c + dc})
+                        if (!from && cc >= 0 && cc < t.cols()) { const Cell& y = t.at(r, cc); if (!y.covered && !y.text.empty()) from = &y; }
+                for (int dr = 1; dr < t.rows() && !from; ++dr)
+                    for (int rr : {r - dr, r + dr})
+                        if (!from && rr >= 0 && rr < t.rows()) { const Cell& y = t.at(rr, c); if (!y.covered && !y.text.empty()) from = &y; }
+                if (!from) continue;
+                x.size = from->size; x.family = from->family; x.color = from->color; x.like = from->like; x.italic = from->italic;
+            }
+        // how each cell was found: what is not changed later is left as it is
+        for (int r = 0; r < t.rows(); ++r)
+            for (int c = 0; c < t.cols(); ++c) {
+                Cell& x = t.at(r, c);
+                if (x.covered) continue;
+                x.found = true;
+                x.origText = x.text; x.origSize = x.size; x.origFamily = x.family; x.origBold = x.bold; x.origItalic = x.italic;
+                x.origColor = x.color; x.origAlign = x.align; x.origValign = x.valign;
+                x.fL = t.colX[c]; x.fR = t.colX[c + x.colSpan]; x.fT = t.rowY[r]; x.fB = t.rowY[r + x.rowSpan];
+                x.fRowSpan = x.rowSpan; x.fColSpan = x.colSpan; x.fFill = x.fill;
+            }
+        t.foundColX = t.colX; t.foundRowY = t.rowY; t.foundH = t.hRule; t.foundV = t.vRule;
+        t.hOrig.resize(static_cast<size_t>(t.rows() + 1)); std::iota(t.hOrig.begin(), t.hOrig.end(), 0);
+        t.vOrig.resize(static_cast<size_t>(t.cols() + 1)); std::iota(t.vOrig.begin(), t.vOrig.end(), 0);
+        for (const auto* list : {&hs0, &vs0})
+            for (const Seg& sg : *list) {
+                const bool h = list == &hs0;
+                const double x0 = h ? sg.a : sg.at, x1 = h ? sg.b : sg.at, y0 = h ? sg.at : sg.a, y1 = h ? sg.at : sg.b;
+                if (x1 < t.left() - 3 || x0 > t.right() + 3 || y1 < t.bottom() - 3 || y0 > t.top() + 3) continue;
+                t.pieces.push_back({h, sg.at, sg.a, sg.b, sg.width, sg.color});
+            }
         // scanned: the recognised words are invisible text; they go with the table
         std::sort(t.objects.begin(), t.objects.end());
         t.objects.erase(std::unique(t.objects.begin(), t.objects.end()), t.objects.end());
@@ -867,6 +970,7 @@ void insertRow(Table& t, int at) {
     for (int k = at + 1; k <= R; ++k) y.push_back(t.rowY[k] - h);
     t.rowY = y;
     t.hRule.insert(t.hRule.begin() + at + 1, t.hRule[std::min<size_t>(at + 1, t.hRule.size() - 1)] || t.hRule[at]);
+    if (t.hOrig.size() == static_cast<size_t>(R + 1)) t.hOrig.insert(t.hOrig.begin() + at + 1, -1);
 }
 
 void deleteRow(Table& t, int r) {
@@ -890,6 +994,7 @@ void deleteRow(Table& t, int r) {
     t.rowY.erase(t.rowY.begin() + r + 1);
     for (size_t k = static_cast<size_t>(r) + 1; k < t.rowY.size(); ++k) t.rowY[k] += h;
     t.hRule.erase(t.hRule.begin() + r + 1);
+    if (t.hOrig.size() == static_cast<size_t>(R + 1)) t.hOrig.erase(t.hOrig.begin() + r + 1);
 }
 
 void insertColumn(Table& t, int at) {
@@ -930,6 +1035,7 @@ void insertColumn(Table& t, int at) {
             if (!a.covered && a.colSpan > 1 && c < at && c + a.colSpan > at) ++a.colSpan;
         }
     t.vRule.insert(t.vRule.begin() + at + 1, t.vRule[std::min<size_t>(at + 1, t.vRule.size() - 1)] || t.vRule[at]);
+    if (t.vOrig.size() == static_cast<size_t>(C + 1)) t.vOrig.insert(t.vOrig.begin() + at + 1, -1);
 }
 
 void deleteColumn(Table& t, int c) {
@@ -959,6 +1065,7 @@ void deleteColumn(Table& t, int c) {
     t.colX = x;
     t.cells = cells;
     t.vRule.erase(t.vRule.begin() + c + 1);
+    if (t.vOrig.size() == static_cast<size_t>(C + 1)) t.vOrig.erase(t.vOrig.begin() + c + 1);
 }
 
 bool merge(Table& t, int r0, int c0, int r1, int c1) {
@@ -1105,75 +1212,208 @@ bool validLike(Document& d, const Table& t, int like) {
 
 void destroyAll(std::vector<FPDF_PAGEOBJECT>& v) { for (FPDF_PAGEOBJECT o : v) if (o) api().FPDFPageObj_Destroy(o); v.clear(); }
 
+
+// The part of a line drawing outside `box` (page space, a little larger than the table), drawn as it was: a new path
+// with the same look holding only the subpaths that are not wholly inside. Null when nothing is outside.
+FPDF_PAGEOBJECT outsidePart(FPDF_PAGEOBJECT o, double bl, double bb, double br, double bt, bool& allInside) {
+    FS_MATRIX m{1, 0, 0, 1, 0, 0};
+    api().FPDFPageObj_GetMatrix(o, &m);
+    struct Seg2 { int type; float x, y; bool close; };
+    std::vector<std::vector<Seg2>> subs;
+    const int n = api().FPDFPath_CountSegments(o);
+    for (int k = 0; k < n; ++k) {
+        FPDF_PATHSEGMENT sg = api().FPDFPath_GetPathSegment(o, k);
+        if (!sg) continue;
+        Seg2 x{api().FPDFPathSegment_GetType(sg), 0, 0, api().FPDFPathSegment_GetClose(sg) != 0};
+        api().FPDFPathSegment_GetPoint(sg, &x.x, &x.y);
+        if (x.type == FPDF_SEGMENT_MOVETO || subs.empty()) subs.push_back({});
+        subs.back().push_back(x);
+    }
+    std::vector<const std::vector<Seg2>*> keep;
+    for (const auto& sub : subs) {
+        bool inside = true;
+        for (const Seg2& x : sub) {
+            double px, py;
+            apply(m, x.x, x.y, px, py);
+            if (px < bl || px > br || py < bb || py > bt) inside = false;
+        }
+        if (!inside) keep.push_back(&sub);
+    }
+    allInside = keep.empty();
+    if (keep.empty() || keep.size() == subs.size()) return nullptr;
+    FPDF_PAGEOBJECT p = api().FPDFPageObj_CreateNewPath(keep[0]->front().x, keep[0]->front().y);
+    if (!p) return nullptr;
+    bool first = true;
+    for (const auto* sub : keep) {
+        for (size_t k = 0; k < sub->size(); ++k) {
+            const Seg2& x = (*sub)[k];
+            if (x.type == FPDF_SEGMENT_MOVETO) { if (!first) api().FPDFPath_MoveTo(p, x.x, x.y); }
+            else if (x.type == FPDF_SEGMENT_BEZIERTO && k + 2 < sub->size()) {
+                const Seg2& b = (*sub)[k + 1]; const Seg2& c = (*sub)[k + 2];
+                api().FPDFPath_BezierTo(p, x.x, x.y, b.x, b.y, c.x, c.y);
+                k += 2;
+                if (c.close) api().FPDFPath_Close(p);
+                first = false;
+                continue;
+            } else api().FPDFPath_LineTo(p, x.x, x.y);
+            if (x.close) api().FPDFPath_Close(p);
+            first = false;
+        }
+    }
+    unsigned R, G, B, A;
+    if (api().FPDFPageObj_GetFillColor(o, &R, &G, &B, &A)) api().FPDFPageObj_SetFillColor(p, R, G, B, A);
+    if (api().FPDFPageObj_GetStrokeColor(o, &R, &G, &B, &A)) api().FPDFPageObj_SetStrokeColor(p, R, G, B, A);
+    float w = 1;
+    if (api().FPDFPageObj_GetStrokeWidth(o, &w)) api().FPDFPageObj_SetStrokeWidth(p, w);
+    api().FPDFPageObj_SetLineCap(p, api().FPDFPageObj_GetLineCap(o));
+    api().FPDFPageObj_SetLineJoin(p, api().FPDFPageObj_GetLineJoin(o));
+    int fillMode = 0;
+    FPDF_BOOL stroke = 0;
+    api().FPDFPath_GetDrawMode(o, &fillMode, &stroke);
+    api().FPDFPath_SetDrawMode(p, fillMode, stroke);
+    api().FPDFPageObj_SetMatrix(p, &m);
+    return p;
+}
+
+// letters that the fonts of most documents lack, as their plain equivalents (a non-breaking hyphen as a hyphen...)
+std::wstring plainLetters(std::wstring s) {
+    for (auto& c : s) {
+        if (c == 0x2010 || c == 0x2011 || c == 0x2012 || c == 0x2212) c = L'-';
+        else if (c == 0x00A0 || c == 0x2007 || c == 0x2009 || c == 0x200A || c == 0x202F) c = L' ';
+    }
+    s.erase(std::remove_if(s.begin(), s.end(), [](wchar_t c) { return c == 0x200B || c == 0x00AD || c == 0xFEFF; }), s.end());
+    return s;
+}
+
 } // namespace
 
-bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
-    Table t = t0;
+bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool* shrunk) {
     if (grewBy) *grewBy = 0;
-    FPDF_PAGE pg = d.page(t.page);
-    if (!pg || t.rows() < 1 || t.cols() < 1 || t.cells.size() != static_cast<size_t>(t.rows()) * t.cols()) {
+    if (shrunk) *shrunk = false;
+    FPDF_PAGE pg = d.page(t0.page);
+    if (!pg || t0.rows() < 1 || t0.cols() < 1 || t0.cells.size() != static_cast<size_t>(t0.rows()) * t0.cols()) {
         if (why) *why = L"The table is not complete.";
         return false;
     }
-    if (t.hRule.size() != static_cast<size_t>(t.rows() + 1) || t.vRule.size() != static_cast<size_t>(t.cols() + 1)) initRules(t, true);
     const bool found = t0.foundR > t0.foundL;   // a table read from the page (else one made here)
     const double oldL = found ? t0.foundL : t0.left(), oldR = found ? t0.foundR : t0.right();
     const double oldT = found ? t0.foundT : t0.top(), oldB = found ? t0.foundB : t0.bottom();
+    const int R = t0.rows(), C = t0.cols();
+
+    // 0. cells that keep their own text objects: not changed, and their text still fits across the cell
+    std::vector<char> keep(static_cast<size_t>(R) * C, 0);
+    std::set<int> keptObjs;
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            const Cell& x = t0.at(r, c);
+            if (x.covered || !x.found || x.sharedObjs || x.objs.empty() || t0.scanned) continue;
+            const bool same = x.text == x.origText && std::fabs(x.size - x.origSize) < 0.01 && x.family == x.origFamily && x.bold == x.origBold &&
+                              x.italic == x.origItalic && x.color == x.origColor && x.align == x.origAlign && x.valign == x.origValign;
+            const double w = t0.colX[c + x.colSpan] - t0.colX[c];
+            if (!same || w + 0.5 < x.textW + std::min(x.fR - x.fL - x.textW, 2.0)) continue;
+            keep[static_cast<size_t>(r) * C + c] = 1;
+            keptObjs.insert(x.objs.begin(), x.objs.end());
+        }
+
     d.beginChange();
-    pg = d.page(t.page);
+    pg = d.page(t0.page);
     std::vector<FPDF_PAGEOBJECT> text, graphics;
+    struct Laid { int r, c; std::vector<std::wstring> lines; std::unique_ptr<pageobj::TextSetter> ts; double lineStep, size; };
+    std::vector<Laid> laid;
     auto fail = [&](const std::wstring& reason) {
         destroyAll(text); destroyAll(graphics);
+        laid.clear();
         d.rollbackChange();
         if (why) *why = reason;
         return false;
     };
 
-    // 1. the text of each cell, broken into lines; rows grow when a cell needs more room
-    struct Laid { int r, c; std::vector<std::wstring> lines; std::unique_ptr<pageobj::TextSetter> ts; double lineStep; };
-    std::vector<Laid> laid;
-    const int R = t.rows(), C = t.cols();
-    std::vector<double> need(static_cast<size_t>(R), 0);
-    for (int r = 0; r < R; ++r)
-        for (int c = 0; c < C; ++c) {
-            const Cell& cell = t.at(r, c);
-            if (cell.covered || cell.text.find_first_not_of(L" \n") == std::wstring::npos) continue;
-            pageobj::TextStyle st;
-            st.family = cell.family; st.bold = cell.bold; st.italic = cell.italic; st.sizePt = cell.size; st.color = cell.color;
-            // recognised words on a scan are invisible and stretched to the picture: new text uses a standard font
-            const int like = !t.scanned && validLike(d, t0, cell.like) ? cell.like : -1;
-            auto ts = std::make_unique<pageobj::TextSetter>(d, t.page, like, st);
-            if (!ts->ok()) return fail(L"The text of a cell could not be set in its font.");
-            const double w = t.colX[c + cell.colSpan] - t.colX[c] - 2 * t.pad;
-            bool ok = true;
-            std::vector<std::wstring> lines = wrap(*ts, cell.text, std::max(4.0, w), ok);
-            if (!ok) return fail(L"A cell holds letters that cannot be set (only letters, numbers and symbols of Western languages can be typed).");
-            const double step = cell.size * 1.2;
-            // a row grows only when its text does not fit: a little room above and below, not the side padding
-            const double vpad = std::min(t.pad, 1.5);
-            const double h = 2 * vpad + (lines.empty() ? 0 : (lines.size() - 1) * step + cell.size * 1.05);
-            const int last = r + cell.rowSpan - 1;
-            double have = 0;
-            for (int k = r; k <= last; ++k) have += t.rowY[k] - t.rowY[k + 1];
-            if (h > have) need[last] = std::max(need[last], (t.rowY[last] - t.rowY[last + 1]) + (h - have));
-            laid.push_back({r, c, std::move(lines), std::move(ts), step});
+    // what lies below the table on the page (moved down when the table gets longer)
+    std::vector<FPDF_PAGEOBJECT> below;
+    double nextTop = -1e9, lowest = 1e9, floor = 2;
+    {
+        const double footZone = 0.07 * d.pageSize(t0.page).h;   // page numbers and footers stay where they are
+        const int n = api().FPDFPage_CountObjects(pg);
+        for (int i = 0; i < n; ++i) {
+            if (std::find(t0.objects.begin(), t0.objects.end(), i) != t0.objects.end()) continue;
+            FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
+            float l, b, r, tp;
+            if (!o || !api().FPDFPageObj_GetBounds(o, &l, &b, &r, &tp)) continue;
+            if (tp > oldB + 0.5 || r < oldL || l > oldR) continue;
+            if (api().FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && (r - l) * (tp - b) > 0.5 * d.pageSize(t0.page).w * d.pageSize(t0.page).h) continue;
+            if (tp < footZone) { floor = std::max(floor, static_cast<double>(tp) + 4); continue; }
+            below.push_back(o);
+            nextTop = std::max(nextTop, static_cast<double>(tp));
+            lowest = std::min(lowest, static_cast<double>(b));
         }
-    double grew = 0;
-    for (int r = 0; r < R; ++r) {
-        const double h = t.rowY[r] - t.rowY[r + 1];
-        if (need[r] > h + 0.01) { const double d2 = need[r] - h; grew += d2; for (int k = r + 1; k <= R; ++k) t.rowY[k] -= d2; }
     }
-    if (t.bottom() < 2) return fail(L"The table no longer fits on the page. Make the text shorter or the columns wider.");
+
+    // 1. the cells that are set again, broken into lines; a row grows only for lines a cell did not have before. When
+    // the table cannot grow (no room below), the text set again is made smaller until it fits.
+    Table t;
+    double grew = 0;
+    bool fits = false, smaller = false;
+    for (const double scale : {1.0, 0.94, 0.88, 0.82, 0.76, 0.7, 0.64}) {
+        t = t0;
+        if (t.hRule.size() != static_cast<size_t>(R + 1) || t.vRule.size() != static_cast<size_t>(C + 1)) initRules(t, true);
+        laid.clear();
+        std::vector<double> need(static_cast<size_t>(R), 0);
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c) {
+                const Cell& cell = t.at(r, c);
+                if (cell.covered || keep[static_cast<size_t>(r) * C + c]) continue;
+                const std::wstring cellText = plainLetters(cell.text);
+                if (cellText.find_first_not_of(L" \n") == std::wstring::npos) continue;
+                const bool edited = !cell.found || cell.text != cell.origText || std::fabs(cell.size - cell.origSize) > 0.01;
+                const double size = edited ? std::max(5.0, cell.size * scale) : cell.size;
+                pageobj::TextStyle st;
+                st.family = cell.family; st.bold = cell.bold; st.italic = cell.italic; st.sizePt = size; st.color = cell.color;
+                // recognised words on a scan are invisible and stretched to the picture: new text uses a standard font
+                const int like = !t.scanned && validLike(d, t0, cell.like) ? cell.like : -1;
+                auto ts = std::make_unique<pageobj::TextSetter>(d, t.page, like, st);
+                if (!ts->ok()) return fail(L"The text of a cell could not be set in its font.");
+                const double w = t.colX[c + cell.colSpan] - t.colX[c] - 2 * t.pad;
+                bool ok = true;
+                std::vector<std::wstring> lines = wrap(*ts, cellText, std::max(4.0, w), ok);
+                if (!ok) return fail(L"A cell holds letters that cannot be set (only letters, numbers and symbols of Western languages can be typed).");
+                const double step = size * 1.2;
+                const int last = r + cell.rowSpan - 1;
+                double have = 0;
+                for (int k = r; k <= last; ++k) have += t.rowY[k] - t.rowY[k + 1];
+                const double body = lines.empty() ? 0 : size + (lines.size() - 1) * step;
+                double h;
+                if (cell.found && !cell.origText.empty()) {   // as much more room as the text needs more than it had
+                    const int was = std::max(1, cell.lines);
+                    const double before = cell.origSize + (was - 1) * cell.origSize * 1.2;
+                    h = have + std::max(0.0, body - before);
+                } else h = body + 2;   // a new or empty cell: its text and a little room
+                if (h > have + 0.01) need[last] = std::max(need[last], (t.rowY[last] - t.rowY[last + 1]) + (h - have));
+                laid.push_back({r, c, std::move(lines), std::move(ts), step, size});
+            }
+        grew = 0;
+        for (int r = 0; r < R; ++r) {
+            const double h = t.rowY[r] - t.rowY[r + 1];
+            if (need[r] > h + 0.01) { const double d2 = need[r] - h; grew += d2; for (int k = r + 1; k <= R; ++k) t.rowY[k] -= d2; }
+        }
+        const double extra = oldB - t.bottom();
+        const bool crowded = !below.empty() && oldB - nextTop < extra + 4;
+        const bool canPush = !t.scanned && !below.empty() && lowest - extra >= floor;
+        fits = t.bottom() >= 2 && (extra <= 0.01 || !crowded || canPush);
+        if (fits) break;
+        smaller = true;
+    }
+    if (!fits) return fail(L"The text no longer fits in its cells, and there is no room on this page for the table to grow. Make the text shorter or the columns wider.");
+    if (shrunk) *shrunk = smaller;
     for (Laid& L : laid) {
         const Cell& cell = t.at(L.r, L.c);
         const double cl = t.colX[L.c] + t.pad, cr = t.colX[L.c + cell.colSpan] - t.pad;
         const double vpad = std::min(t.pad, 1.5);
         const double ct = t.rowY[L.r] - vpad, cb = t.rowY[L.r + cell.rowSpan] + vpad;
-        const double block = L.lines.empty() ? 0 : (L.lines.size() - 1) * L.lineStep + cell.size * 1.05;
+        const double block = L.lines.empty() ? 0 : (L.lines.size() - 1) * L.lineStep + L.size * 1.05;
         double top = ct;
         if (cell.valign == 1) top = (ct + cb) / 2 + block / 2;
         else if (cell.valign == 2) top = cb + block;
-        double y = top - cell.size * 0.82;   // the first baseline: about the letters' height below the top
+        double y = top - L.size * 0.82;   // the first baseline: about the letters' height below the top
         // a cell whose text still takes the lines it had sits where it was found
         const double rowTop = t.rowY[L.r], rowsH = rowTop - t.rowY[L.r + cell.rowSpan];
         if (cell.baseOff > 0 && static_cast<int>(L.lines.size()) == cell.lines && cell.baseOff < rowsH) y = rowTop - cell.baseOff;
@@ -1190,77 +1430,104 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
             y -= L.lineStep;
         }
     }
-    // 2. colours and lines
-    for (int r = 0; r < R; ++r)
+    // 2. colours and lines: while the grid is as it was found (only text changed), its own drawings stay untouched
+    bool sameGrid = !t.scanned && t.foundColX.size() == t.colX.size() && t.foundRowY.size() == t.rowY.size() && t.foundH == t.hRule && t.foundV == t.vRule &&
+                    std::abs(t0.lineWidth - t.lineWidth) < 1e-9;
+    for (size_t k = 0; sameGrid && k < t.colX.size(); ++k) sameGrid = std::fabs(t.colX[k] - t.foundColX[k]) < 0.01;
+    for (size_t k = 0; sameGrid && k < t.rowY.size(); ++k) sameGrid = std::fabs(t.rowY[k] - t.foundRowY[k]) < 0.01;
+    for (int r = 0; sameGrid && r < R; ++r)
+        for (int c = 0; sameGrid && c < C; ++c) {
+            const Cell& x = t.at(r, c);
+            if (x.covered) continue;
+            sameGrid = x.found && x.rowSpan == x.fRowSpan && x.colSpan == x.fColSpan && x.fill == x.fFill;
+        }
+    for (int r = 0; r < R && !sameGrid; ++r)
         for (int c = 0; c < C; ++c) {
             const Cell& cell = t.at(r, c);
             if (cell.covered || cell.fill == kNoFill) continue;
             if (FPDF_PAGEOBJECT o = boxObj(t.colX[c], t.rowY[r + cell.rowSpan], t.colX[c + cell.colSpan], t.rowY[r], cell.fill)) graphics.push_back(o);
         }
-    for (int r = 0; r <= R; ++r) {
+    // each piece of line looks as the piece found in its place did (an added row or column: like its neighbour)
+    auto origOf = [](const std::vector<int>& orig, int k, int n) {
+        if (orig.size() != static_cast<size_t>(n + 1)) return -1;
+        for (int d2 = 0; d2 <= n; ++d2) {   // the nearest edge that was found
+            if (k - d2 >= 0 && orig[static_cast<size_t>(k - d2)] >= 0) return orig[static_cast<size_t>(k - d2)];
+            if (k + d2 <= n && orig[static_cast<size_t>(k + d2)] >= 0) return orig[static_cast<size_t>(k + d2)];
+        }
+        return -1;
+    };
+    struct Look { double w; COLORREF c; bool operator==(const Look& o) const { return std::fabs(w - o.w) < 0.01 && c == o.c; } };
+    auto look = [&](bool horizontal, int edge, int span) -> Look {   // span: the column (or row) the piece runs along
+        const int oe = origOf(horizontal ? t.hOrig : t.vOrig, edge, horizontal ? R : C);
+        const int o0 = origOf(horizontal ? t.vOrig : t.hOrig, span, horizontal ? C : R), o1 = origOf(horizontal ? t.vOrig : t.hOrig, span + 1, horizontal ? C : R);
+        if (oe < 0 || o0 < 0 || o1 < 0 || t.foundRowY.empty()) return {t.lineWidth, t.lineColor};
+        const double at = horizontal ? t.foundRowY[static_cast<size_t>(oe)] : t.foundColX[static_cast<size_t>(oe)];
+        const double m = horizontal ? (t.foundColX[static_cast<size_t>(o0)] + t.foundColX[static_cast<size_t>(o1)]) / 2
+                                    : (t.foundRowY[static_cast<size_t>(o0)] + t.foundRowY[static_cast<size_t>(o1)]) / 2;
+        const Table::Piece* best = nullptr;
+        for (const auto& pc : t.pieces)
+            if (pc.horizontal == horizontal && std::fabs(pc.at - at) < 1.6 + pc.width / 2 && pc.a <= m + 0.5 && pc.b >= m - 0.5)
+                if (!best || std::fabs(pc.at - at) < std::fabs(best->at - at)) best = &pc;
+        return best ? Look{best->width, best->colour} : Look{t.lineWidth, t.lineColor};
+    };
+    for (int r = 0; r <= R && !sameGrid; ++r) {
         if (!t.hRule[r]) continue;
         int start = -1;
+        Look cur{0, 0};
         for (int c = 0; c <= C; ++c) {
             const bool draw = c < C && (r == 0 || r == R || !sameBlock(t, r - 1, c, r, c));
-            if (draw && start < 0) start = c;
-            if (!draw && start >= 0) {
-                if (FPDF_PAGEOBJECT o = lineObj(t.colX[start], t.rowY[r], t.colX[c], t.rowY[r], t.lineWidth, t.lineColor)) graphics.push_back(o);
+            const Look lk = draw ? look(true, r, c) : Look{0, 0};
+            if (start >= 0 && (!draw || !(lk == cur))) {
+                if (FPDF_PAGEOBJECT o = lineObj(t.colX[start], t.rowY[r], t.colX[c], t.rowY[r], cur.w, cur.c)) graphics.push_back(o);
                 start = -1;
             }
+            if (draw && start < 0) { start = c; cur = lk; }
         }
     }
-    for (int c = 0; c <= C; ++c) {
+    for (int c = 0; c <= C && !sameGrid; ++c) {
         if (!t.vRule[c]) continue;
         int start = -1;
+        Look cur{0, 0};
         for (int r = 0; r <= R; ++r) {
             const bool draw = r < R && (c == 0 || c == C || !sameBlock(t, r, c - 1, r, c));
-            if (draw && start < 0) start = r;
-            if (!draw && start >= 0) {
-                if (FPDF_PAGEOBJECT o = lineObj(t.colX[c], t.rowY[start], t.colX[c], t.rowY[r], t.lineWidth, t.lineColor)) graphics.push_back(o);
+            const Look lk = draw ? look(false, c, r) : Look{0, 0};
+            if (start >= 0 && (!draw || !(lk == cur))) {
+                if (FPDF_PAGEOBJECT o = lineObj(t.colX[c], t.rowY[start], t.colX[c], t.rowY[r], cur.w, cur.c)) graphics.push_back(o);
                 start = -1;
             }
+            if (draw && start < 0) { start = r; cur = lk; }
         }
     }
-    // 3. a table that got longer moves what is below it (within its width) down, so nothing is drawn over; on a scan the
-    // picture cannot move, so there the table may only grow into free space
+    // 3. the page: what is below moves down by as much as the table grew; the cells kept move with their rows and
+    // columns; drawings shared with the rest of the page keep their part outside; the rest of the old table goes
     const double extra = oldB - t.bottom();
-    if (extra > 0.01) {
-        std::vector<int> below;
-        double nextTop = -1e9, lowest = 1e9;
-        // the strip at the foot of the page (page numbers, footers) stays where it is; the content may move down to it
-        const double footZone = 0.07 * d.pageSize(t.page).h;
-        double floor = 2;
-        const int n = api().FPDFPage_CountObjects(pg);
-        for (int i = 0; i < n; ++i) {
-            if (std::find(t0.objects.begin(), t0.objects.end(), i) != t0.objects.end()) continue;
-            FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
-            float l, b, r, tp;
-            if (!o || !api().FPDFPageObj_GetBounds(o, &l, &b, &r, &tp)) continue;
-            if (tp > oldB + 0.5 || r < std::min(oldL, t.left()) || l > std::max(oldR, t.right())) continue;
-            if (api().FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && (r - l) * (tp - b) > 0.5 * d.pageSize(t.page).w * d.pageSize(t.page).h) continue;   // a page-sized picture
-            if (tp < footZone) { floor = std::max(floor, static_cast<double>(tp) + 4); continue; }
-            below.push_back(i);
-            nextTop = std::max(nextTop, static_cast<double>(tp));
-            lowest = std::min(lowest, static_cast<double>(b));
+    if (extra > 0.01 && !t.scanned && !below.empty() && lowest - extra >= floor)
+        for (FPDF_PAGEOBJECT o : below) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            if (!keep[static_cast<size_t>(r) * C + c]) continue;
+            const Cell& x = t.at(r, c);
+            const double nl = t.colX[c], nr = t.colX[c + x.colSpan], nt = t.rowY[r], nb = t.rowY[r + x.rowSpan];
+            const double dx = x.origAlign == 0 ? nl - x.fL : x.origAlign == 2 ? nr - x.fR : ((nl + nr) - (x.fL + x.fR)) / 2;
+            const double dy = x.origValign == 0 ? nt - x.fT : x.origValign == 2 ? nb - x.fB : ((nt + nb) - (x.fT + x.fB)) / 2;
+            if (std::fabs(dx) < 0.01 && std::fabs(dy) < 0.01) continue;
+            for (int i : x.objs) if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, dx, dy);
         }
-        const bool crowded = !below.empty() && oldB - nextTop < extra + 4;   // the table would run into what is below it
-        if (t.scanned) {
-            if (crowded) return fail(L"The table no longer fits above what is below it on this scanned page. Make the text shorter or the columns wider.");
-        } else if (!below.empty() && lowest - extra >= floor) {
-            // what is below moves down by as much as the table grew, so the space between them stays as it was
-            for (int i : below) if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
-        } else if (crowded) {
-            return fail(L"The table got longer, and there is no room on this page to move what is below it down. "
-                        L"Make the text shorter or the columns wider.");
-        }
-    }
-    // 4. the old table goes (last index first, so the others keep theirs); a scanned one is covered with white
-    std::vector<int> objs = t0.objects;
-    std::sort(objs.rbegin(), objs.rend());
-    for (int i : objs) {
+    std::vector<FPDF_PAGEOBJECT> gone;
+    for (int i : t0.objects) {
+        if (keptObjs.count(i)) continue;
         FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
-        if (o && api().FPDFPage_RemoveObject(pg, o)) api().FPDFPageObj_Destroy(o);
+        if (!o) continue;
+        if (sameGrid && api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;   // the lines and colours stay
+        if (std::find(t0.sharedPaths.begin(), t0.sharedPaths.end(), i) != t0.sharedPaths.end()) {
+            bool allInside = false;
+            FPDF_PAGEOBJECT rest = outsidePart(o, std::min(oldL, t.left()) - 2, std::min(oldB, t.bottom()) - 2, std::max(oldR, t.right()) + 2, std::max(oldT, t.top()) + 2, allInside);
+            if (!rest && !allInside) continue;   // nothing of it inside after all: it stays
+            if (rest) api().FPDFPage_InsertObjectAtIndex(pg, rest, static_cast<size_t>(i));
+        }
+        gone.push_back(o);
     }
+    for (FPDF_PAGEOBJECT o : gone) if (api().FPDFPage_RemoveObject(pg, o)) api().FPDFPageObj_Destroy(o);
     if (t.scanned) {
         const double l = std::min(oldL, t.left()) - 2, r = std::max(oldR, t.right()) + 2, tp = std::max(oldT, t.top()) + 2, b = std::min(oldB, t.bottom()) - 2;
         if (FPDF_PAGEOBJECT o = boxObj(l, b, r, tp, RGB(255, 255, 255))) api().FPDFPage_InsertObject(pg, o);

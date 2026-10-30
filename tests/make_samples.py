@@ -255,3 +255,93 @@ for p in range(1, 6):
     c.setFont("Helvetica", 11); body_text(c, p, 730)
     c.showPage()
 c.save()
+
+# 9. a table on a page that is full below it: an edit that needs more room must still work (the text is set smaller)
+c = canvas.Canvas(f"{out}/tbl_full.pdf", pagesize=A4)
+c.setLineWidth(0.5)
+xs = [70, 200, 520]; ys = [780, 762, 744, 726]
+for x in xs: c.line(x, ys[-1], x, ys[0])
+for y in ys: c.line(xs[0], y, xs[-1], y)
+c.setFont("Helvetica", 11)
+for r, (a, b) in enumerate([("Name", "Value"), ("Plant", "North site"), ("Shift", "Night")]):
+    c.drawString(xs[0] + 4, ys[r] - 13, a); c.drawString(xs[1] + 4, ys[r] - 13, b)
+y = 706
+while y > 40:
+    c.drawString(70, y, "Body text that fills the page down to its foot, so nothing below the table can move down."); y -= 14
+c.save()
+
+# 10. one drawing for the borders of two tables and a rule across the page (as Word and LibreOffice often draw them)
+c = canvas.Canvas(f"{out}/tbl_sharedpath.pdf", pagesize=A4)
+c.setLineWidth(0.6)
+p = c.beginPath()
+def grid(p, x0, x1, y0, rows, cols, h=18):
+    for k in range(rows + 1): p.moveTo(x0, y0 - k * h); p.lineTo(x1, y0 - k * h)
+    for k in range(cols + 1):
+        x = x0 + (x1 - x0) * k / cols; p.moveTo(x, y0); p.lineTo(x, y0 - rows * h)
+grid(p, 70, 400, 780, 3, 2)
+grid(p, 70, 400, 640, 2, 3)
+p.moveTo(70, 560); p.lineTo(525, 560)
+c.drawPath(p, stroke=1, fill=0)
+c.setFont("Helvetica", 11)
+for r, row in enumerate([("Item", "Qty"), ("Bolts", "120"), ("Nuts", "300")]):
+    for k, v in enumerate(row): c.drawString(74 + k * 165, 780 - r * 18 - 13, v)
+for r, row in enumerate([("A", "B", "C"), ("1", "2", "3")]):
+    for k, v in enumerate(row): c.drawString(74 + k * 110, 640 - r * 18 - 13, v)
+c.drawString(70, 545, "Text under the rule.")
+c.save()
+
+# 11. an exam paper made in Word (LibreOffice): USN boxes, a letterhead with a framed note, a details table and a
+#     question table with a thick yellow border round one question, all touching or close
+try:
+    import docx, shutil, subprocess
+    from docx.shared import Pt, Cm
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
+    if shutil.which("soffice"):
+        im = Image.new("RGB", (240, 260), "white"); ImageDraw.Draw(im).polygon([(120, 10), (20, 200), (220, 200)], fill=(40, 70, 160)); im.save(f"{out}/qp_logo.png")
+        dd = docx.Document(); dd.styles['Normal'].font.name = 'Calibri'; dd.styles['Normal'].font.size = Pt(12)
+        sec = dd.sections[0]; sec.top_margin = Cm(1.5); sec.bottom_margin = Cm(1.5); sec.left_margin = Cm(2); sec.right_margin = Cm(2)
+        def borders(cell, **kw):
+            pr = cell._tc.get_or_add_tcPr(); b = OxmlElement('w:tcBorders')
+            for edge in ('top', 'left', 'bottom', 'right'):
+                e = OxmlElement('w:' + edge); e.set(qn('w:val'), kw.get(edge, kw.get('all', 'single'))); e.set(qn('w:sz'), str(kw.get('sz', 8))); e.set(qn('w:color'), kw.get('color', '000000')); b.append(e)
+            pr.append(b)
+        def put(cell, text, bold=False, size=12, align=None):
+            p = cell.paragraphs[0]; r = p.add_run(text); r.bold = bold; r.font.size = Pt(size)
+            if align is not None: p.alignment = align
+        def widths(t, ws):
+            t.autofit = False
+            for row in t.rows:
+                for cc, w in zip(row.cells, ws): cc.width = Cm(w)
+            for gc, w in zip(t._tbl.tblGrid.findall(qn('w:gridCol')), ws): gc.set(qn('w:w'), str(int(w * 567)))
+        p = dd.add_paragraph(); p.alignment = WD_ALIGN_PARAGRAPH.RIGHT; r = p.add_run("AIT/IQAC/Aca/2026-27/IA-QP"); r.bold = True; r.font.size = Pt(14)
+        usn = dd.add_table(rows=1, cols=11); usn.alignment = WD_TABLE_ALIGNMENT.RIGHT; usn.style = 'Table Grid'; put(usn.cell(0, 0), "USN", True, 14)
+        top = dd.add_table(rows=1, cols=3); c0, c1, c2 = top.rows[0].cells
+        borders(c0, all='nil'); borders(c1, all='nil'); borders(c2)
+        c0.paragraphs[0].add_run().add_picture(f"{out}/qp_logo.png", width=Cm(2.6))
+        put(c1, "ACHARYA INSTITUTE OF TECHNOLOGY", True, 13, WD_ALIGN_PARAGRAPH.CENTER)
+        q = c1.add_paragraph(); q.alignment = WD_ALIGN_PARAGRAPH.CENTER; rr = q.add_run("Bengaluru – 560107"); rr.bold = True; rr.font.size = Pt(13)
+        put(c2, "For P cycle branches only", True, 18)
+        t = dd.add_table(rows=4, cols=4); t.style = 'Table Grid'
+        put(t.cell(0, 0).merge(t.cell(0, 3)), "INTERNAL ASSESSMENT – I [Academic Year: 2026-27]", True, 16, WD_ALIGN_PARAGRAPH.CENTER)
+        for i, row in enumerate([("Course Name:", "Essentials of Computers", "Course Code:", "1BESC204E"), ("Semester/Section:", "", "Max Marks:", "25"), ("Date:", "", "Duration:", "60 mins")], 1):
+            for j, v in enumerate(row): put(t.cell(i, j), v, j == 3, 14, WD_ALIGN_PARAGRAPH.RIGHT if j in (0, 2) else WD_ALIGN_PARAGRAPH.CENTER if j == 3 else None)
+        dd.add_paragraph()
+        qt = dd.add_table(rows=6, cols=5); qt.style = 'Table Grid'
+        put(qt.cell(0, 0).merge(qt.cell(0, 4)), "Note: Answer ONE question from each OR pair", True, 14, WD_ALIGN_PARAGRAPH.CENTER)
+        for j, h in enumerate(["Q. No.", "Questions", "CO", "RBT", "Marks"]): put(qt.cell(1, j), h, True, 14, WD_ALIGN_PARAGRAPH.CENTER)
+        rws = [("1", "Explain how the CPU, main memory and input/output units cooperate while a computer executes a program."), None,
+               ("2", "Explain signed integer representation using n‑bit two’s complement. Describe how the sign and value are obtained from a bit pattern."),
+               ("3", "Explain the roles of memory addresses and read/write operations in storing and retrieving data from main memory.")]
+        for k, qq in enumerate(rws, 2):
+            if qq is None: put(qt.cell(k, 0).merge(qt.cell(k, 4)), "OR", True, 14, WD_ALIGN_PARAGRAPH.CENTER); continue
+            put(qt.cell(k, 0), qq[0], True, 14, WD_ALIGN_PARAGRAPH.CENTER); put(qt.cell(k, 1), qq[1], False, 14)
+            for j, v in ((2, "CO1"), (3, "L2"), (4, "5")): put(qt.cell(k, j), v, False, 14, WD_ALIGN_PARAGRAPH.CENTER)
+        for cc in qt.rows[5].cells: borders(cc, sz=24, color='F0B400')
+        widths(top, [3.4, 9.0, 4.6]); widths(t, [4.2, 5.0, 4.0, 3.8]); widths(qt, [1.4, 11.0, 1.4, 1.3, 1.9])
+        dd.save(f"{out}/qp.docx")
+        subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", out, f"{out}/qp.docx"], capture_output=True, timeout=180)
+except Exception:
+    pass

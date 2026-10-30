@@ -26,6 +26,8 @@
     X(FPDFFormObj_CountObjects) \
     X(FPDFFormObj_GetObject) \
     X(FPDFFormObj_RemoveObject) \
+    X(FPDFPageObj_GetLineCap) \
+    X(FPDFPageObj_GetLineJoin) \
     X(FPDFBitmap_Create) \
     X(FPDF_GetPageWidthF) \
     X(FPDF_GetPageHeightF) \

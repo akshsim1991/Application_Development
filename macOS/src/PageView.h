@@ -19,4 +19,19 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 - (void)setZoom:(double)zoom;                          // keeps the middle of the window on the same spot
 - (void)zoomIn;
 - (void)zoomOut;
+- (void)fitPage;                                       // the whole page in the window
+
+// Page layout, as on Windows: 0 one page at a time, 1 continuous, 2 two pages side by side (cover: the first alone).
+@property(nonatomic) int layout;
+@property(nonatomic) BOOL cover;
+
+// Search: every match is tinted, the current one more strongly and scrolled into view.
+- (void)setMatches:(std::vector<TextHit>)hits current:(int)current;
+
+// The selected text (dragging over the text of a page), and Select All of the page shown.
+- (NSString*)selectedText;
+- (BOOL)hasSelection;
+
+// Called when a link (or anything else) jumps to another page, with the page left (for Back).
+@property(nonatomic, copy) void (^jumped)(int fromPage);
 @end

@@ -4,12 +4,14 @@
 #import "Sidebar.h"
 #import "Trace.h"
 #include <cmath>
+#include "platform.hpp"
 
 NSString* const FPPageColoursKey = @"pageColours";
 NSNotificationName const FPPageColoursChanged = @"FPPageColoursChanged";
 
 static NSToolbarItemIdentifier const kPagesItem = @"pages";
 static NSToolbarItemIdentifier const kSidebarItem = @"sidebar";
+static NSToolbarItemIdentifier const kFindItem = @"find";
 static NSToolbarItemIdentifier const kPageItem = @"page";
 static NSToolbarItemIdentifier const kZoomItem = @"zoom";
 
@@ -29,6 +31,11 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     FPPageView* _view;
     FPSidebar* _sidebar;
     NSSplitView* _split;
+    NSSearchField* _find;
+    std::vector<TextHit> _hits;
+    int _hit;
+    std::wstring _searched;
+    std::vector<int> _back, _forward;   // pages to go back and forward to
     NSTextField* _pageField;
     NSTextField* _pageCount;
     NSPopUpButton* _zoomMenu;
@@ -58,6 +65,8 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         _view = [[FPPageView alloc] initWithFrame:scroll.contentView.bounds];
         _view.colours = savedColours();
         scroll.documentView = _view;
+        __weak FPWindowController* weakSelf = self;
+        _view.jumped = ^(int from) { [weakSelf rememberJumpFrom:from]; };
 
         // The sidebar (thumbnails, bookmarks) to the left of the pages, shown or hidden with ⌘B as Ctrl+B on Windows.
         _sidebar = [[FPSidebar alloc] initWithFrame:NSMakeRect(0, 0, 180, 600)];
@@ -113,11 +122,11 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
 // ---- the toolbar ----
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem ];
+    return @[ kSidebarItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem, kFindItem ];
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kPagesItem, kPageItem, kZoomItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
+    return @[ kSidebarItem, kPagesItem, kPageItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
 static NSImage* symbol(NSString* name, NSString* description) {
@@ -127,7 +136,16 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
     NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
-    if ([ident isEqualToString:kSidebarItem]) {
+    if ([ident isEqualToString:kFindItem]) {
+        _find = [[NSSearchField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
+        _find.placeholderString = @"Find";
+        _find.sendsWholeSearchString = YES;
+        _find.target = self;
+        _find.action = @selector(findEntered:);
+        [_find.widthAnchor constraintEqualToConstant:200].active = YES;
+        item.view = _find;
+        item.label = @"Find";
+    } else if ([ident isEqualToString:kSidebarItem]) {
         NSButton* b = [NSButton buttonWithImage:symbol(@"sidebar.left", @"Thumbnails and bookmarks") target:self action:@selector(toggleThumbnails:)];
         b.bezelStyle = NSBezelStyleTexturedRounded;
         b.toolTip = @"Show or hide the thumbnails and bookmarks (\u2318B)";
@@ -193,6 +211,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 }
 
 - (void)pageEntered:(NSTextField*)f {
+    [self rememberJumpFrom:[_view currentPage]];
     [_view showPage:f.intValue - 1];
     [self.window makeFirstResponder:_view];
 }
@@ -229,6 +248,9 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (Document*)pdf { return _view.document; }
 
 - (void)afterChange {
+    _hits.clear();
+    _searched.clear();
+    [_view setMatches:std::vector<TextHit>() current:-1];
     [_view documentChanged];
     [_sidebar documentChanged];
     [(FPDocument*)self.document changed];
@@ -242,9 +264,74 @@ static NSImage* symbol(NSString* name, NSString* description) {
     [self viewChanged:nil];
 }
 
+// ---- find: every match tinted, Return / ⌘G for the next, ⇧⌘G for the previous ----
+
+- (void)findEntered:(NSSearchField*)f {
+    Document* d = self.pdf;
+    if (!d) return;
+    const std::wstring q = platform::wide(f.stringValue.UTF8String ?: "");
+    if (q.empty()) { _hits.clear(); _searched.clear(); [_view setMatches:std::vector<TextHit>() current:-1]; [self viewChanged:nil]; return; }
+    if (q != _searched) {   // a new search: the first match from the page shown
+        _searched = q;
+        _hits = d->find(q, false);
+        _hit = -1;
+        const int page = [_view currentPage];
+        for (size_t i = 0; i < _hits.size(); ++i) if (_hits[i].page >= page) { _hit = static_cast<int>(i) - 1; break; }
+    }
+    if (_hits.empty()) { NSBeep(); [_view setMatches:std::vector<TextHit>() current:-1]; [self viewChanged:nil]; return; }
+    const bool back = (NSApp.currentEvent.modifierFlags & NSEventModifierFlagShift) != 0;
+    _hit = (back ? _hit - 1 + static_cast<int>(_hits.size()) : _hit + 1) % static_cast<int>(_hits.size());
+    [_view setMatches:_hits current:_hit];
+    [self viewChanged:nil];
+}
+
+- (IBAction)performFindPanelAction:(id)sender { [self.window makeFirstResponder:_find]; }
+- (IBAction)findNextMatch:(id)sender { if (_find.stringValue.length) [self findEntered:_find]; else [self performFindPanelAction:nil]; }
+- (IBAction)findPreviousMatch:(id)sender {
+    if (_hits.empty()) return;
+    _hit = (_hit - 1 + static_cast<int>(_hits.size())) % static_cast<int>(_hits.size());
+    [_view setMatches:_hits current:_hit];
+    [self viewChanged:nil];
+}
+
+// ---- back and forward (links, Go to page, thumbnails, bookmarks) ----
+
+- (void)rememberJumpFrom:(int)page {
+    if (_back.empty() || _back.back() != page) _back.push_back(page);
+    if (_back.size() > 50) _back.erase(_back.begin());
+    _forward.clear();
+}
+
+- (IBAction)goBack:(id)sender {
+    if (_back.empty()) return;
+    _forward.push_back([_view currentPage]);
+    const int p = _back.back();
+    _back.pop_back();
+    [_view showPage:p];
+}
+
+- (IBAction)goForward:(id)sender {
+    if (_forward.empty()) return;
+    _back.push_back([_view currentPage]);
+    const int p = _forward.back();
+    _forward.pop_back();
+    [_view showPage:p];
+}
+
+// ---- page layout (View menu), as on Windows ----
+
+- (IBAction)layoutSingle:(id)sender { _view.layout = 0; }
+- (IBAction)layoutContinuous:(id)sender { _view.layout = 1; }
+- (IBAction)layoutTwoPages:(id)sender { _view.layout = 2; }
+- (IBAction)toggleCover:(id)sender { _view.cover = !_view.cover; }
+- (IBAction)fitPage:(id)sender { [_view fitPage]; }
+
 // ---- the sidebar ----
 
-- (void)sidebarGoToPage:(int)page { [_view showPage:page]; }
+- (void)sidebarGoToPage:(int)page {
+    [self rememberJumpFrom:[_view currentPage]];
+    [_view showPage:page];
+}
 
 - (BOOL)sidebarShown { return !_sidebar.hidden; }
 
@@ -298,6 +385,13 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(toggleThumbnails:)) item.title = self.sidebarShown ? @"Hide Sidebar" : @"Show Sidebar";
+    if (item.action == @selector(goBack:)) return !_back.empty();
+    if (item.action == @selector(goForward:)) return !_forward.empty();
+    if (item.action == @selector(findPreviousMatch:)) return !_hits.empty();
+    if (item.action == @selector(layoutSingle:)) item.state = _view.layout == 0;
+    if (item.action == @selector(layoutContinuous:)) item.state = _view.layout == 1;
+    if (item.action == @selector(layoutTwoPages:)) item.state = _view.layout == 2;
+    if (item.action == @selector(toggleCover:)) { item.state = _view.cover; return _view.layout == 2; }
     if (item.action == @selector(featherUndo:)) return self.pdf && self.pdf->canUndo();
     if (item.action == @selector(featherRedo:)) return self.pdf && self.pdf->canRedo();
     if (item.action == @selector(fitWidth:)) item.state = _view.fitWidth ? NSControlStateValueOn : NSControlStateValueOff;

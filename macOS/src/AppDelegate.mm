@@ -218,6 +218,10 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Copy", @selector(copy:), @"c");
     add(m, @"Paste", @selector(paste:), @"v");
     add(m, @"Select All", @selector(selectAll:), @"a");
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Find\u2026", @selector(performFindPanelAction:), @"f");
+    add(m, @"Find Next", @selector(findNextMatch:), @"g");
+    add(m, @"Find Previous", @selector(findPreviousMatch:), @"g", NSEventModifierFlagCommand | NSEventModifierFlagShift);
 
     m = submenu(bar, @"Edit PDF");
     add(m, @"Watermark\u2026", @selector(addWatermark:), nil);
@@ -254,6 +258,12 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Zoom In", @selector(zoomIn:), @"=");
     add(m, @"Zoom Out", @selector(zoomOut:), @"-");
     add(m, @"Fit Width", @selector(fitWidth:), @"9");
+    add(m, @"Fit Page", @selector(fitPage:), @"8");
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Single Page", @selector(layoutSingle:), @"1", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Continuous", @selector(layoutContinuous:), @"2", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Two Pages", @selector(layoutTwoPages:), @"3", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Show Cover Page Separately", @selector(toggleCover:), nil);
     [m addItem:[NSMenuItem separatorItem]];
     NSMenuItem* colours = add(m, @"Page Colours", nil, nil);
     colours.submenu = [[NSMenu alloc] initWithTitle:@"Page Colours"];
@@ -276,6 +286,9 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Last Page", @selector(lastPage:), [NSString stringWithFormat:@"%C", (unichar)NSEndFunctionKey], 0);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Go to Page…", @selector(goToPage:), @"g", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Back", @selector(goBack:), @"[");
+    add(m, @"Forward", @selector(goForward:), @"]");
 
     m = submenu(bar, @"Window");
     add(m, @"Minimize", @selector(performMiniaturize:), @"m");

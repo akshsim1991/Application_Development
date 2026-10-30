@@ -1,6 +1,7 @@
 #import "WindowController.h"
 #import "FPDocument.h"
 #import "PageView.h"
+#import "Trace.h"
 #include <cmath>
 
 NSString* const FPPageColoursKey = @"pageColours";
@@ -59,6 +60,7 @@ static pagecolours::Mode savedColours() {
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(viewChanged:) name:FPPageViewChanged object:_view];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coloursChanged:) name:FPPageColoursChanged object:nil];
         self.document = document;
+        FPTrace(@"window made");
     }
     return self;
 }

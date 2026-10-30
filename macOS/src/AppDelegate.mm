@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 #import "WindowController.h"
+#import "Trace.h"
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
@@ -35,6 +36,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     for (NSString* f in self.filesToOpen)
         [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:[NSURL fileURLWithPath:f] display:YES
                                                                      completionHandler:^(NSDocument* doc, BOOL wasOpen, NSError* e) {
+                                                                         FPTrace(@"opened %@: %@ (already open %d) %@", f, doc.displayName, wasOpen, e);
                                                                          if (!e) { if (wasOpen) [doc showWindows]; return; }
                                                                          fprintf(stderr, "could not open %s: %s\n", f.UTF8String,
                                                                                  e.localizedDescription.UTF8String);

@@ -1,6 +1,7 @@
 #import "FPDocument.h"
 #import "WindowController.h"
 #include "platform.hpp"
+#import "Trace.h"
 
 @implementation FPDocument {
     std::unique_ptr<Document> _pdf;
@@ -13,7 +14,19 @@
 - (Document*)pdf { return _pdf.get(); }
 
 - (void)makeWindowControllers {
-    [self addWindowController:[[FPWindowController alloc] initWithDocument:self]];
+    FPTrace(@"makeWindowControllers %@", self.displayName);
+    @try {
+        [self addWindowController:[[FPWindowController alloc] initWithDocument:self]];
+    } @catch (NSException* e) {
+        FPTrace(@"window could not be made: %@ %@\n%@", e.name, e.reason, e.callStackSymbols);
+        @throw;
+    }
+    FPTrace(@"window controllers %lu", (unsigned long)self.windowControllers.count);
+}
+
+- (void)showWindows {
+    FPTrace(@"showWindows %@", self.displayName);
+    [super showWindows];
 }
 
 // Asks for the password of a protected file. nil when the user cancels.

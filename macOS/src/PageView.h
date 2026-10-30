@@ -10,7 +10,8 @@
 // The tools of the page (Annotate menu), as on Windows. None selects text (and annotations, by clicking them).
 enum FPTool { FPToolNone, FPToolNote, FPToolRectangle, FPToolEllipse, FPToolLine, FPToolArrow, FPToolPen, FPToolPolygon,
               FPToolCloud, FPToolCallout, FPToolStamp, FPToolRedact, FPToolTextBox, FPToolPicture, FPToolCrop, FPToolLink,
-              FPToolFormText, FPToolFormCheck, FPToolFormCombo, FPToolFormRadio, FPToolFormList, FPToolFormDate };
+              FPToolFormText, FPToolFormCheck, FPToolFormCombo, FPToolFormRadio, FPToolFormList, FPToolFormDate,
+              FPToolSelectObject, FPToolEditText, FPToolEditPara, FPToolEditTable, FPToolPlaceTable };
 
 // What a tool did: a drag (two points; the pen gives every point; a polygon its corners), a click, a double-click.
 struct FPToolEvent {
@@ -18,6 +19,7 @@ struct FPToolEvent {
     int page = 0;
     std::vector<annot::PointD> pts;   // page coordinates
     int annot = -1;                   // the annotation clicked or selected, if any
+    enum Drag { None, Move, Resize } drag = None;   // the selected object (Select tool) was moved or resized: pts = from, to
 };
 
 extern NSNotificationName const FPPageViewChanged;   // the page shown or the zoom changed (the toolbar follows)
@@ -61,6 +63,11 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 @property(nonatomic, readonly) int selectedAnnot;
 - (void)clearAnnotSelection;
 - (void)invalidatePage:(int)page;   // a form field on it changed how it looks
+// The selected object (Select tool): a frame with a handle at the bottom-right corner; page < 0 for none.
+- (void)setObjectBox:(int)page rect:(annot::RectD)rect;
+@property(nonatomic, readonly) int objectPage;
+// A rectangle of a page (PDF units) in this view.
+- (NSRect)viewRectOnPage:(int)page rect:(annot::RectD)r;
 - (void)endFormInput;               // the field being typed in lets go of the keyboard
 // The selected text as page rectangles (for highlight, underline...), false when there is none.
 - (BOOL)selectionRects:(std::vector<annot::RectD>&)rects page:(int*)page;

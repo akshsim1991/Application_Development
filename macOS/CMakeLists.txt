@@ -23,6 +23,8 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/PagesMore.mm
   src/Reading.mm
   src/Palette.mm
+  src/Editing.mm
+  src/TableSheet.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")

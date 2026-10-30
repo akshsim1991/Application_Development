@@ -295,6 +295,37 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Notes Summary (highlights and comments)\u2026", @selector(notesSummary:), nil);
     add(m, @"Flatten: Make Comments and Fields Part of the Page\u2026", @selector(flattenComments:), nil);
 
+    m = submenu(bar, @"Edit Text");
+    add(m, @"Edit a Line of Text", @selector(chooseEditTool:), @"e").tag = FPToolEditText;
+    add(m, @"Edit a Paragraph", @selector(chooseEditTool:), @"e", NSEventModifierFlagCommand | NSEventModifierFlagOption).tag = FPToolEditPara;
+    add(m, @"Find and Replace Text\u2026", @selector(findAndReplace:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Add a Text Box", @selector(chooseEditTool:), @"t", NSEventModifierFlagCommand | NSEventModifierFlagOption).tag = FPToolTextBox;
+    add(m, @"Style of New Text\u2026", @selector(textStyleDialog:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Insert a Picture\u2026", @selector(insertPicture:), nil);
+    add(m, @"Paste a Picture", @selector(pastePicture:), @"v", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Select an Object (picture, paragraph, table)", @selector(chooseEditTool:), nil).tag = FPToolSelectObject;
+    NSMenuItem* pic = add(m, @"Selected Object", nil, nil);
+    pic.submenu = [[NSMenu alloc] initWithTitle:@"Selected Object"];
+    add(pic.submenu, @"Turn Right", @selector(objectRotateRight:), nil);
+    add(pic.submenu, @"Turn Left", @selector(objectRotateLeft:), nil);
+    add(pic.submenu, @"Flip Left-Right", @selector(objectFlipHorizontal:), nil);
+    add(pic.submenu, @"Flip Upside Down", @selector(objectFlipVertical:), nil);
+    [pic.submenu addItem:[NSMenuItem separatorItem]];
+    add(pic.submenu, @"Bring to Front", @selector(objectToFront:), nil);
+    add(pic.submenu, @"Send to Back", @selector(objectToBack:), nil);
+    add(pic.submenu, @"Delete", @selector(objectDelete:), nil);
+    [pic.submenu addItem:[NSMenuItem separatorItem]];
+    add(pic.submenu, @"Crop the Picture", @selector(pictureCrop:), nil);
+    add(pic.submenu, @"Brightness and Contrast\u2026", @selector(pictureAdjust:), nil);
+    add(pic.submenu, @"Black and White", @selector(pictureBlackAndWhite:), nil);
+    add(pic.submenu, @"Replace the Picture\u2026", @selector(pictureReplace:), nil);
+    add(pic.submenu, @"Save the Picture as PNG\u2026", @selector(pictureSave:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Edit a Table", @selector(chooseEditTool:), nil).tag = FPToolEditTable;
+    add(m, @"Add a Table\u2026", @selector(addNewTable:), nil);
+
     m = submenu(bar, @"Forms");
     struct { NSString* title; FPTool tool; } fields[] = {{@"Add a Text Field", FPToolFormText}, {@"Add a Check Box", FPToolFormCheck},
         {@"Add a Drop-Down List", FPToolFormCombo}, {@"Add Radio Buttons (one choice of several)", FPToolFormRadio},

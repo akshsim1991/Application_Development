@@ -39,6 +39,43 @@ constexpr size_t kCachedPages = 10;
     int _annotPage, _annotIndex;
     BOOL _formFocus, _formCapture;                // a form field has the keyboard / the mouse
     int _formPage;
+    int _objPage;                                 // the selected object (Select tool)
+    annot::RectD _objRect;
+    FPToolEvent::Drag _objDrag;
+}
+
+- (int)objectPage { return _objPage; }
+
+- (void)setObjectBox:(int)page rect:(annot::RectD)rect {
+    _objPage = page;
+    _objRect = rect;
+    [self setNeedsDisplay:YES];
+}
+
+- (NSRect)viewRectOnPage:(int)page rect:(annot::RectD)r {
+    const NSPoint a = [self viewPointOnPage:page x:r.left y:r.top], b = [self viewPointOnPage:page x:r.right y:r.bottom];
+    return NSMakeRect(std::min(a.x, b.x), std::min(a.y, b.y), std::fabs(b.x - a.x), std::fabs(b.y - a.y));
+}
+
+- (NSRect)objectHandle {
+    const NSRect r = [self viewRectOnPage:_objPage rect:_objRect];
+    return NSMakeRect(NSMaxX(r) - 5, NSMaxY(r) - 5, 10, 10);
+}
+
+// The selected object: a frame and a handle; while it is dragged, the frame where it will go.
+- (void)drawObjectBox {
+    if (_objPage < 0) return;
+    NSRect r = [self viewRectOnPage:_objPage rect:_objRect];
+    if (_toolDown && _objDrag == FPToolEvent::Move) r = NSOffsetRect(r, _toolNowView.x - _toolStartView.x, _toolNowView.y - _toolStartView.y);
+    if (_toolDown && _objDrag == FPToolEvent::Resize) r.size = NSMakeSize(std::max(8.0, r.size.width + _toolNowView.x - _toolStartView.x), std::max(8.0, r.size.height + _toolNowView.y - _toolStartView.y));
+    NSBezierPath* b = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
+    const CGFloat d[] = {5, 3};
+    [b setLineDash:d count:2 phase:0];
+    b.lineWidth = 1.5;
+    [NSColor.controlAccentColor setStroke];
+    [b stroke];
+    [NSColor.controlAccentColor setFill];
+    NSRectFill(NSMakeRect(NSMaxX(r) - 5, NSMaxY(r) - 5, 10, 10));
 }
 
 - (void)invalidatePage:(int)page {
@@ -145,6 +182,7 @@ constexpr size_t kCachedPages = 10;
 
 - (void)setTool:(FPTool)tool {
     _tool = tool;
+    _objPage = -1;
     [[NSNotificationCenter defaultCenter] postNotificationName:FPPageViewChanged object:self];   // the status bar names the tool
     _toolDown = NO;
     _toolPts.clear();
@@ -180,6 +218,7 @@ constexpr size_t kCachedPages = 10;
         _currentMatch = -1;
         _selPage = -1;
         _annotPage = _annotIndex = -1;
+        _objPage = -1;
         _lineWidthPt = 2;
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
@@ -636,6 +675,11 @@ constexpr size_t kCachedPages = 10;
     int page;
     double x, y;
     if (![self pageAt:p page:&page x:&x y:&y]) return;
+    _objDrag = FPToolEvent::None;
+    if (_tool == FPToolSelectObject && _objPage == page) {   // on the selected object: move it, or resize it by its handle
+        if (NSPointInRect(p, NSInsetRect([self objectHandle], -3, -3))) _objDrag = FPToolEvent::Resize;
+        else if (NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) _objDrag = FPToolEvent::Move;
+    }
     if (_tool == FPToolPolygon) {   // corners one click at a time; a double-click (or Return) ends it
         if (!_toolPts.empty() && page != _toolPage) return;
         _toolPage = page;
@@ -684,6 +728,20 @@ constexpr size_t kCachedPages = 10;
         if ([self pageAt:NSMakePoint(std::min(_toolNowView.x, NSMaxX(r) - 0.5), std::min(_toolNowView.y, NSMaxY(r) - 0.5)) page:&page x:&x y:&y])
             _toolPts.push_back({x, y});
     }
+    if (_objDrag != FPToolEvent::None) {
+        if (moved && _toolPts.size() >= 2 && self.onToolEvent) {
+            FPToolEvent ev;
+            ev.kind = FPToolEvent::Draw;
+            ev.page = _toolPage;
+            ev.pts = {_toolPts.front(), _toolPts.back()};
+            ev.drag = _objDrag;
+            self.onToolEvent(ev);
+        }
+        _objDrag = FPToolEvent::None;
+        _toolPts.clear();
+        [self setNeedsDisplay:YES];
+        return;
+    }
     if (moved && _toolPts.size() >= 2) [self sendTool:FPToolEvent::Draw];
     else { _toolPts.resize(1); [self sendTool:e.clickCount >= 2 ? FPToolEvent::DoubleClick : FPToolEvent::Click]; }
     _toolPts.clear();
@@ -693,7 +751,10 @@ constexpr size_t kCachedPages = 10;
 
 // The shape being drawn, before it is added.
 - (void)drawToolPreview {
+    [self drawObjectBox];
+    if (_objDrag != FPToolEvent::None) return;
     if (!_toolDown && !(_tool == FPToolPolygon && !_toolPathView.empty())) return;
+    if (_tool == FPToolSelectObject || _tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable) return;
     NSColor* c = _tool == FPToolRedact ? NSColor.blackColor : NSColor.controlAccentColor;
     [c setStroke];
     const NSRect box = NSMakeRect(std::min(_toolStartView.x, _toolNowView.x), std::min(_toolStartView.y, _toolNowView.y),

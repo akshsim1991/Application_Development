@@ -673,6 +673,36 @@ struct Setter {
     }
 };
 
+// The closest standard family, weight, slant and the colour of a text object drawn at `size` points, and its font's PDF name.
+void styleOfObject(FPDF_PAGEOBJECT o, double size, TextStyle& st, std::string& fontName) {
+    const auto& api = pdfium::api();
+    FPDF_FONT font = api.FPDFTextObj_GetFont(o);
+    fontName = baseFontName(font);
+    const unsigned long flags = font ? static_cast<unsigned long>(api.FPDFFont_GetFlags(font)) : 0;
+    auto has = [&](const char* s) { std::string lo = fontName; for (auto& ch : lo) ch = static_cast<char>(tolower(ch)); return lo.find(s) != std::string::npos; };
+    Family fam = Family::Sans;
+    if (has("courier") || has("mono") || has("consolas") || (flags & 1)) fam = Family::Mono;
+    else if (has("times") || has("serif") || has("georgia") || has("garamond") || has("cambria") || has("minion") || has("palatino") || (flags & 2)) fam = has("sans") ? Family::Sans : Family::Serif;
+    st.family = fam;
+    st.bold = has("bold") || has("black") || has("heavy") || (flags & 262144);
+    st.italic = has("italic") || has("oblique") || (flags & 64);
+    st.sizePt = std::round(size * 2) / 2;
+    unsigned R = 0, G = 0, B = 0, A = 255;
+    api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
+    st.color = RGB(R, G, B);
+}
+
+// The size a text object is drawn at, in points (its font size scaled by its matrix, unless PDFium includes that already).
+double drawnSize(Document& d, FPDF_PAGEOBJECT o) {
+    const auto& api = pdfium::api();
+    float fs = 0;
+    api.FPDFTextObj_GetFontSize(o, &fs);
+    FS_MATRIX m{1, 0, 0, 1, 0, 0};
+    api.FPDFPageObj_GetMatrix(o, &m);
+    const double scale = std::sqrt(static_cast<double>(m.b) * m.b + static_cast<double>(m.d) * m.d);
+    return sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0);
+}
+
 // The paragraph's own font, set up like its first text object (same size and slant), or nullptr font when it is not usable.
 Setter ownFont(Document& d, FPDF_PAGEOBJECT first) {
     const auto& api = pdfium::api();
@@ -839,23 +869,8 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         if (hi - lo <= 0.6 + 0.002 * widest && leftEdge) hit.align = Align::Justify;
     }
     // style from the first line's first object
-    FPDF_PAGEOBJECT o = lines[first].first;
-    FPDF_FONT font = api.FPDFTextObj_GetFont(o);
-    const std::string fname = baseFontName(font);
-    const unsigned long flags = font ? static_cast<unsigned long>(api.FPDFFont_GetFlags(font)) : 0;
-    auto has = [&](const char* s) { std::string lo = fname; for (auto& ch : lo) ch = static_cast<char>(tolower(ch)); return lo.find(s) != std::string::npos; };
-    Family fam = Family::Sans;
-    if (has("courier") || has("mono") || has("consolas") || (flags & 1)) fam = Family::Mono;
-    else if (has("times") || has("serif") || has("georgia") || has("garamond") || has("cambria") || has("minion") || has("palatino") || (flags & 2)) fam = has("sans") ? Family::Sans : Family::Serif;
-    hit.style.family = fam;
-    hit.style.bold = has("bold") || has("black") || has("heavy") || (flags & 262144);
-    hit.style.italic = has("italic") || has("oblique") || (flags & 64);
-    hit.style.sizePt = std::round(lines[first].size * 2) / 2;
+    styleOfObject(lines[first].first, lines[first].size, hit.style, hit.fontName);
     hit.sizeExact = lines[first].size;
-    unsigned R = 0, G = 0, B = 0, A = 255;
-    api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
-    hit.style.color = RGB(R, G, B);
-    hit.fontName = fname;
     return hit;
 }
 
@@ -1064,6 +1079,77 @@ double widthOfRuns(const Fonts& f, const std::vector<Run>& runs) {
     return w;
 }
 } // namespace
+
+bool textObjectStyle(Document& d, int page, int object, TextStyle& style, std::string& fontName, double& size) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    FPDF_PAGEOBJECT o = pdfium::api().FPDFPage_GetObject(pg, object);
+    if (!o || pdfium::api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) return false;
+    size = drawnSize(d, o);
+    styleOfObject(o, size, style, fontName);
+    return true;
+}
+
+struct TextSetter::Impl { Fonts fonts; bool ok = false; };
+
+TextSetter::TextSetter(Document& d, int page, int like, const TextStyle& style) : impl_(new Impl) {
+    Fonts& f = impl_->fonts;
+    ParagraphHit hit;
+    double size = 0;
+    if (like >= 0 && textObjectStyle(d, page, like, hit.style, hit.fontName, size)) {
+        // the object's own look, as if it were a one-line paragraph; tables are upright, so a turned object gives only its font
+        hit.found = true;
+        hit.page = page;
+        hit.objects = {like};
+        hit.sizeExact = size;
+        impl_->ok = fontsFor(d, hit, style, f);
+        f.main.renderMode = f.fallback.renderMode = -1;   // new text is always drawn, even when its model was invisible
+        if (impl_->ok && (std::fabs(f.main.b) > 1e-6 || std::fabs(f.main.c) > 1e-6 || f.main.a <= 0 || f.main.dd <= 0)) impl_->ok = false;
+        if (impl_->ok) { f.mayLoad = true; return; }
+    }
+    // a standard font of the style
+    f.d = &d;
+    f.pg = d.page(page);
+    Setter s{&d};
+    s.standard = standardFont(style.family, style.bold, style.italic);
+    s.fontSize = static_cast<float>(style.sizePt);
+    s.color = style.color;
+    f.main = s;
+    f.fallback = s;
+    f.own = false;
+    const double w1 = s.width(L"x x"), w2 = s.width(L"xx");
+    f.space = w1 > 0 && w2 > 0 && w1 > w2 ? w1 - w2 : 0.25 * style.sizePt;
+    impl_->ok = f.pg != nullptr;
+}
+
+TextSetter::~TextSetter() = default;
+
+bool TextSetter::ok() const { return impl_->ok; }
+
+double TextSetter::width(const std::wstring& line) {
+    const auto words = wordsOf(line);
+    if (words.empty()) return 0;
+    bool fits = false;
+    const auto runs = runsOf(impl_->fonts, words, fits);
+    return fits ? widthOfRuns(impl_->fonts, runs) : -1;
+}
+
+std::vector<FPDF_PAGEOBJECT> TextSetter::make(const std::wstring& line, double x, double y) {
+    std::vector<FPDF_PAGEOBJECT> out;
+    const auto words = wordsOf(line);
+    bool fits = false;
+    const auto runs = runsOf(impl_->fonts, words, fits);
+    if (!fits) return out;
+    double at = x;
+    for (size_t i = 0; i < runs.size(); ++i) {
+        if (i) at += impl_->fonts.space;
+        FPDF_PAGEOBJECT o = runs[i].set->make(runs[i].text, at, y);
+        if (!o) { for (FPDF_PAGEOBJECT p : out) pdfium::api().FPDFPageObj_Destroy(p); return {}; }
+        out.push_back(o);
+        at += runs[i].advance;
+    }
+    return out;
+}
 
 double objectTextWidth(Document& d, int page, int objectIndex, const std::wstring& text) {
     FPDF_PAGE pg = d.page(page);

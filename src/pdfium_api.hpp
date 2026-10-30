@@ -43,6 +43,9 @@
     X(FPDFPathSegment_GetPoint) \
     X(FPDFPath_GetPathSegment) \
     X(FPDFPath_CountSegments) \
+    X(FPDFPath_GetDrawMode) \
+    X(FPDFPathSegment_GetType) \
+    X(FPDFPathSegment_GetClose) \
     X(FPDFAnnot_GetOptionLabel) \
     X(FPDFAnnot_GetOptionCount) \
     X(FPDFAnnot_GetFormFieldExportValue) \

@@ -50,6 +50,7 @@
 #include "buildinfo.hpp"
 #include "inlineedit.hpp"
 #include "startpage.hpp"
+#include "tables.hpp"
 #include "icons.hpp"
 
 namespace {
@@ -6257,6 +6258,81 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u.data(), n, nullptr, nullptr);
         return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--tables") {   // --tables in.pdf report.txt : the tables found on every page
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::wstring rep;
+        for (int p = 0; p < doc.pageCount(); ++p)
+            for (const tables::Table& t : tables::detect(doc, p)) {
+                wchar_t head[256];
+                swprintf(head, 256, L"page %d table %.1f %.1f %.1f %.1f rows %d cols %d editable %d scanned %d objects %d line %.2f\n", p + 1, t.left(), t.bottom(),
+                         t.right(), t.top(), t.rows(), t.cols(), t.cells.empty() ? 0 : 1, t.scanned ? 1 : 0, static_cast<int>(t.objects.size()), t.lineWidth);
+                rep += head;
+                std::wstring h = L"  h", v = L"  v";
+                for (char c : t.hRule) h += c ? L'1' : L'0';
+                for (char c : t.vRule) v += c ? L'1' : L'0';
+                rep += h + L"\n" + v + L"\n";
+                for (int r = 0; r < t.rows() && !t.cells.empty(); ++r) {
+                    rep += L"  |";
+                    for (int c = 0; c < t.cols(); ++c) {
+                        const tables::Cell& cell = t.at(r, c);
+                        std::wstring x = cell.covered ? L"^" : cell.text;
+                        for (auto& ch : x) if (ch == L'\n') ch = L'/';
+                        if (!cell.covered && (cell.rowSpan > 1 || cell.colSpan > 1)) x += L"{" + std::to_wstring(cell.rowSpan) + L"x" + std::to_wstring(cell.colSpan) + L"}";
+                        if (!cell.covered && cell.align) x += cell.align == 1 ? L"<c>" : L"<r>";
+                        if (!cell.covered && cell.bold) x += L"<b>";
+                        if (!cell.covered && cell.fill != tables::kNoFill) x += L"<f>";
+                        rep += x + L"|";
+                    }
+                    rep += L"\n";
+                }
+            }
+        const int n = WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--tableedit") {   // --tableedit in.pdf out.pdf page x y op args... : changes the table there
+        if (files.size() < 6) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const int page = _wtoi(files[3].c_str()) - 1;
+        tables::Table t;
+        std::wstring why;
+        if (!tables::tableAt(doc, page, _wtof(files[4].c_str()), _wtof(files[5].c_str()), t, &why)) {
+            Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(why.begin(), why.end()));
+            return 5;
+        }
+        bool del = false;
+        for (size_t i = 6; i < files.size();) {
+            const std::wstring& op = files[i];
+            auto num = [&](size_t k) { return i + k < files.size() ? _wtof(files[i + k].c_str()) : 0.0; };
+            auto in = [&](size_t k) { return static_cast<int>(num(k)); };
+            if (op == L"cell") { t.at(in(1), in(2)).text = i + 3 < files.size() ? files[i + 3] : L""; i += 4; }
+            else if (op == L"insrow") { tables::insertRow(t, in(1)); i += 2; }
+            else if (op == L"delrow") { tables::deleteRow(t, in(1)); i += 2; }
+            else if (op == L"inscol") { tables::insertColumn(t, in(1)); i += 2; }
+            else if (op == L"delcol") { tables::deleteColumn(t, in(1)); i += 2; }
+            else if (op == L"merge") { if (!tables::merge(t, in(1), in(2), in(3), in(4))) return 6; i += 5; }
+            else if (op == L"split") { tables::split(t, in(1), in(2)); i += 3; }
+            else if (op == L"width") { tables::setColumnWidth(t, in(1), num(2)); i += 3; }
+            else if (op == L"height") { tables::setRowHeight(t, in(1), num(2)); i += 3; }
+            else if (op == L"move") { tables::moveTo(t, num(1), num(2)); i += 3; }
+            else if (op == L"resize") { tables::resize(t, num(1), num(2)); i += 3; }
+            else if (op == L"align") { t.at(in(1), in(2)).align = in(3); i += 4; }
+            else if (op == L"bold") { t.at(in(1), in(2)).bold = in(3) != 0; i += 4; }
+            else if (op == L"fill") { t.at(in(1), in(2)).fill = static_cast<COLORREF>(std::wcstoul(files[i + 3].c_str(), nullptr, 16)); i += 4; }
+            else if (op == L"borders") { const std::wstring& b = files[i + 1]; tables::setBorders(t, b == L"none" ? tables::Borders::None : b == L"outside" ? tables::Borders::Outside : b == L"rows" ? tables::Borders::Rows : tables::Borders::All); i += 2; }
+            else if (op == L"delete") { del = true; i += 1; }
+            else return 2;
+        }
+        if (del ? !tables::remove(doc, t) : !tables::write(doc, t, &why)) {
+            Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(why.begin(), why.end()));
+            return 7;
+        }
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--annottest") {   // --annottest in.pdf out.pdf : polygon, cloud and callout on page 1, the callout's text then changed
         if (files.size() < 3) return 2;

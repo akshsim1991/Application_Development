@@ -3,6 +3,7 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include <memory>
 #include "document.hpp"
 
 namespace pageobj {
@@ -144,6 +145,28 @@ struct TableHit { bool found = false; int page = 0; std::string id; TableSpec sp
 bool addTable(Document& d, int page, double atX, double atY, const TableSpec& spec, bool track = true);
 TableHit tableAt(Document& d, int page, double x, double y);
 bool removeTable(Document& d, int page, const std::string& id, bool track = true);
+
+// ---- text set like a text object already on the page (table cells) ----
+// The look of a text object of the page (its index): style and PDF font name, with `size` the size it is drawn at.
+bool textObjectStyle(Document& d, int page, int object, TextStyle& style, std::string& fontName, double& size);
+// Sets lines of text upright in `style`, in the font of the text object `like` where that font has every letter of a word
+// (else the installed font of that name, else the closest standard font), or in a standard font when `like` is -1.
+// Make it while a change is being made: a font may be embedded on first use.
+class TextSetter {
+public:
+    TextSetter(Document& d, int page, int like, const TextStyle& style);
+    ~TextSetter();
+    TextSetter(const TextSetter&) = delete;
+    TextSetter& operator=(const TextSetter&) = delete;
+    bool ok() const;
+    double width(const std::wstring& line);   // from the start to the right edge of the last letter; -1 when it cannot be set
+    // The text objects for one line, its baseline starting at (x, y) in page coordinates; not yet on the page. Empty when
+    // the line cannot be set.
+    std::vector<FPDF_PAGEOBJECT> make(const std::wstring& line, double x, double y);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 
 // Puts the baseline-left origin of a text object at (originX, originY) measured in points from the top-left of the
 // page as displayed, stretching it horizontally by `sx`. Used for the invisible text layer of recognised text.

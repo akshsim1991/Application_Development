@@ -69,3 +69,70 @@ sp.pages.append(pikepdf.Page(pikepdf.Dictionary(Type=pikepdf.Name.Page, MediaBox
                                                 Resources=pikepdf.Dictionary(Font=pikepdf.Dictionary(F1=helv)))))
 sp.save(f"{out}/spacing.pdf")
 print("samples written to", out)
+
+# ---- tables (detection and editing tests) ----
+# 1. ruled: a grid with a shaded, bold header, a cell merged across two columns and a total right-aligned
+doc = SimpleDocTemplate(f"{out}/tbl_ruled.pdf", pagesize=A4)
+doc.build([Paragraph("Ruled table", st['Heading1']),
+           Table([["Item", "Qty", "Unit price", "Total"],
+                  ["Electrodes E7018", "1,200", "0.45", "540.00"],
+                  ["Shielding gas (cyl.)", "36", "42.00", "1,512.00"],
+                  ["Grinding discs", "400", "1.10", "440.00"],
+                  ["Grand total", "", "", "2,492.00"]],
+                 colWidths=[180, 70, 90, 90],
+                 style=TableStyle([('GRID', (0, 0), (-1, -1), 0.75, colors.black),
+                                   ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor("#1F3864")),
+                                   ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                                   ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                                   ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+                                   ('SPAN', (0, 4), (2, 4))])),
+           Spacer(1, 12), Paragraph("Text after the table stays where it is.", st['BodyText'])])
+
+# 2. rules only: a line above and below the header and one at the bottom (no vertical lines)
+doc = SimpleDocTemplate(f"{out}/tbl_rules.pdf", pagesize=A4)
+doc.build([Paragraph("Rules only", st['Heading1']),
+           Table([["Month", "Hours", "Welds", "Rejects"], ["January", "412", "1,830", "12"], ["February", "398", "1,744", "9"],
+                  ["March", "441", "1,902", "15"], ["April", "405", "1,795", "8"]],
+                 colWidths=[120, 80, 80, 80],
+                 style=TableStyle([('LINEABOVE', (0, 0), (-1, 0), 1, colors.black), ('LINEBELOW', (0, 0), (-1, 0), 0.5, colors.black),
+                                   ('LINEBELOW', (0, -1), (-1, -1), 1, colors.black), ('ALIGN', (1, 0), (-1, -1), 'RIGHT')]))])
+
+# 3. no lines: columns of text only
+c = canvas.Canvas(f"{out}/tbl_plain.pdf", pagesize=A4)
+c.setFont("Helvetica-Bold", 16); c.drawString(72, 780, "Plain columns")
+rows = [("Code", "Description", "Stock", "Location"), ("A-101", "Hex bolt M8", "1,250", "Shelf 3"), ("A-102", "Hex nut M8", "2,400", "Shelf 3"),
+        ("B-220", "Washer 8 mm", "3,100", "Shelf 4"), ("C-310", "Rivet 4 mm", "900", "Shelf 7")]
+for i, r in enumerate(rows):
+    c.setFont("Helvetica-Bold" if i == 0 else "Helvetica", 11)
+    y = 740 - i * 18
+    c.drawString(72, y, r[0]); c.drawString(150, y, r[1]); c.drawRightString(330, y, r[2]); c.drawString(360, y, r[3])
+c.setFont("Helvetica", 11)
+c.drawString(72, 600, "A paragraph below the table, which is not part of it and must not be taken in.")
+c.save()
+
+# 4. two columns of running text: not a table
+c = canvas.Canvas(f"{out}/tbl_twocol.pdf", pagesize=A4)
+c.setFont("Helvetica", 10)
+words = ("Welding joins metals by melting them together and letting them cool so that they fuse into one piece of metal "
+         "that is as strong as the parts it was made from when it is done well by a trained welder").split()
+for col, x in enumerate((72, 320)):
+    line, y = "", 780
+    for w in words * 3:
+        if c.stringWidth(line + " " + w, "Helvetica", 10) > 210:
+            c.drawString(x, y, line); y -= 13; line = w
+        else:
+            line = (line + " " + w).strip()
+c.save()
+
+# 5. a scanned ruled table (a picture of tbl_ruled's grid with its words)
+scanT = Image.new("L", (2480, 3508), 255); d = ImageDraw.Draw(scanT)
+f2 = ImageFont.truetype(fonts[0], 44)
+cols = [300, 1050, 1350, 1700, 2100]; rws = [500, 610, 720, 830]
+for x in cols: d.line([(x, rws[0]), (x, rws[-1])], fill=0, width=4)
+for y in rws: d.line([(cols[0], y), (cols[-1], y)], fill=0, width=4)
+cells = [["Item", "Qty", "Price", "Total"], ["Bolts", "120", "0.40", "48.00"], ["Nuts", "300", "0.10", "30.00"]]
+for r, row in enumerate(cells):
+    for k, txt in enumerate(row):
+        d.text((cols[k] + 20, rws[r] + 30), txt, font=f2, fill=0)
+scanT.save(f"{out}/tbl_scan.png")
+c = canvas.Canvas(f"{out}/tbl_scan.pdf", pagesize=A4); c.drawImage(f"{out}/tbl_scan.png", 0, 0, width=595.27, height=841.89); c.save()

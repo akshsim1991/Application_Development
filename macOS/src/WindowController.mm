@@ -1,4 +1,5 @@
 #import "WindowController.h"
+#import <objc/message.h>
 #import "FPDocument.h"
 #import "PageView.h"
 #import "Sidebar.h"
@@ -448,6 +449,12 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (BOOL)sidebarShown { return !_sidebar.hidden; }
 
+- (void)selectAllThumbs {
+    if (_sidebar.hidden) [self toggleThumbnails:nil];
+    [_sidebar showBookmarks:NO];
+    [_sidebar selectAllPages];
+}
+
 - (void)setSidebarShown:(BOOL)shown {
     _sidebar.hidden = !shown;
     [_split adjustSubviews];
@@ -497,6 +504,9 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (IBAction)goToPage:(id)sender { [self.window makeFirstResponder:_pageField]; }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    SEL sbs = NSSelectorFromString(@"validateSideBySide:");   // SideBySide.mm
+    if ([NSStringFromSelector(item.action) rangeOfString:@"ideBySide"].location != NSNotFound && [self respondsToSelector:sbs])
+        return ((BOOL (*)(id, SEL, NSMenuItem*))objc_msgSend)(self, sbs, item);
     if (item.action == @selector(toggleThumbnails:)) item.title = self.sidebarShown ? @"Hide Sidebar" : @"Show Sidebar";
     if (item.action == @selector(goBack:)) return !_back.empty();
     if (item.action == @selector(chooseTool:)) item.state = _view.tool == item.tag ? NSControlStateValueOn : NSControlStateValueOff;

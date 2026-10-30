@@ -1,4 +1,5 @@
 #import "Form.h"
+#include <cmath>
 #include <algorithm>
 #include <memory>
 #include "platform.hpp"
@@ -97,6 +98,9 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
                     n.selectable = YES;
                     n.preferredMaxLayoutWidth = 440;
                     [n.widthAnchor constraintEqualToConstant:440].active = YES;
+                    // its height from its text: the grid would give a note of several lines the height of one
+                    const CGFloat h = std::ceil([n.cell cellSizeForBounds:NSMakeRect(0, 0, 440, CGFLOAT_MAX)].height);
+                    [n.heightAnchor constraintEqualToConstant:h].active = YES;
                     control = n;
                 }
                 break;

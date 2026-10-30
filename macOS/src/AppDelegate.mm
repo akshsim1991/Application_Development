@@ -423,6 +423,17 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
         c.target = self;
     }
     [m addItem:[NSMenuItem separatorItem]];
+    NSMenuItem* sbs = add(m, @"Side by Side", nil, nil);
+    sbs.submenu = [[NSMenu alloc] initWithTitle:@"Side by Side"];
+    add(sbs.submenu, @"Show Another Open Document Next to This One\u2026", @selector(sideBySideWithTab:), nil);
+    add(sbs.submenu, @"Open a File Next to This One\u2026", @selector(sideBySideWithFile:), nil);
+    add(sbs.submenu, @"Back to One Document", @selector(endSideBySide:), nil);
+    [sbs.submenu addItem:[NSMenuItem separatorItem]];
+    add(sbs.submenu, @"Link Scrolling (Both Scroll and Zoom Together)", @selector(toggleSideBySideLink:), nil);
+    add(sbs.submenu, @"Left and Right", @selector(sideBySideLeftRight:), nil);
+    add(sbs.submenu, @"Top and Bottom", @selector(sideBySideTopBottom:), nil);
+    add(sbs.submenu, @"Swap the Two Sides", @selector(swapSideBySide:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Show Tab Bar", @selector(toggleTabBar:), nil);
     add(m, @"Enter Full Screen", @selector(toggleFullScreen:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagControl);
     add(m, @"Presentation", @selector(startPresentation:), @"p", NSEventModifierFlagCommand | NSEventModifierFlagOption);

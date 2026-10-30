@@ -30,7 +30,21 @@ static NSArray<FPBookmarkItem*>* itemsOf(const std::vector<Bookmark>& marks) {
     return out;
 }
 
-@interface FPSidebar () <NSTableViewDataSource, NSTableViewDelegate, NSOutlineViewDataSource, NSOutlineViewDelegate>
+static NSPasteboardType const kPagesType = @"com.featherpdf.pages";
+
+// The thumbnail list: the Delete key deletes the selected pages.
+@interface FPThumbTable : NSTableView
+@property(nonatomic, copy) void (^onDelete)(void);
+@end
+@implementation FPThumbTable
+- (void)keyDown:(NSEvent*)e {
+    const unichar c = e.charactersIgnoringModifiers.length ? [e.charactersIgnoringModifiers characterAtIndex:0] : 0;
+    if ((c == NSDeleteCharacter || c == NSDeleteFunctionKey) && self.onDelete) { self.onDelete(); return; }
+    [super keyDown:e];
+}
+@end
+
+@interface FPSidebar () <NSTableViewDataSource, NSTableViewDelegate, NSOutlineViewDataSource, NSOutlineViewDelegate, NSMenuDelegate>
 @end
 
 @implementation FPSidebar {
@@ -56,7 +70,20 @@ static NSArray<FPBookmarkItem*>* itemsOf(const std::vector<Bookmark>& marks) {
     _switch.selectedSegment = 0;
     _switch.translatesAutoresizingMaskIntoConstraints = NO;
 
-    _thumbs = [[NSTableView alloc] initWithFrame:NSZeroRect];
+    FPThumbTable* thumbs = [[FPThumbTable alloc] initWithFrame:NSZeroRect];
+    __weak FPSidebar* weak = self;
+    thumbs.onDelete = ^{
+        FPSidebar* me = weak;
+        NSArray<NSNumber*>* pages = [me selectedPages];
+        if (pages.count && [me.delegate respondsToSelector:@selector(sidebarDeletePages:)]) [me.delegate sidebarDeletePages:pages];
+    };
+    _thumbs = thumbs;
+    _thumbs.allowsMultipleSelection = YES;
+    [_thumbs registerForDraggedTypes:@[ kPagesType ]];
+    [_thumbs setDraggingSourceOperationMask:NSDragOperationMove forLocal:YES];
+    _thumbs.draggingDestinationFeedbackStyle = NSTableViewDraggingDestinationFeedbackStyleGap;
+    _thumbs.menu = [[NSMenu alloc] initWithTitle:@"Pages"];
+    _thumbs.menu.delegate = self;
     NSTableColumn* col = [[NSTableColumn alloc] initWithIdentifier:@"page"];
     [_thumbs addTableColumn:col];
     _thumbs.headerView = nil;
@@ -217,7 +244,59 @@ static NSArray<FPBookmarkItem*>* itemsOf(const std::vector<Bookmark>& marks) {
 
 - (void)tableViewSelectionDidChange:(NSNotification*)n {
     if (_following || _thumbs.selectedRow < 0) return;
-    [self.delegate sidebarGoToPage:static_cast<int>(_thumbs.selectedRow)];
+    // several selected: the page clicked last is shown
+    const NSInteger row = _thumbs.selectedRowIndexes.count > 1 && _thumbs.clickedRow >= 0 ? _thumbs.clickedRow : _thumbs.selectedRow;
+    [self.delegate sidebarGoToPage:static_cast<int>(row)];
+}
+
+- (NSArray<NSNumber*>*)selectedPages {
+    NSMutableArray<NSNumber*>* out = [NSMutableArray array];
+    [_thumbs.selectedRowIndexes enumerateIndexesUsingBlock:^(NSUInteger i, BOOL*) { [out addObject:@(static_cast<int>(i))]; }];
+    return out;
+}
+
+- (void)selectAllPages {
+    _following = YES;
+    [_thumbs selectAll:nil];
+    _following = NO;
+}
+
+// The right-click menu: for the selected pages, or for the page clicked when it is not one of them.
+- (void)menuNeedsUpdate:(NSMenu*)menu {
+    [menu removeAllItems];
+    const NSInteger clicked = _thumbs.clickedRow;
+    if (clicked < 0 || ![self.delegate respondsToSelector:@selector(sidebarFillMenu:pages:)]) return;
+    if (![_thumbs.selectedRowIndexes containsIndex:static_cast<NSUInteger>(clicked)]) {
+        _following = YES;
+        [_thumbs selectRowIndexes:[NSIndexSet indexSetWithIndex:static_cast<NSUInteger>(clicked)] byExtendingSelection:NO];
+        _following = NO;
+    }
+    [self.delegate sidebarFillMenu:menu pages:[self selectedPages]];
+}
+
+// Dragging thumbnails moves their pages.
+- (id<NSPasteboardWriting>)tableView:(NSTableView*)t pasteboardWriterForRow:(NSInteger)row {
+    if (t != _thumbs) return nil;
+    NSPasteboardItem* item = [[NSPasteboardItem alloc] init];
+    [item setString:[NSString stringWithFormat:@"%ld", static_cast<long>(row)] forType:kPagesType];
+    return item;
+}
+
+- (NSDragOperation)tableView:(NSTableView*)t validateDrop:(id<NSDraggingInfo>)info proposedRow:(NSInteger)row
+       proposedDropOperation:(NSTableViewDropOperation)op {
+    if (t != _thumbs || info.draggingSource != _thumbs) return NSDragOperationNone;
+    [t setDropRow:row dropOperation:NSTableViewDropAbove];
+    return NSDragOperationMove;
+}
+
+- (BOOL)tableView:(NSTableView*)t acceptDrop:(id<NSDraggingInfo>)info row:(NSInteger)row dropOperation:(NSTableViewDropOperation)op {
+    NSMutableArray<NSNumber*>* pages = [NSMutableArray array];
+    for (NSPasteboardItem* item in info.draggingPasteboard.pasteboardItems)
+        if (NSString* s = [item stringForType:kPagesType]) [pages addObject:@(s.intValue)];
+    if (!pages.count || ![self.delegate respondsToSelector:@selector(sidebarMovePages:before:)]) return NO;
+    [pages sortUsingSelector:@selector(compare:)];
+    [self.delegate sidebarMovePages:pages before:static_cast<int>(row)];
+    return YES;
 }
 
 // ---- bookmarks ----

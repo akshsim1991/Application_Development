@@ -17,6 +17,8 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Form.mm
   src/Tools.mm
   src/Sidebar.mm
+  src/ThumbMenu.mm
+  src/SideBySide.mm
   src/Updater.mm
   src/Annotate.mm
   src/Forms.mm

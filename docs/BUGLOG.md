@@ -724,6 +724,8 @@ Found and fixed while building it:
   ones AppKit has not, and does not ask in the first seconds after start (the two opens can come in either order). Found by a sample of the stuck app in the build check. Verified: the check opens two PDFs as two
   tabs and finishes.
 - **Mac: Properties and Fonts used: the lines ran over the heading and were cut off.** The sheet kept its first size,
-  480 x 200, whatever it held. It now takes the size its contents need. Not verified yet: see the next build's pictures.
+  480 x 200, whatever it held. It now takes the size its contents need, and a note gets the height its text needs (the grid gave a note of
+  several lines the height of one; the first fix alone did not cure it, as the next build's picture showed). Not verified
+  yet: see the next build's pictures.
 - **Check: folder search in subfolders** used the exam-paper sample, which needs LibreOffice and is not made on the
   Mac machine. It uses the picture sample now. Verified on Linux and to be seen on the Mac.

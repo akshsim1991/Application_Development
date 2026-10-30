@@ -15,6 +15,7 @@ extern NSString* const FPSidebarShownKey;              // user default: the side
 @property(nonatomic, readonly) FPPageView* pageView;
 - (Document*)pdf;
 - (void)afterChange;    // the pages changed: draw them again, mark the document edited, update the toolbar
+- (void)selectAllThumbs; // the sidebar: shown, with every page selected
 @end
 
 @interface FPWindowController (Annotate)

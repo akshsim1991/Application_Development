@@ -40,6 +40,9 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/headfoot.cpp
   ${SHARED}/platform.cpp
   ${SHARED}/selftest.cpp
+  ${SHARED}/cli.cpp
+  ${SHARED}/crypto.cpp
+  ${SHARED}/image.cpp
   src/hfdialog.cpp
   src/themeui.cpp
   src/settingsdlg.cpp

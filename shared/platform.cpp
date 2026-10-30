@@ -1,4 +1,9 @@
 #include "platform.hpp"
+#ifndef _WIN32
+#include <cstdio>
+#include <cstdlib>
+#include <sys/stat.h>
+#endif
 
 namespace platform {
 
@@ -44,6 +49,107 @@ std::wstring wide(const std::string& s) {
         }
     }
     return out;
+}
+
+bool readFile(const std::wstring& path, std::vector<unsigned char>& out) {
+#ifdef _WIN32
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    LARGE_INTEGER sz{};
+    GetFileSizeEx(f, &sz);
+    out.assign(static_cast<size_t>(sz.QuadPart), 0);
+    DWORD got = 0;
+    const BOOL ok = out.empty() || ReadFile(f, out.data(), static_cast<DWORD>(out.size()), &got, nullptr);
+    CloseHandle(f);
+    out.resize(got);
+    return ok != FALSE;
+#else
+    FILE* f = std::fopen(utf8(path).c_str(), "rb");
+    if (!f) return false;
+    out.clear();
+    unsigned char buf[65536];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof buf, f)) > 0) out.insert(out.end(), buf, buf + n);
+    const bool ok = !std::ferror(f);
+    std::fclose(f);
+    return ok;
+#endif
+}
+
+bool writeFile(const std::wstring& path, const std::vector<unsigned char>& data) {
+#ifdef _WIN32
+    HANDLE f = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return false;
+    DWORD put = 0;
+    const BOOL ok = data.empty() || WriteFile(f, data.data(), static_cast<DWORD>(data.size()), &put, nullptr);
+    CloseHandle(f);
+    return ok && put == data.size();
+#else
+    FILE* f = std::fopen(utf8(path).c_str(), "wb");
+    if (!f) return false;
+    const bool ok = data.empty() || std::fwrite(data.data(), 1, data.size(), f) == data.size();
+    return std::fclose(f) == 0 && ok;
+#endif
+}
+
+std::wstring readTextFile(const std::wstring& path) {
+    std::vector<unsigned char> raw;
+    if (!readFile(path, raw)) return {};
+    if (raw.size() >= 2 && raw[0] == 0xFF && raw[1] == 0xFE) {   // UTF-16 little endian
+        std::wstring w;
+        for (size_t i = 2; i + 1 < raw.size(); i += 2) w += static_cast<wchar_t>(raw[i] | (raw[i + 1] << 8));
+        return sizeof(wchar_t) == 2 ? w : wide(utf8(w));   // off Windows, join the surrogate pairs
+    }
+#ifdef _WIN32
+    int n = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, reinterpret_cast<const char*>(raw.data()), static_cast<int>(raw.size()), nullptr, 0);
+    UINT cp = CP_UTF8;
+    if (n <= 0) { cp = CP_ACP; n = MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<const char*>(raw.data()), static_cast<int>(raw.size()), nullptr, 0); }
+    std::wstring w(n, L'\0');
+    MultiByteToWideChar(cp, 0, reinterpret_cast<const char*>(raw.data()), static_cast<int>(raw.size()), w.data(), n);
+    return w;
+#else
+    const std::string s(raw.begin(), raw.end());
+    const std::wstring w = wide(s);
+    if (w.find(static_cast<wchar_t>(0xFFFD)) == std::wstring::npos || s.find("\xEF\xBF\xBD") != std::string::npos) return w;
+    return std::wstring(raw.begin(), raw.end());   // not UTF-8: Latin-1
+#endif
+}
+
+std::wstring appDataDir() {
+#ifdef _WIN32
+    wchar_t base[MAX_PATH];
+    if (GetEnvironmentVariableW(L"APPDATA", base, MAX_PATH) == 0) return L"";
+    std::wstring dir = std::wstring(base) + L"\\FeatherPDF";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    return dir;
+#else
+    const char* home = std::getenv("HOME");
+    if (!home) return L"";
+#ifdef __APPLE__
+    std::string dir = std::string(home) + "/Library/Application Support/Feather PDF";
+#else
+    std::string dir = std::string(home) + "/.config/feather-pdf";
+#endif
+    mkdir(dir.c_str(), 0755);
+    return wide(dir);
+#endif
+}
+
+bool makeDirectory(const std::wstring& path) {
+#ifdef _WIN32
+    return CreateDirectoryW(path.c_str(), nullptr) || GetLastError() == ERROR_ALREADY_EXISTS;
+#else
+    struct stat st{};
+    return mkdir(utf8(path).c_str(), 0755) == 0 || (stat(utf8(path).c_str(), &st) == 0 && S_ISDIR(st.st_mode));
+#endif
+}
+
+wchar_t pathSeparator() {
+#ifdef _WIN32
+    return L'\\';
+#else
+    return L'/';
+#endif
 }
 
 } // namespace platform

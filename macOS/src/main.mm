@@ -13,7 +13,7 @@
 #include "document.hpp"
 #include "pdfium_api.hpp"
 #include "platform.hpp"
-#include "selftest.hpp"
+#include "cli.hpp"
 
 static int renderCommand(const std::vector<std::string>& a) {
     if (a.size() < 4) return 2;
@@ -53,7 +53,7 @@ int main(int argc, const char* argv[]) {
             if (plain[0] == "--render") return renderCommand(plain);
             std::vector<std::wstring> w;
             for (const auto& s : plain) w.push_back(platform::wide(s));
-            const int rc = selftest::run(w);
+            const int rc = cli::run(w);
             if (rc < 0) { std::fprintf(stderr, "unknown command %s\n", plain[0].c_str()); return 2; }
             return rc;
         }

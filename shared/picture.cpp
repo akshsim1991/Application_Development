@@ -1,11 +1,12 @@
 #include "picture.hpp"
 #include "contentgen.hpp"
-#include <windows.h>
-#include <objbase.h>
-#include <propidl.h>
+#include "image.hpp"
+#include "platform.hpp"
+#ifdef _WIN32
+#include <windows.h>   // the clipboard
+#endif
 #include <algorithm>
-using std::min; using std::max;
-#include <gdiplus.h>
+#include <cstring>
 #include <cmath>
 #include <cwctype>
 
@@ -23,22 +24,7 @@ int readBlock(void* param, unsigned long pos, unsigned char* buf, unsigned long 
     return 1;
 }
 
-bool readFile(const std::wstring& path, std::vector<unsigned char>& out) {
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER sz{};
-    GetFileSizeEx(f, &sz);
-    if (sz.QuadPart > 200LL * 1024 * 1024) { CloseHandle(f); return false; }
-    out.resize(static_cast<size_t>(sz.QuadPart));
-    size_t got = 0;
-    while (got < out.size()) {
-        DWORD n = 0;
-        if (!ReadFile(f, out.data() + got, static_cast<DWORD>(out.size() - got), &n, nullptr) || !n) break;
-        got += n;
-    }
-    CloseHandle(f);
-    return got == out.size();
-}
+bool readFile(const std::wstring& path, std::vector<unsigned char>& out) { return platform::readFile(path, out); }
 
 
 // The picture as it appears on the page, rendered with `k` pixels per point (BGRA, top row = top of the bounding box).
@@ -93,23 +79,6 @@ FPDF_PAGEOBJECT pictureObject(Document& d, int page, int obj) {
     return o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE ? o : nullptr;
 }
 
-struct Gdi {
-    ULONG_PTR token = 0;
-    bool ok = false;
-    Gdi() { Gdiplus::GdiplusStartupInput in; ok = Gdiplus::GdiplusStartup(&token, &in, nullptr) == Gdiplus::Ok; }
-    ~Gdi() { if (ok) Gdiplus::GdiplusShutdown(token); }
-};
-
-bool pngEncoder(CLSID& out) {
-    UINT n = 0, size = 0;
-    if (Gdiplus::GetImageEncodersSize(&n, &size) != Gdiplus::Ok || !size) return false;
-    std::vector<unsigned char> buf(size);
-    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-    if (Gdiplus::GetImageEncoders(n, size, codecs) != Gdiplus::Ok) return false;
-    for (UINT i = 0; i < n; ++i) if (wcscmp(codecs[i].MimeType, L"image/png") == 0) { out = codecs[i].Clsid; return true; }
-    return false;
-}
-
 // Bounding box of objects on a page, and the objects themselves.
 bool boundsOf(FPDF_PAGE pg, const std::vector<int>& objs, std::vector<FPDF_PAGEOBJECT>& out, double& l, double& b, double& r, double& t) {
     const auto& api = pdfium::api();
@@ -149,16 +118,13 @@ bool transformAboutCentre(Document& d, int page, const std::vector<int>& objs, d
 bool addPicture(Document& d, int page, double atX, double atY, const std::wstring& path, std::wstring& error, double forceWidthPt) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) { error = L"The page could not be found."; return false; }
-    Gdiplus::GdiplusStartupInput in;
-    ULONG_PTR token = 0;
-    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) { error = L"The picture reader could not be started."; return false; }
     bool ok = false;
     {
-        Gdiplus::Bitmap bmp(path.c_str());
-        if (bmp.GetLastStatus() != Gdiplus::Ok || bmp.GetWidth() == 0 || bmp.GetHeight() == 0) {
+        image::Picture bmp;
+        if (!image::load(path, bmp) || bmp.w == 0 || bmp.h == 0) {
             error = L"That is not a picture Feather PDF can read (PNG, JPEG, BMP, GIF and TIFF are).";
         } else {
-            const int w = static_cast<int>(bmp.GetWidth()), h = static_cast<int>(bmp.GetHeight());
+            const int w = bmp.w, h = bmp.h;
             const auto& api = pdfium::api();
             const double vw = d.pageSize(page).w, vh = d.pageSize(page).h;
             double wPt = std::min(w * 0.75, vw * 0.5), hPt = wPt * h / w;
@@ -183,15 +149,9 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
                 }
             }
             if (img && !loaded) {   // everything else (and JPEGs PDFium could not take) goes through pixels
-                keep.resize(static_cast<size_t>(w) * h * 4);
-                Gdiplus::BitmapData bd;
-                Gdiplus::Rect all(0, 0, w, h);
-                if (bmp.LockBits(&all, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bd) == Gdiplus::Ok) {
-                    for (int y = 0; y < h; ++y) memcpy(keep.data() + static_cast<size_t>(y) * w * 4, static_cast<unsigned char*>(bd.Scan0) + static_cast<size_t>(y) * bd.Stride, static_cast<size_t>(w) * 4);
-                    bmp.UnlockBits(&bd);
-                    FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRA, keep.data(), w * 4);
-                    if (fb) { loaded = api.FPDFImageObj_SetBitmap(&pg, 1, img, fb) != 0; api.FPDFBitmap_Destroy(fb); }
-                }
+                keep = bmp.px;
+                FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRA, keep.data(), w * 4);
+                if (fb) { loaded = api.FPDFImageObj_SetBitmap(&pg, 1, img, fb) != 0; api.FPDFBitmap_Destroy(fb); }
             }
             if (!img || !loaded) {
                 if (img) api.FPDFPageObj_Destroy(img);
@@ -219,7 +179,6 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
             }
         }
     }
-    Gdiplus::GdiplusShutdown(token);
     return ok;
 }
 
@@ -324,11 +283,9 @@ bool replacePicture(Document& d, int page, int obj, const std::wstring& path, st
     const auto& api = pdfium::api();
     float l, b, r, t;
     if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) { error = L"The picture could not be measured."; return false; }
-    Gdi gdi;
-    if (!gdi.ok) { error = L"The picture reader could not be started."; return false; }
-    Gdiplus::Bitmap bmp(path.c_str());
-    if (bmp.GetLastStatus() != Gdiplus::Ok || bmp.GetWidth() == 0 || bmp.GetHeight() == 0) { error = L"That is not a picture Feather PDF can read (PNG, JPEG, BMP, GIF and TIFF are)."; return false; }
-    const int w = static_cast<int>(bmp.GetWidth()), h = static_cast<int>(bmp.GetHeight());
+    image::Picture bmp;
+    if (!image::load(path, bmp) || bmp.w == 0 || bmp.h == 0) { error = L"That is not a picture Feather PDF can read (PNG, JPEG, BMP, GIF and TIFF are)."; return false; }
+    const int w = bmp.w, h = bmp.h;
     // fitted inside the old box, centred
     double bw = r - l, bh = t - b, nw = bw, nh = bw * h / w;
     if (nh > bh) { nh = bh; nw = bh * w / h; }
@@ -351,14 +308,7 @@ bool replacePicture(Document& d, int page, int obj, const std::wstring& path, st
         if (loaded) api.FPDFPageObj_SetMatrix(o, &m);
     }
     if (o && !loaded) {
-        std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4);
-        Gdiplus::BitmapData bd;
-        Gdiplus::Rect all(0, 0, w, h);
-        if (bmp.LockBits(&all, Gdiplus::ImageLockModeRead, PixelFormat32bppARGB, &bd) == Gdiplus::Ok) {
-            for (int y = 0; y < h; ++y) memcpy(px.data() + static_cast<size_t>(y) * w * 4, static_cast<unsigned char*>(bd.Scan0) + static_cast<size_t>(y) * bd.Stride, static_cast<size_t>(w) * 4);
-            bmp.UnlockBits(&bd);
-            loaded = setPixels(pg, o, px, w, h, nl, nb, nl + nw, nb + nh);
-        }
+        loaded = setPixels(pg, o, bmp.px, w, h, nl, nb, nl + nw, nb + nh);
     }
     if (!loaded) { d.undo(); error = L"The picture could not be put on the page."; return false; }
     contentgen::generate(d.handle(), pg);
@@ -375,13 +325,10 @@ bool savePicture(Document& d, int page, int obj, const std::wstring& pngPath) {
     int w, h;
     std::vector<unsigned char> px = pixelsOf(bmp, w, h);
     pdfium::api().FPDFBitmap_Destroy(bmp);
-    Gdi gdi;
-    CLSID png;
-    if (!gdi.ok || !pngEncoder(png)) return false;
-    Gdiplus::Bitmap out(w, h, w * 4, PixelFormat32bppARGB, px.data());
-    return out.Save(pngPath.c_str(), &png, nullptr) == Gdiplus::Ok;
+    return image::save(px.data(), w, h, w * 4, image::Format::Png, 100, true, pngPath);
 }
 
+#ifdef _WIN32   // the Windows clipboard (the Mac app uses its own pasteboard code)
 bool clipboardHasPicture() {
     return IsClipboardFormatAvailable(CF_DIB) || IsClipboardFormatAvailable(RegisterClipboardFormatW(L"PNG"));
 }
@@ -453,24 +400,15 @@ bool copyPageToClipboard(Document& d, int page, void* owner, int dpi) {
     CloseClipboard();
     return ok;
 }
+#endif
 
 } // namespace pageobj
 
 namespace pageobj {
 
-bool imageSize(const std::wstring& path, int& w, int& h) {
-    Gdiplus::GdiplusStartupInput in;
-    ULONG_PTR token = 0;
-    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return false;
-    bool ok = false;
-    {
-        Gdiplus::Bitmap bmp(path.c_str());
-        if (bmp.GetLastStatus() == Gdiplus::Ok && bmp.GetWidth() > 0 && bmp.GetHeight() > 0) { w = static_cast<int>(bmp.GetWidth()); h = static_cast<int>(bmp.GetHeight()); ok = true; }
-    }
-    Gdiplus::GdiplusShutdown(token);
-    return ok;
-}
+bool imageSize(const std::wstring& path, int& w, int& h) { return image::sizeOf(path, w, h); }
 
+#ifdef _WIN32
 bool copyAreaToClipboard(Document& d, int page, double l, double b, double r, double t, void* owner, int dpi) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) return false;
@@ -504,5 +442,7 @@ bool copyAreaToClipboard(Document& d, int page, double l, double b, double r, do
     if (!ok) GlobalFree(g);
     return ok;
 }
+
+#endif
 
 } // namespace pageobj

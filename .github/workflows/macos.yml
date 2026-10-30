@@ -5,7 +5,7 @@ name: macOS build
 
 on:
   push:
-    paths: ["macOS/**", "shared/**", "tests/engine/**", "CMakeLists.txt", "cmake/**", "scripts/fetch-pdfium.sh", ".github/workflows/macos.yml"]
+    paths: ["macOS/**", "shared/**", "tests/engine/**", "tests/make_samples.py", "CMakeLists.txt", "cmake/**", "scripts/fetch-pdfium.sh", ".github/workflows/macos.yml"]
   workflow_dispatch:
 
 permissions:
@@ -29,6 +29,11 @@ jobs:
 
       - name: The engine gives the Windows app's results
         run: bash tests/engine/check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
+
+      - name: The command line features work as on Windows
+        run: |
+          python3 -m pip install --quiet --break-system-packages reportlab pillow pikepdf python-docx openpyxl pdfminer.six
+          bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
 
       - name: Pages are drawn (normal and night colours)
         run: |

@@ -23,11 +23,27 @@ inline constexpr BYTE GetBValue(COLORREF c) { return static_cast<BYTE>((c >> 16)
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace platform {
 
 // UTF-8 <-> wide text (UTF-16 on Windows, UTF-32 elsewhere).
 std::string utf8(const std::wstring& s);
 std::wstring wide(const std::string& utf8);
+
+// The whole file; false when it cannot be read.
+bool readFile(const std::wstring& path, std::vector<unsigned char>& out);
+// Writes the whole file (replacing it); false when it cannot be written.
+bool writeFile(const std::wstring& path, const std::vector<unsigned char>& data);
+// A text file as text: UTF-16 with a byte order mark, UTF-8, or else the system's old 8-bit code page (Latin-1 off
+// Windows). Empty when it cannot be read.
+std::wstring readTextFile(const std::wstring& path);
+// The folder for the app's own files (settings, search index), made when missing: %APPDATA%\FeatherPDF on Windows,
+// ~/Library/Application Support/Feather PDF on the Mac. Empty when there is none.
+std::wstring appDataDir();
+// Makes a folder (its parent must exist); true when it exists afterwards.
+bool makeDirectory(const std::wstring& path);
+// The separator of folders in a path: \ on Windows, / elsewhere.
+wchar_t pathSeparator();
 
 } // namespace platform

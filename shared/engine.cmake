@@ -1,5 +1,5 @@
 # The engine files that build off Windows (macOS app, and the engine check on Linux). The rest of shared/ still uses
-# Windows services (pictures through GDI+, cryptography, OCR, web time stamps): see macOS/PORTING.md for their stages.
+# Windows services (certificates, OCR, web time stamps): see macOS/PORTING.md for their stages.
 set(SHARED "${CMAKE_SOURCE_DIR}/shared")
 set(ENGINE_SOURCES
   ${SHARED}/pdfium_api.cpp
@@ -19,6 +19,15 @@ set(ENGINE_SOURCES
   ${SHARED}/fontlist.cpp
   ${SHARED}/buildinfo.cpp
   ${SHARED}/selftest.cpp
+  ${SHARED}/cli.cpp
+  ${SHARED}/crypto.cpp
+  ${SHARED}/protect.cpp
+  ${SHARED}/image.cpp
+  ${SHARED}/compress.cpp
+  ${SHARED}/exporter.cpp
+  ${SHARED}/picture.cpp
+  ${SHARED}/pdfa.cpp
+  ${SHARED}/visualdiff.cpp
   ${SHARED}/pending.cpp)
 
 # PDFium for this system (scripts/fetch-pdfium.sh mac|linux puts it here; third_party/pdfium is the Windows one).

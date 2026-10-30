@@ -1,26 +1,12 @@
 #include "compress.hpp"
 #include "contentgen.hpp"
-#include <windows.h>
-#include <objbase.h>
-#include <propidl.h>
+#include "image.hpp"
 #include <algorithm>
-using std::min; using std::max;
-#include <gdiplus.h>
 #include <cmath>
+#include <cstring>
 
 namespace compress {
 namespace {
-
-bool jpegEncoder(CLSID& out) {
-    UINT n = 0, size = 0;
-    Gdiplus::GetImageEncodersSize(&n, &size);
-    if (!size) return false;
-    std::vector<unsigned char> buf(size);
-    auto* info = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-    Gdiplus::GetImageEncoders(n, size, info);
-    for (UINT i = 0; i < n; ++i) if (wcscmp(info[i].MimeType, L"image/jpeg") == 0) { out = info[i].Clsid; return true; }
-    return false;
-}
 
 struct MemAccess : FPDF_FILEACCESS {
     std::vector<unsigned char> data;
@@ -35,7 +21,7 @@ int readBlock(void* param, unsigned long pos, unsigned char* buf, unsigned long 
 
 // Encodes BGR/BGRA/gray pixels as a JPEG of w2 x h2 pixels (scaled down).
 bool encode(const unsigned char* src, int w, int h, int stride, int channels, int w2, int h2, int quality, bool grey,
-            const CLSID& clsid, std::vector<unsigned char>& out) {
+            std::vector<unsigned char>& out) {
     // Build a 32-bit BGRA copy (GDI+ needs a known layout), expanding gray.
     std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4);
     for (int y = 0; y < h; ++y) {
@@ -47,50 +33,19 @@ bool encode(const unsigned char* src, int w, int h, int stride, int channels, in
             d[3] = 255;
         }
     }
-    Gdiplus::Bitmap in(w, h, w * 4, PixelFormat32bppRGB, px.data());
-    Gdiplus::Bitmap scaled(w2, h2, PixelFormat24bppRGB);
-    {
-        Gdiplus::Graphics g(&scaled);
-        g.SetInterpolationMode(Gdiplus::InterpolationModeHighQualityBicubic);
-        g.SetPixelOffsetMode(Gdiplus::PixelOffsetModeHalf);
-        g.DrawImage(&in, Gdiplus::Rect(0, 0, w2, h2), 0, 0, w, h, Gdiplus::UnitPixel);
-    }
-    if (grey) {
-        Gdiplus::BitmapData bd;
-        Gdiplus::Rect all(0, 0, w2, h2);
-        if (scaled.LockBits(&all, Gdiplus::ImageLockModeRead | Gdiplus::ImageLockModeWrite, PixelFormat24bppRGB, &bd) == Gdiplus::Ok) {
-            for (int y = 0; y < h2; ++y) {
-                unsigned char* p = static_cast<unsigned char*>(bd.Scan0) + static_cast<size_t>(y) * bd.Stride;
-                for (int x = 0; x < w2; ++x, p += 3) { unsigned char g8 = static_cast<unsigned char>((p[0] * 29 + p[1] * 150 + p[2] * 77) >> 8); p[0] = p[1] = p[2] = g8; }
-            }
-            scaled.UnlockBits(&bd);
+    image::Picture scaled;
+    if (!image::scale(px.data(), w, h, w * 4, w2, h2, scaled)) return false;
+    if (grey)
+        for (size_t i = 0; i < scaled.px.size(); i += 4) {
+            unsigned char* p = &scaled.px[i];
+            const unsigned char g8 = static_cast<unsigned char>((p[0] * 29 + p[1] * 150 + p[2] * 77) >> 8);
+            p[0] = p[1] = p[2] = g8;
         }
-    }
-    IStream* st = nullptr;
-    if (FAILED(CreateStreamOnHGlobal(nullptr, TRUE, &st))) return false;
-    Gdiplus::EncoderParameters params{};
-    ULONG q = static_cast<ULONG>(quality);
-    params.Count = 1;
-    params.Parameter[0].Guid = Gdiplus::EncoderQuality;
-    params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
-    params.Parameter[0].NumberOfValues = 1;
-    params.Parameter[0].Value = &q;
-    bool ok = scaled.Save(st, &clsid, &params) == Gdiplus::Ok;
-    if (ok) {
-        STATSTG stat{};
-        st->Stat(&stat, STATFLAG_NONAME);
-        LARGE_INTEGER z{};
-        st->Seek(z, STREAM_SEEK_SET, nullptr);
-        out.resize(static_cast<size_t>(stat.cbSize.QuadPart));
-        ULONG got = 0;
-        ok = SUCCEEDED(st->Read(out.data(), static_cast<ULONG>(out.size()), &got)) && got == out.size();
-    }
-    st->Release();
-    return ok;
+    return image::encode(scaled.px.data(), w2, h2, w2 * 4, image::Format::Jpeg, quality, false, out);
 }
 
 // One pass over all pictures with the given settings. Returns the number replaced.
-int pass(Document& d, int dpi, int quality, bool grey, const CLSID& clsid) {
+int pass(Document& d, int dpi, int quality, bool grey) {
     const auto& api = pdfium::api();
     int replaced = 0;
     for (int p = 0; p < d.pageCount(); ++p) {
@@ -121,7 +76,7 @@ int pass(Document& d, int dpi, int quality, bool grey, const CLSID& clsid) {
             if (!skip && (ratio < 0.92 || grey)) {
                 const int w2 = std::max(8, static_cast<int>(std::lround(w * ratio))), h2 = std::max(8, static_cast<int>(std::lround(h * ratio)));
                 MemAccess ma;
-                if (encode(buf, w, h, stride, ch, w2, h2, quality, grey, clsid, ma.data)) {
+                if (encode(buf, w, h, stride, ch, w2, h2, quality, grey, ma.data)) {
                     // Only worth it when the new data is clearly smaller than the raw picture would be at this size.
                     ma.m_FileLen = static_cast<unsigned long>(ma.data.size());
                     ma.m_GetBlock = readBlock;
@@ -145,14 +100,9 @@ size_t sizeNow(const Document& d) {
 
 Result run(Document& d, const Options& o) {
     Result res;
-    Gdiplus::GdiplusStartupInput in;
-    ULONG_PTR token = 0;
-    CLSID clsid;
-    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return res;
-    if (!jpegEncoder(clsid)) { Gdiplus::GdiplusShutdown(token); return res; }
 
     std::vector<unsigned char> original;
-    if (!d.serialize(original)) { Gdiplus::GdiplusShutdown(token); return res; }
+    if (!d.serialize(original)) return res;
     res.before = original.size();
     d.beginChange();   // the undo step for everything below
 
@@ -168,7 +118,7 @@ Result run(Document& d, const Options& o) {
             std::vector<unsigned char> copy = original;
             if (d.reload(std::move(copy)) != OpenResult::Ok) break;   // see note in main: encrypted files keep their password inside Document
         }
-        int n = pass(d, steps[k].dpi, steps[k].q, o.greyscale, clsid);
+        int n = pass(d, steps[k].dpi, steps[k].q, o.greyscale);
         size_t sz = n ? sizeNow(d) : res.before;
         if (n && (bestIdx < 0 || sz < bestSize)) { bestSize = sz; bestIdx = static_cast<int>(k); bestCount = n; }
         if (o.targetMB > 0 && sz <= o.targetMB * 1048576.0) { bestSize = sz; bestIdx = static_cast<int>(k); bestCount = n; res.reachedTarget = true; break; }
@@ -180,7 +130,6 @@ Result run(Document& d, const Options& o) {
         std::vector<unsigned char> copy = original;
         d.reload(std::move(copy));
         d.cancelChange();
-        Gdiplus::GdiplusShutdown(token);
         res.changed = false;
         res.after = res.before;
         return res;
@@ -188,14 +137,13 @@ Result run(Document& d, const Options& o) {
     if (static_cast<size_t>(bestIdx) != steps.size() - 1 || o.targetMB > 0) {
         std::vector<unsigned char> copy = original;
         d.reload(std::move(copy));
-        bestCount = pass(d, steps[bestIdx].dpi, steps[bestIdx].q, o.greyscale, clsid);
+        bestCount = pass(d, steps[bestIdx].dpi, steps[bestIdx].q, o.greyscale);
         bestSize = sizeNow(d);
     }
     d.refreshPages();
     res.changed = true;
     res.pictures = bestCount;
     res.after = bestSize;
-    Gdiplus::GdiplusShutdown(token);
     return res;
 }
 

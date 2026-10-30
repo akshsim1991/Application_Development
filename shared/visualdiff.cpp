@@ -1,10 +1,6 @@
 #include "visualdiff.hpp"
-#include <windows.h>
-#include <objbase.h>
-#include <propidl.h>
+#include "image.hpp"
 #include <algorithm>
-using std::min; using std::max;
-#include <gdiplus.h>
 #include <cmath>
 #include <vector>
 
@@ -21,17 +17,6 @@ bool render(Document& d, int page, int w, int h, std::vector<unsigned char>& px)
     d.renderOutput(page, fb, 0, 0, w, h);
     api.FPDFBitmap_Destroy(fb);
     return true;
-}
-
-bool encoder(CLSID& out) {
-    UINT n = 0, size = 0;
-    Gdiplus::GetImageEncodersSize(&n, &size);
-    if (!size) return false;
-    std::vector<unsigned char> buf(size);
-    auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-    Gdiplus::GetImageEncoders(n, size, codecs);
-    for (UINT i = 0; i < n; ++i) if (wcscmp(codecs[i].MimeType, L"image/png") == 0) { out = codecs[i].Clsid; return true; }
-    return false;
 }
 
 } // namespace
@@ -88,15 +73,7 @@ PageResult overlay(Document& a, int pa, Document& b, int pb, int dpi, const std:
     }
     res.differingPixels = diff;
     res.percent = 100.0 * diff / (static_cast<double>(w) * h);
-    Gdiplus::GdiplusStartupInput in;
-    ULONG_PTR token = 0;
-    if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) return res;
-    {
-        Gdiplus::Bitmap bmp(w, h, w * 4, PixelFormat32bppRGB, out.data());
-        CLSID png;
-        res.ok = encoder(png) && bmp.Save(pngPath.c_str(), &png, nullptr) == Gdiplus::Ok;
-    }
-    Gdiplus::GdiplusShutdown(token);
+    res.ok = image::save(out.data(), w, h, w * 4, image::Format::Png, 100, false, pngPath);
     return res;
 }
 

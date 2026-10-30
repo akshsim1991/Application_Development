@@ -1,11 +1,12 @@
 #include "pdfa.hpp"
 #include "contentgen.hpp"
-#include <windows.h>
-#include <objbase.h>
+#include "image.hpp"
+#include "platform.hpp"
 #include <algorithm>
-using std::min; using std::max;
-#include <gdiplus.h>
 #include <cmath>
+#include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <cstdint>
 #include <map>
 #include "pdfedit.hpp"
@@ -37,22 +38,27 @@ std::wstring fontFileFor(std::string base) {
     const bool italic = base.find("italic") != std::string::npos || base.find("oblique") != std::string::npos;
     std::wstring file = family + (bold && italic ? L"bi" : bold ? L"bd" : italic ? L"i" : L"");
     if (family == L"times" && !bold && !italic) file = L"times";
+#ifdef _WIN32
     wchar_t dir[MAX_PATH] = L"";
     GetWindowsDirectoryW(dir, MAX_PATH);
     const std::wstring path = std::wstring(dir) + L"\\Fonts\\" + file + L".ttf";
     return GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES ? L"" : path;
+#else
+    // macOS has the same three families, under their full names.
+    const std::wstring name = family == L"arial" ? L"Arial" : family == L"times" ? L"Times New Roman" : L"Courier New";
+    const std::wstring style = bold && italic ? L" Bold Italic" : bold ? L" Bold" : italic ? L" Italic" : L"";
+    for (const wchar_t* dir : {L"/System/Library/Fonts/Supplemental/", L"/Library/Fonts/", L"/System/Library/Fonts/"}) {
+        const std::wstring path = dir + name + style + L".ttf";
+        std::vector<unsigned char> probe;
+        FILE* f = std::fopen(platform::utf8(path).c_str(), "rb");
+        if (f) { std::fclose(f); return path; }
+    }
+    return L"";
+#endif
 }
 
 bool readAll(const std::wstring& path, std::vector<unsigned char>& out) {
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER sz{};
-    GetFileSizeEx(f, &sz);
-    out.resize(static_cast<size_t>(sz.QuadPart));
-    DWORD got = 0;
-    const bool ok = sz.QuadPart < 64 * 1024 * 1024 && ReadFile(f, out.data(), static_cast<DWORD>(out.size()), &got, nullptr) && got == out.size();
-    CloseHandle(f);
-    return ok;
+    return platform::readFile(path, out) && out.size() < 64 * 1024 * 1024;
 }
 
 // Plain ASCII is the same in every simple-font encoding; anything else goes through a Unicode (CID) font.
@@ -102,42 +108,7 @@ int readBlock(void* param, unsigned long pos, unsigned char* buf, unsigned long 
 }
 
 bool jpegOf(const unsigned char* px, int w, int h, int stride, std::vector<unsigned char>& out) {
-    Gdiplus::GdiplusStartupInput in;
-    ULONG_PTR tok = 0;
-    if (Gdiplus::GdiplusStartup(&tok, &in, nullptr) != Gdiplus::Ok) return false;
-    bool ok = false;
-    {
-        Gdiplus::Bitmap bmp(w, h, stride, PixelFormat32bppRGB, const_cast<unsigned char*>(px));
-        UINT n = 0, size = 0;
-        Gdiplus::GetImageEncodersSize(&n, &size);
-        std::vector<unsigned char> buf(size ? size : 1);
-        auto* codecs = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-        CLSID jpg{};
-        bool found = false;
-        if (size && Gdiplus::GetImageEncoders(n, size, codecs) == Gdiplus::Ok)
-            for (UINT i = 0; i < n; ++i) if (wcscmp(codecs[i].MimeType, L"image/jpeg") == 0) { jpg = codecs[i].Clsid; found = true; }
-        IStream* st = nullptr;
-        if (found && SUCCEEDED(CreateStreamOnHGlobal(nullptr, TRUE, &st))) {
-            Gdiplus::EncoderParameters ep;
-            ULONG quality = 88;
-            ep.Count = 1;
-            ep.Parameter[0].Guid = Gdiplus::EncoderQuality;
-            ep.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
-            ep.Parameter[0].NumberOfValues = 1;
-            ep.Parameter[0].Value = &quality;
-            if (bmp.Save(st, &jpg, &ep) == Gdiplus::Ok) {
-                HGLOBAL hg = nullptr;
-                STATSTG stat{};
-                if (SUCCEEDED(GetHGlobalFromStream(st, &hg)) && SUCCEEDED(st->Stat(&stat, STATFLAG_NONAME))) {
-                    const auto* p = static_cast<const unsigned char*>(GlobalLock(hg));
-                    if (p) { out.assign(p, p + stat.cbSize.QuadPart); GlobalUnlock(hg); ok = !out.empty(); }
-                }
-            }
-            st->Release();
-        }
-    }
-    Gdiplus::GdiplusShutdown(tok);
-    return ok;
+    return image::encode(px, w, h, stride, image::Format::Jpeg, 88, false, out) && !out.empty();
 }
 
 // The page becomes one picture (200 dpi) under its own text, which is kept but made invisible (still searchable).
@@ -189,9 +160,7 @@ std::string removeKeyOf(std::string dict, const char* key) {
 }
 
 std::string xmlEscape(const std::wstring& t) {
-    const int n = WideCharToMultiByte(CP_UTF8, 0, t.c_str(), static_cast<int>(t.size()), nullptr, 0, nullptr, nullptr);
-    std::string u(static_cast<size_t>(std::max(0, n)), '\0');
-    if (n > 0) WideCharToMultiByte(CP_UTF8, 0, t.c_str(), static_cast<int>(t.size()), u.data(), n, nullptr, nullptr);
+    const std::string u = platform::utf8(t);
     std::string o;
     for (char c : u) {
         switch (c) {
@@ -388,10 +357,15 @@ bool convert(Document& src, bool allPictures, std::vector<unsigned char>& out, R
     const int root = refOf(f.trailer, "/Root");
     std::string cat;
     if (root < 0 || !f.object(root, cat)) { error = L"The document catalogue is missing."; return false; }
-    SYSTEMTIME st;
-    GetSystemTime(&st);
+    const time_t now = time(nullptr);
+    tm st{};
+#ifdef _WIN32
+    gmtime_s(&st, &now);
+#else
+    gmtime_r(&now, &st);
+#endif
     char when[40];
-    snprintf(when, sizeof when, "%04d-%02d-%02dT%02d:%02d:%02dZ", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    snprintf(when, sizeof when, "%04d-%02d-%02dT%02d:%02d:%02dZ", st.tm_year + 1900, st.tm_mon + 1, st.tm_mday, st.tm_hour, st.tm_min, st.tm_sec);
     const std::string xmp =
         "<?xpacket begin=\"\xEF\xBB\xBF\" id=\"W5M0MpCehiHzreSzNTczkc9d\"?>\n"
         "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\">\n<rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\">\n"

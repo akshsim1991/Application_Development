@@ -1,11 +1,9 @@
 #include "exporter.hpp"
-#include <windows.h>
-#include <objbase.h>
-#include <propidl.h>
+#include "image.hpp"
+#include "platform.hpp"
 #include <algorithm>
-using std::min; using std::max;
-#include <gdiplus.h>
-#include <algorithm>
+#include <ctime>
+#include <cwctype>
 #include <cmath>
 #include <cstdint>
 #include <map>
@@ -15,13 +13,7 @@ namespace {
 
 // ---------- helpers ----------
 
-std::string utf8(const std::wstring& w) {
-    if (w.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
-    std::string s(static_cast<size_t>(n), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), s.data(), n, nullptr, nullptr);
-    return s;
-}
+std::string utf8(const std::wstring& w) { return platform::utf8(w); }
 
 std::string xmlEscape(const std::wstring& w) {
     std::wstring o;
@@ -40,30 +32,12 @@ std::string xmlEscape(const std::wstring& w) {
 }
 
 bool writeFileBytes(const std::wstring& path, const std::string& data, std::wstring& err) {
-    std::vector<unsigned char> v(data.begin(), data.end());
-    // Reuse the same safe write used for saving: temp file, then replace.
-    const std::wstring tmp = path + L".feather-tmp";
-    HANDLE f = CreateFileW(tmp.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) { err = L"The file could not be written. The folder may be read-only, or the file may be open in another program."; return false; }
-    size_t done = 0; DWORD e = 0;
-    while (done < v.size()) {
-        DWORD n = 0;
-        if (!WriteFile(f, v.data() + done, static_cast<DWORD>(std::min<size_t>(v.size() - done, 1u << 24)), &n, nullptr)) { e = GetLastError(); break; }
-        done += n;
+    // The same safe write used for saving: a temp file, then put in place.
+    switch (Document::writeFile(path, std::vector<unsigned char>(data.begin(), data.end()))) {
+        case SaveResult::Ok: return true;
+        case SaveResult::DiskFull: err = L"The disk is full. Free some space and try again."; return false;
+        default: err = L"The file could not be saved. The folder may be read-only, or the file may be open in Word or Excel."; return false;
     }
-    CloseHandle(f);
-    if (e || done != v.size()) {
-        DeleteFileW(tmp.c_str());
-        err = (e == ERROR_DISK_FULL || e == ERROR_HANDLE_DISK_FULL) ? L"The disk is full. Free some space and try again."
-                                                                      : L"The file could not be written.";
-        return false;
-    }
-    if (!MoveFileExW(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
-        DeleteFileW(tmp.c_str());
-        err = L"The file could not be saved. It may be open in Word or Excel.";
-        return false;
-    }
-    return true;
 }
 
 // ---------- minimal zip writer (stored, no compression) for .docx / .xlsx ----------
@@ -107,9 +81,15 @@ public:
         return out_;
     }
     Zip() {
-        SYSTEMTIME t; GetLocalTime(&t);
-        time_ = static_cast<uint16_t>((t.wHour << 11) | (t.wMinute << 5) | (t.wSecond / 2));
-        date_ = static_cast<uint16_t>(((t.wYear - 1980) << 9) | (t.wMonth << 5) | t.wDay);
+        const time_t now = time(nullptr);
+        tm t{};
+#ifdef _WIN32
+        localtime_s(&t, &now);
+#else
+        localtime_r(&now, &t);
+#endif
+        time_ = static_cast<uint16_t>((t.tm_hour << 11) | (t.tm_min << 5) | (t.tm_sec / 2));
+        date_ = static_cast<uint16_t>(((t.tm_year + 1900 - 1980) << 9) | ((t.tm_mon + 1) << 5) | t.tm_mday);
     }
 private:
     struct Entry { std::string name; uint32_t crc, size, offset; };
@@ -509,19 +489,6 @@ std::string writeCsv(const std::vector<Table>& tables) {
     return std::string("\xEF\xBB\xBF") + utf8(all);
 }
 
-// ---------- pictures (GDI+) ----------
-
-bool encoderFor(const wchar_t* mime, CLSID& out) {
-    UINT n = 0, size = 0;
-    Gdiplus::GetImageEncodersSize(&n, &size);
-    if (!size) return false;
-    std::vector<unsigned char> buf(size);
-    auto* info = reinterpret_cast<Gdiplus::ImageCodecInfo*>(buf.data());
-    Gdiplus::GetImageEncoders(n, size, info);
-    for (UINT i = 0; i < n; ++i) if (wcscmp(info[i].MimeType, mime) == 0) { out = info[i].Clsid; return true; }
-    return false;
-}
-
 } // namespace
 
 const wchar_t* extension(Format f) {
@@ -544,15 +511,6 @@ Result run(Document& d, const std::vector<int>& pages, Format f, const std::wstr
     if (pages.empty()) { res.error = L"There are no pages to export."; return res; }
 
     if (f == Format::Png || f == Format::Jpeg) {
-        Gdiplus::GdiplusStartupInput in;
-        ULONG_PTR token = 0;
-        if (Gdiplus::GdiplusStartup(&token, &in, nullptr) != Gdiplus::Ok) { res.error = L"The picture encoder could not be started."; return res; }
-        CLSID clsid;
-        if (!encoderFor(f == Format::Png ? L"image/png" : L"image/jpeg", clsid)) {
-            Gdiplus::GdiplusShutdown(token);
-            res.error = L"This PC has no encoder for that picture format.";
-            return res;
-        }
         std::wstring base = path;
         size_t dot = base.find_last_of(L'.');
         if (dot != std::wstring::npos && dot > base.find_last_of(L"\\/")) base.resize(dot);
@@ -569,27 +527,14 @@ Result run(Document& d, const std::vector<int>& pages, Format f, const std::wstr
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
             d.renderOutput(p, fb, 0, 0, w, h);
             api.FPDFBitmap_Destroy(fb);
-            Gdiplus::Bitmap bmp(w, h, w * 4, PixelFormat32bppRGB, px.data());
             std::wstring file = base + L"-" + std::to_wstring(p + 1) + L"." + extension(f);
-            Gdiplus::EncoderParameters params{};
-            ULONG quality = 90;
-            const Gdiplus::EncoderParameters* pp = nullptr;
-            if (f == Format::Jpeg) {
-                params.Count = 1;
-                params.Parameter[0].Guid = Gdiplus::EncoderQuality;
-                params.Parameter[0].Type = Gdiplus::EncoderParameterValueTypeLong;
-                params.Parameter[0].NumberOfValues = 1;
-                params.Parameter[0].Value = &quality;
-                pp = &params;
-            }
-            if (bmp.Save(file.c_str(), &clsid, pp) != Gdiplus::Ok) {
+            if (!image::save(px.data(), w, h, w * 4, f == Format::Png ? image::Format::Png : image::Format::Jpeg, 90, false, file)) {
                 res.error = L"The picture \"" + file.substr(file.find_last_of(L"\\/") + 1) + L"\" could not be saved. The folder may be read-only, or the disk may be full.";
                 break;
             }
             if (res.items == 0) res.firstFile = file;
             ++res.items;
         }
-        Gdiplus::GdiplusShutdown(token);
         res.ok = res.error.empty() && res.items > 0;
         return res;
     }

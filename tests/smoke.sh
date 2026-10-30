@@ -275,6 +275,37 @@ check "deleted table: text and rules gone" "! pdftotext '$work/te_del.pdf' - | g
 run --tables "$(W tbl_scan.pdf)" "$(W tbl_scan.txt)"
 check "scanned table found"          "grep -q 'rows 3 cols 4 editable 1 scanned 1' '$work/tbl_scan.txt'"
 
+echo "delete header and footer"
+hf() { run --hfremove "$(W $1.pdf)" "$2" "$(W $3.txt)" $4 "$5" ${@:6}; }
+pt() { pdftotext -f $2 -l $2 "$work/$1" - 2>/dev/null; }
+hf hf_basic "$(W hb.pdf)" hb both all
+check "found: logo, title, date, rules, page number (6 items, nothing else)" "[ \$(grep -c '^header\\|^footer' '$work/hb.txt') -eq 6 ] && grep -q 'Page number (bottom)' '$work/hb.txt' && grep -q 'Picture or logo' '$work/hb.txt' && grep -q 'Date (top)' '$work/hb.txt'"
+check "body text that starts in the top strip is not taken" "! grep -q 'Body text' '$work/hb.txt'"
+check "removed, not covered: the text is gone" "! pdftotext '$work/hb.pdf' - | grep -q -E 'Annual Plant Report|October 2026|Page [0-9] of 6'"
+check "body text, links and bookmarks kept" "pdftotext '$work/hb.pdf' - | grep -q 'Body text of page 6' && python3 -c \"import pikepdf;p=pikepdf.open('$work/hb.pdf');assert [len(g.Annots) for g in p.pages]==[1]*6 and len(list(p.open_outline().root))==6 and not any(len(g.get_images()) for g in p.pages)\""
+hf hf_basic "$(W hp.pdf)" hp both "2,4-5"
+check "pages 2,4-5 only" "! pt hp.pdf 2 | grep -q 'Page 2 of 6' && ! pt hp.pdf 5 | grep -q 'Page 5 of 6' && pt hp.pdf 3 | grep -q 'Page 3 of 6' && pt hp.pdf 1 | grep -q 'Annual Plant'"
+hf hf_basic "$(W hn.pdf)" hn numbers all
+check "page numbers only" "! pdftotext '$work/hn.pdf' - | grep -q 'Page 3 of 6' && pdftotext '$work/hn.pdf' - | grep -q 'Annual Plant Report'"
+hf hf_basic "$(W hh.pdf)" hh header even
+check "header only, even pages" "! pt hh.pdf 2 | grep -q 'Annual Plant' && pt hh.pdf 2 | grep -q 'Page 2 of 6' && pt hh.pdf 3 | grep -q 'Annual Plant'"
+hf hf_oddeven "$(W ho.pdf)" ho both all
+check "odd / even layouts found and removed" "grep -q 'odd pages' '$work/ho.txt' && grep -q 'even pages' '$work/ho.txt' && ! pdftotext '$work/ho.pdf' - | grep -q -E 'Chapter 1|Handbook' && pdftotext '$work/ho.pdf' - | grep -q 'Body text of page 2'"
+hf hf_one - h1 both all
+check "one page: nothing found, nothing assumed" "! grep -q '^header\\|^footer' '$work/h1.txt'"
+hf hf_xobject "$(W hx.pdf)" hx both "1-2"
+check "shared letterhead removed on the chosen pages only" "! pt hx.pdf 1 | grep -q 'Shared Letterhead' && pt hx.pdf 3 | grep -q 'Shared Letterhead'"
+check "page template kept whole (its body note and fonts intact)" "grep -q 'part of a page template, kept' '$work/hx.txt' && pt hx.pdf 1 | grep -q 'Template note in the body' && pt hx.pdf 4 | grep -q 'Template note in the body'"
+hf hf_basic - ha numbers all area 40 20 560 100 top
+check "a drawn area over body text is reported" "grep -q 'body 6' '$work/ha.txt'"
+run --ocr "$(W hf_scan.pdf)" "$(W hs_ocr.pdf)" eng; rc=$?
+if [ $rc -eq 5 ]; then echo "  skip scanned pages: OCR engine not built"; else
+  hf hs_ocr "$(W hs.pdf)" hs both all
+  check "scans: header, rule and page number found" "grep -q 'scanned' '$work/hs.txt' && grep -q 'Line (top), scanned' '$work/hs.txt' && grep -q 'Page number' '$work/hs.txt'"
+  check "scans: recognised text removed, body kept" "! pdftotext '$work/hs.pdf' - | grep -q -i 'confidential' && pdftotext '$work/hs.pdf' - | grep -q -i 'second line'"
+  check "scans: the picture is white there" "pdftoppm -r 20 -f 1 -l 1 -gray '$work/hs.pdf' '$work/hsimg' && python3 -c \"from PIL import Image;import glob;im=Image.open(glob.glob('$work/hsimg*')[0]);w,h=im.size;assert im.crop((0,0,w,int(h*0.1))).getextrema()[0]>200 and im.crop((0,int(h*0.93),w,h)).getextrema()[0]>200\""
+fi
+
 
 [ -n "${KEEP:-}" ] && echo "work kept: $work" || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOME FAILED"

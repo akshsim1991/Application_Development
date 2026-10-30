@@ -359,6 +359,17 @@ story += bullets([
     "To delete a table with its lines, choose <b>Edit PDF > Delete table</b> (the tables turn red) and click one, or use Delete table in the Edit table window.",
 ])
 
+story += [P("Delete header and footer", "h2")]
+story += bullets([
+    "Choose <b>Edit PDF > Edit pages > Delete header and footer</b>. Feather PDF looks at the top and bottom of every page and lists what repeats there: running titles, dates, page numbers (recognised because they follow the pages), lines and logos, also when odd and even pages differ. Text that runs on into the page's body is never taken, and with a single page nothing can be seen to repeat, so nothing is listed.",
+    "Everything that will go is outlined in red on the page; what stays has grey dashes. Untick a line in the list, or click the item on the page, to keep it. Before / After shows the page as it will be; the arrows (or Page Up / Page Down) go through the pages.",
+    "<b>What to delete</b>: header only, footer only, both, page numbers only, or the items ticked one by one. <b>Pages</b>: all pages (the default), the current page, odd or even pages, or a list such as 2,5,8, a range such as 3-15, or both (1-3, 7, 9-12).",
+    "<b>Draw an area</b> to choose by hand: drag a rectangle on the page, then drag its edges or corners to adjust it. It applies to every chosen page (an area near the foot stays at the same distance from the foot). If it also takes in the page's own content, or cuts through something, a warning says so; things across its edge are kept.",
+    "<b>Delete</b> asks first, then removes the items from the pages: they are not covered, so their text can no longer be found or copied. Bookmarks, links and comments stay. Undo (Ctrl+Z) brings everything back.",
+    "Scanned pages: recognise their text first (Edit PDF > Recognise text); the header and footer are then whitened in the picture and their recognised text is removed. Lines across a scan are found without it.",
+    "A header that is part of a page template (drawn together with the page's own content) is listed but kept, so nothing else is damaged.",
+])
+
 story += [P("Pages", "h2")]
 story += [P("Most page tools are in <b>Edit PDF > Edit pages</b> and on the right-click menu of the page thumbnails.")]
 story += bullets([

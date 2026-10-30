@@ -24,38 +24,31 @@ Every stage ends with the Mac build on GitHub passing: it builds, its engine giv
   colours, since GitHub's Macs do not allow screenshots of app windows.
 - The night-mode page colours are one shared file (`shared/pagecolours.hpp`) for both apps.
 
-## Stage 2 (in progress, version 0.2.0)
+## Stage 2: every feature of the Windows app (built, version 2.14.2)
 
-- Start window as on Windows. Saving (Save, Save As, Revert, questions on closing), undo and redo.
-- The engine's pictures (`shared/image`) and cryptography (`shared/crypto`) have Windows and Mac versions, so compress,
-  export, pictures, PDF/A, compare and password protection are shared. The command line is shared (`shared/cli`).
-- `tests/engine/cli_check.sh` checks the command line features on the Mac build with independent tools.
-- Menus: Edit PDF (watermark, page numbers, headers and footers, delete header and footer, background), Pages, Protect,
-  Export, PDF/A, properties, fonts used.
+Both apps carry the same version number (2.14.2). Every row of `docs/FEATURES-Windows-vs-macOS.md` is now on the Mac.
+"Built" means: the Mac build passes, the engine and command-line checks pass on a Mac, and the window check draws the
+app. Each feature is still to be tried by hand on a Mac; problems found that way go into `docs/BUGLOG.md`.
+
+- Start window, saving, undo and redo, menus as on Windows, Settings window, auto-update.
+- Reading: sidebar (thumbnails with a page menu, ⌘⌫ and dragging; bookmarks), find, text selection, links, layouts,
+  side by side, printing, presentation, read aloud (AVSpeechSynthesizer), command palette, compare.
+- Annotating, forms, editing (text, paragraphs, text boxes, pictures, objects, tables), page tools, redaction.
+- Signatures with the Security framework (CMSEncoder, CMSDecoder, the keychain); one's own certificate; handwritten
+  signatures.
+- OCR with Apple's Vision; measuring; batch mode; folder search.
 
 ## Engine files: where they stand on the Mac
 
-| Engine file | On the Mac | Still to do |
+| Engine file | On the Mac | How |
 |---|---|---|
-| document, pageobjects, contentgen, tables, headfoot, annot, outline, redact, sanitize, formdata, formcreate, textpdf, fontlist, selftest | builds and runs | — |
-| pageobjects: installed fonts | standard PDF fonts are used for edited text | find the installed font and embed it with Core Text (stage 3). Until then edited text may not match the document's font (the one known difference in the engine check) |
-| sign (checking and signing) | checking says "not available yet" | the Security framework (stage 4) |
-| protect, compress, exporter, picture, pdfa, visualdiff | builds and runs (shared/crypto, shared/image) | — |
-| ocr | not built | Tesseract built for the Mac, or Apple's Vision text recognition (stage 5) |
-| batch, foldersearch | not built | file listing with the standard library (stage 5) |
-| speech (Windows screens) | — | AVSpeechSynthesizer (stage 5) |
+| document, pageobjects, contentgen, tables, headfoot, annot, outline, redact, sanitize, formdata, formcreate, textpdf, fontlist, selftest, foldersearch, batch | builds and runs | standard C++ |
+| pageobjects: installed fonts | edited text uses the installed font of the same name when the PDF's own copy lacks a letter | CoreText finds it; its file is embedded (TrueType; not collections or CFF fonts) |
+| sign | signs and checks | the PDF part is shared; the app gives the CMS signature, the check and time stamp requests (`sign::setSystem`) |
+| ocr | recognises text | the drawing of pages and the text layer are shared; the app gives the engine (`ocr::setEngine`): Vision |
+| protect, compress, exporter, picture, pdfa, visualdiff | builds and runs | shared/crypto, shared/image |
 
-## Stages to come
+## Still to come
 
-2. **Reading tools.** Thumbnails and bookmarks sidebar, find (⌘F) with highlighted matches, selecting and copying
-   text, links, two pages side by side and single-page layouts, side-by-side documents, printing (macOS's print
-   window), presentation mode.
-3. **Editing.** Saving (⌘S, Save As, autosave), undo and redo, annotations (highlight, notes, drawing, shapes,
-   stamps), filling forms, editing text and paragraphs with installed fonts, page operations (rotate, delete, move,
-   insert, extract, merge), watermark, page numbers, header and footer, tables (find, edit, the table window), Delete
-   header and footer.
-4. **Security and pictures.** Passwords, redaction, signatures, compress, export (pictures, Word, Excel, text),
-   PDF/A, pictures on pages, compare.
-5. **The rest.** OCR, read aloud, batch, folder search, Settings window (themes, tab colours), first-run and update
-   notes, a signed and notarised download (needs an Apple Developer account, about USD 99 a year; without it macOS
-   asks the user to allow the app once, see README).
+- A signed and notarised download (needs an Apple Developer account, about USD 99 a year; without it macOS asks the
+  user to allow the app once, see README).

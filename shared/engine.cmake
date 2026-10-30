@@ -1,5 +1,5 @@
-# The engine files that build off Windows (macOS app, and the engine check on Linux). The rest of shared/ still uses
-# Windows services (certificates, OCR, web time stamps): see macOS/PORTING.md for their stages.
+# The engine files that build off Windows (macOS app, and the engine check on Linux). Signatures and OCR take the
+# system's services from the app (sign::setSystem, ocr::setEngine): see macOS/PORTING.md.
 set(SHARED "${CMAKE_SOURCE_DIR}/shared")
 set(ENGINE_SOURCES
   ${SHARED}/pdfium_api.cpp

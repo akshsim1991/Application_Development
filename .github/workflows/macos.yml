@@ -53,7 +53,7 @@ jobs:
         run: |
           app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
           in="$PWD/tests/engine/golden/in"
-          run() { "$@" & local p=$!; for i in $(seq 1 60); do kill -0 $p 2>/dev/null || { wait $p; return; }; sleep 1; done; kill -9 $p; echo "the app did not finish: $*"; return 1; }
+          run() { "$@" & local p=$!; for i in $(seq 1 60); do kill -0 $p 2>/dev/null || { wait $p; return; }; sleep 1; done; sample $p 2 -file /tmp/stuck.txt >/dev/null 2>&1; kill -9 $p; echo "the app did not finish: $*"; grep -A40 "Thread_.*DispatchQueue_1:" /tmp/stuck.txt | cut -c1-200; for d in ui*; do cat $d/trace.txt 2>/dev/null; done; return 1; }
           run env FEATHER_UI_CHECK="$PWD/ui-start" "$app"
           run env FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1

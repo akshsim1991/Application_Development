@@ -7,5 +7,5 @@ extern NSString* const FPPageColoursKey;                // user default: 0 norma
 extern NSNotificationName const FPPageColoursChanged;   // posted when it changes: every window follows at once
 
 @interface FPWindowController : NSWindowController <NSToolbarDelegate, NSWindowDelegate, NSTextFieldDelegate>
-- (instancetype)initWithDocument:(NSDocument*)document;
+- (instancetype)init;   // the document attaches itself (NSDocument addWindowController:)
 @end

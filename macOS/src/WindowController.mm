@@ -25,7 +25,7 @@ static pagecolours::Mode savedColours() {
     NSPopUpButton* _zoomMenu;
 }
 
-- (instancetype)initWithDocument:(NSDocument*)document {
+- (instancetype)init {
     NSWindow* w = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, 1000, 760)
                                               styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
                                                         NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable
@@ -59,7 +59,8 @@ static pagecolours::Mode savedColours() {
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(viewChanged:) name:FPPageViewChanged object:_view];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coloursChanged:) name:FPPageColoursChanged object:nil];
-        self.document = document;
+        // The document links itself to this window (addWindowController: sets the document). Setting it here first made
+        // that call think the window was already added, so it was never shown.
         FPTrace(@"window made");
     }
     return self;

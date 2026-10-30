@@ -16,7 +16,7 @@
 - (void)makeWindowControllers {
     FPTrace(@"makeWindowControllers %@", self.displayName);
     @try {
-        [self addWindowController:[[FPWindowController alloc] initWithDocument:self]];
+        [self addWindowController:[[FPWindowController alloc] init]];
     } @catch (NSException* e) {
         FPTrace(@"window could not be made: %@ %@\n%@", e.name, e.reason, e.callStackSymbols);
         @throw;

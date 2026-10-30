@@ -60,11 +60,10 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-props" FEATHER_UI_ACTION=showProperties: "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-fonts" FEATHER_UI_ACTION=showFonts: "$app" "$in/qp.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-marks" FEATHER_UI_ACTION=showBookmarksPanel: "$app" "$in/hf_basic.pdf"
-          run env FEATHER_UI_CHECK="$PWD/ui-thumbs" FEATHER_UI_ACTION=selectAllThumbs: "$app" "$in/hf_basic.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-thumbs" FEATHER_UI_ACTION=selectAllPages: "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-rulers" FEATHER_UI_ACTION=toggleRulers: "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-ocr" FEATHER_UI_ACTION=recogniseText: "$app" "$in/hf_basic.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
-          for d in ui-*; do echo "== $d"; cat $d/trace.txt 2>/dev/null || true; done
           grep -q 'window NSWindow "Feather PDF".*visible 1' ui-start/report.txt
           grep -q "^documents 2" ui/report.txt
           grep -q "tabs 2" ui/report.txt
@@ -77,6 +76,8 @@ jobs:
               echo "SCREENSHOT-BEGIN $d-$f"; base64 -b 120 -i $d/$f.jpg; echo "SCREENSHOT-END"
             done
           done
+          for d in ui-*; do echo "== $d"; cat $d/trace.txt 2>/dev/null || true; done
+          grep -q "thumbnails selected: 6" ui-thumbs/trace.txt   # Select All Pages selects every page
 
       - name: Disk image
         run: cmake --build build-mac --target dmg

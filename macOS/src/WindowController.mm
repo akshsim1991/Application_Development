@@ -456,6 +456,8 @@ static NSImage* symbol(NSString* name, NSString* description) {
     return pages.count ? pages : @[ @([_view currentPage]) ];
 }
 
+- (IBAction)selectAllPages:(id)sender { [self selectAllThumbs]; }   // Pages > Select All Pages
+
 - (void)selectAllThumbs {
     if (_sidebar.hidden) [self toggleThumbnails:nil];
     [_sidebar showBookmarks:NO];

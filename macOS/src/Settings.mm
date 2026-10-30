@@ -196,7 +196,9 @@ static id fileIdentity(NSURL* u) {
     id ident = fileIdentity(url);
     for (NSDocument* d in self.documents) {
         if (!d.fileURL || !ident || ![fileIdentity(d.fileURL) isEqual:ident]) continue;
-        if (FPDuplicateMode() == 0 && display) {
+        // Not while starting: AppKit and the app both open the files named at start, in either order.
+        const bool starting = -NSRunningApplication.currentApplication.launchDate.timeIntervalSinceNow < 5;
+        if (FPDuplicateMode() == 0 && display && !starting) {
             NSAlert* a = [[NSAlert alloc] init];
             a.messageText = [NSString stringWithFormat:@"\u201C%@\u201D is already open.", d.displayName];
             a.informativeText = @"Its tab is shown. (Settings > Tabs: go to its tab without asking.)";

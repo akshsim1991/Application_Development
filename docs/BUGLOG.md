@@ -721,7 +721,7 @@ Found and fixed while building it:
   (grouped buttons) do not take the colourful icon setting on the Mac yet.
 - **Mac: started with files, the app stopped at "already open".** AppKit opens the files named at start, and the app
   opened them a second time; the new "already open" question then waited for an answer. The app now opens only the
-  ones AppKit has not. Found by a sample of the stuck app in the build check. Verified: the check opens two PDFs as two
+  ones AppKit has not, and does not ask in the first seconds after start (the two opens can come in either order). Found by a sample of the stuck app in the build check. Verified: the check opens two PDFs as two
   tabs and finishes.
 - **Mac: Properties and Fonts used: the lines ran over the heading and were cut off.** The sheet kept its first size,
   480 x 200, whatever it held. It now takes the size its contents need. Not verified yet: see the next build's pictures.

@@ -3,13 +3,43 @@
 #include "platform.hpp"
 #import "Trace.h"
 
+NSNotificationName const FPDocumentReloaded = @"FPDocumentReloaded";
+
 @implementation FPDocument {
     std::unique_ptr<Document> _pdf;
 }
 
-// The Mac version only reads documents so far; it never writes them back.
+// Saving as on Windows: Save writes the file in place, Save As to a new one, and closing or quitting with changes asks
+// first. (Not macOS's automatic saving: a PDF changes only when the user saves it.)
 + (BOOL)autosavesInPlace { return NO; }
-- (BOOL)isDocumentEdited { return NO; }
+- (BOOL)isDocumentEdited { return _pdf && _pdf->dirty(); }
+- (BOOL)hasUndoManager { return NO; }   // undo is the engine's own (30 steps, as on Windows)
+
+- (void)changed { [self updateChangeCount:NSChangeDone]; }
+
+- (NSData*)dataOfType:(NSString*)type error:(NSError**)error {
+    std::vector<unsigned char> bytes;
+    if (!_pdf || !_pdf->bytesToSave(bytes)) {
+        if (error) *error = [NSError errorWithDomain:@"FeatherPDF" code:1
+                                            userInfo:@{NSLocalizedDescriptionKey : @"The document could not be written. Nothing was saved."}];
+        return nil;
+    }
+    return [NSData dataWithBytes:bytes.data() length:bytes.size()];
+}
+
+- (void)saveToURL:(NSURL*)url ofType:(NSString*)type forSaveOperation:(NSSaveOperationType)op completionHandler:(void (^)(NSError*))done {
+    [super saveToURL:url ofType:type forSaveOperation:op completionHandler:^(NSError* e) {
+        if (!e && op != NSSaveToOperation && self->_pdf) self->_pdf->savedAs(platform::wide(url.fileSystemRepresentation));
+        if (!e) [self updateChangeCount:NSChangeCleared];
+        done(e);
+    }];
+}
+
+- (BOOL)revertToContentsOfURL:(NSURL*)url ofType:(NSString*)type error:(NSError**)error {
+    if (![super revertToContentsOfURL:url ofType:type error:error]) return NO;
+    [[NSNotificationCenter defaultCenter] postNotificationName:FPDocumentReloaded object:self];
+    return YES;
+}
 
 - (Document*)pdf { return _pdf.get(); }
 

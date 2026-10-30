@@ -24,15 +24,23 @@ Every stage ends with the Mac build on GitHub passing: it builds, its engine giv
   colours, since GitHub's Macs do not allow screenshots of app windows.
 - The night-mode page colours are one shared file (`shared/pagecolours.hpp`) for both apps.
 
+## Stage 2 (in progress, version 0.2.0)
+
+- Start window as on Windows. Saving (Save, Save As, Revert, questions on closing), undo and redo.
+- The engine's pictures (`shared/image`) and cryptography (`shared/crypto`) have Windows and Mac versions, so compress,
+  export, pictures, PDF/A, compare and password protection are shared. The command line is shared (`shared/cli`).
+- `tests/engine/cli_check.sh` checks the command line features on the Mac build with independent tools.
+- Menus: Edit PDF (watermark, page numbers, headers and footers, delete header and footer, background), Pages, Protect,
+  Export, PDF/A, properties, fonts used.
+
 ## Engine files: where they stand on the Mac
 
 | Engine file | On the Mac | Still to do |
 |---|---|---|
 | document, pageobjects, contentgen, tables, headfoot, annot, outline, redact, sanitize, formdata, formcreate, textpdf, fontlist, selftest | builds and runs | — |
 | pageobjects: installed fonts | standard PDF fonts are used for edited text | find the installed font and embed it with Core Text (stage 3). Until then edited text may not match the document's font (the one known difference in the engine check) |
-| protect (passwords) | says "not available yet" (`shared/pending.cpp`) | AES-256 with CommonCrypto (stage 4) |
 | sign (checking and signing) | checking says "not available yet" | the Security framework (stage 4) |
-| compress, exporter, picture, pdfa, visualdiff | not built | pictures through ImageIO in place of GDI+ (stage 4) |
+| protect, compress, exporter, picture, pdfa, visualdiff | builds and runs (shared/crypto, shared/image) | — |
 | ocr | not built | Tesseract built for the Mac, or Apple's Vision text recognition (stage 5) |
 | batch, foldersearch | not built | file listing with the standard library (stage 5) |
 | speech (Windows screens) | — | AVSpeechSynthesizer (stage 5) |

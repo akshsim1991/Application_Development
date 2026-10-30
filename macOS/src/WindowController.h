@@ -6,6 +6,12 @@
 extern NSString* const FPPageColoursKey;                // user default: 0 normal, 1 dark (night), 2 dimmed
 extern NSNotificationName const FPPageColoursChanged;   // posted when it changes: every window follows at once
 
+#include "document.hpp"
+@class FPPageView;
+
 @interface FPWindowController : NSWindowController <NSToolbarDelegate, NSWindowDelegate, NSTextFieldDelegate>
 - (instancetype)init;   // the document attaches itself (NSDocument addWindowController:)
+@property(nonatomic, readonly) FPPageView* pageView;
+- (Document*)pdf;
+- (void)afterChange;    // the pages changed: draw them again, mark the document edited, update the toolbar
 @end

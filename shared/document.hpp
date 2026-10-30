@@ -88,6 +88,8 @@ public:
     // Saving. The document keeps encryption when it was opened with a password.
     bool serialize(std::vector<unsigned char>& out, int flags = 0) const;
     SaveResult saveAs(const std::wstring& path);       // writes a temp file, then replaces `path`
+    bool bytesToSave(std::vector<unsigned char>& out) const;   // the file as saveAs writes it (with the protection set)
+    void savedAs(const std::wstring& path);            // the bytes were written to `path` by someone else (the Mac app)
     void setPath(const std::wstring& p) { path_ = p; }
     // Password protection is applied when the document is saved. Set/Remove are one undo step each.
     enum class Protection { Keep, Set, Remove };

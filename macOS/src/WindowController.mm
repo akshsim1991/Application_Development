@@ -59,6 +59,7 @@ static pagecolours::Mode savedColours() {
 
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(viewChanged:) name:FPPageViewChanged object:_view];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coloursChanged:) name:FPPageColoursChanged object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloaded:) name:FPDocumentReloaded object:nil];
         // The document links itself to this window (addWindowController: sets the document). Setting it here first made
         // that call think the window was already added, so it was never shown.
         FPTrace(@"window made");
@@ -191,6 +192,32 @@ static NSImage* symbol(NSString* name, NSString* description) {
         self.window.subtitle = count ? [NSString stringWithFormat:@"Page %d of %d · %d %%", page, count, percent] : @"";
 }
 
+- (FPPageView*)pageView { return _view; }
+- (Document*)pdf { return _view.document; }
+
+- (void)afterChange {
+    [_view documentChanged];
+    [(FPDocument*)self.document changed];
+    [self viewChanged:nil];
+}
+
+- (void)reloaded:(NSNotification*)n {
+    if (n.object != self.document) return;
+    _view.document = [(FPDocument*)self.document pdf];
+    [self viewChanged:nil];
+}
+
+// Undo and redo (the engine's: every change is one step, 30 kept, as on Windows). Not NSWindow's undo: / redo:, which
+// would go to macOS's own undo manager.
+- (IBAction)featherUndo:(id)sender {
+    Document* d = self.pdf;
+    if (d && d->canUndo() && d->undo()) [self afterChange];
+}
+- (IBAction)featherRedo:(id)sender {
+    Document* d = self.pdf;
+    if (d && d->canRedo() && d->redo()) [self afterChange];
+}
+
 - (void)coloursChanged:(NSNotification*)n {
     _view.colours = savedColours();
 }
@@ -208,6 +235,8 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (IBAction)goToPage:(id)sender { [self.window makeFirstResponder:_pageField]; }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    if (item.action == @selector(featherUndo:)) return self.pdf && self.pdf->canUndo();
+    if (item.action == @selector(featherRedo:)) return self.pdf && self.pdf->canRedo();
     if (item.action == @selector(fitWidth:)) item.state = _view.fitWidth ? NSControlStateValueOn : NSControlStateValueOff;
     const int count = _view.document ? _view.document->pageCount() : 0;
     const int page = [_view currentPage];

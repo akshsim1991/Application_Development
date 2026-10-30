@@ -176,12 +176,51 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Close", @selector(performClose:), @"w");
+    add(m, @"Save", @selector(saveDocument:), @"s");
+    add(m, @"Save As\u2026", @selector(saveDocumentAs:), @"s", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    add(m, @"Revert to Saved", @selector(revertDocumentToSaved:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Export\u2026", @selector(exportDocument:), @"e", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    add(m, @"Save a PDF/A Copy\u2026", @selector(savePdfA:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Properties\u2026", @selector(showProperties:), @"i", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Fonts Used\u2026", @selector(showFonts:), nil);
 
-    m = submenu(bar, @"Edit");   // for typing (the page number box); selecting text on pages comes in a later stage
+    m = submenu(bar, @"Edit");
+    add(m, @"Undo", @selector(featherUndo:), @"z");
+    add(m, @"Redo", @selector(featherRedo:), @"z", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Cut", @selector(cut:), @"x");
     add(m, @"Copy", @selector(copy:), @"c");
     add(m, @"Paste", @selector(paste:), @"v");
     add(m, @"Select All", @selector(selectAll:), @"a");
+
+    m = submenu(bar, @"Edit PDF");
+    add(m, @"Watermark\u2026", @selector(addWatermark:), nil);
+    add(m, @"Page Numbers\u2026", @selector(addPageNumbers:), nil);
+    add(m, @"Headers and Footers\u2026", @selector(addHeadersFooters:), nil);
+    add(m, @"Delete Header and Footer\u2026", @selector(deleteHeaderFooter:), nil);
+    add(m, @"Background Colour\u2026", @selector(addBackground:), nil);
+
+    m = submenu(bar, @"Pages");
+    add(m, @"Rotate Right", @selector(rotateRight:), @"r");
+    add(m, @"Rotate Left", @selector(rotateLeft:), @"l");
+    add(m, @"Rotate Pages\u2026", @selector(rotatePages:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Insert Blank Page", @selector(insertBlankPage:), nil);
+    add(m, @"Insert Pages from a File\u2026", @selector(insertPagesFromFile:), nil);
+    add(m, @"Delete Pages\u2026", @selector(deletePages:), nil);
+    add(m, @"Extract Pages\u2026", @selector(extractPages:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Reverse the Order", @selector(reversePages:), nil);
+    add(m, @"Remove Blank Pages\u2026", @selector(removeBlankPages:), nil);
+    add(m, @"Remove Duplicate Pages\u2026", @selector(removeDuplicatePages:), nil);
+
+    m = submenu(bar, @"Protect");
+    add(m, @"Compress\u2026", @selector(compressDocument:), nil);
+    add(m, @"Password Protection\u2026", @selector(protectDocument:), nil);
+    add(m, @"Remove Password Protection", @selector(removeProtection:), nil);
+    add(m, @"Remove Hidden Data\u2026", @selector(removeHiddenData:), nil);
 
     m = submenu(bar, @"View");
     add(m, @"Actual Size", @selector(actualSize:), @"0");

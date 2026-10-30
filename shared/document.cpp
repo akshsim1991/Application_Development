@@ -514,22 +514,26 @@ SaveResult Document::writeFile(const std::wstring& path, const std::vector<unsig
     return SaveResult::Ok;
 }
 
+bool Document::bytesToSave(std::vector<unsigned char>& bytes) const {
+    if (protMode_ == Protection::Keep) return serialize(bytes);
+    // Write the plain document first (PDFium would otherwise carry the old protection over), then protect it ourselves.
+    if (!serialize(bytes, FPDF_REMOVE_SECURITY)) return false;
+    if (protMode_ == Protection::Set) {
+        std::vector<unsigned char> enc;
+        std::wstring err;
+        if (!protect::encrypt(bytes, protOpt_, enc, err)) return false;
+        bytes = std::move(enc);
+    }
+    return true;
+}
+
+void Document::savedAs(const std::wstring& path) { path_ = path; dirty_ = false; }
+
 SaveResult Document::saveAs(const std::wstring& path) {
     std::vector<unsigned char> bytes;
-    if (protMode_ == Protection::Keep) {
-        if (!serialize(bytes)) return SaveResult::Failed;
-    } else {
-        // Write the plain document first (PDFium would otherwise carry the old protection over), then protect it ourselves.
-        if (!serialize(bytes, FPDF_REMOVE_SECURITY)) return SaveResult::Failed;
-        if (protMode_ == Protection::Set) {
-            std::vector<unsigned char> enc;
-            std::wstring err;
-            if (!protect::encrypt(bytes, protOpt_, enc, err)) return SaveResult::Failed;
-            bytes = std::move(enc);
-        }
-    }
+    if (!bytesToSave(bytes)) return SaveResult::Failed;
     SaveResult r = writeFile(path, bytes);
-    if (r == SaveResult::Ok) { path_ = path; dirty_ = false; }
+    if (r == SaveResult::Ok) savedAs(path);
     return r;
 }
 

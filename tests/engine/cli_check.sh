@@ -137,13 +137,13 @@ check "text still searchable"       "text '$W/arch-a.pdf' | grep -q 'Quarterly R
 fi
 
 echo "search all PDFs in a folder"
-mkdir -p "$W/lib/sub"; cp "$W/rich.pdf" "$W/lib/"; cp "$W/qp.pdf" "$W/lib/sub/"
+mkdir -p "$W/lib/sub"; cp "$W/rich.pdf" "$W/lib/"; cp "$W/img.pdf" "$W/lib/sub/"
 HOME="$W/home" run --search "$W/lib" "Quarterly" "$W/srch.txt"
 check "finds the phrase"            "grep -q 'rich.pdf|1|' '$W/srch.txt'"
 HOME="$W/home" run --search "$W/lib" "Quarterly" "$W/srch2.txt"
 check "second search uses the saved index" "grep -q 'scanned=0' '$W/srch2.txt'"
-HOME="$W/home" run --search "$W/lib" "signed integer" "$W/srch3.txt"
-check "looks in subfolders"         "grep -q 'sub/qp.pdf|1|' '$W/srch3.txt'"
+HOME="$W/home" run --search "$W/lib" "Picture test" "$W/srch3.txt"
+check "looks in subfolders"         "grep -q 'sub/img.pdf|1|' '$W/srch3.txt'"
 
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"

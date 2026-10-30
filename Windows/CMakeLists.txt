@@ -47,6 +47,8 @@ add_executable(FeatherPDF WIN32
   src/themeui.cpp
   src/settingsdlg.cpp
   src/tableeditor.cpp
+  src/updater.cpp
+  ${SHARED}/update.cpp
   resources/FeatherPDF.rc)
 
 target_include_directories(FeatherPDF PRIVATE src "${SHARED}" "${PDFIUM_DIR}/include" "${CMAKE_BINARY_DIR}")

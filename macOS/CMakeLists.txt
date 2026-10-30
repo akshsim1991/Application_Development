@@ -17,6 +17,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Form.mm
   src/Tools.mm
   src/Sidebar.mm
+  src/Updater.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")

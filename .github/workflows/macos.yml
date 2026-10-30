@@ -14,6 +14,7 @@ permissions:
 jobs:
   mac:
     runs-on: macos-14
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -52,12 +53,13 @@ jobs:
         run: |
           app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
           in="$PWD/tests/engine/golden/in"
-          FEATHER_UI_CHECK="$PWD/ui-start" "$app"
-          FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
-          FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
-          FEATHER_UI_CHECK="$PWD/ui-props" FEATHER_UI_ACTION=showProperties: "$app" "$in/hf_basic.pdf"
-          FEATHER_UI_CHECK="$PWD/ui-fonts" FEATHER_UI_ACTION=showFonts: "$app" "$in/qp.pdf"
-          FEATHER_UI_CHECK="$PWD/ui-marks" FEATHER_UI_ACTION=showBookmarksPanel: "$app" "$in/hf_basic.pdf"
+          run() { "$@" & local p=$!; for i in $(seq 1 60); do kill -0 $p 2>/dev/null || { wait $p; return; }; sleep 1; done; kill -9 $p; echo "the app did not finish: $*"; return 1; }
+          run env FEATHER_UI_CHECK="$PWD/ui-start" "$app"
+          run env FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
+          run env FEATHER_UI_CHECK="$PWD/ui-props" FEATHER_UI_ACTION=showProperties: "$app" "$in/hf_basic.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-fonts" FEATHER_UI_ACTION=showFonts: "$app" "$in/qp.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-marks" FEATHER_UI_ACTION=showBookmarksPanel: "$app" "$in/hf_basic.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
           grep -q 'window NSWindow "Feather PDF".*visible 1' ui-start/report.txt
           grep -q "^documents 2" ui/report.txt

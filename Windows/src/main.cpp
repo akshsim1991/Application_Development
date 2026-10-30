@@ -52,6 +52,8 @@
 #include "startpage.hpp"
 #include "tables.hpp"
 #include "cli.hpp"
+#include "update.hpp"
+#include "updater.hpp"
 #include "platform.hpp"
 #include "headfoot.hpp"
 #include "hfdialog.hpp"
@@ -67,6 +69,7 @@ namespace {
 enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 constexpr UINT kMsgOpenHandedOver = WM_APP + 1;   // opens the files a second launch handed over
+constexpr UINT kMsgUpdateChecked = WM_APP + 7;    // the version file was read (updater::checkInBackground)
 
 // kind: a toolbar button, or one of the window buttons (minimise, maximise, close) drawn in the tab row
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
@@ -117,6 +120,8 @@ struct App {
     bool tabColours = false;  // each tab in a colour of its own
     bool tabNumbers = false;  // "1. Document.pdf"
     int dupMode = 0;          // a PDF opened again that is already open: 0 ask, 1 go to its tab
+    bool checkUpdates = true; // look for a new version when Feather PDF starts
+    std::wstring skipVersion; // a new version the user chose not to be reminded of
     bool restorePositions = true;   // documents open where they were last read
     int cacheIdx = 1;         // pages kept ready in memory: 3, 6, 12
     int autosaveIdx = 0;      // recovery copy of unsaved changes: every 20 s, 1 min, 5 min, never
@@ -534,6 +539,12 @@ void loadSettings() {
     app.tabColours = num(L"tabColours", 0) != 0;
     app.tabNumbers = num(L"tabNumbers", 0) != 0;
     app.dupMode = std::clamp(num(L"duplicateOpen", 0), 0, 1);
+    app.checkUpdates = num(L"checkUpdates", 1) != 0;
+    {
+        wchar_t skip[64] = L"";
+        GetPrivateProfileStringW(L"view", L"skipVersion", L"", skip, 64, p.c_str());
+        app.skipVersion = skip;
+    }
     app.restorePositions = num(L"restorePositions", 1) != 0;
     app.cacheIdx = std::clamp(num(L"pageCache", 1), 0, 2);
     app.autosaveIdx = std::clamp(num(L"recoveryCopy", 0), 0, 3);
@@ -584,6 +595,8 @@ void saveSettings() {
     put(L"view", L"tabColours", app.tabColours);
     put(L"view", L"tabNumbers", app.tabNumbers);
     put(L"view", L"duplicateOpen", app.dupMode);
+    put(L"view", L"checkUpdates", app.checkUpdates);
+    WritePrivateProfileStringW(L"view", L"skipVersion", app.skipVersion.c_str(), p.c_str());
     put(L"view", L"restorePositions", app.restorePositions);
     put(L"view", L"pageCache", app.cacheIdx);
     put(L"view", L"recoveryCopy", app.autosaveIdx);
@@ -2963,6 +2976,61 @@ void applyTheme() {
 }
 
 // ---- About and Settings ----
+// ---- updates (shared/update.hpp, updater.cpp) ----
+
+void onUpdateChecked(const update::Release* r, bool manual) {
+    if (!r) {
+        if (manual) MessageBoxW(app.wnd, L"Feather PDF could not find out whether there is a new version. Check the internet connection and try again.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    const std::wstring version = platform::wide(r->version), current = platform::wide(FEATHER_VERSION);
+    const bool newer = update::compareVersions(r->version, FEATHER_VERSION) > 0 && !r->windows.url.empty();
+    if (!newer) {
+        if (manual) MessageBoxW(app.wnd, (L"You have the newest version of Feather PDF (" + current + L").").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    if (!manual && version == app.skipVersion) return;
+    wchar_t mb[32];
+    swprintf(mb, 32, L"%.1f MB", r->windows.size / 1048576.0);
+    std::vector<FormField> f(2);
+    f[0] = {FormField::Note, L"", {}, L"Feather PDF " + version + L" is out" + (r->date.empty() ? L"" : L" (" + platform::wide(r->date) + L")") +
+                                     L". You have " + current + L".\n\n" + (r->notes.empty() ? L"" : L"What is new:\n" + r->notes + L"\n\n") +
+                                     L"Update now downloads it (" + mb + L"), closes Feather PDF, installs the new version in the same place and starts it again. "
+                                     L"Your settings stay. Windows asks for permission to install.\n\nCancel: update later."};
+    f[1] = {FormField::Check, L"Do not remind me about this version"};
+    const bool now = showForm(app.wnd, app.inst, L"A new version of Feather PDF", f, L"Update now");
+    if (f[1].checked) { app.skipVersion = version; saveSettings(); }
+    if (!now) return;
+
+    std::vector<unsigned char> setup;
+    std::wstring err;
+    {
+        Progress pr((L"Downloading Feather PDF " + version + L"...  (Esc stops)").c_str());
+        const bool ok = updater::download(r->windows.url, setup, err, [&](long long done, long long total) {
+            wchar_t t[160];
+            if (total > 0) swprintf(t, 160, L"Downloading Feather PDF %ls...  %.1f of %.1f MB  (Esc stops)", version.c_str(), done / 1048576.0, total / 1048576.0);
+            else swprintf(t, 160, L"Downloading Feather PDF %ls...  %.1f MB  (Esc stops)", version.c_str(), done / 1048576.0);
+            pr.set(t);
+            return !pr.stopRequested();
+        });
+        if (!ok) { MessageBoxW(app.wnd, (L"The new version could not be downloaded. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    }
+    if (!update::verify(setup, r->windows.sha256)) {
+        MessageBoxW(app.wnd, L"The downloaded file is not the right one (it may have been damaged on the way), so it was not installed. Try again later.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    wchar_t tmp[MAX_PATH];
+    GetTempPathW(MAX_PATH, tmp);
+    const std::wstring path = std::wstring(tmp) + L"FeatherPDF-Setup-" + version + L".exe";
+    if (Document::writeFile(path, setup) != SaveResult::Ok) { MessageBoxW(app.wnd, L"The new version could not be saved to the temporary folder.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    const std::wstring args = L"/S /relaunch /waitfor=" + std::to_wstring(GetCurrentProcessId());
+    if (reinterpret_cast<INT_PTR>(ShellExecuteW(app.wnd, L"open", path.c_str(), args.c_str(), nullptr, SW_SHOWNORMAL)) <= 32) {
+        MessageBoxW(app.wnd, L"The installer could not be started (was the permission refused?). Nothing was changed.", kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    PostMessageW(app.wnd, WM_CLOSE, 0, 0);   // asks about unsaved changes as usual; the installer waits for Feather PDF to close
+}
+
 void showAbout() {
     std::vector<FormField> f(1);
     f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L", built ") + buildDate() + L"\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
@@ -3033,6 +3101,9 @@ void showSettings(int first) {
                {L"Every 20 seconds", L"Every minute", L"Every 5 minutes", L"Never"}, [] { return app.autosaveIdx; },
                [](int i) { app.autosaveIdx = i; restartAutosave(); })}};
     cats[SP_ADVANCED] = {L"Advanced", {
+        toggle(L"Look for new versions", L"When Feather PDF starts, it checks whether a new version is out and asks whether to update now or later.", app.checkUpdates),
+        button(L"Update", L"Checks now whether a new version of Feather PDF is out.", L"Update to new version\x2026", [] {
+            updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); }),
         button(L"Default PDF application", L"Opens the Windows settings where you choose the app that opens PDF files.", L"Set as default\x2026", [] { registerAsViewer(); }),
         button(L"Recent files", L"The list on the start page and in Open recent.", L"Clear the list", [] {
             if (MessageBoxW(GetActiveWindow(), L"Clear the list of recent files?", L"Settings", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
@@ -3146,7 +3217,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_RECENT = 100 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3202,6 +3273,7 @@ void showMainMenu(const RECT& anchor) {
     add(MM_SETTINGS, L"Settings...\tCtrl+,");
     add(MM_GUIDE, L"User guide\tF1");
     add(MM_ABOUT, L"About Feather PDF");
+    add(MM_UPDATE, L"Update to new version...");
     add(MM_EXIT, L"Exit\tCtrl+Q");
     POINT pt{anchor.right, anchor.bottom};
     ClientToScreen(app.wnd, &pt);
@@ -3241,6 +3313,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_PALETTE: commandPalette(); break;
         case MM_SETTINGS: showSettings(SP_APPEARANCE); break;
         case MM_ABOUT: showAbout(); break;
+        case MM_UPDATE: updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); break;
         case MM_EXIT: PostMessageW(app.wnd, WM_CLOSE, 0, 0); break;
         default:
             if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
@@ -6072,6 +6145,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (app.handedOver.size() == 1) PostMessageW(h, kMsgOpenHandedOver, 0, 0);
             return TRUE;
         }
+        case kMsgUpdateChecked: {
+            std::unique_ptr<update::Release> r(reinterpret_cast<update::Release*>(l));
+            onUpdateChecked(r.get(), w != 0);
+            return 0;
+        }
         case kMsgOpenHandedOver: {
             std::vector<std::wstring> files;
             files.swap(app.handedOver);
@@ -6289,6 +6367,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (menuCheckOut.empty()) restoreSession();
     for (auto& f : files) openFile(f);
     SetFocus(w);
+    if (app.checkUpdates && menuCheckOut.empty()) updater::checkInBackground(w, kMsgUpdateChecked, false);   // quietly, unless there is one
     if (!menuCheckOut.empty()) {
         g_menuCheck.on = true;
         RECT r{0, 0, 10, 10};

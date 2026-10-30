@@ -21,6 +21,7 @@ set(ENGINE_SOURCES
   ${SHARED}/selftest.cpp
   ${SHARED}/cli.cpp
   ${SHARED}/crypto.cpp
+  ${SHARED}/update.cpp
   ${SHARED}/protect.cpp
   ${SHARED}/image.cpp
   ${SHARED}/compress.cpp

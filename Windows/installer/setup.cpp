@@ -1,7 +1,8 @@
 // Feather PDF setup: two screens. The first shows where Feather PDF goes (with Change...), who made it, the build date and
 // an Install button; the second shows the progress and, at the end, the result with two choices and Finish.
 // The same program, copied next to the installed files as uninstall.exe (without the files packed into it), removes
-// Feather PDF again. Switches: /S silent, /D=folder (silent install location), /uninstall.
+// Feather PDF again. Switches: /S silent, /D=folder (silent install location), /uninstall; for an update started by
+// Feather PDF itself: /waitfor=<process id> (wait until that Feather PDF has closed) and /relaunch (start it again after).
 #include <windows.h>
 #include <commctrl.h>
 #include <dwmapi.h>
@@ -1254,9 +1255,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
         } else if (g_old.inno) {
             g_ui.status = L"An earlier installation of Feather PDF (" + (g_old.version.empty() ? std::wstring(L"older version") : g_old.version) + L") is removed first, so there is only one copy. Your settings stay.";
         }
+        // An update from Feather PDF: it closes itself after starting this; wait for it (at most a minute).
+        const std::wstring waitFor = switchValue(cmd, L"/waitfor=");
+        if (!waitFor.empty()) {
+            if (HANDLE p = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(wcstoul(waitFor.c_str(), nullptr, 10)))) {
+                WaitForSingleObject(p, 60000);
+                CloseHandle(p);
+            }
+            for (int i = 0; i < 50 && isFeatherRunning(); ++i) Sleep(200);
+        }
         if (silent) {
             if (isFeatherRunning()) { logLine(L"Feather PDF is running"); rc = 3; }
             else rc = installWork(g_ui.dir) ? 0 : 1;
+            if (rc == 0 && hasSwitch(cmd, L"/relaunch")) runAsUser(g_ui.dir + L"\\" + kExe, L"");
         } else rc = runWindow(inst);
     }
     Gdiplus::GdiplusShutdown(gtok);

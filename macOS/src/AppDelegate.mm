@@ -1,6 +1,7 @@
 #import "AppDelegate.h"
 #import "WindowController.h"
 #import "StartWindow.h"
+#import "Updater.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -57,10 +58,12 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
         }
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self uiCheckInto:out];
-            [NSApp terminate:nil];
+            exit(0);   // not terminate: a sheet left open (Properties) would hold the quit forever
         });
         return;
     }
+    // A quiet look for a new version (it asks only when there is one), as the Windows app does.
+    if ([self automaticUpdates]) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ FPCheckForUpdates(NO); });
     // Started with nothing to open (and no windows brought back from last time): the start window, as on Windows.
     dispatch_async(dispatch_get_main_queue(), ^{
         if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
@@ -120,6 +123,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    if (item.action == @selector(toggleAutomaticUpdates:)) item.state = [self automaticUpdates] ? NSControlStateValueOn : NSControlStateValueOff;
     if (item.action == @selector(setPageColours:))
         item.state = [[NSUserDefaults standardUserDefaults] integerForKey:FPPageColoursKey] == item.tag ? NSControlStateValueOn
                                                                                                        : NSControlStateValueOff;
@@ -129,6 +133,20 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 - (IBAction)showStartPage:(id)sender {
     [[FPStartWindowController shared] refresh];
     [[FPStartWindowController shared] showWindow:nil];
+}
+
+// ---- updates ----
+
+- (IBAction)checkForUpdates:(id)sender { FPCheckForUpdates(YES); }
+
+- (IBAction)toggleAutomaticUpdates:(id)sender {
+    NSUserDefaults* d = NSUserDefaults.standardUserDefaults;
+    [d setBool:![self automaticUpdates] forKey:FPCheckUpdatesKey];
+}
+
+- (BOOL)automaticUpdates {
+    NSNumber* v = [NSUserDefaults.standardUserDefaults objectForKey:FPCheckUpdatesKey];
+    return v ? v.boolValue : YES;
 }
 
 // ---- help and About ----
@@ -302,6 +320,9 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Feather PDF User Guide", @selector(showUserGuide:), @"?").target = self;
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"About Feather PDF", @selector(showAbout:), nil).target = self;   // also here, where the Windows app has it
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Update to New Version\u2026", @selector(checkForUpdates:), nil).target = self;
+    add(m, @"Check for Updates Automatically", @selector(toggleAutomaticUpdates:), nil).target = self;
     NSApp.helpMenu = m;
     return bar;
 }

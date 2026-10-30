@@ -31,7 +31,8 @@ im.save(f"{out}/big.png")
 c = canvas.Canvas(f"{out}/img.pdf", pagesize=A4); c.drawString(72, 780, "Picture test"); c.drawImage(f"{out}/big.png", 72, 420, width=450, height=300); c.save()
 
 # a scanned page, picture only (OCR test)
-fonts = [f for f in ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"] if os.path.exists(f)]
+fonts = [f for f in ["/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+                     "/System/Library/Fonts/Supplemental/Arial.ttf", "/Library/Fonts/Arial.ttf"] if os.path.exists(f)]   # Linux, then the Mac
 font = ImageFont.truetype(fonts[0], 54)
 scan = Image.new("L", (2480, 3508), 255); d = ImageDraw.Draw(scan)
 for i, line in enumerate(["This agreement is made between the parties on the first day of May.", "The supplier shall deliver 500 units of the product to the buyer."]):
@@ -44,7 +45,8 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY
 sans = next((f for f in ["/usr/share/fonts/truetype/crosextra/Carlito-Regular.ttf", "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf"] if os.path.exists(f)), None)
-serif = next((f for f in ["/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf"] if os.path.exists(f)), None)
+serif = next((f for f in ["/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSerif.ttf",
+                          "/System/Library/Fonts/Supplemental/Times New Roman.ttf"] if os.path.exists(f)), None)
 pdfmetrics.registerFont(TTFont("BodySans", sans)); pdfmetrics.registerFont(TTFont("BodySerif", serif))
 t = ("The quarterly maintenance review covers every pump, valve and compressor on the north site. "
      "Inspectors found that most equipment is in good condition, although two cooling pumps show early "

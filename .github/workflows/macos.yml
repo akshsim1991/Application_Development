@@ -37,7 +37,7 @@ jobs:
 
       - name: The command line features work as on Windows
         run: |
-          python3 -m pip install --quiet --only-binary=:all: reportlab pillow pikepdf python-docx openpyxl pdfminer.six
+          python3 -m pip install --quiet --only-binary=:all: reportlab pillow pikepdf python-docx openpyxl pdfminer.six cryptography
           bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
 
       - name: Pages are drawn (normal and night colours)

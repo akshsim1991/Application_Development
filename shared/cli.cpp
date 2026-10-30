@@ -103,17 +103,13 @@ int run(std::vector<std::wstring> files) {
 
     // Command line signing: FeatherPDF.exe --sign <in.pdf> <out.pdf> <certificate.pfx> <password>
     // and checking:         FeatherPDF.exe --checksig <file.pdf> <report.txt>   (exit code 0 ok; the report lists each signature)
-#ifdef _WIN32   // not on the Mac yet (macOS/PORTING.md)
     if (!files.empty() && files[0] == L"--sign") {
         if (files.size() < 5) return 2;
         Document doc;
         if (doc.open(files[1]) != OpenResult::Ok) return 3;
         std::vector<unsigned char> plain;
         if (!doc.serialize(plain, FPDF_REMOVE_SECURITY)) return 4;
-        HCERTSTORE store = nullptr;
         std::wstring err;
-        PCCERT_CONTEXT cert = sign::certFromPfx(files[3], files[4], store, err);
-        if (!cert) return 5;
         std::vector<unsigned char> out;
         sign::Options so;
         so.reason = L"Approved";
@@ -122,9 +118,22 @@ int run(std::vector<std::wstring> files) {
             double cl, cb, cr, ct;
             if (doc.cropBoxOf(0, cl, cb, cr, ct)) { so.visible = true; so.page = 0; so.right = cr - 36; so.left = so.right - 200; so.bottom = cb + 36; so.top = so.bottom + 60; }
         }
+#ifdef _WIN32
+        HCERTSTORE store = nullptr;
+        PCCERT_CONTEXT cert = sign::certFromPfx(files[3], files[4], store, err);
+        if (!cert) return 5;
         bool ok = sign::signPdf(plain, cert, so, out, err);
         CertFreeCertificateContext(cert);
         if (store) CertCloseStore(store, 0);
+#else
+        sign::Signer signer;
+        if (!sign::system().signerFromFile) err = L"Signing is not available in this build.";
+        if (!sign::system().signerFromFile || !sign::system().signerFromFile(files[3], files[4], signer, err)) {
+            std::fprintf(stderr, "%s\n", platform::utf8(err).c_str());
+            return 5;
+        }
+        bool ok = sign::signPdf(plain, signer, so, out, err);
+#endif
         if (!ok) {   // leave the reason next to the output file so scripts can show it
             const std::string u = platform::utf8(err);
             std::vector<unsigned char> eb(u.begin(), u.end());
@@ -133,7 +142,6 @@ int run(std::vector<std::wstring> files) {
         }
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
-#endif
     if (!files.empty() && files[0] == L"--search") {   // --search folder text report.txt
         if (files.size() < 4) return 2;
         const std::wstring dir = platform::appDataDir() + platform::pathSeparator() + L"index";

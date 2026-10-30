@@ -63,6 +63,7 @@ struct Selection {
 };
 Selection g_sel;
 std::wstring g_picturePath;            // the picture to put on the page (Picture tool)
+double g_pictureWidth = 0;             // its width on the page in points (0: its own size)
 int g_cropPicPage = -1, g_cropPicObj = -1;   // a picture being cropped (the crop tool then crops it, not the page)
 pageobj::TableSpec g_newTable;
 } // namespace
@@ -219,7 +220,7 @@ static FPInlineEditor* g_editor = nil;
         case FPToolPicture: {
             if (e.kind != FPToolEvent::Click) break;
             std::wstring err;
-            if (pageobj::addPicture(*d, e.page, p.x, p.y, g_picturePath, err)) [self afterChange];
+            if (pageobj::addPicture(*d, e.page, p.x, p.y, g_picturePath, err, g_pictureWidth)) [self afterChange];
             else [self edNote:err];
             self.pageView.tool = FPToolNone;
             break;
@@ -376,9 +377,18 @@ static FPInlineEditor* g_editor = nil;
     [p beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse r) {
         if (r != NSModalResponseOK) return;
         g_picturePath = platform::wide(p.URL.fileSystemRepresentation);
+        g_pictureWidth = 0;
         self.pageView.tool = FPToolPicture;
         [self edNote:L"Click on the page where the top-left corner of the picture should go. Esc cancels."];
     }];
+}
+
+// A picture to put where the next click on the page lands (handwritten signatures: Signatures.mm).
+- (void)placePictureFile:(const std::wstring&)path width:(double)widthPt note:(const std::wstring&)note {
+    g_picturePath = path;
+    g_pictureWidth = widthPt;
+    self.pageView.tool = FPToolPicture;
+    [self edNote:note];
 }
 
 - (IBAction)pastePicture:(id)sender {

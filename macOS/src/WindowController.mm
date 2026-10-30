@@ -142,6 +142,8 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         [self hookDocument];
         [self restorePosition];
         [self viewChanged:nil];
+        SEL warn = NSSelectorFromString(@"warnIfSignatureBroken");   // Signatures.mm
+        if ([self respondsToSelector:warn]) dispatch_async(dispatch_get_main_queue(), ^{ ((void (*)(id, SEL))objc_msgSend)(self, warn); });
     }
 }
 
@@ -512,6 +514,11 @@ static NSImage* symbol(NSString* name, NSString* description) {
     // ⌘⌫ in a text box (Find, the page number, a form field being typed in) deletes text there, not pages
     if (item.action == NSSelectorFromString(@"deleteSelectedPages:"))
         return _view.document && ![self.window.firstResponder isKindOfClass:[NSText class]];
+    SEL sigs = NSSelectorFromString(@"validateSignatures:");   // Signatures.mm
+    static NSSet<NSString*>* signing = [NSSet setWithArray:@[ @"signDocument:", @"showSignatures:", @"signatureTyped:", @"signatureDrawn:",
+                                                              @"signaturePicture:", @"signatureSaved:" ]];
+    if ([signing containsObject:NSStringFromSelector(item.action)] && [self respondsToSelector:sigs])
+        return ((BOOL (*)(id, SEL, NSMenuItem*))objc_msgSend)(self, sigs, item);
     SEL measure = NSSelectorFromString(@"validateMeasure:");   // Measure.mm
     static NSSet<NSString*>* measuring = [NSSet setWithArray:@[ @"chooseRuler:", @"chooseProtractor:", @"toggleRulers:", @"setMeasureUnits:",
                                                                 @"setMeasureScale:", @"keepMeasurements:", @"clearMeasurements:" ]];

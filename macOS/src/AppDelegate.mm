@@ -399,6 +399,18 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(red.submenu, @"Apply Redactions\u2026", @selector(applyRedactions:), nil);
     add(red.submenu, @"Clear Marks", @selector(clearRedactionMarks:), nil);
     add(red.submenu, @"Check That the Text Is Gone\u2026", @selector(checkRedaction:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    NSMenuItem* sigs = add(m, @"Digital Signatures", nil, nil);
+    sigs.submenu = [[NSMenu alloc] initWithTitle:@"Digital Signatures"];
+    add(sigs.submenu, @"Sign with a Certificate\u2026", @selector(signDocument:), nil);
+    add(sigs.submenu, @"Make My Own Certificate\u2026", @selector(makeOwnCertificate:), nil);
+    add(sigs.submenu, @"Show Signatures", @selector(showSignatures:), nil);
+    NSMenuItem* hand = add(m, @"Handwritten Signature", nil, nil);
+    hand.submenu = [[NSMenu alloc] initWithTitle:@"Handwritten Signature"];
+    add(hand.submenu, @"Type My Name\u2026", @selector(signatureTyped:), nil);
+    add(hand.submenu, @"Draw My Signature\u2026", @selector(signatureDrawn:), nil);
+    add(hand.submenu, @"Use a Picture of My Signature\u2026", @selector(signaturePicture:), nil);
+    add(hand.submenu, @"Use My Saved Signature", @selector(signatureSaved:), nil);
 
     m = submenu(bar, @"View");
     add(m, @"Show Sidebar", @selector(toggleThumbnails:), @"b");

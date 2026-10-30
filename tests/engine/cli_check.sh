@@ -170,6 +170,37 @@ run --tableedit "$W/formtbl.pdf" "$W/formtbl_e.pdf" 1 300 690 cell 0 1 "1BMEL307
 check "the cell is changed"          "text '$W/formtbl_e.pdf' | grep -q '1BMEL307'"
 check "the old text is gone, not drawn over" "! text '$W/formtbl_e.pdf' | grep -q '1BMEL306' && [ \$(text '$W/formtbl_e.pdf' | grep -o 'Course Code' | wc -l) -eq 1 ]"
 
+echo "digital signatures"
+if python3 - "$W" <<'PY' 2>/dev/null
+import sys, datetime
+from cryptography import x509
+from cryptography.x509.oid import NameOID
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import pkcs12
+key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Check Signer")])
+now = datetime.datetime.now(datetime.timezone.utc)
+cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(x509.random_serial_number())
+        .not_valid_before(now - datetime.timedelta(days=1)).not_valid_after(now + datetime.timedelta(days=30)).sign(key, hashes.SHA256()))
+enc = (serialization.PrivateFormat.PKCS12.encryption_builder().kdf_rounds(2048)
+       .key_cert_algorithm(pkcs12.PBES.PBESv1SHA1And3KeyTripleDESCBC).hmac_hash(hashes.SHA1()).build(b"pw"))
+open(sys.argv[1] + "/t.p12", "wb").write(pkcs12.serialize_key_and_certificates(b"Check Signer", key, cert, None, enc))
+PY
+then
+  "$prog" --sign "$W/rich.pdf" "$W/signed.pdf" "$W/t.p12" pw - visible </dev/null >/dev/null 2>"$W/sign.err"; rc=$?
+  if [ $rc -eq 5 ] && grep -q "not available" "$W/sign.err"; then echo "  skip signing not in this build"; else
+  [ $rc -eq 0 ] || echo "  (exit code $rc: $(cat "$W/sign.err" "$W/signed.pdf.error.txt" 2>/dev/null))"
+  check "signed copy written"         "[ -s '$W/signed.pdf' ]"
+  run --checksig "$W/signed.pdf" "$W/sig.txt"
+  check "own check: valid (signer not trusted here)" "grep -q '^VALID' '$W/sig.txt' && grep -q 'Check Signer' '$W/sig.txt'"
+  python3 -c "import sys; w=sys.argv[1]; d=bytearray(open(w+'/signed.pdf','rb').read()); d[60]^=1; open(w+'/tampered.pdf','wb').write(d)" "$W"
+  run --checksig "$W/tampered.pdf" "$W/sig2.txt"
+  check "own check: tampering found"  "grep -q '^CHANGED' '$W/sig2.txt'"
+  check "still opens (pikepdf), one signature field" "python3 -c \"import pikepdf;p=pikepdf.open('$W/signed.pdf');assert len(p.Root.AcroForm.Fields)==1\""
+  fi
+else echo "  skip no cryptography module"; fi
+
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"
 check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fonts.txt'"

@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 105 of 111 (95 %).**
+**macOS: 110 of 111 (99 %).**
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -100,11 +100,11 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 91 | Protect | Remove hidden data | Yes | Yes |  |
 | 92 | Protect | Redaction: mark areas, selected text, search results; apply | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 93 | Protect | Check that redacted text is gone | Yes | Yes | new in this build; built and checked, to be tried by hand |
-| 94 | Protect | Digital signatures: sign with a certificate | Yes | **No** |  |
-| 95 | Protect | Make my own certificate | Yes | **No** |  |
-| 96 | Protect | Check signatures, warn when a signed file was changed | Yes | **No** |  |
-| 97 | Protect | Visible signature and time stamp | Yes | **No** |  |
-| 98 | Protect | Handwritten signature (type, draw, picture) | Yes | **No** |  |
+| 94 | Protect | Digital signatures: sign with a certificate | Yes | Yes | Protect menu: keychain or .p12 file, Security framework; new, to be tried by hand |
+| 95 | Protect | Make my own certificate | Yes | Yes | Protect menu: keychain or .p12 file, Security framework; new, to be tried by hand |
+| 96 | Protect | Check signatures, warn when a signed file was changed | Yes | Yes | Protect menu: keychain or .p12 file, Security framework; new, to be tried by hand |
+| 97 | Protect | Visible signature and time stamp | Yes | Yes | Protect menu: keychain or .p12 file, Security framework; new, to be tried by hand |
+| 98 | Protect | Handwritten signature (type, draw, picture) | Yes | Yes | Protect menu: keychain or .p12 file, Security framework; new, to be tried by hand |
 | 99 | Tools | Export: PNG, JPEG, text, Markdown, Word, Excel, CSV | Yes | Yes |  |
 | 100 | Tools | Save a PDF/A-2b copy | Yes | Yes |  |
 | 101 | Tools | Document properties | Yes | Yes | fixed in this batch, being checked |

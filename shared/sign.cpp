@@ -1,11 +1,17 @@
 #include "sign.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <cstring>
 #include <cwctype>
 #include <map>
+#include <ctime>
+#include <set>
 #include <string>
+#ifdef _WIN32
 #include <winhttp.h>
 #include <bcrypt.h>
+#endif
+#include "crypto.hpp"
 #include "pdfedit.hpp"
 
 namespace sign {
@@ -33,9 +39,15 @@ std::string pdfText(const std::wstring& w) {
 }
 
 std::string pdfDate() {
-    SYSTEMTIME t; GetSystemTime(&t);
+    const std::time_t now = std::time(nullptr);
+    std::tm t{};
+#ifdef _WIN32
+    gmtime_s(&t, &now);
+#else
+    gmtime_r(&now, &t);
+#endif
     char b[40];
-    snprintf(b, sizeof b, "D:%04d%02d%02d%02d%02d%02d+00'00'", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond);
+    snprintf(b, sizeof b, "D:%04d%02d%02d%02d%02d%02d+00'00'", t.tm_year + 1900, t.tm_mon + 1, t.tm_mday, t.tm_hour, t.tm_min, t.tm_sec);
     return b;
 }
 
@@ -62,7 +74,7 @@ struct Pdf {
         size_t sx = tail.rfind("startxref");
         if (sx == std::string::npos) return false;
         size_t p = f.size() - tail.size() + sx + 9;
-        xrefPos = static_cast<size_t>(_atoi64(word(p).c_str()));
+        xrefPos = static_cast<size_t>(std::strtoll(word(p).c_str(), nullptr, 10));
         if (xrefPos == 0 || xrefPos >= f.size()) return false;
         p = xrefPos;
         if (word(p) != "xref") return false;
@@ -73,7 +85,7 @@ struct Pdf {
             long start = atol(a.c_str()), count = atol(word(p).c_str());
             for (long i = 0; i < count; ++i) {
                 std::string off = word(p), gen = word(p), kind = word(p);
-                if (kind == "n") offsets[start + i] = static_cast<size_t>(_atoi64(off.c_str()));
+                if (kind == "n") offsets[start + i] = static_cast<size_t>(std::strtoll(off.c_str(), nullptr, 10));
             }
         }
         word(p);
@@ -153,15 +165,20 @@ bool addToArray(std::string& dict, const char* key, long ref, long& indirectObj)
     return false;
 }
 
-std::string hexOfCert(PCCERT_CONTEXT c) { return hex(c->pbCertEncoded, c->cbCertEncoded); }
+System g_system;   // the system's services off Windows (setSystem)
 
 } // namespace
 
+void setSystem(System s) { g_system = std::move(s); }
+const System& system() { return g_system; }
+
+#ifdef _WIN32
 std::wstring subjectName(PCCERT_CONTEXT cert) {
     wchar_t name[256]{};
     CertGetNameStringW(cert, CERT_NAME_SIMPLE_DISPLAY_TYPE, 0, nullptr, name, 256);
     return name;
 }
+#endif
 
 
 // ---------- time stamp (RFC 3161) ----------
@@ -169,11 +186,7 @@ namespace {
 
 Bytes sha256Of(const Bytes& data) {
     Bytes out;
-    BCRYPT_ALG_HANDLE alg = nullptr;
-    if (BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0) return out;
-    out.resize(32);
-    BCryptHash(alg, nullptr, 0, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), out.data(), 32);
-    BCryptCloseAlgorithmProvider(alg, 0);
+    if (!crypto::hash(crypto::Hash::Sha256, data, out)) out.clear();
     return out;
 }
 
@@ -224,6 +237,86 @@ bool lastChild(const Bytes& b, const Node& parent, Node& child) {
 }
 
 // Adds an unsigned attribute (the time stamp token) to the only SignerInfo of a PKCS#7 blob and fixes the lengths above it.
+// BER to DER: open-ended lengths (0x80 ... 00 00) become stated ones, nested ones too; everything else is copied.
+bool berElement(const Bytes& b, size_t& pos, Bytes& out, int depth) {
+    if (pos + 2 > b.size() || depth > 64) return false;
+    size_t p = pos;
+    Bytes tag{b[p++]};
+    if ((tag[0] & 0x1F) == 0x1F) {
+        while (p < b.size() && (b[p] & 0x80)) tag.push_back(b[p++]);
+        if (p >= b.size()) return false;
+        tag.push_back(b[p++]);
+    }
+    if (p >= b.size()) return false;
+    const unsigned char l = b[p++];
+    const bool constructed = (tag[0] & 0x20) != 0;
+    Bytes content;
+    if (l == 0x80) {
+        if (!constructed) return false;
+        for (;;) {
+            if (p + 2 > b.size()) return false;
+            if (b[p] == 0 && b[p + 1] == 0) { p += 2; break; }
+            if (!berElement(b, p, content, depth + 1)) return false;
+        }
+    } else {
+        size_t len = 0;
+        if (l & 0x80) {
+            const int n = l & 0x7F;
+            if (n > 8 || p + static_cast<size_t>(n) > b.size()) return false;
+            for (int i = 0; i < n; ++i) len = len * 256 + b[p++];
+        } else len = l;
+        if (p + len > b.size()) return false;
+        if (constructed) {
+            size_t q = p;
+            while (q < p + len) if (!berElement(b, q, content, depth + 1)) return false;
+            if (q != p + len) return false;
+        } else content.assign(b.begin() + static_cast<long>(p), b.begin() + static_cast<long>(p + len));
+        p += len;
+    }
+    out.insert(out.end(), tag.begin(), tag.end());
+    const Bytes L = derLength(content.size());
+    out.insert(out.end(), L.begin(), L.end());
+    out.insert(out.end(), content.begin(), content.end());
+    pos = p;
+    return true;
+}
+
+Bytes berToDer(const Bytes& b) {
+    Bytes out;
+    size_t p = 0;
+    return berElement(b, p, out, 0) ? out : b;
+}
+
+// A detached signature checked against the bytes it signs: 2 valid and its certificate trusted here, 1 valid but the
+// certificate not trusted here, 0 not matching (changed), -1 it cannot be checked on this system. `signer` gets its name.
+int verifyDetached(const Bytes& cms, const Bytes& data, std::wstring& signerName) {
+#ifdef _WIN32
+    CRYPT_VERIFY_MESSAGE_PARA vp{};
+    vp.cbSize = sizeof(vp);
+    vp.dwMsgAndCertEncodingType = PKCS_7_ASN_ENCODING | X509_ASN_ENCODING;
+    const BYTE* dp = data.data();
+    DWORD dl = static_cast<DWORD>(data.size());
+    PCCERT_CONTEXT signer = nullptr;
+    const bool valid = CryptVerifyDetachedMessageSignature(&vp, 0, cms.data(), static_cast<DWORD>(cms.size()), 1, &dp, &dl, &signer) != 0;
+    if (signer) signerName = subjectName(signer);
+    bool trusted = false;
+    if (valid && signer) {
+        CERT_CHAIN_PARA cp{sizeof(cp)};
+        PCCERT_CHAIN_CONTEXT chain = nullptr;
+        if (CertGetCertificateChain(nullptr, signer, nullptr, nullptr, &cp, 0, nullptr, &chain) && chain) {
+            CERT_CHAIN_POLICY_PARA pp{sizeof(pp)};
+            CERT_CHAIN_POLICY_STATUS ps{sizeof(ps)};
+            trusted = CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_BASE, chain, &pp, &ps) && ps.dwError == 0;
+            CertFreeCertificateChain(chain);
+        }
+    }
+    if (signer) CertFreeCertificateContext(signer);
+    return !valid ? 0 : trusted ? 2 : 1;
+#else
+    return g_system.verify ? g_system.verify(cms, data, signerName) : -1;
+#endif
+}
+
 bool addUnsignedAttribute(const Bytes& cms, const Bytes& token, Bytes& out) {
     const char* oid = "\x06\x0B\x2A\x86\x48\x86\xF7\x0D\x01\x09\x10\x02\x0E";   // id-aa-timeStampToken 1.2.840.113549.1.9.16.2.14
     Bytes attr = tlv(0x30, [&] { Bytes c(oid, oid + 13); Bytes set = tlv(0x31, token); c.insert(c.end(), set.begin(), set.end()); return c; }());
@@ -248,6 +341,10 @@ bool addUnsignedAttribute(const Bytes& cms, const Bytes& token, Bytes& out) {
 }
 
 bool httpPost(const std::string& url, const Bytes& body, Bytes& response, std::wstring& error) {
+#ifndef _WIN32
+    if (!g_system.httpPost) { error = L"Time stamps are not available in this build."; return false; }
+    return g_system.httpPost(url, body, response, error);
+#else
     std::wstring w(url.begin(), url.end());
     URL_COMPONENTSW uc{sizeof(uc)};
     wchar_t host[256] = L"", path[1024] = L"";
@@ -283,6 +380,7 @@ bool httpPost(const std::string& url, const Bytes& body, Bytes& response, std::w
     WinHttpCloseHandle(ses);
     if (!ok && error.empty()) error = L"The time stamp server could not be used.";
     return ok;
+#endif
 }
 
 // Asks the server for a time stamp over `signatureValue` and returns the token (a CMS SignedData).
@@ -296,8 +394,8 @@ bool requestTimestamp(const std::string& url, const Bytes& signatureValue, Bytes
     Bytes req{0x02, 0x01, 0x01};
     Bytes mi = tlv(0x30, imprint);
     req.insert(req.end(), mi.begin(), mi.end());
-    Bytes nonce(8);
-    BCryptGenRandom(nullptr, nonce.data(), 8, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+    Bytes nonce;
+    if (!crypto::random(8, nonce)) nonce.assign(8, 0x5A);
     nonce[0] &= 0x7F; if (nonce[0] == 0) nonce[0] = 1;
     Bytes nn = tlv(0x02, nonce);
     req.insert(req.end(), nn.begin(), nn.end());
@@ -349,7 +447,7 @@ std::string pdfEscape(const std::string& s) {
 
 } // namespace
 
-bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& out, std::wstring& error) {
+bool signPdf(const Bytes& pdf, const Signer& signer, const Options& opt, Bytes& out, std::wstring& error) {
     error = L"The document could not be prepared for signing.";
     Pdf in(pdf);
     if (!in.parse()) { error = L"The document could not be prepared for signing (its structure is not supported)."; return false; }
@@ -452,14 +550,14 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
     const size_t kSigBytes = opt.timestampUrl.empty() ? 14000 : 32000;   // room for the PKCS#7 blob (certificate chain and time stamp included)
     const std::string zeros(kSigBytes * 2, '0');
     std::string sigDict = "<</Type/Sig/Filter/Adobe.PPKLite/SubFilter/adbe.pkcs7.detached/ByteRange[0 0000000000 0000000000 0000000000]/Contents<" + zeros + ">"
-                          "/M(" + pdfDate() + ")/Name" + pdfText(subjectName(cert));
+                          "/M(" + pdfDate() + ")/Name" + pdfText(signer.name);
     if (!opt.reason.empty()) sigDict += "/Reason" + pdfText(opt.reason);
     if (!opt.location.empty()) sigDict += "/Location" + pdfText(opt.location);
     sigDict += ">>";
     newObjects[sigNum] = sigDict;
     if (opt.visible && opt.right - opt.left >= 40 && opt.top - opt.bottom >= 20) {
         const double w = opt.right - opt.left, h = opt.top - opt.bottom;
-        const std::string name = asciiOnly(subjectName(cert));
+        const std::string name = asciiOnly(signer.name);
         std::string lines[3] = {"Digitally signed by " + name, "Date: " + pdfDate().substr(2, 4) + "." + pdfDate().substr(6, 2) + "." + pdfDate().substr(8, 2) + " " + pdfDate().substr(10, 2) + ":" + pdfDate().substr(12, 2),
                                 opt.reason.empty() ? std::string() : "Reason: " + asciiOnly(opt.reason)};
         int count = lines[2].empty() ? 2 : 3;
@@ -536,41 +634,12 @@ bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& o
     Bytes signedData(out.begin(), out.begin() + static_cast<long>(cStart));
     signedData.insert(signedData.end(), out.begin() + static_cast<long>(cEnd), out.end());
 
-    CRYPT_SIGN_MESSAGE_PARA para{};
-    para.cbSize = sizeof(para);
-    para.dwMsgEncodingType = PKCS_7_ASN_ENCODING | X509_ASN_ENCODING;
-    para.pSigningCert = cert;
-    para.HashAlgorithm.pszObjId = const_cast<LPSTR>(szOID_NIST_sha256);
-    // include the whole certificate chain so the signature can be checked elsewhere
-    std::vector<PCCERT_CONTEXT> chainCerts{cert};
-    CERT_CHAIN_PARA cp{sizeof(cp)};
-    PCCERT_CHAIN_CONTEXT chain = nullptr;
-    if (CertGetCertificateChain(nullptr, cert, nullptr, nullptr, &cp, 0, nullptr, &chain) && chain && chain->cChain > 0) {
-        PCERT_SIMPLE_CHAIN sc = chain->rgpChain[0];
-        for (DWORD i = 1; i < sc->cElement; ++i) chainCerts.push_back(sc->rgpElement[i]->pCertContext);
+    Bytes sig;
+    {
+        std::wstring why;
+        if (!signer.cms || !signer.cms(signedData, sig, why) || sig.empty()) { error = why.empty() ? L"The signature could not be made." : why; return false; }
     }
-    para.cMsgCert = static_cast<DWORD>(chainCerts.size());
-    para.rgpMsgCert = chainCerts.data();
-    const BYTE* dataPtr = signedData.data();
-    DWORD dataLen = static_cast<DWORD>(signedData.size());
-    DWORD sigLen = 0;
-    bool ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, nullptr, &sigLen) != 0;
-    if (!ok && GetLastError() == static_cast<DWORD>(NTE_BAD_ALGID)) {
-        // Only systems without SHA-256 support in their crypto provider (some emulation layers) end up here.
-        para.HashAlgorithm.pszObjId = const_cast<LPSTR>(szOID_OIWSEC_sha1);
-        ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, nullptr, &sigLen) != 0;
-    }
-    Bytes sig(ok ? sigLen : 0);
-    if (ok) ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, sig.data(), &sigLen) != 0;
-    const DWORD err = GetLastError();
-    if (chain) CertFreeCertificateChain(chain);
-    if (!ok) {
-        error = (err == static_cast<DWORD>(NTE_BAD_KEYSET) || err == static_cast<DWORD>(NTE_NO_KEY) || err == static_cast<DWORD>(CRYPT_E_NO_KEY_PROPERTY))
-                    ? L"The certificate's private key could not be used. Choose a certificate that has a private key."
-                    : (L"Windows could not make the signature (error " + std::to_wstring(err) + L").");
-        return false;
-    }
-    sig.resize(sigLen);
+    sig = berToDer(sig);   // some systems (the Mac) write lengths the open-ended way; PDF readers expect them stated
     if (!opt.timestampUrl.empty()) {
         Bytes value, token, stamped;
         std::wstring tsErr;
@@ -647,36 +716,27 @@ std::vector<Status> check(const Bytes& file) {
         data.insert(data.end(), file.begin() + r[2], file.begin() + r[2] + r[3]);
         const bool coversAll = static_cast<size_t>(r[2] + r[3]) == file.size();
 
-        CRYPT_VERIFY_MESSAGE_PARA vp{};
-        vp.cbSize = sizeof(vp);
-        vp.dwMsgAndCertEncodingType = PKCS_7_ASN_ENCODING | X509_ASN_ENCODING;
-        const BYTE* dp = data.data();
-        DWORD dl = static_cast<DWORD>(data.size());
-        PCCERT_CONTEXT signer = nullptr;
-        const bool valid = CryptVerifyDetachedMessageSignature(&vp, 0, blob.data(), static_cast<DWORD>(blob.size()), 1, &dp, &dl, &signer) != 0;
-        if (signer) st.signer = subjectName(signer);
-        if (!valid) {
+        const int verdict = verifyDetached(blob, data, st.signer);
+        if (verdict < 0) {
+            st.kind = Status::Unreadable;
+            st.note = L"Checking signatures is not available in this build.";
+            results.push_back(st);
+            continue;
+        }
+        if (verdict == 0) {
             st.kind = Status::Changed;
             st.note = L"The signature does not match: the document was changed after it was signed. Do not trust its content.";
         } else {
-            // is the certificate trusted on this PC?
-            bool trusted = false;
-            if (signer) {
-                CERT_CHAIN_PARA cp{sizeof(cp)};
-                PCCERT_CHAIN_CONTEXT chain = nullptr;
-                if (CertGetCertificateChain(nullptr, signer, nullptr, nullptr, &cp, 0, nullptr, &chain) && chain) {
-                    CERT_CHAIN_POLICY_PARA pp{sizeof(pp)};
-                    CERT_CHAIN_POLICY_STATUS ps{sizeof(ps)};
-                    trusted = CertVerifyCertificateChainPolicy(CERT_CHAIN_POLICY_BASE, chain, &pp, &ps) && ps.dwError == 0;
-                    CertFreeCertificateChain(chain);
-                }
-            }
+            const bool trusted = verdict == 2;
             st.kind = trusted ? Status::Valid : Status::ValidUntrusted;
             st.note = trusted ? L"The signature is valid and the document has not been changed since."
+#ifdef _WIN32
                               : L"The document has not been changed since it was signed, but the certificate was made by the signer or by an authority Windows does not know. Ask the sender if you need to be sure who signed.";
+#else
+                              : L"The document has not been changed since it was signed, but the certificate was made by the signer or by an authority this Mac does not know. Ask the sender if you need to be sure who signed.";
+#endif
             if (!coversAll) st.note += L" Pages or comments were added after the signature.";
         }
-        if (signer) CertFreeCertificateContext(signer);
         {   // a time stamp token as unsigned attribute (1.2.840.113549.1.9.16.2.14)
             static const unsigned char kTs[] = {0x2A, 0x86, 0x48, 0x86, 0xF7, 0x0D, 0x01, 0x09, 0x10, 0x02, 0x0E};
             if (std::search(blob.begin(), blob.end(), kTs, kTs + sizeof kTs) != blob.end() && st.kind != Status::Changed && st.kind != Status::Unreadable)
@@ -687,6 +747,7 @@ std::vector<Status> check(const Bytes& file) {
     return results;
 }
 
+#ifdef _WIN32
 // ---------- certificates ----------
 
 PCCERT_CONTEXT certFromPfx(const std::wstring& path, const std::wstring& password, HCERTSTORE& store, std::wstring& error) {
@@ -769,5 +830,52 @@ PCCERT_CONTEXT makeOwnCertificate(const std::wstring& name, const std::wstring& 
     }
     return cert;
 }
+
+
+// The Windows certificate as a signer: Windows makes the CMS signature (with the certificate chain).
+bool signPdf(const Bytes& pdf, PCCERT_CONTEXT cert, const Options& opt, Bytes& out, std::wstring& error) {
+    Signer s;
+    s.name = subjectName(cert);
+    s.cms = [cert](const Bytes& signedData, Bytes& sig, std::wstring& err) {
+        CRYPT_SIGN_MESSAGE_PARA para{};
+        para.cbSize = sizeof(para);
+        para.dwMsgEncodingType = PKCS_7_ASN_ENCODING | X509_ASN_ENCODING;
+        para.pSigningCert = cert;
+        para.HashAlgorithm.pszObjId = const_cast<LPSTR>(szOID_NIST_sha256);
+        // include the whole certificate chain so the signature can be checked elsewhere
+        std::vector<PCCERT_CONTEXT> chainCerts{cert};
+        CERT_CHAIN_PARA cp{sizeof(cp)};
+        PCCERT_CHAIN_CONTEXT chain = nullptr;
+        if (CertGetCertificateChain(nullptr, cert, nullptr, nullptr, &cp, 0, nullptr, &chain) && chain && chain->cChain > 0) {
+            PCERT_SIMPLE_CHAIN sc = chain->rgpChain[0];
+            for (DWORD i = 1; i < sc->cElement; ++i) chainCerts.push_back(sc->rgpElement[i]->pCertContext);
+        }
+        para.cMsgCert = static_cast<DWORD>(chainCerts.size());
+        para.rgpMsgCert = chainCerts.data();
+        const BYTE* dataPtr = signedData.data();
+        DWORD dataLen = static_cast<DWORD>(signedData.size());
+        DWORD sigLen = 0;
+        bool ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, nullptr, &sigLen) != 0;
+        if (!ok && GetLastError() == static_cast<DWORD>(NTE_BAD_ALGID)) {
+            // Only systems without SHA-256 support in their crypto provider (some emulation layers) end up here.
+            para.HashAlgorithm.pszObjId = const_cast<LPSTR>(szOID_OIWSEC_sha1);
+            ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, nullptr, &sigLen) != 0;
+        }
+        sig.assign(ok ? sigLen : 0, 0);
+        if (ok) ok = CryptSignMessage(&para, TRUE, 1, &dataPtr, &dataLen, sig.data(), &sigLen) != 0;
+        const DWORD e = GetLastError();
+        if (chain) CertFreeCertificateChain(chain);
+        if (!ok) {
+            err = (e == static_cast<DWORD>(NTE_BAD_KEYSET) || e == static_cast<DWORD>(NTE_NO_KEY) || e == static_cast<DWORD>(CRYPT_E_NO_KEY_PROPERTY))
+                      ? L"The certificate's private key could not be used. Choose a certificate that has a private key."
+                      : (L"Windows could not make the signature (error " + std::to_wstring(e) + L").");
+            return false;
+        }
+        sig.resize(sigLen);
+        return true;
+    };
+    return signPdf(pdf, s, opt, out, error);
+}
+#endif
 
 } // namespace sign

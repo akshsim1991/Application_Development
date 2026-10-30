@@ -4,6 +4,7 @@
 #ifdef _WIN32
 #include <wincrypt.h>
 #endif
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -20,9 +21,32 @@ struct Options {
     std::string timestampUrl;
 };
 
+// Who signs: the name shown in the signature, and the system's way of making a detached CMS (PKCS#7) signature of the
+// given bytes with SHA-256, the certificate chain included (Windows: CryptSignMessage; the Mac: CMSEncoder).
+struct Signer {
+    std::wstring name;
+    std::function<bool(const std::vector<unsigned char>& data, std::vector<unsigned char>& cms, std::wstring& error)> cms;
+};
+
 // `pdf` is a complete PDF as written by PDFium (plain objects, classic xref table, no password). The signature is
-// added as an incremental update, so every original byte stays as it was. `cert` needs a usable private key.
-#ifdef _WIN32
+// added as an incremental update, so every original byte stays as it was.
+bool signPdf(const std::vector<unsigned char>& pdf, const Signer& signer, const Options& opt,
+             std::vector<unsigned char>& out, std::wstring& error);
+
+// Off Windows the app gives the services the signatures need: sending a time stamp request, and checking a detached
+// signature (2 valid and trusted here, 1 valid but not trusted here, 0 not matching; `signer` gets the signer's name).
+struct System {
+    std::function<bool(const std::string& url, const std::vector<unsigned char>& body, std::vector<unsigned char>& response,
+                       std::wstring& error)> httpPost;
+    std::function<int(const std::vector<unsigned char>& cms, const std::vector<unsigned char>& data, std::wstring& signer)> verify;
+    // a certificate file with its key (.p12 / .pfx) as a signer (the command line, batch mode)
+    std::function<bool(const std::wstring& path, const std::wstring& password, Signer& signer, std::wstring& error)> signerFromFile;
+};
+// The system's services (setSystem) as given; empty functions where there are none.
+const System& system();
+void setSystem(System system);
+
+#ifdef _WIN32   // `cert` needs a usable private key
 bool signPdf(const std::vector<unsigned char>& pdf, PCCERT_CONTEXT cert, const Options& opt,
              std::vector<unsigned char>& out, std::wstring& error);
 #endif

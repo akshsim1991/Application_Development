@@ -407,11 +407,11 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Two Pages", @selector(layoutTwoPages:), @"3", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Show Cover Page Separately", @selector(toggleCover:), nil);
     [m addItem:[NSMenuItem separatorItem]];
-    NSMenuItem* colours = add(m, @"Page Colours", nil, nil);
-    colours.submenu = [[NSMenu alloc] initWithTitle:@"Page Colours"];
+    NSMenuItem* pageColours = add(m, @"Page Colours", nil, nil);
+    pageColours.submenu = [[NSMenu alloc] initWithTitle:@"Page Colours"];
     NSString* names[] = {@"Normal", @"Dark (night mode)", @"Dimmed (softer white)"};
     for (int i = 0; i < 3; ++i) {
-        NSMenuItem* c = add(colours.submenu, names[i], @selector(setPageColours:), nil);
+        NSMenuItem* c = add(pageColours.submenu, names[i], @selector(setPageColours:), nil);
         c.tag = i;
         c.target = self;
     }

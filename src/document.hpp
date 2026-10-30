@@ -133,6 +133,7 @@ public:
     int scrollX = 0, scrollY = 0;
     int shownPage = 0;       // the page on screen in the single-page layout
     bool fitWidth = true;
+    int tabHue = -1;         // the tab's colour (one of the window's tab colours), given when the tab opens
 
 private:
     std::wstring path_;

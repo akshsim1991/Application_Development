@@ -7,6 +7,9 @@
 #include <cmath>
 #include <string>
 #include <vector>
+#include "themeui.hpp"
+// message boxes in the window's theme
+#define MessageBoxW themeui::messageBox
 
 namespace tableeditor {
 namespace {
@@ -571,6 +574,7 @@ Result run(HWND parent, HINSTANCE inst, tables::Table& t, double pageW, double p
     syncFields(s);
     EnableWindow(parent, FALSE);
     ShowWindow(s.wnd, SW_SHOW);
+    themeui::themeDialog(s.wnd);
     SetFocus(s.grid);
     MSG msg;
     while (!s.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {

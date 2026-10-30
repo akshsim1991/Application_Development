@@ -1,5 +1,6 @@
 #include "viewer.hpp"
 #include "theme.hpp"
+#include "themeui.hpp"
 #include <windowsx.h>
 #include <cstdlib>
 #include <algorithm>
@@ -7,7 +8,6 @@
 #include <cwctype>
 
 namespace {
-constexpr int kCacheLimit = 6;
 constexpr long long kMaxCachedPixels = 6000000;   // larger pages are drawn in slices, uncached
 }
 
@@ -25,6 +25,7 @@ bool Viewer::registerClass(HINSTANCE inst) {
 HWND Viewer::create(HWND parent, HINSTANCE inst) {
     hwnd_ = CreateWindowExW(0, kClass, L"", WS_CHILD | WS_VISIBLE | WS_VSCROLL | WS_HSCROLL | WS_CLIPSIBLINGS | WS_CLIPCHILDREN,
                             0, 0, 0, 0, parent, nullptr, inst, this);
+    themeui::flatScroll(hwnd_);   // scroll bars in the theme's colours
     return hwnd_;
 }
 
@@ -61,7 +62,7 @@ void Viewer::setDocument(Document* d) {
     currentMatch_ = -1;
     clearCache();
     relayout();
-    if (doc_) SetScrollPos(hwnd_, SB_VERT, doc_->scrollY, FALSE);
+    if (doc_) themeui::setScrollPos(hwnd_, SB_VERT, doc_->scrollY);
     InvalidateRect(hwnd_, nullptr, FALSE);
     notify();
 }
@@ -207,11 +208,11 @@ void Viewer::updateScrollBars() {
     si.nMax = std::max(0, contentH_ - 1);
     si.nPage = rc.bottom;
     si.nPos = doc_ ? doc_->scrollY : 0;
-    SetScrollInfo(hwnd_, SB_VERT, &si, TRUE);
+    themeui::setScrollInfo(hwnd_, SB_VERT, si);
     si.nMax = std::max(0, contentW_ - 1);
     si.nPage = rc.right;
     si.nPos = doc_ ? doc_->scrollX : 0;
-    SetScrollInfo(hwnd_, SB_HORZ, &si, TRUE);
+    themeui::setScrollInfo(hwnd_, SB_HORZ, si);
 }
 
 void Viewer::clampScroll() {
@@ -338,7 +339,7 @@ void Viewer::scrollBy(int dy) {
     }
     doc_->scrollY += dy;
     clampScroll();
-    SetScrollPos(hwnd_, SB_VERT, doc_->scrollY, TRUE);
+    themeui::setScrollPos(hwnd_, SB_VERT, doc_->scrollY);
     InvalidateRect(hwnd_, nullptr, FALSE);
     notify();
 }
@@ -354,7 +355,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
         auto it = cache_.find(page);
         if (it == cache_.end() || it->second.w != w || it->second.h != h || it->second.revision != doc_->revision()) {
             if (it != cache_.end()) { DeleteObject(it->second.bmp); cache_.erase(it); }
-            if (cache_.size() >= kCacheLimit) {   // drop the page farthest from the current one
+            if (cache_.size() >= static_cast<size_t>(cacheLimit_)) {   // drop the page farthest from the current one
                 int cur = currentPage(), farthest = cache_.begin()->first;
                 for (auto& kv : cache_) if (std::abs(kv.first - cur) > std::abs(farthest - cur)) farthest = kv.first;
                 DeleteObject(cache_[farthest].bmp); cache_.erase(farthest);
@@ -1022,7 +1023,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 case SB_LINEDOWN: pos += 40; break;
                 case SB_PAGEUP: pos -= static_cast<int>(si.nPage) * 9 / 10; break;
                 case SB_PAGEDOWN: pos += static_cast<int>(si.nPage) * 9 / 10; break;
-                case SB_THUMBTRACK: case SB_THUMBPOSITION: pos = si.nTrackPos; break;
+                case SB_THUMBTRACK: case SB_THUMBPOSITION: pos = themeui::trackPos(hwnd_, vert ? SB_VERT : SB_HORZ); break;
                 case SB_TOP: pos = 0; break;
                 case SB_BOTTOM: pos = si.nMax; break;
             }

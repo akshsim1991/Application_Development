@@ -41,6 +41,8 @@ add_executable(FeatherPDF WIN32
   src/icons.cpp
   src/startpage.cpp
   src/tables.cpp
+  src/themeui.cpp
+  src/settingsdlg.cpp
   src/tableeditor.cpp
   resources/FeatherPDF.rc)
 

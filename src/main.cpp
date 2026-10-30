@@ -53,6 +53,10 @@
 #include "tables.hpp"
 #include "tableeditor.hpp"
 #include "icons.hpp"
+#include "themeui.hpp"
+#include "settingsdlg.hpp"
+// message boxes in the window's theme
+#define MessageBoxW themeui::messageBox
 
 namespace {
 
@@ -104,7 +108,17 @@ struct App {
     bool compact = false;                             // the toolbar shows icons without labels (narrow window)
     int hover = -1;
     int pressed = -1;          // the toolbar button (or -2 - tab close button) pressed and not yet released
-    int theme = 2;            // 0 light, 1 dark, 2 like Windows
+    int theme = 2;            // ThemeId: 0 light, 1 dark, 2 like Windows, 3 AMOLED dark, 4 modern light, 5 midnight blue, 6 graphite
+    bool colourIcons = true;  // toolbar icons each in their own colour (else in the text colour)
+    bool tabColours = false;  // each tab in a colour of its own
+    bool tabNumbers = false;  // "1. Document.pdf"
+    int dupMode = 0;          // a PDF opened again that is already open: 0 ask, 1 go to its tab
+    bool restorePositions = true;   // documents open where they were last read
+    int cacheIdx = 1;         // pages kept ready in memory: 3, 6, 12
+    int autosaveIdx = 0;      // recovery copy of unsaved changes: every 20 s, 1 min, 5 min, never
+    int tabDrag = -1;         // the tab held down by the mouse (dragged to another place once it moves)
+    int tabDragX = 0;
+    bool tabDragging = false;
     int units = 0, scaleIdx = 0;   // geometry tools: mm/cm/in/pt, drawing scale
     bool sbs = false, syncing = false;
     bool sbsLinked = true;     // both documents scroll and zoom together
@@ -157,11 +171,19 @@ void toolsDispatch(int cmd);
 void notice(const std::wstring& text);
 void showMainMenu(const RECT& anchor);
 
-std::wstring tabLabel(const Document& d) { return (d.dirty() ? L"\u2022 " : L"") + d.title(); }
+// A tab's text: unsaved mark, its number when tab numbers are on, the document's name.
+std::wstring tabLabel(const Document& d) {
+    std::wstring n;
+    if (app.tabNumbers)
+        for (size_t i = 0; i < app.tabs.size(); ++i) if (app.tabs[i].get() == &d) n = std::to_wstring(i + 1) + L". ";
+    return (d.dirty() ? L"\u2022 " : L"") + n + d.title();
+}
 
 void applyTheme();
 
 // ---- every popup menu goes through trackMenu: in the --menucheck test it is inspected instead of shown ----
+bool g_menuOpen = false;   // a popup menu is open: no tooltips (they would sit over it)
+
 struct MenuCheck {
     bool on = false;
     std::wstring report;   // problems found
@@ -204,7 +226,11 @@ int trackMenu(HMENU m, UINT flags, int x, int y, int reserved, HWND owner, const
         g_menuExclude = RECT{};
         // TPM_VERTICAL: when the menu does not fit below the button it goes above it, never over it
         if (app.tips) { SendMessageW(app.tips, TTM_ACTIVATE, FALSE, 0); SendMessageW(app.tips, TTM_POP, 0, 0); }   // no tip over the open menu
+        themeui::prepareMenu(m);   // drawn in the theme's colours (items measured and painted through the owner)
+        g_menuOpen = true;
         const int r = TrackPopupMenuEx(m, flags | (exclude ? TPM_VERTICAL : 0), x, y, owner, exclude ? &tp : nullptr);
+        g_menuOpen = false;
+        themeui::releaseMenus();
         if (app.tips) SendMessageW(app.tips, TTM_ACTIVATE, TRUE, 0);
         return r;
     }
@@ -280,7 +306,7 @@ void showControls() {
 
 void updateTitle() {
     Document* d = activeDoc();
-    std::wstring t = d ? tabLabel(*d) + L" - " + kAppName : kAppName;
+    std::wstring t = d ? (d->dirty() ? L"\u2022 " : L"") + d->title() + L" - " + kAppName : kAppName;
     SetWindowTextW(app.wnd, t.c_str());
 }
 
@@ -341,6 +367,19 @@ void rememberPosition(const Document& d) {
     app.positions.erase(std::remove_if(app.positions.begin(), app.positions.end(), [&](const App::Pos& p) { return _wcsicmp(p.path.c_str(), d.path().c_str()) == 0; }), app.positions.end());
     app.positions.insert(app.positions.begin(), {d.path(), d.zoom, d.scrollY, d.fitWidth});
     if (app.positions.size() > 100) app.positions.resize(100);
+}
+
+// Moves the tab at `from` to `to`; the document on screen stays the same (its number changes with its place).
+void moveTab(int from, int to) {
+    const int n = static_cast<int>(app.tabs.size());
+    if (from < 0 || from >= n || to < 0 || to >= n || from == to) return;
+    Document* activeWas = activeDoc();
+    auto doc = std::move(app.tabs[static_cast<size_t>(from)]);
+    app.tabs.erase(app.tabs.begin() + from);
+    app.tabs.insert(app.tabs.begin() + to, std::move(doc));
+    for (int i = 0; i < n; ++i) if (app.tabs[static_cast<size_t>(i)].get() == activeWas) app.active = i;
+    if (app.tabDrag == from) app.tabDrag = to;
+    refresh();
 }
 
 void closeTab(int i) {
@@ -485,7 +524,15 @@ void loadSettings() {
     app.widthIdx = std::clamp(num(L"lineWidth", app.widthIdx), 0, 2);
     app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
     app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
-    app.theme = std::clamp(num(L"theme", 2), 0, 2);
+    app.theme = std::clamp(num(L"theme", 2), 0, ThemeCount - 1);
+    app.colourIcons = num(L"colourIcons", 1) != 0;
+    app.tabColours = num(L"tabColours", 0) != 0;
+    app.tabNumbers = num(L"tabNumbers", 0) != 0;
+    app.dupMode = std::clamp(num(L"duplicateOpen", 0), 0, 1);
+    app.restorePositions = num(L"restorePositions", 1) != 0;
+    app.cacheIdx = std::clamp(num(L"pageCache", 1), 0, 2);
+    app.autosaveIdx = std::clamp(num(L"recoveryCopy", 0), 0, 3);
+    app.viewer.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
     app.layout = std::clamp(num(L"layout", 1), 0, 2);
     app.cover = num(L"cover", 0) != 0;
     app.units = std::clamp(num(L"units", 0), 0, 3);
@@ -527,6 +574,13 @@ void saveSettings() {
     put(L"view", L"readingSpeed", app.readRate);
     put(L"view", L"pageColours", static_cast<int>(app.viewer.colours()));
     put(L"view", L"theme", app.theme);
+    put(L"view", L"colourIcons", app.colourIcons);
+    put(L"view", L"tabColours", app.tabColours);
+    put(L"view", L"tabNumbers", app.tabNumbers);
+    put(L"view", L"duplicateOpen", app.dupMode);
+    put(L"view", L"restorePositions", app.restorePositions);
+    put(L"view", L"pageCache", app.cacheIdx);
+    put(L"view", L"recoveryCopy", app.autosaveIdx);
     put(L"view", L"layout", app.layout);
     put(L"view", L"cover", app.cover);
     put(L"view", L"units", app.units);
@@ -563,6 +617,52 @@ void addRecent(const std::wstring& path) {
 // ---- opening files ----
 bool openTextAsPdf(const std::wstring& path);
 
+// A file's identity on its disk (volume and file number): the same file reached by another path (a mapped drive, a
+// network path, a short 8.3 name, a link, other capitals) has the same identity.
+struct FileId { DWORD volume = 0, high = 0, low = 0; bool known = false; };
+FileId fileIdOf(const std::wstring& path) {
+    FileId id;
+    HANDLE f = CreateFileW(path.c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return id;
+    BY_HANDLE_FILE_INFORMATION info{};
+    if (GetFileInformationByHandle(f, &info)) { id.volume = info.dwVolumeSerialNumber; id.high = info.nFileIndexHigh; id.low = info.nFileIndexLow; id.known = true; }
+    CloseHandle(f);
+    return id;
+}
+
+// the full, long form of a path (when the file cannot be asked for its identity)
+std::wstring canonicalPath(const std::wstring& p) {
+    wchar_t full[MAX_PATH * 2], longer[MAX_PATH * 2];
+    std::wstring s = GetFullPathNameW(p.c_str(), MAX_PATH * 2, full, nullptr) ? full : p;
+    if (GetLongPathNameW(s.c_str(), longer, MAX_PATH * 2)) s = longer;
+    return s;
+}
+
+// The tab that already shows this file, or -1.
+int tabShowing(const std::wstring& path) {
+    const FileId id = fileIdOf(path);
+    const std::wstring canon = canonicalPath(path);
+    for (size_t i = 0; i < app.tabs.size(); ++i) {
+        const std::wstring& other = app.tabs[i]->path();
+        if (other.empty()) continue;
+        if (_wcsicmp(other.c_str(), path.c_str()) == 0) return static_cast<int>(i);
+        const FileId o = id.known ? fileIdOf(other) : FileId{};
+        if (id.known && o.known) { if (o.volume == id.volume && o.high == id.high && o.low == id.low) return static_cast<int>(i); continue; }
+        if (_wcsicmp(canonicalPath(other).c_str(), canon.c_str()) == 0) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+// A PDF that is already open: says so, and goes to its tab if asked (or straight away, as set in Settings > Tabs).
+// The open tab is never reloaded, so its unsaved changes stay as they are.
+void offerOpenTab(int i) {
+    if (app.dupMode == 1) { switchTab(i); return; }
+    const std::wstring n = std::to_wstring(i + 1);
+    std::wstring text = L"This PDF is already open in Tab " + n + L".\n\n" + app.tabs[static_cast<size_t>(i)]->title();
+    if (app.tabs[static_cast<size_t>(i)]->dirty()) text += L"\n\nThat tab has unsaved changes; they stay as they are.";
+    if (themeui::choiceBox(app.wnd, kAppName, text, {L"Go to Tab " + n, L"Cancel"}, 0, 1, MB_ICONINFORMATION) == 0) switchTab(i);
+}
+
 void openFile(const std::wstring& pathIn) {
     wchar_t full[MAX_PATH * 2];
     std::wstring path = GetFullPathNameW(pathIn.c_str(), MAX_PATH * 2, full, nullptr) ? full : pathIn;
@@ -581,8 +681,7 @@ void openFile(const std::wstring& pathIn) {
         if (ext == L".txt" || ext == L".md" || ext == L".markdown") { openTextAsPdf(path); return; }
     }
 
-    for (size_t i = 0; i < app.tabs.size(); ++i)
-        if (_wcsicmp(app.tabs[i]->path().c_str(), path.c_str()) == 0) { switchTab(static_cast<int>(i)); return; }
+    if (const int open = tabShowing(path); open >= 0) { offerOpenTab(open); return; }
 
     auto doc = std::make_unique<Document>();
     std::string pw;
@@ -603,8 +702,9 @@ void openFile(const std::wstring& pathIn) {
     addRecent(path);
     const bool badSig = std::any_of(doc->signatures().begin(), doc->signatures().end(),
                                     [](const sign::Status& s) { return s.kind == sign::Status::Changed || s.kind == sign::Status::Unreadable; });
-    for (const auto& ps : app.positions)
-        if (_wcsicmp(ps.path.c_str(), path.c_str()) == 0) { doc->zoom = ps.zoom; doc->scrollY = ps.scrollY; doc->fitWidth = ps.fit; break; }
+    if (app.restorePositions)
+        for (const auto& ps : app.positions)
+            if (_wcsicmp(ps.path.c_str(), path.c_str()) == 0) { doc->zoom = ps.zoom; doc->scrollY = ps.scrollY; doc->fitWidth = ps.fit; break; }
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
     if (badSig) MessageBoxW(app.wnd, L"A digital signature in this document does not match: the document was changed after it was signed (or the signature is damaged). "
@@ -2827,8 +2927,9 @@ bool systemUsesDark() {
 }
 
 void applyTheme() {
-    const bool dark = app.theme == 1 || (app.theme == 2 && systemUsesDark());
-    pal() = dark ? darkPalette() : lightPalette();
+    pal() = paletteFor(app.theme, systemUsesDark());
+    const bool dark = pal().dark;
+    themeui::paletteChanged(app.wnd);
     if (app.ctlBrush) DeleteObject(app.ctlBrush);
     app.ctlBrush = CreateSolidBrush(pal().toolbar);
     BOOL on = dark;
@@ -2837,7 +2938,7 @@ void applyTheme() {
     for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findClose, app.findCase}) if (c) SetWindowTheme(c, cls, nullptr);
     app.sidebar.applyTheme();
     if (app.startPage) startpage::themeChanged(app.startPage);
-    RedrawWindow(app.wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE);
+    RedrawWindow(app.wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_FRAME);
 }
 
 // ---- About and Settings ----
@@ -2847,21 +2948,86 @@ void showAbout() {
     showForm(app.wnd, app.inst, L"About Feather PDF", f, L"!Close");
 }
 
-void showSettings() {
-    std::vector<FormField> f(6);
-    f[0] = {FormField::Choice, L"Window theme:", {L"Light", L"Dark", L"Like Windows"}, L"", app.theme};
-    f[1] = {FormField::Choice, L"Page colours:", {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"}, L"", static_cast<int>(app.viewer.colours())};
-    f[2] = {FormField::Choice, L"Highlight colour:", {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"}, L"", app.hlColour};
-    f[3] = {FormField::Choice, L"Drawing colour:", {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"}, L"", app.drawColour};
-    f[4] = {FormField::Choice, L"Line width:", {L"Thin", L"Medium", L"Thick"}, L"", app.widthIdx};
-    f[5] = {FormField::Choice, L"Reading speed:", {L"Slow", L"Normal", L"Fast", L"Very fast"}, L"", app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3};
-    if (!showForm(app.wnd, app.inst, L"Settings", f, L"Save")) return;
-    static const int rates[] = {-4, 0, 3, 6};
-    app.theme = f[0].choice;
-    app.viewer.setColours(static_cast<Viewer::Colours>(f[1].choice));
-    app.hlColour = f[2].choice; app.drawColour = f[3].choice; app.widthIdx = f[4].choice; app.readRate = rates[f[5].choice];
-    applyTheme();
-    saveSettings();
+// how often unsaved changes are copied for recovery after a crash (never: no copy)
+void restartAutosave() {
+    static const UINT ms[] = {20000, 60000, 300000, 0};
+    KillTimer(app.wnd, TIMER_AUTOSAVE);
+    if (ms[app.autosaveIdx]) SetTimer(app.wnd, TIMER_AUTOSAVE, ms[app.autosaveIdx], nullptr);
+}
+
+// Settings: every preference lives here (and only here), in six groups; a change applies at once and is saved.
+enum SettingsPage { SP_APPEARANCE, SP_TABS, SP_VIEWING, SP_EDITING, SP_PERFORMANCE, SP_ADVANCED };
+void showSettings(int first) {
+    using settingsdlg::Item;
+    auto toggle = [](const wchar_t* label, const wchar_t* help, bool& v, std::function<void()> after = nullptr) {
+        Item it; it.kind = Item::Toggle; it.label = label; it.help = help;
+        bool* p = &v;
+        it.get = [p] { return *p ? 1 : 0; };
+        it.set = [p, after](int x) { *p = x != 0; if (after) after(); saveSettings(); };
+        return it;
+    };
+    auto choice = [](const wchar_t* label, const wchar_t* help, std::vector<std::wstring> choices, std::function<int()> get, std::function<void(int)> set) {
+        Item it; it.kind = Item::Choice; it.label = label; it.help = help; it.choices = std::move(choices);
+        it.get = std::move(get);
+        it.set = [set](int x) { set(x); saveSettings(); };
+        return it;
+    };
+    auto button = [](const wchar_t* label, const wchar_t* help, const wchar_t* text, std::function<void()> press) {
+        Item it; it.kind = Item::Button; it.label = label; it.help = help; it.choices = {text}; it.press = std::move(press);
+        return it;
+    };
+    auto repaint = [] { InvalidateRect(app.wnd, nullptr, FALSE); refresh(); };
+    static const int themeOrder[] = {ThemeLight, ThemeModernLight, ThemeDark, ThemeAmoled, ThemeMidnight, ThemeGraphite, ThemeSystem};
+    static const wchar_t* colourNames[] = {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"};
+    const std::vector<std::wstring> colours(std::begin(colourNames), std::end(colourNames));
+    std::vector<settingsdlg::Category> cats(6);
+    cats[SP_APPEARANCE] = {L"Appearance", {
+        choice(L"Theme", L"Colours of the window, menus, dialogs and scroll bars. Like Windows follows Windows' light or dark mode.",
+               {L"Light", L"Modern Light", L"Dark", L"AMOLED Dark (true black)", L"Midnight Blue", L"Graphite", L"Like Windows"},
+               [] { for (int i = 0; i < 7; ++i) if (themeOrder[i] == app.theme) return i; return 0; },
+               [](int i) { app.theme = themeOrder[std::clamp(i, 0, 6)]; applyTheme(); }),
+        toggle(L"Colourful toolbar icons", L"Each toolbar icon in its own colour. Off: icons in the text colour.", app.colourIcons, repaint),
+        toggle(L"Random tab colours", L"Each new tab gets a colour of its own and keeps it until it is closed. Off: tabs follow the theme.", app.tabColours, repaint)}};
+    cats[SP_TABS] = {L"Tabs", {
+        toggle(L"Show tab numbers", L"Number the tabs: \"1. Report.pdf\". The numbers follow when tabs are opened, closed or dragged to another place.", app.tabNumbers, repaint),
+        choice(L"Opening a PDF that is already open", L"The same file opened again (also through another path or a shortcut).",
+               {L"Ask first", L"Go to its tab"}, [] { return app.dupMode; }, [](int i) { app.dupMode = i; })}};
+    cats[SP_VIEWING] = {L"PDF Viewing", {
+        choice(L"Page colours", L"Dark turns pages dark for reading at night; Dimmed softens bright white.", {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"},
+               [] { return static_cast<int>(app.viewer.colours()); },
+               [](int i) { app.viewer.setColours(static_cast<Viewer::Colours>(i)); app.viewer2.setColours(static_cast<Viewer::Colours>(i)); }),
+        toggle(L"Open documents where they were last read", L"The page and zoom of the last 100 documents are remembered.", app.restorePositions),
+        choice(L"Reading speed", L"How fast Read aloud speaks.", {L"Slow", L"Normal", L"Fast", L"Very fast"},
+               [] { return app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3; },
+               [](int i) { static const int rates[] = {-4, 0, 3, 6}; app.readRate = rates[std::clamp(i, 0, 3)]; })}};
+    cats[SP_EDITING] = {L"Editing", {
+        choice(L"Highlight colour", L"For highlights and for comments on selected text.", colours, [] { return app.hlColour; }, [](int i) { app.hlColour = i; }),
+        choice(L"Drawing colour", L"For shapes, lines, arrows, the pen and new text boxes.", colours, [] { return app.drawColour; }, [](int i) { app.drawColour = i; }),
+        choice(L"Line width", L"For shapes, lines, arrows and the pen.", {L"Thin", L"Medium", L"Thick"}, [] { return app.widthIdx; }, [](int i) { app.widthIdx = i; })}};
+    cats[SP_PERFORMANCE] = {L"Performance", {
+        choice(L"Pages kept ready in memory", L"More pages make paging back and forth faster and use more memory.", {L"Few (3)", L"Normal (6)", L"Many (12)"},
+               [] { return app.cacheIdx; },
+               [](int i) { app.cacheIdx = i; const int n = i == 0 ? 3 : i == 1 ? 6 : 12; app.viewer.setCacheLimit(n); app.viewer2.setCacheLimit(n); }),
+        choice(L"Recovery copy of unsaved changes", L"Unsaved changes are copied so they come back after a crash. Never: no copy is kept.",
+               {L"Every 20 seconds", L"Every minute", L"Every 5 minutes", L"Never"}, [] { return app.autosaveIdx; },
+               [](int i) { app.autosaveIdx = i; restartAutosave(); })}};
+    cats[SP_ADVANCED] = {L"Advanced", {
+        button(L"Default PDF application", L"Opens the Windows settings where you choose the app that opens PDF files.", L"Set as default\x2026", [] { registerAsViewer(); }),
+        button(L"Recent files", L"The list on the start page and in Open recent.", L"Clear the list", [] {
+            if (MessageBoxW(GetActiveWindow(), L"Clear the list of recent files?", L"Settings", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+            app.recent.clear(); updateEmptyText(); saveSettings(); }),
+        button(L"Settings folder", L"Where Feather PDF keeps its settings and recovery copies.", L"Open the folder", [] {
+            std::wstring dir = settingsPath();
+            dir = dir.substr(0, dir.find_last_of(L'\\'));
+            ShellExecuteW(app.wnd, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }),
+        button(L"Reset settings", L"Puts every setting on this page and the others back as it was when Feather PDF was installed.", L"Reset all\x2026", [] {
+            if (MessageBoxW(GetActiveWindow(), L"Put every setting back to its default? Recent files and reading positions are kept.", L"Settings", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
+            app.theme = ThemeSystem; app.colourIcons = true; app.tabColours = false; app.tabNumbers = false; app.dupMode = 0; app.restorePositions = true;
+            app.viewer.setColours(Viewer::Colours::Normal); app.viewer2.setColours(Viewer::Colours::Normal);
+            app.readRate = 0; app.hlColour = 0; app.drawColour = 5; app.widthIdx = 1; app.cacheIdx = 1; app.autosaveIdx = 0;
+            app.viewer.setCacheLimit(6); app.viewer2.setCacheLimit(6);
+            restartAutosave(); applyTheme(); saveSettings(); refresh(); })}};
+    settingsdlg::run(app.wnd, app.inst, cats, first, app.dpi, app.font, app.fontBold);
 }
 
 // ---- page clipboard and the thumbnail menu ----
@@ -3007,21 +3173,12 @@ void showMainMenu(const RECT& anchor) {
     }
     add(MM_FULL, L"Full screen\tF11", has);
     add(MM_PRESENT, L"Presentation\tF5", has);
-    HMENU col = CreatePopupMenu();
-    static const wchar_t* colNames[] = {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"};
-    for (int i = 0; i < 3; ++i) AppendMenuW(col, MF_STRING | (static_cast<int>(app.viewer.colours()) == i ? MF_CHECKED : 0), MM_COL + i, colNames[i]);
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(col), L"Page colours");
-    HMENU th = CreatePopupMenu();
-    static const wchar_t* thNames[] = {L"Light", L"Dark", L"Like Windows"};
-    for (int i = 0; i < 3; ++i) AppendMenuW(th, MF_STRING | (app.theme == i ? MF_CHECKED : 0), MM_THEME + i, thNames[i]);
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(th), L"Theme");
     sep();
     add(MM_SEARCHDIR, L"Search all my PDFs in a folder...");
     add(MM_BATCH, L"Batch: process a whole folder...");
     add(MM_PALETTE, L"Command palette...\tCtrl+K");
     sep();
-    add(MM_SETTINGS, L"Settings...");
-    add(MM_DEFAULT, L"Set as default PDF viewer...");
+    add(MM_SETTINGS, L"Settings...\tCtrl+,");
     add(MM_GUIDE, L"User guide\tF1");
     add(MM_ABOUT, L"About Feather PDF");
     add(MM_EXIT, L"Exit\tCtrl+Q");
@@ -3061,14 +3218,11 @@ void showMainMenu(const RECT& anchor) {
         case MM_BACK: navBack(); break;
         case MM_FWD: navForward(); break;
         case MM_PALETTE: commandPalette(); break;
-        case MM_SETTINGS: showSettings(); break;
-        case MM_DEFAULT: registerAsViewer(); break;
+        case MM_SETTINGS: showSettings(SP_APPEARANCE); break;
         case MM_ABOUT: showAbout(); break;
         case MM_EXIT: PostMessageW(app.wnd, WM_CLOSE, 0, 0); break;
         default:
             if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
-            else if (cmd >= MM_COL && cmd < MM_COL + 3) app.viewer.setColours(static_cast<Viewer::Colours>(cmd - MM_COL));
-            else if (cmd >= MM_THEME && cmd < MM_THEME + 3) { app.theme = cmd - MM_THEME; applyTheme(); saveSettings(); }
             else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100) openRecent(static_cast<size_t>(cmd - MM_RECENT));
     }
 }
@@ -4014,6 +4168,7 @@ void progressOpen(ProgressWin& p, const wchar_t* title) {
     HWND cancel = CreateWindowExW(0, L"BUTTON", L"Cancel", WS_CHILD | WS_VISIBLE, W - 110, 66, 80, 26, p.wnd, reinterpret_cast<HMENU>(IDCANCEL), app.inst, nullptr);
     SendMessageW(p.label, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
     SendMessageW(cancel, WM_SETFONT, reinterpret_cast<WPARAM>(f), TRUE);
+    themeui::themeDialog(p.wnd);
     EnableWindow(app.wnd, FALSE);
     ShowWindow(p.wnd, SW_SHOW);
 }
@@ -4282,6 +4437,7 @@ int pickFromList(const wchar_t* title, const std::vector<std::wstring>& items, c
     SendMessageW(st.list, LB_SETCURSEL, 0, 0);
     RECT cr; GetClientRect(h, &cr);
     MoveWindow(st.list, 8, 8, cr.right - 16, cr.bottom - 52, TRUE);
+    themeui::themeDialog(h);
     MoveWindow(open, 8, cr.bottom - 36, 110, 28, TRUE);
     MoveWindow(close, 126, cr.bottom - 36, 90, 28, TRUE);
     EnableWindow(app.wnd, FALSE);
@@ -4915,10 +5071,12 @@ void commandPalette() {
         add(L"Delete pages", [] { pagesMenuAction(P_DELETE, {}); });
         add(L"Insert blank page", [] { pagesMenuAction(P_BLANK, {}); });
     }
-    add(L"Settings", [] { showSettings(); });
-    add(L"Theme: light", [] { app.theme = 0; applyTheme(); saveSettings(); });
-    add(L"Theme: dark", [] { app.theme = 1; applyTheme(); saveSettings(); });
-    add(L"Theme: like Windows", [] { app.theme = 2; applyTheme(); saveSettings(); });
+    add(L"Settings", [] { showSettings(SP_APPEARANCE); });
+    add(L"Settings: theme, icons and tab colours", [] { showSettings(SP_APPEARANCE); });
+    add(L"Settings: tab numbers", [] { showSettings(SP_TABS); });
+    add(L"Settings: page colours and reading speed", [] { showSettings(SP_VIEWING); });
+    add(L"Settings: highlight and drawing colours", [] { showSettings(SP_EDITING); });
+    add(L"Set as default PDF application", [] { registerAsViewer(); });
     add(L"About Feather PDF", [] { showAbout(); });
 
     static bool reg = false;
@@ -4942,6 +5100,7 @@ void commandPalette() {
     SetPropW(st.edit, L"orig", reinterpret_cast<HANDLE>(SetWindowLongPtrW(st.edit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(paletteEditProc))));
     for (size_t i = 0; i < st.all.size(); ++i) { st.shown.push_back(static_cast<int>(i)); SendMessageW(st.list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(st.all[i].name.c_str())); }
     SendMessageW(st.list, LB_SETCURSEL, 0, 0);
+    themeui::themeDialog(h);
     ShowWindow(h, SW_SHOW);
     SetForegroundWindow(h);
     SetFocus(st.edit);
@@ -5192,6 +5351,67 @@ bool closeShown(size_t i) {
     return app.tabRects[i].right - app.tabRects[i].left >= px(110) || t == app.active || app.hover == C_TAB + t || app.hover == C_TABCLOSE + t;
 }
 
+// ---- tab colours and icon colours ----
+// The tab colours, vivid; each theme shows them lighter or deeper so the names stay readable.
+const COLORREF kTabHues[] = {RGB(0xE5, 0x48, 0x4D), RGB(0xF7, 0x6B, 0x15), RGB(0xE8, 0xA3, 0x17), RGB(0x46, 0xA7, 0x58), RGB(0x12, 0xA5, 0x94),
+                             RGB(0x05, 0xA2, 0xC2), RGB(0x00, 0x90, 0xFF), RGB(0x3E, 0x63, 0xDD), RGB(0x8E, 0x4E, 0xC6), RGB(0xD6, 0x40, 0x9F),
+                             RGB(0xAD, 0x7F, 0x58), RGB(0x6E, 0x8B, 0x3D)};
+constexpr int kTabHueCount = static_cast<int>(sizeof(kTabHues) / sizeof(kTabHues[0]));
+
+// A colour for a new tab: one no open tab has (else one the fewest have), never the one given last, picked at random.
+int pickTabHue() {
+    static int last = -1;
+    static bool seeded = false;
+    if (!seeded) { std::srand(static_cast<unsigned>(GetTickCount())); seeded = true; }
+    int uses[kTabHueCount] = {};
+    for (const auto& t : app.tabs) if (t->tabHue >= 0 && t->tabHue < kTabHueCount) ++uses[t->tabHue];
+    int least = 1 << 30;
+    for (int h = 0; h < kTabHueCount; ++h) if (h != last) least = std::min(least, uses[h]);
+    std::vector<int> pick;
+    for (int h = 0; h < kTabHueCount; ++h) if (h != last && uses[h] == least) pick.push_back(h);
+    last = pick[static_cast<size_t>(std::rand()) % pick.size()];
+    return last;
+}
+
+// the darker or the lighter of two text colours, whichever reads better on `fill`
+COLORREF readableOn(COLORREF fill) {
+    const COLORREF dark = RGB(0x14, 0x16, 0x1A), light = RGB(0xFF, 0xFF, 0xFF);
+    return contrast(dark, fill) >= contrast(light, fill) ? dark : light;
+}
+
+struct TabLook { COLORREF fill, text, strip; };
+TabLook tabLook(Document& d, bool active, bool hover) {
+    if (d.tabHue < 0 || d.tabHue >= kTabHueCount) d.tabHue = pickTabHue();
+    const COLORREF base = kTabHues[d.tabHue];
+    const Palette& P = pal();
+    COLORREF fill;
+    if (P.dark) fill = active ? mixColour(base, RGB(0, 0, 0), 0.35) : mixColour(base, P.tabBar, 0.62);
+    else fill = active ? mixColour(base, RGB(0xFF, 0xFF, 0xFF), 0.55) : mixColour(base, P.tabBar, 0.72);
+    if (hover && !active) fill = mixColour(fill, P.text, 0.08);
+    return {fill, readableOn(fill), P.dark ? mixColour(base, RGB(0xFF, 0xFF, 0xFF), 0.25) : base};
+}
+
+// A toolbar icon's own colour (Open amber, Save blue, Undo teal...), made to stand out from `bg` (3:1 at least).
+COLORREF iconColour(int icon, COLORREF bg) {
+    COLORREF c;
+    switch (icon) {
+        case icons::Open: c = RGB(0xE0, 0x9B, 0x12); break;
+        case icons::Save: c = RGB(0x1F, 0x6F, 0xEB); break;
+        case icons::Undo: case icons::Redo: c = RGB(0x0F, 0x9D, 0x8A); break;
+        case icons::Edit: c = RGB(0x6D, 0x4A, 0xFF); break;
+        case icons::Annotate: c = RGB(0xE5, 0x53, 0x2D); break;
+        case icons::Comment: c = RGB(0x1E, 0x9E, 0x50); break;
+        case icons::Geometry: c = RGB(0xC2, 0x36, 0x7E); break;
+        case icons::SideBySide: c = RGB(0x0E, 0x8F, 0xB3); break;
+        case icons::ZoomIn: case icons::ZoomOut: c = RGB(0x54, 0x63, 0xD6); break;
+        case icons::Search: c = RGB(0x1F, 0x6F, 0xEB); break;
+        default: return pal().text;   // arrows, More: in the text colour
+    }
+    if (pal().dark) c = mixColour(c, RGB(0xFF, 0xFF, 0xFF), 0.3);   // lighter on dark toolbars
+    for (int i = 0; i < 6 && contrast(c, bg) < 3.0; ++i) c = mixColour(c, pal().text, 0.25);
+    return c;
+}
+
 // a box with rounded top corners, open at the bottom (a tab joined to the toolbar under it)
 void tabShape(HDC dc, const RECT& r, COLORREF fill) {
     const int rad = px(9);
@@ -5281,7 +5501,13 @@ void paintHeader(HDC dc, const RECT& client) {
         const RECT& r = app.tabRects[i];
         const bool act = static_cast<int>(i) == app.active;
         const bool hov = app.hover == C_TAB + static_cast<int>(i) || app.hover == C_TABCLOSE + static_cast<int>(i);
-        if (act) {
+        COLORREF textCol = act ? P.text : P.textDim;
+        if (app.tabColours) {   // each tab in its own colour; the active one deeper, with a strip along its foot
+            const TabLook look = tabLook(*app.tabs[i], act, hov);
+            tabShape(dc, RECT{r.left, r.top, r.right - px(1), act ? r.bottom : r.bottom - 1}, look.fill);
+            if (act) { RECT st{r.left + px(8), r.bottom - px(3), r.right - px(9), r.bottom}; HBRUSH sb = CreateSolidBrush(look.strip); FillRect(dc, &st, sb); DeleteObject(sb); }
+            textCol = look.text;
+        } else if (act) {
             tabShape(dc, r, P.toolbar);
             vline(dc, r.left, r.top + px(9), r.bottom, P.line);
             vline(dc, r.right - 1, r.top + px(9), r.bottom, P.line);
@@ -5292,7 +5518,7 @@ void paintHeader(HDC dc, const RECT& client) {
         const bool showClose = closeShown(i);
         RECT t{r.left + px(w < px(64) ? 6 : 14), r.top, showClose ? app.closeRects[i].left - px(6) : r.right - px(8), r.bottom};
         SelectObject(dc, act ? app.fontBold : app.font);
-        SetTextColor(dc, act ? P.text : P.textDim);
+        SetTextColor(dc, textCol);
         if (!(showClose && w < px(64)))   // a tab only wide enough for its button shows the button alone
             DrawTextW(dc, tabLabel(*app.tabs[i]).c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         const bool closeHot = app.hover == C_TABCLOSE + static_cast<int>(i);
@@ -5325,10 +5551,14 @@ void paintHeader(HDC dc, const RECT& client) {
         else if (hl) roundFill(dc, b.rc, px(8), P.accentSoft, P.accent, false);
         else if (hov) roundFill(dc, b.rc, px(8), P.hover, 0, false);
         const COLORREF col = !b.enabled ? P.textOff : hl ? P.accentText : P.text;
+        // colourful icons: each its own colour, made to stand out from what is behind it (pressed, active, hover);
+        // disabled ones stay grey so it is clear they cannot be used
+        const COLORREF behind = down ? P.line : hl ? P.accentSoft : hov ? P.hover : P.toolbar;
+        const COLORREF iconCol = app.colourIcons && b.enabled ? iconColour(b.icon, behind) : col;
         const int ic = px(20);
-        if (b.label.empty()) icons::draw(dc, b.rc, b.icon, col, ic);
+        if (b.label.empty()) icons::draw(dc, b.rc, b.icon, iconCol, ic);
         else {
-            icons::draw(dc, RECT{b.rc.left + px(12), b.rc.top, b.rc.left + px(12) + ic, b.rc.bottom}, b.icon, col, ic);
+            icons::draw(dc, RECT{b.rc.left + px(12), b.rc.top, b.rc.left + px(12) + ic, b.rc.bottom}, b.icon, iconCol, ic);
             RECT t{b.rc.left + px(12) + ic + px(7), b.rc.top, b.rc.right, b.rc.bottom};
             SetTextColor(dc, col);
             DrawTextW(dc, b.label.c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
@@ -5486,6 +5716,8 @@ void makeUiFonts() {
     lf.lfWeight = FW_NORMAL;
     lf.lfHeight = -MulDiv(90, app.dpi, 720);
     app.fontSmall = CreateFontIndirectW(&lf);
+    themeui::setFont(app.font, app.fontBold);
+    themeui::setDpi(app.dpi);
 }
 
 // The page and zoom boxes: Enter goes there, Esc or leaving the box puts back what the view shows.
@@ -5538,7 +5770,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.inlineEd.create(app.viewer.hwnd(), app.inst);
             Document::setTimerWindow(app.viewer.hwnd());
             app.viewer.setOnChange(onViewerChange, nullptr);
-            SetTimer(h, TIMER_AUTOSAVE, 20000, nullptr);
+            restartAutosave();
             app.viewer.onEvent = onViewerEvent;
             app.viewer.tableOutlines = tableOutlines;
             app.viewer.onJump = onJump;
@@ -5608,10 +5840,14 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 SetBkColor(cdc, pal().field);
                 return reinterpret_cast<LRESULT>(fb);
             }
-            SetBkColor(cdc, m == WM_CTLCOLOREDIT ? (pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)) : pal().toolbar);
-            if (m == WM_CTLCOLOREDIT) { static HBRUSH eb = nullptr; if (eb) DeleteObject(eb); eb = CreateSolidBrush(pal().dark ? RGB(0x2B, 0x2B, 0x2B) : RGB(0xFF, 0xFF, 0xFF)); return reinterpret_cast<LRESULT>(eb); }
-            return reinterpret_cast<LRESULT>(app.ctlBrush);
+            return themeui::ctlColour(m, cdc, reinterpret_cast<HWND>(l));   // the find box and its check box
         }
+        case WM_MEASUREITEM:
+            if (themeui::measureMenu(reinterpret_cast<MEASUREITEMSTRUCT*>(l))) return TRUE;
+            break;
+        case WM_DRAWITEM:
+            if (themeui::drawMenu(reinterpret_cast<DRAWITEMSTRUCT*>(l))) return TRUE;
+            break;
         case WM_SETTINGCHANGE:
             if (app.theme == 2 && l && wcscmp(reinterpret_cast<const wchar_t*>(l), L"ImmersiveColorSet") == 0) applyTheme();
             break;
@@ -5654,13 +5890,25 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             for (size_t i = 0; i < app.closeRects.size(); ++i)
                 if (closeShown(i) && hit(app.closeRects[i], x, y)) { app.pressed = -2 - static_cast<int>(i); SetCapture(h); return 0; }
             for (size_t i = 0; i < app.tabRects.size(); ++i)
-                if (hit(app.tabRects[i], x, y)) { switchTab(static_cast<int>(i)); return 0; }
+                if (hit(app.tabRects[i], x, y)) {   // the tab is shown; held down, it can be dragged to another place
+                    switchTab(static_cast<int>(i));
+                    app.tabDrag = static_cast<int>(i); app.tabDragX = x; app.tabDragging = false;
+                    SetCapture(h);
+                    return 0;
+                }
             if (hit(app.plusRect, x, y)) { app.pressed = C_NEWTAB; SetCapture(h); InvalidateRect(h, nullptr, FALSE); return 0; }
             for (const Button& b : app.buttons)
                 if (b.enabled && hit(b.rc, x, y)) { app.pressed = b.id; SetCapture(h); InvalidateRect(h, &b.rc, FALSE); return 0; }
             return 0;
         }
         case WM_LBUTTONUP: {
+            if (app.tabDrag >= 0) {
+                const bool moved = app.tabDragging;
+                app.tabDrag = -1; app.tabDragging = false;
+                if (GetCapture() == h) ReleaseCapture();
+                if (moved) { InvalidateRect(h, nullptr, FALSE); writeSession(); }
+                return 0;
+            }
             const int pressed = app.pressed;
             app.pressed = -1;
             if (GetCapture() == h) ReleaseCapture();
@@ -5701,9 +5949,23 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         case WM_CAPTURECHANGED:
             if (app.pressed != -1 && reinterpret_cast<HWND>(l) != h) { app.pressed = -1; InvalidateRect(h, nullptr, FALSE); }
+            if (app.tabDrag >= 0 && reinterpret_cast<HWND>(l) != h) { app.tabDrag = -1; app.tabDragging = false; }
             break;
         case WM_MOUSEMOVE: {
             int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l), hv = -1;
+            if (app.tabDrag >= 0 && (w & MK_LBUTTON)) {   // a tab dragged along the row: it changes places with the tabs it passes
+                if (!app.tabDragging && std::abs(x - app.tabDragX) < px(8)) return 0;
+                app.tabDragging = true;
+                int to = app.tabDrag;
+                for (size_t i = 0; i < app.tabRects.size(); ++i) {
+                    const RECT& r = app.tabRects[i];
+                    const int mid = (r.left + r.right) / 2;
+                    if (static_cast<int>(i) < app.tabDrag && x < mid) { to = static_cast<int>(i); break; }
+                    if (static_cast<int>(i) > app.tabDrag && x > mid) to = static_cast<int>(i);
+                }
+                if (to != app.tabDrag) moveTab(app.tabDrag, to);
+                return 0;
+            }
             for (const Button& b : app.buttons) if (b.enabled && hit(b.rc, x, y)) hv = b.id;
             for (size_t i = 0; i < app.tabRects.size() && hv == -1; ++i)
                 if (hit(app.tabRects[i], x, y)) hv = hit(app.closeRects[i], x, y) ? C_TABCLOSE + static_cast<int>(i) : C_TAB + static_cast<int>(i);
@@ -5772,7 +6034,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 auto* di = reinterpret_cast<NMTTDISPINFOW*>(l);
                 static std::wstring tip;
                 const UINT_PTR id = nm->idFrom;
-                tip = (di->uFlags & TTF_IDISHWND) ? tipFor(reinterpret_cast<HWND>(id) == app.pageBox ? ID_PAGE_BOX : ID_ZOOM_BOX) : tipFor(static_cast<int>(id));
+                if (g_menuOpen) tip.clear();   // a tip asked for while a menu is open is not shown
+                else tip = (di->uFlags & TTF_IDISHWND) ? tipFor(reinterpret_cast<HWND>(id) == app.pageBox ? ID_PAGE_BOX : ID_ZOOM_BOX) : tipFor(static_cast<int>(id));
                 di->lpszText = const_cast<wchar_t*>(tip.c_str());
                 return 0;
             }
@@ -5821,6 +6084,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
                     case 'P': printDocument(); return 0;   // Ctrl+Shift+P (the old print preview) opens the same window
                     case 'D': showProperties(); return 0;
+                    case VK_OEM_COMMA: showSettings(SP_APPEARANCE); return 0;
                     case 'U': if (shift) { readAloud(); return 0; } markupSelection(annot::Markup::Underline, false); return 0;
                     case 'S': if (shift) { if (d) saveAsDialog(*d); } else saveActive(); return 0;
                     case 'Z': undoRedo(shift); return 0;

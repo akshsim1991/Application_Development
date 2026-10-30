@@ -1,5 +1,6 @@
 #include "sidebar.hpp"
 #include "theme.hpp"
+#include "themeui.hpp"
 #include <windowsx.h>
 #include <uxtheme.h>
 #include <algorithm>
@@ -24,6 +25,7 @@ HWND Sidebar::create(HWND parent, HINSTANCE inst) {
                             TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT, 0, 0, 0, 0, hwnd_,
                             reinterpret_cast<HMENU>(1), inst, nullptr);
     thumbs_ = CreateWindowExW(0, kThumbClass, L"", WS_CHILD | WS_VSCROLL, 0, 0, 0, 0, hwnd_, nullptr, inst, this);
+    themeui::flatScroll(thumbs_);
     LOGFONTW lf{};
     {   // the screen's dots per inch (the DC is given back)
                 HDC sdc = GetDC(hwnd_);
@@ -137,7 +139,7 @@ void Sidebar::setCurrentPage(int page) {
         RECT rc; GetClientRect(thumbs_, &rc);
         if (tops_[page] < scroll_ || tops_[page] + heights_[page] > scroll_ + rc.bottom) {
             scroll_ = std::clamp(tops_[page] - kPad, 0, std::max(0, totalH_ - static_cast<int>(rc.bottom)));
-            SetScrollPos(thumbs_, SB_VERT, scroll_, TRUE);
+            themeui::setScrollPos(thumbs_, SB_VERT, scroll_);
         }
     }
     InvalidateRect(thumbs_, nullptr, FALSE);
@@ -243,7 +245,7 @@ void Sidebar::thumbLayout() {
     si.nMin = 0; si.nMax = std::max(0, totalH_ - 1); si.nPage = rc.bottom;
     scroll_ = std::clamp(scroll_, 0, std::max(0, totalH_ - static_cast<int>(rc.bottom)));
     si.nPos = scroll_;
-    SetScrollInfo(thumbs_, SB_VERT, &si, TRUE);
+    themeui::setScrollInfo(thumbs_, SB_VERT, si);
 }
 
 void Sidebar::thumbPaint() {
@@ -331,18 +333,18 @@ LRESULT Sidebar::handleThumbs(UINT m, WPARAM w, LPARAM l) {
                 case SB_LINEDOWN: pos += 40; break;
                 case SB_PAGEUP: pos -= static_cast<int>(si.nPage); break;
                 case SB_PAGEDOWN: pos += static_cast<int>(si.nPage); break;
-                case SB_THUMBTRACK: case SB_THUMBPOSITION: pos = si.nTrackPos; break;
+                case SB_THUMBTRACK: case SB_THUMBPOSITION: pos = themeui::trackPos(thumbs_, SB_VERT); break;
             }
             RECT rc; GetClientRect(thumbs_, &rc);
             scroll_ = std::clamp(pos, 0, std::max(0, totalH_ - static_cast<int>(rc.bottom)));
-            SetScrollPos(thumbs_, SB_VERT, scroll_, TRUE);
+            themeui::setScrollPos(thumbs_, SB_VERT, scroll_);
             InvalidateRect(thumbs_, nullptr, FALSE);
             return 0;
         }
         case WM_MOUSEWHEEL: {
             RECT rc; GetClientRect(thumbs_, &rc);
             scroll_ = std::clamp(scroll_ - GET_WHEEL_DELTA_WPARAM(w), 0, std::max(0, totalH_ - static_cast<int>(rc.bottom)));
-            SetScrollPos(thumbs_, SB_VERT, scroll_, TRUE);
+            themeui::setScrollPos(thumbs_, SB_VERT, scroll_);
             InvalidateRect(thumbs_, nullptr, FALSE);
             return 0;
         }
@@ -371,7 +373,7 @@ LRESULT Sidebar::handleThumbs(UINT m, WPARAM w, LPARAM l) {
                 if (dragging_) {
                     RECT rc; GetClientRect(thumbs_, &rc);
                     if (y < 20) scroll_ = std::max(0, scroll_ - 20); else if (y > rc.bottom - 20) scroll_ = std::min(std::max(0, totalH_ - static_cast<int>(rc.bottom)), scroll_ + 20);
-                    SetScrollPos(thumbs_, SB_VERT, scroll_, TRUE);
+                    themeui::setScrollPos(thumbs_, SB_VERT, scroll_);
                     dropBefore_ = dropIndexAt(y);
                     InvalidateRect(thumbs_, nullptr, FALSE);
                 }

@@ -7,6 +7,7 @@ using std::min; using std::max;
 #include <gdiplus.h>
 #include <vector>
 #include <memory>
+#include "themeui.hpp"
 
 namespace sigpad {
 namespace {
@@ -169,6 +170,7 @@ bool draw(HWND parent, HINSTANCE inst, const std::wstring& pngPath) {
     button(L"Clear", ID_CLEAR, 16, 90);
     HWND use = button(L"Use this signature", ID_USE, 318, 140);
     button(L"Cancel", ID_CANCEL, 466, 70);
+    themeui::themeDialog(wnd);
     EnableWindow(parent, FALSE);
     ShowWindow(wnd, SW_SHOW);
     SetForegroundWindow(wnd);

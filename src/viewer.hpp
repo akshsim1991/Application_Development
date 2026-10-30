@@ -61,6 +61,9 @@ public:
     void setEmptyText(const std::wstring& t) { emptyText_ = t; InvalidateRect(hwnd_, nullptr, TRUE); }   // shown when no document is open
     void setColours(Colours c);          // page colour filter: normal, night mode, or softened
     Colours colours() const { return colours_; }
+    // How many drawn pages are kept ready in memory (more: faster paging back and forth, more memory).
+    void setCacheLimit(int pages) { cacheLimit_ = pages < 2 ? 2 : pages; }
+    int cacheLimit() const { return cacheLimit_; }
 
     void invalidatePage(int page);       // a page's content changed: redraw it
     void documentChanged();              // the document was replaced (undo/redo): keep position, redraw all
@@ -166,6 +169,7 @@ private:
     Selection sel_;
     bool dragging_ = false;
     Tool tool_ = Tool::None;
+    int cacheLimit_ = 6;
     Colours colours_ = Colours::Normal;
     std::wstring emptyText_ = L"Open a PDF with Ctrl+O, or drop a file here.";
     const std::vector<RedactMark>* marks_ = nullptr;

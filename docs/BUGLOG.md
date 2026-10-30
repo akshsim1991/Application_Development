@@ -515,6 +515,25 @@ Harmless. Some generators (reportlab) leave an empty `BT ... ET` block naming a 
 PDFium drops the unused font from the page resources, and pdftotext warns about the leftover name. Viewers ignore it and
 the text reads correctly.
 
+### B-045 A toolbar tooltip could still appear over an opened menu
+- **Status:** Fixed
+- **Root cause:** the tooltips were switched off while a menu was open, but a tip whose delay had already started when
+  the button was pressed asked for its text inside the menu's loop and was shown anyway (seen over the … menu).
+- **Fix:** while a menu is open the tooltip text is empty, and a tip with no text is not shown.
+- **Verified:** pointer held 1.5 s over … then clicked: the menu opens with no tip over it (before: "More: files, view,
+  settings and help" sat on the menu).
+
+## Themes, tabs and settings (requested points)
+| # | Request | Done | Checked |
+|---|---|---|---|
+| 1 | Colourful, consistent toolbar icons in every theme, with active / hover / pressed / disabled states | Each icon has its own colour (Open amber, Save and Search blue, Undo / Redo teal, Edit violet, Annotate orange, Comment green, Geometry magenta, Side by side cyan, zoom indigo; arrows and … in the text colour), lighter on dark themes and pushed towards the text colour until it stands out 3:1 from what is behind it (toolbar, hover, the active tool's tint, pressed). Disabled icons stay grey. Settings > Appearance > Colourful toolbar icons turns it off | All seven themes; on and off |
+| 2 | Random tab colours, ON / OFF | Settings > Appearance. A new tab gets one of 12 colours, one no open tab has, never the one given last; it keeps it until closed. Each theme shows the colour lighter or deeper; the name is drawn dark or white, whichever reads better. The active tab is deeper, with a strip along its foot. Off: tabs follow the theme. Saved | 3 tabs, light and dark themes; off and on |
+| 3 | AMOLED Dark, Modern Light, Midnight Blue, Graphite | Four new palettes beside Light, Dark and Like Windows. Title row, tabs, toolbar, status bar, panels, menus (drawn by Feather PDF), Settings and every dialog and message box (drawn by Feather PDF), and the scroll bars of the pages and thumbnails (drawn flat by Feather PDF) take the theme; Windows' own parts (menu frames, list boxes, open / save dialogs) are asked to follow light or dark, and on Windows 11 the dialogs' title bars to take the theme's colours (these Windows features are not in Wine, so this part is untested here). Text contrast 11:1 to 19:1, secondary text 6.7:1 to 11:1 | Switched live through all seven from Settings, with three tabs open (no restart); menus, Document properties, a Yes / No question, the duplicate-PDF question and Settings in each |
+| 4 | Show Tab Numbers, ON / OFF | Settings > Tabs. "1. Report.pdf"; numbers follow opening, closing and moving tabs (tabs can now be dragged along the row). Not in the window title. Saved | Tab 3 dragged to the front: 1. tbl_ruled, 2. five, 3. form; off and on |
+| 5 | Settings in one place, no duplicates | One Settings window (… > Settings, Ctrl+,) with Appearance, Tabs, PDF Viewing, Editing, Performance, Advanced; switches for on / off, lists for choices, buttons for actions; each change applies at once and is saved. Removed from the … menu: Theme, Page colours, Set as default PDF viewer. The command palette opens the matching Settings group. New: open documents where last read (on / off), pages kept ready in memory, how often the recovery copy is made, clear recent files, open the settings folder, reset all | Every group shown; each switch on and off with the value read back from settings.ini; the menu check test finds no duplicate items |
+| 6 | Duplicate PDF detection | Opening a file already open in a tab, by any route (Open, Explorer / second launch, drag and drop, Open recent), compares the file's identity on disk (volume and file number), so another path to the same file is recognised (other capitals, `..`, a mapped drive, a network or short name, a link). "This PDF is already open in Tab 3." with Go to Tab 3 / Cancel; the tab is never reloaded, so unsaved changes stay (the message says so when there are some). Settings > Tabs can go to the tab without asking | five.pdf opened again as `Z:\...\FIVE.pdf` and as `c:\TEST\..\test\Five.PDF`: "already open in Tab 1", then "Tab 2" after the tabs were reordered; Go to Tab 2 showed it |
+| 7 | Every setting ON and OFF, every theme, no new bugs | Smoke tests pass (including the menu check for duplicate items); B-045 found and fixed | As above |
+
 ## UI rework (requested points)
 Each point of the request, what was done, and how it was checked (Wine, 1280 x 800 screen; for these checks Wine was set
 to draw window frames itself, `HKCU\Software\Wine\X11 Driver\Decorated=N`, so the window looks as it does on Windows).

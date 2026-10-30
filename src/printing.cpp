@@ -8,6 +8,9 @@
 using std::min; using std::max;
 #include <gdiplus.h>
 #include "pdfium_api.hpp"
+#include "themeui.hpp"
+// message boxes in the window's theme
+#define MessageBoxW themeui::messageBox
 
 namespace printing {
 namespace {
@@ -694,6 +697,7 @@ bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage) {
     UpdateWindow(w);
     SetForegroundWindow(w);
     SetFocus(GetDlgItem(w, ID_PRINT));
+    themeui::themeDialog(w);
     EnableWindow(parent, FALSE);
     MSG msg;
     while (!st.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
@@ -756,6 +760,7 @@ bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage) {
         HFONT pf = CreateFontIndirectW(&pm.lfMessageFont);
         SendMessageW(progText, WM_SETFONT, reinterpret_cast<WPARAM>(pf), TRUE);
         SendMessageW(progCancel, WM_SETFONT, reinterpret_cast<WPARAM>(pf), TRUE);
+        themeui::themeDialog(prog);
         SetPropW(prog, L"font", pf);
         EnableWindow(parent, FALSE);
     }

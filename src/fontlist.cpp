@@ -5,6 +5,7 @@
 #include <set>
 #include "pdfedit.hpp"
 #include "pdfium_api.hpp"
+#include "themeui.hpp"
 
 namespace fontlist {
 namespace {
@@ -302,6 +303,7 @@ void show(HWND parent, HINSTANCE inst, const Report& r, const std::wstring& titl
     HWND w = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FeatherFontList", title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_VISIBLE,
                              x, y, wdt, h, parent, nullptr, inst, &v);
     if (!w) return;
+    themeui::themeDialog(w);
     EnableWindow(parent, FALSE);
     MSG msg;
     while (!v.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {

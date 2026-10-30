@@ -260,7 +260,7 @@ icons = [
     ("zoomout", "Zoom out", "Makes the pages smaller.", "Ctrl+−"),
     ("zoomin", "Zoom in", "Makes the pages larger.", "Ctrl++"),
     ("search", "Search", "Opens the search bar; every match is highlighted. F3 and Shift+F3 step through them.", "Ctrl+F"),
-    ("more", "More (…)", "Files, printing, view options, theme, side by side, settings and About.", ""),
+    ("more", "More (…)", "Files, printing, view options, Settings, the user guide and About.", ""),
 ]
 rows = [["Icon", "Name", "What it does", "Key"]]
 for key, name, what, sc in icons:
@@ -290,9 +290,11 @@ story += bullets([
     "Move through the document with the scroll bar, the mouse wheel, PgUp / PgDn, the arrow keys, Home / End, or by typing a page number in the page box.",
     "Zoom with the toolbar, Ctrl+wheel or Ctrl+plus / minus, or type a percentage in the zoom box. Ctrl+2 fits the width, Ctrl+0 fits the page, Ctrl+1 shows the actual size.",
     "Choose single page, continuous or two-page layout in … > Page layout. Full screen is F11, presentation mode is F5: in a presentation a click, the wheel, Space, Enter, Page Down or the arrow keys move a whole page at a time, and Esc ends it on the page you reached.",
-    "Light, dark or Windows theme, and normal, dark or dimmed page colours, are in the … menu.",
+    "Themes, page colours, tab numbers and the other preferences are in <b>Settings</b> (… > Settings, or <b>Ctrl+,</b>); see the Settings section.",
     "Back and forward (Alt+Left / Alt+Right) return to where you were after following a link or jumping to a page.",
-    "Feather remembers the page you were reading in every file and opens it there next time.",
+    "Feather remembers the page you were reading in every file and opens it there next time (Settings > PDF Viewing can turn this off).",
+    "Opening a PDF that is already open (by Open, a double-click in Explorer, dragging it in, or Open recent, even through another path to the same file) says which tab has it and offers to go there; that tab is never reloaded, so its unsaved changes stay.",
+    "Drag a tab along the tab row to put it in another place.",
     "Read aloud (Ctrl+Shift+U) reads the selected text, or the page, with the voices installed in Windows.",
 ])
 
@@ -331,6 +333,21 @@ story += bullets([
     "Choose <b>Edit PDF > Move or resize pictures, paragraphs and tables</b>, then click a picture to select it. Drag it to move it, drag a corner to resize it; guide lines help you line it up. Delete removes it.",
     "<b>Right-click</b> the selected picture (or use Edit PDF > Picture) to turn it, flip it, crop it (drag a box), adjust brightness and contrast, make it black and white, replace it, save it as PNG, or bring it to the front / send it to the back.",
 ])
+
+story += [P("Settings", "h2")]
+story += [P("Open Settings from … > Settings or with <b>Ctrl+,</b>. Each change applies at once and is kept; there is nothing to confirm. "
+            "Ctrl+Tab moves to the next group.")]
+story += [table([["Group", "What is there"],
+                 ["Appearance", "Theme: Light, Modern Light, Dark, AMOLED Dark (true black), Midnight Blue, Graphite, or Like Windows (follows Windows' light or dark mode). "
+                                "The theme colours the window, menus, dialogs, message boxes and scroll bars and changes without a restart. "
+                                "Colourful toolbar icons (on: each icon in its own colour). Random tab colours (on: each new tab gets a colour of its own and keeps it until it is closed)."],
+                 ["Tabs", "Show tab numbers (\u201c1. Report.pdf\u201d; the numbers follow when tabs are opened, closed or dragged). "
+                          "What happens when a PDF that is already open is opened again: ask first, or go to its tab."],
+                 ["PDF Viewing", "Page colours (normal, dark for night reading, dimmed), opening documents where they were last read, reading speed of Read aloud."],
+                 ["Editing", "Highlight colour, drawing colour and line width."],
+                 ["Performance", "How many drawn pages are kept ready in memory, and how often unsaved changes are copied for recovery after a crash."],
+                 ["Advanced", "Set as the default PDF application (opens Windows' Default apps), clear the recent files, open the settings folder, reset all settings."]],
+                [30, 140])]
 
 story += [P("Tables", "h2")]
 story += bullets([
@@ -428,7 +445,7 @@ story += [P("5. Complete feature list", "h1")]
 features = [
     ("Reading", ["Tabs and one window for every launch", "Single page, continuous and two-page layouts", "Zoom, fit width, fit page, actual size",
                  "Go to page, back and forward", "Bookmarks panel and page thumbnails", "Search with every match highlighted",
-                 "Search all PDFs in a folder", "Text selection and copy", "Clickable links", "Light, dark and Windows themes",
+                 "Search all PDFs in a folder", "Text selection and copy", "Clickable links", "Seven themes, including AMOLED Dark, Midnight Blue and Graphite",
                  "Dark and dimmed page colours", "Full screen and presentation mode", "Read aloud", "Remembered reading position",
                  "Password-protected files", "Command palette (Ctrl+K)"]),
     ("Annotating", ["Highlight, underline, strikethrough, squiggly", "Comments on text and sticky notes", "Rectangle, ellipse, line, arrow, pen",
@@ -525,7 +542,7 @@ story += bullets([
     "If Windows or the computer stops unexpectedly, Feather offers your open documents and unsaved changes the next time it starts.",
     "Edited and newly added text uses Western characters with the standard PDF fonts. Text in other scripts can be read, searched and copied, but not typed in.",
     "Pages made by Redact become pictures, so the removed text cannot be recovered.",
-    "To make Feather your default PDF viewer, choose … > Set as default PDF viewer.",
+    "To make Feather your default PDF viewer, choose Settings > Advanced > Set as default.",
     "This guide is always at hand: press <b>F1</b>, or choose … > User guide.",
 ])
 story += bullets(["<b>Free software inside:</b> PDFium (BSD licence) reads and draws PDF files and Tesseract (Apache licence) recognises text. "

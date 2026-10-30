@@ -1,5 +1,8 @@
 #include "formdialog.hpp"
 #include <algorithm>
+#include "themeui.hpp"
+// message boxes in the window's theme
+#define MessageBoxW themeui::messageBox
 
 namespace {
 
@@ -92,6 +95,7 @@ INT_PTR CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
             st = reinterpret_cast<State*>(l);
             SetWindowLongPtrW(h, GWLP_USERDATA, l);
             layout(h, st);
+            themeui::themeDialog(h);
             for (size_t i = 0; i < st->controls.size(); ++i) {
                 if ((*st->fields)[i].kind == FormField::Note) continue;
                 SetFocus(st->controls[i]);

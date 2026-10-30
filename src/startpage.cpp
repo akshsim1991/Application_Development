@@ -1,6 +1,7 @@
 #include "startpage.hpp"
 #include "icons.hpp"
 #include "theme.hpp"
+#include "themeui.hpp"
 #include <windowsx.h>
 #include <algorithm>
 
@@ -227,6 +228,8 @@ LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
             if (s) { freeFonts(*s); delete s; SetWindowLongPtrW(w, GWLP_USERDATA, 0); }
             break;
         case WM_ERASEBKGND: return 1;
+        case WM_MEASUREITEM: if (themeui::measureMenu(reinterpret_cast<MEASUREITEMSTRUCT*>(lp))) return TRUE; break;
+        case WM_DRAWITEM: if (themeui::drawMenu(reinterpret_cast<DRAWITEMSTRUCT*>(lp))) return TRUE; break;
         case WM_PAINT: if (s) { paint(w, *s); return 0; } break;
         case WM_SIZE: InvalidateRect(w, nullptr, FALSE); return 0;
         case WM_MOUSEMOVE: if (s) setHover(w, *s, hitTest(*s, GET_X_LPARAM(lp), GET_Y_LPARAM(lp))); return 0;
@@ -263,7 +266,9 @@ LRESULT CALLBACK proc(HWND w, UINT m, WPARAM wp, LPARAM lp) {
             AppendMenuW(menu, MF_STRING, 2, L"Remove from the list");
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             ClientToScreen(w, &pt);
+            themeui::prepareMenu(menu);
             const int cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, w, nullptr);
+            themeui::releaseMenus();
             DestroyMenu(menu);
             const Actions act = s->act;
             const size_t i = static_cast<size_t>(h - H_ROW);

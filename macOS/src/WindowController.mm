@@ -67,6 +67,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         scroll.documentView = _view;
         __weak FPWindowController* weakSelf = self;
         _view.jumped = ^(int from) { [weakSelf rememberJumpFrom:from]; };
+        [self setupTools];
 
         // The sidebar (thumbnails, bookmarks) to the left of the pages, shown or hidden with ⌘B as Ctrl+B on Windows.
         _sidebar = [[FPSidebar alloc] initWithFrame:NSMakeRect(0, 0, 180, 600)];
@@ -386,6 +387,15 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
     if (item.action == @selector(toggleThumbnails:)) item.title = self.sidebarShown ? @"Hide Sidebar" : @"Show Sidebar";
     if (item.action == @selector(goBack:)) return !_back.empty();
+    if (item.action == @selector(chooseTool:)) item.state = _view.tool == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(selectTextTool:)) item.state = _view.tool == FPToolNone ? NSControlStateValueOn : NSControlStateValueOff;
+    if (item.action == @selector(setDrawingColour:) || item.action == @selector(setHighlightColour:) || item.action == @selector(setLineWidth:)) {
+        NSString* key = item.action == @selector(setDrawingColour:) ? @"drawingColour" : item.action == @selector(setHighlightColour:) ? @"highlightColour" : @"lineWidth";
+        NSNumber* v = [NSUserDefaults.standardUserDefaults objectForKey:key];
+        const NSInteger cur = v ? v.integerValue : (item.action == @selector(setDrawingColour:) ? 5 : item.action == @selector(setLineWidth:) ? 1 : 0);
+        item.state = cur == item.tag ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    if (item.action == @selector(deleteSelectedAnnotation:) || item.action == @selector(editSelectedComment:)) return _view.selectedAnnot >= 0;
     if (item.action == @selector(goForward:)) return !_forward.empty();
     if (item.action == @selector(findPreviousMatch:)) return !_hits.empty();
     if (item.action == @selector(layoutSingle:)) item.state = _view.layout == 0;

@@ -30,6 +30,41 @@ constexpr size_t kCachedPages = 10;
     NSPoint _downAt;
     BOOL _dragged;
     NSTrackingArea* _tracking;
+    // a tool at work
+    BOOL _toolDown;
+    int _toolPage;
+    std::vector<annot::PointD> _toolPts;          // page coordinates
+    NSPoint _toolStartView, _toolNowView;
+    std::vector<NSPoint> _toolPathView;           // the pen and the polygon, as drawn
+    int _annotPage, _annotIndex;
+}
+
+- (int)selectedAnnotPage { return _annotPage; }
+- (int)selectedAnnot { return _annotIndex; }
+- (void)clearAnnotSelection { _annotPage = _annotIndex = -1; [self setNeedsDisplay:YES]; }
+
+- (void)setTool:(FPTool)tool {
+    _tool = tool;
+    _toolDown = NO;
+    _toolPts.clear();
+    _toolPathView.clear();
+    [self clearAnnotSelection];
+    [self setNeedsDisplay:YES];
+}
+
+- (BOOL)selectionRects:(std::vector<annot::RectD>&)rects page:(int*)page {
+    rects.clear();
+    if (![self hasSelection]) return NO;
+    const auto& api = pdfium::api();
+    FPDF_TEXTPAGE tp = _doc->text(_selPage);
+    const int a = std::min(_selAnchor, _selFocus), b = std::max(_selAnchor, _selFocus);
+    const int n = tp ? api.FPDFText_CountRects(tp, a, b - a + 1) : 0;
+    for (int k = 0; k < n; ++k) {
+        double l, t, r, bo;
+        if (api.FPDFText_GetRect(tp, k, &l, &t, &r, &bo)) rects.push_back({l, bo, r, t});
+    }
+    *page = _selPage;
+    return !rects.empty();
 }
 
 - (instancetype)initWithFrame:(NSRect)frame {
@@ -43,6 +78,8 @@ constexpr size_t kCachedPages = 10;
         _shown = 0;
         _currentMatch = -1;
         _selPage = -1;
+        _annotPage = _annotIndex = -1;
+        _lineWidthPt = 2;
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
     return self;
@@ -300,6 +337,20 @@ constexpr size_t kCachedPages = 10;
         case NSEndFunctionKey: [self showPage:_doc ? _doc->pageCount() - 1 : 0]; break;
         case NSRightArrowFunctionKey: [self showPage:[self currentPage] + 1]; break;
         case NSLeftArrowFunctionKey: [self showPage:[self currentPage] - 1]; break;
+        case NSDeleteCharacter: case NSBackspaceCharacter: case NSDeleteFunctionKey:
+            if (_annotIndex >= 0 && self.onToolEvent) {
+                FPToolEvent ev;
+                ev.kind = FPToolEvent::Delete;
+                ev.page = _annotPage;
+                ev.annot = _annotIndex;
+                _annotIndex = -1;
+                self.onToolEvent(ev);
+            }
+            break;
+        case 27: self.tool = FPToolNone; break;   // Esc: back to selecting
+        case '\r':
+            if (_tool == FPToolPolygon && _toolPts.size() >= 3) { [self sendTool:FPToolEvent::Draw]; _toolPts.clear(); _toolPathView.clear(); [self setNeedsDisplay:YES]; }
+            break;
         default: [super keyDown:event];
     }
 }
@@ -360,7 +411,10 @@ constexpr size_t kCachedPages = 10;
             CGImageRelease(img);
         }
         [self drawMarksOnPage:static_cast<int>(i)];
+        [self drawRedactionsOnPage:static_cast<int>(i)];
+        [self drawAnnotSelectionOnPage:static_cast<int>(i)];
     }
+    [self drawToolPreview];
 }
 
 // ---- page coordinates ----
@@ -464,9 +518,164 @@ constexpr size_t kCachedPages = 10;
     [self setNeedsDisplay:YES];
 }
 
+// ---- tools ----
+
+- (void)sendTool:(FPToolEvent::Kind)kind {
+    if (!self.onToolEvent) return;
+    FPToolEvent ev;
+    ev.kind = kind;
+    ev.page = _toolPage;
+    ev.pts = _toolPts;
+    ev.annot = _annotIndex;
+    self.onToolEvent(ev);
+}
+
+- (void)toolDown:(NSEvent*)e at:(NSPoint)p {
+    int page;
+    double x, y;
+    if (![self pageAt:p page:&page x:&x y:&y]) return;
+    if (_tool == FPToolPolygon) {   // corners one click at a time; a double-click (or Return) ends it
+        if (!_toolPts.empty() && page != _toolPage) return;
+        _toolPage = page;
+        if (e.clickCount >= 2) {
+            if (_toolPts.size() >= 3) [self sendTool:FPToolEvent::Draw];
+            _toolPts.clear();
+            _toolPathView.clear();
+        } else {
+            _toolPts.push_back({x, y});
+            _toolPathView.push_back(p);
+        }
+        [self setNeedsDisplay:YES];
+        return;
+    }
+    _toolDown = YES;
+    _toolPage = page;
+    _toolPts = {{x, y}};
+    _toolStartView = _toolNowView = p;
+    _toolPathView = {p};
+}
+
+- (void)toolDragged:(NSPoint)p {
+    if (!_toolDown) return;
+    const NSRect r = _rects[static_cast<size_t>(_toolPage)];
+    p = NSMakePoint(std::clamp(p.x, NSMinX(r), NSMaxX(r)), std::clamp(p.y, NSMinY(r), NSMaxY(r)));
+    _toolNowView = p;
+    if (_tool == FPToolPen) {
+        int page;
+        double x, y;
+        if ([self pageAt:NSMakePoint(std::min(p.x, NSMaxX(r) - 0.5), std::min(p.y, NSMaxY(r) - 0.5)) page:&page x:&x y:&y]) {
+            _toolPts.push_back({x, y});
+            _toolPathView.push_back(p);
+        }
+    }
+    [self setNeedsDisplay:YES];
+}
+
+- (void)toolUp:(NSEvent*)e {
+    if (!_toolDown) return;
+    _toolDown = NO;
+    const bool moved = std::hypot(_toolNowView.x - _toolStartView.x, _toolNowView.y - _toolStartView.y) > 3;
+    if (_tool != FPToolPen) {
+        const NSRect r = _rects[static_cast<size_t>(_toolPage)];
+        int page;
+        double x, y;
+        if ([self pageAt:NSMakePoint(std::min(_toolNowView.x, NSMaxX(r) - 0.5), std::min(_toolNowView.y, NSMaxY(r) - 0.5)) page:&page x:&x y:&y])
+            _toolPts.push_back({x, y});
+    }
+    if (moved && _toolPts.size() >= 2) [self sendTool:FPToolEvent::Draw];
+    else { _toolPts.resize(1); [self sendTool:e.clickCount >= 2 ? FPToolEvent::DoubleClick : FPToolEvent::Click]; }
+    _toolPts.clear();
+    _toolPathView.clear();
+    [self setNeedsDisplay:YES];
+}
+
+// The shape being drawn, before it is added.
+- (void)drawToolPreview {
+    if (!_toolDown && !(_tool == FPToolPolygon && !_toolPathView.empty())) return;
+    NSColor* c = _tool == FPToolRedact ? NSColor.blackColor : NSColor.controlAccentColor;
+    [c setStroke];
+    const NSRect box = NSMakeRect(std::min(_toolStartView.x, _toolNowView.x), std::min(_toolStartView.y, _toolNowView.y),
+                                  std::fabs(_toolNowView.x - _toolStartView.x), std::fabs(_toolNowView.y - _toolStartView.y));
+    NSBezierPath* path = [NSBezierPath bezierPath];
+    path.lineWidth = std::max(1.0, _lineWidthPt * _zoom);
+    switch (_tool) {
+        case FPToolEllipse: path = [NSBezierPath bezierPathWithOvalInRect:box]; break;
+        case FPToolLine: case FPToolArrow: case FPToolCallout:
+            [path moveToPoint:_toolStartView]; [path lineToPoint:_toolNowView]; break;
+        case FPToolPen: case FPToolPolygon:
+            for (size_t i = 0; i < _toolPathView.size(); ++i) i ? [path lineToPoint:_toolPathView[i]] : [path moveToPoint:_toolPathView[i]];
+            break;
+        default: path = [NSBezierPath bezierPathWithRect:box];
+    }
+    if (_tool == FPToolRedact) { [[NSColor colorWithWhite:0 alpha:0.35] setFill]; [path fill]; }
+    if (_tool == FPToolCloud || _tool == FPToolCrop || _tool == FPToolLink) { const CGFloat d[] = {6, 4}; [path setLineDash:d count:2 phase:0]; }
+    [path stroke];
+}
+
+// Pending redaction marks: black frames, half filled (they are applied with Protect > Apply Redactions).
+- (void)drawRedactionsOnPage:(int)page {
+    if (!_doc) return;
+    for (const RedactMark& m : _doc->redactions) {
+        if (m.page != page) continue;
+        const NSPoint a = [self viewPointOnPage:page x:m.left y:m.top], b = [self viewPointOnPage:page x:m.right y:m.bottom];
+        const NSRect r = NSMakeRect(std::min(a.x, b.x), std::min(a.y, b.y), std::fabs(b.x - a.x), std::fabs(b.y - a.y));
+        [[NSColor colorWithWhite:0 alpha:0.35] setFill];
+        NSRectFillUsingOperation(r, NSCompositingOperationSourceOver);
+        [NSColor.blackColor setStroke];
+        [NSBezierPath strokeRect:r];
+    }
+}
+
+// The selected annotation: a dashed frame.
+- (void)drawAnnotSelectionOnPage:(int)page {
+    if (page != _annotPage || _annotIndex < 0) return;
+    for (const annot::Info& a : annot::list(*_doc, page)) {
+        if (a.index != _annotIndex) continue;
+        const NSPoint p = [self viewPointOnPage:page x:a.rect.left y:a.rect.top], q = [self viewPointOnPage:page x:a.rect.right y:a.rect.bottom];
+        NSBezierPath* b = [NSBezierPath bezierPathWithRect:NSInsetRect(NSMakeRect(std::min(p.x, q.x), std::min(p.y, q.y), std::fabs(q.x - p.x), std::fabs(q.y - p.y)), -3, -3)];
+        const CGFloat d[] = {4, 3};
+        [b setLineDash:d count:2 phase:0];
+        b.lineWidth = 1.5;
+        [NSColor.controlAccentColor setStroke];
+        [b stroke];
+    }
+}
+
+- (NSMenu*)menuForEvent:(NSEvent*)e {
+    const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    int page;
+    double x, y;
+    if (!self.onContextMenu || ![self pageAt:p page:&page x:&x y:&y]) return nil;
+    return self.onContextMenu(page, {x, y}, annot::hitTest(*_doc, page, {x, y}));
+}
+
 - (void)mouseDown:(NSEvent*)e {
     [self.window makeFirstResponder:self];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (_tool != FPToolNone) { [self toolDown:e at:p]; return; }
+    {   // an annotation under the pointer is selected (double-click: its comment)
+        int page;
+        double x, y;
+        if (_doc && [self pageAt:p page:&page x:&x y:&y]) {
+            const int a = annot::hitTest(*_doc, page, {x, y});
+            if (a >= 0 && ![self linkAt:page x:x y:y]) {
+                _annotPage = page;
+                _annotIndex = a;
+                _selPage = -1;
+                [self setNeedsDisplay:YES];
+                if (e.clickCount == 2 && self.onToolEvent) {
+                    FPToolEvent ev;
+                    ev.kind = FPToolEvent::DoubleClick;
+                    ev.page = page;
+                    ev.pts = {{x, y}};
+                    ev.annot = a;
+                    self.onToolEvent(ev);
+                }
+                return;
+            }
+            if (_annotIndex >= 0) [self clearAnnotSelection];
+        }
+    }
     _downAt = p;
     _dragged = NO;
     int page;
@@ -494,6 +703,7 @@ constexpr size_t kCachedPages = 10;
 - (void)mouseDragged:(NSEvent*)e {
     [self autoscroll:e];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (_tool != FPToolNone) { [self toolDragged:p]; return; }
     if (std::hypot(p.x - _downAt.x, p.y - _downAt.y) > 3) _dragged = YES;
     if (_selPage < 0) {   // started beside the text: start at the first character reached
         int page;
@@ -517,6 +727,7 @@ constexpr size_t kCachedPages = 10;
 }
 
 - (void)mouseUp:(NSEvent*)e {
+    if (_tool != FPToolNone) { [self toolUp:e]; return; }
     if (_dragged || e.clickCount > 1) return;
     if (_selPage >= 0 && _selAnchor == _selFocus) [self clearSelection];   // a click, not a selection
     int page;
@@ -564,6 +775,7 @@ constexpr size_t kCachedPages = 10;
 
 // The pointer: a hand over a link, the text bar over text.
 - (void)mouseMoved:(NSEvent*)e {
+    if (_tool != FPToolNone) { [NSCursor.crosshairCursor set]; return; }
     int page;
     double x, y;
     if (_doc && [self pageAt:[self convertPoint:e.locationInWindow fromView:nil] page:&page x:&x y:&y]) {

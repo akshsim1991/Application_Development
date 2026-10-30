@@ -2,6 +2,7 @@
 #import "WindowController.h"
 #import "StartWindow.h"
 #import "Updater.h"
+#import "PageView.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -241,6 +242,46 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Find Next", @selector(findNextMatch:), @"g");
     add(m, @"Find Previous", @selector(findPreviousMatch:), @"g", NSEventModifierFlagCommand | NSEventModifierFlagShift);
 
+    m = submenu(bar, @"Annotate");
+    add(m, @"Select Text", @selector(selectTextTool:), @"1", NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Highlight", @selector(highlightSelection:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    add(m, @"Underline", @selector(underlineSelection:), @"u", NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    add(m, @"Strikethrough", @selector(strikeSelection:), @"s", NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    add(m, @"Squiggly Underline", @selector(squigglySelection:), nil);
+    add(m, @"Comment on Selected Text\u2026", @selector(commentOnSelection:), @"m", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    [m addItem:[NSMenuItem separatorItem]];
+    struct { NSString* title; FPTool tool; } tools[] = {
+        {@"Add Comment (note)", FPToolNote}, {@"Rectangle", FPToolRectangle}, {@"Ellipse", FPToolEllipse}, {@"Line", FPToolLine},
+        {@"Arrow", FPToolArrow}, {@"Pen (freehand)", FPToolPen}, {@"Polygon", FPToolPolygon}, {@"Cloud", FPToolCloud}, {@"Callout", FPToolCallout}};
+    for (const auto& t : tools) add(m, t.title, @selector(chooseTool:), nil).tag = t.tool;
+    NSMenuItem* stamp = add(m, @"Stamp", nil, nil);
+    stamp.submenu = [[NSMenu alloc] initWithTitle:@"Stamp"];
+    NSString* stamps[] = {@"APPROVED", @"FINAL", @"DRAFT", @"CONFIDENTIAL", @"NOT APPROVED", @"FOR COMMENT", @"REVIEWED"};
+    for (int i = 0; i < 7; ++i) add(stamp.submenu, stamps[i], @selector(chooseStamp:), nil).tag = i;
+    [stamp.submenu addItem:[NSMenuItem separatorItem]];
+    NSString* dated[] = {@"Date and Time", @"APPROVED with Date", @"RECEIVED with Date", @"PAID with Date"};
+    for (int i = 0; i < 4; ++i) add(stamp.submenu, dated[i], @selector(chooseStamp:), nil).tag = 10 + i;
+    [stamp.submenu addItem:[NSMenuItem separatorItem]];
+    add(stamp.submenu, @"Custom Stamp\u2026", @selector(chooseStamp:), nil).tag = 20;
+    [m addItem:[NSMenuItem separatorItem]];
+    NSString* colours[] = {@"Yellow", @"Green", @"Blue", @"Pink", @"Orange", @"Red", @"Black"};
+    NSMenuItem* dc = add(m, @"Colour", nil, nil);
+    dc.submenu = [[NSMenu alloc] initWithTitle:@"Colour"];
+    for (int i = 0; i < 7; ++i) add(dc.submenu, colours[i], @selector(setDrawingColour:), nil).tag = i;
+    NSMenuItem* hc = add(m, @"Highlight Colour", nil, nil);
+    hc.submenu = [[NSMenu alloc] initWithTitle:@"Highlight Colour"];
+    for (int i = 0; i < 7; ++i) add(hc.submenu, colours[i], @selector(setHighlightColour:), nil).tag = i;
+    NSMenuItem* lw = add(m, @"Line Width", nil, nil);
+    lw.submenu = [[NSMenu alloc] initWithTitle:@"Line Width"];
+    NSString* widths[] = {@"Thin (1 pt)", @"Medium (2 pt)", @"Thick (4 pt)"};
+    for (int i = 0; i < 3; ++i) add(lw.submenu, widths[i], @selector(setLineWidth:), nil).tag = i;
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Edit Comment\u2026", @selector(editSelectedComment:), nil);
+    add(m, @"Delete Selected Comment", @selector(deleteSelectedAnnotation:), nil);
+    add(m, @"Notes Summary (highlights and comments)\u2026", @selector(notesSummary:), nil);
+    add(m, @"Flatten: Make Comments and Fields Part of the Page\u2026", @selector(flattenComments:), nil);
+
     m = submenu(bar, @"Edit PDF");
     add(m, @"Watermark\u2026", @selector(addWatermark:), nil);
     add(m, @"Page Numbers\u2026", @selector(addPageNumbers:), nil);
@@ -267,6 +308,15 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Password Protection\u2026", @selector(protectDocument:), nil);
     add(m, @"Remove Password Protection", @selector(removeProtection:), nil);
     add(m, @"Remove Hidden Data\u2026", @selector(removeHiddenData:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    NSMenuItem* red = add(m, @"Redact", nil, nil);
+    red.submenu = [[NSMenu alloc] initWithTitle:@"Redact"];
+    add(red.submenu, @"Mark Areas to Redact", @selector(chooseTool:), nil).tag = FPToolRedact;
+    add(red.submenu, @"Mark Selected Text", @selector(markSelectionForRedaction:), nil);
+    add(red.submenu, @"Find and Mark\u2026", @selector(findAndMarkRedaction:), nil);
+    add(red.submenu, @"Apply Redactions\u2026", @selector(applyRedactions:), nil);
+    add(red.submenu, @"Clear Marks", @selector(clearRedactionMarks:), nil);
+    add(red.submenu, @"Check That the Text Is Gone\u2026", @selector(checkRedaction:), nil);
 
     m = submenu(bar, @"View");
     add(m, @"Show Sidebar", @selector(toggleThumbnails:), @"b");

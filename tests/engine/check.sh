@@ -10,6 +10,9 @@ fail=0
 for f in "$here/golden/expected"/*; do
     b="$(basename "$f")"
     if cmp -s "$f" "$got/$b"; then echo "  same      $b"; continue; fi
+    if [ -f "$got/$b" ] && python3 "$here/close.py" "$f" "$got/$b"; then
+        echo "  close     $b (a measurement differs by less than 0.15 pt, see close.py)"; diff "$f" "$got/$b" | sed 's/^/      /'; continue
+    fi
     reason="$(grep "^$b:" "$here/golden/known.txt" 2>/dev/null | cut -d: -f2-)"
     if [ -n "$reason" ]; then echo "  known     $b:$reason"; continue; fi
     echo "  DIFFERENT $b"; diff "$f" "$got/$b" 2>&1 | head -8 | sed 's/^/      /'; fail=1

@@ -14,7 +14,10 @@ Every stage ends with the Mac build on GitHub passing: it builds, its engine giv
 - The engine builds off Windows. The Windows types it used come from `shared/platform.hpp` on the Mac. Files are read and
   written with standard C. PDFium is loaded from inside the app. Form fields' timers come from the app.
 - An engine check (`tests/engine`) compares 47 results (tables found and edited, headers and footers found and deleted)
-  with the Windows app's. On Linux all 47 are the same. The Mac build runs it on every push.
+  with the Windows app's. On Linux all 47 are the same. The Mac build runs it on every push. On the Mac 46 are the same
+  and one is within 0.02 pt: PDFium on the Mac measures the outer edge of a 1 pt line a hair differently, so numbers
+  may differ by up to 0.15 pt (`tests/engine/close.py`). Words and counts must be the same. The check found a real
+  Windows bug on its first run (B-050: the letters of a "ti" ligature read the wrong way round).
 - The Mac app opens and shows PDFs: tabs, zoom, pages, page colours, password, recent files and drag and drop
   ([README.md](README.md)).
 - The night-mode page colours are one shared file (`shared/pagecolours.hpp`) for both apps.

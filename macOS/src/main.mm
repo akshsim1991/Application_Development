@@ -4,6 +4,7 @@
 //   --tables / --tableedit / --hfremove ...                     the engine's test commands (shared/selftest.hpp)
 #import <Cocoa/Cocoa.h>
 #import "AppDelegate.h"
+#import "Settings.h"
 #import "Render.h"
 #include <cmath>
 #include <cstdio>
@@ -67,6 +68,7 @@ int main(int argc, const char* argv[]) {
             [a runModal];
             return 1;
         }
+        [[FPDocumentController alloc] init];   // the first one made is the app's document controller (Settings.mm)
         FPAppDelegate* delegate = [[FPAppDelegate alloc] init];
         NSMutableArray<NSString*>* files = [NSMutableArray array];
         for (const auto& s : plain) [files addObject:[NSString stringWithUTF8String:s.c_str()]];

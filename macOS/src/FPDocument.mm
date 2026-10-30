@@ -2,6 +2,7 @@
 #import "WindowController.h"
 #include "platform.hpp"
 #import "Trace.h"
+#import "Settings.h"
 
 NSNotificationName const FPDocumentReloaded = @"FPDocumentReloaded";
 
@@ -50,7 +51,7 @@ NSNotificationName const FPDocumentReloaded = @"FPDocumentReloaded";
 - (void)saveToURL:(NSURL*)url ofType:(NSString*)type forSaveOperation:(NSSaveOperationType)op completionHandler:(void (^)(NSError*))done {
     [super saveToURL:url ofType:type forSaveOperation:op completionHandler:^(NSError* e) {
         if (!e && op != NSSaveToOperation && self->_pdf) self->_pdf->savedAs(platform::wide(url.fileSystemRepresentation));
-        if (!e) [self updateChangeCount:NSChangeCleared];
+        if (!e) { [self updateChangeCount:NSChangeCleared]; FPRecoveryForget(self); }
         done(e);
     }];
 }
@@ -62,6 +63,11 @@ NSNotificationName const FPDocumentReloaded = @"FPDocumentReloaded";
 }
 
 - (Document*)pdf { return _pdf.get(); }
+
+- (void)close {
+    FPRecoveryForget(self);
+    [super close];
+}
 
 - (void)makeWindowControllers {
     FPTrace(@"makeWindowControllers %@", self.displayName);

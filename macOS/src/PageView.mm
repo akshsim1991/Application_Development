@@ -1,5 +1,6 @@
 #import "PageView.h"
 #import "Render.h"
+#import "Settings.h"
 #include "platform.hpp"
 #include <algorithm>
 #include <cmath>
@@ -506,7 +507,7 @@ constexpr size_t kCachedPages = 10;
     }
     auto it = _cache.find(page);
     if (it != _cache.end()) return it->second;
-    if (_cache.size() >= kCachedPages) {   // forget the page farthest from the one being drawn
+    if (_cache.size() >= static_cast<size_t>(FPPagesKept())) {   // forget the page farthest from the one being drawn
         auto far = _cache.begin();
         for (auto i = _cache.begin(); i != _cache.end(); ++i)
             if (std::abs(i->first - page) > std::abs(far->first - page)) far = i;
@@ -524,7 +525,7 @@ constexpr size_t kCachedPages = 10;
 }
 
 - (void)drawRect:(NSRect)dirty {
-    [[NSColor underPageBackgroundColor] setFill];
+    [FPThemeSurround() setFill];
     NSRectFill(dirty);
     if (!_doc) return;
     const double scale = self.window ? self.window.backingScaleFactor : 2.0;

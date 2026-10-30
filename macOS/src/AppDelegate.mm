@@ -6,6 +6,7 @@
 #import "NewPdf.h"
 #import "Palette.h"
 #import "FolderSearch.h"
+#import "Settings.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -18,6 +19,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 @implementation FPAppDelegate
 
 - (void)applicationWillFinishLaunching:(NSNotification*)n {
+    FPApplyTheme();
     g_timers = [NSMutableDictionary dictionary];
     // Form fields need timers and pointer shapes from the app (Windows gives them through its timer window).
     Document::FormHost host;
@@ -66,6 +68,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
         });
         return;
     }
+    FPStartRecovery();   // offers what a crash left, then keeps copies of unsaved changes
     // A quiet look for a new version (it asks only when there is one), as the Windows app does.
     if ([self automaticUpdates]) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ FPCheckForUpdates(NO); });
     // Started with nothing to open (and no windows brought back from last time): the start window, as on Windows.
@@ -118,6 +121,10 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 }
 
 - (BOOL)applicationSupportsSecureRestorableState:(NSApplication*)app { return YES; }
+
+- (void)applicationWillTerminate:(NSNotification*)n { FPRecoveryClearAll(); }   // a normal quit leaves nothing to recover
+
+- (IBAction)showSettings:(id)sender { FPShowSettings(); }
 
 // ---- reading colours: one setting, applied to every window at once ----
 
@@ -218,6 +225,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     services.submenu = [[NSMenu alloc] init];
     NSApp.servicesMenu = services.submenu;
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Settings\u2026", @selector(showSettings:), @",").target = self;
     add(m, @"Set as Default PDF App\u2026", @selector(setAsDefaultApp:), nil).target = self;
     [m addItem:[NSMenuItem separatorItem]];
     add(m, [@"Hide " stringByAppendingString:app], @selector(hide:), @"h");

@@ -2,6 +2,7 @@
 #import "FPDocument.h"
 #import "PageView.h"
 #import "Sidebar.h"
+#import "Settings.h"
 #import "Trace.h"
 #include <cmath>
 #include "platform.hpp"
@@ -33,6 +34,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     NSSplitView* _split;
     NSSearchField* _find;
     NSTextField* _status;
+    NSString* _tabMark;   // this tab's colour (Settings > Appearance: random tab colours)
     std::vector<TextHit> _hits;
     int _hit;
     std::wstring _searched;
@@ -62,7 +64,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         scroll.hasHorizontalScroller = YES;
         scroll.autohidesScrollers = YES;
         scroll.drawsBackground = YES;
-        scroll.backgroundColor = [NSColor underPageBackgroundColor];
+        scroll.backgroundColor = FPThemeSurround();
         _view = [[FPPageView alloc] initWithFrame:scroll.contentView.bounds];
         _view.colours = savedColours();
         scroll.documentView = _view;
@@ -116,6 +118,10 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(viewChanged:) name:FPPageViewChanged object:_view];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(coloursChanged:) name:FPPageColoursChanged object:nil];
         [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(reloaded:) name:FPDocumentReloaded object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(settingsChanged:) name:FPSettingsChanged object:nil];
+        [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(settingsChanged:) name:NSWindowDidBecomeKeyNotification object:nil];
+        static const char* marks[] = {"\U0001F7E5", "\U0001F7E7", "\U0001F7E8", "\U0001F7E9", "\U0001F7E6", "\U0001F7EA"};   // coloured squares
+        _tabMark = [NSString stringWithUTF8String:marks[arc4random_uniform(6)]];
         // The document links itself to this window (addWindowController: sets the document). Setting it here first made
         // that call think the window was already added, so it was never shown.
         FPTrace(@"window made");
@@ -301,9 +307,40 @@ static NSImage* symbol(NSString* name, NSString* description) {
     [self viewChanged:nil];
 }
 
+// ---- settings that change how the window looks ----
+
+- (void)settingsChanged:(NSNotification*)n {
+    NSScrollView* sv = _view.enclosingScrollView;
+    sv.backgroundColor = FPThemeSurround();
+    [_view setNeedsDisplay:YES];
+    // colourful toolbar icons, as on Windows: each its own colour; off, the text colour
+    NSDictionary<NSToolbarItemIdentifier, NSColor*>* tints = @{@"sidebar" : NSColor.systemBlueColor, @"pages" : NSColor.systemGreenColor,
+                                                               @"zoom" : NSColor.systemOrangeColor, @"find" : NSColor.systemPurpleColor};
+    for (NSToolbarItem* item in self.window.toolbar.items) {
+        NSColor* tint = FPColourIcons() ? tints[item.itemIdentifier] : nil;
+        for (NSView* v in [item.view isKindOfClass:[NSStackView class]] ? ((NSStackView*)item.view).views : @[ item.view ?: [NSView new] ])
+            if ([v isKindOfClass:[NSButton class]] || [v isKindOfClass:[NSSegmentedControl class]]) ((NSControl*)v).contentTintColor = tint;
+    }
+    for (NSWindow* w in self.window.tabbedWindows ?: @[ self.window ])
+        [(NSWindowController*)w.windowController synchronizeWindowTitleWithDocumentName];
+}
+
+// The tab's title: its number and colour mark when the settings ask for them ("2. Report.pdf").
+- (NSString*)windowTitleForDocumentDisplayName:(NSString*)name {
+    NSString* t = name;
+    if (FPTabNumbers()) {
+        NSArray<NSWindow*>* tabs = self.window.tabbedWindows;
+        const NSUInteger i = tabs ? [tabs indexOfObject:self.window] : 0;
+        t = [NSString stringWithFormat:@"%lu. %@", (unsigned long)(i == NSNotFound ? 1 : i + 1), t];
+    }
+    if (FPTabColours()) t = [NSString stringWithFormat:@"%@ %@", _tabMark, t];
+    return t;
+}
+
 // ---- reading positions: each file opens where it was last read (the last 100 files), as on Windows ----
 
 - (void)restorePosition {
+    if (!FPRestorePositions()) return;
     NSString* path = [(NSDocument*)self.document fileURL].path;
     NSDictionary* all = [NSUserDefaults.standardUserDefaults dictionaryForKey:@"positions"];
     NSArray* pos = path ? all[path] : nil;

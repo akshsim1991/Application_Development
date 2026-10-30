@@ -71,6 +71,7 @@ bool visionRecognise(const std::vector<unsigned char>& grey, int w, int h, const
         }
         // Vision gives lines; each word's box comes from its range in the line (boxes are 0..1, bottom left 0, 0).
         for (VNRecognizedTextObservation* line in req.results) {
+            const size_t lineStart = words.size();
             VNRecognizedText* best = [line topCandidates:1].firstObject;
             if (!best || best.confidence < 0.25f) continue;
             NSString* text = best.string;
@@ -92,6 +93,9 @@ bool visionRecognise(const std::vector<unsigned char>& grey, int w, int h, const
                 if (!words.empty() && words.back().text == wd.text && words.back().x0 == wd.x0) return;   // same word, two ranges
                 words.push_back(wd);
             }];
+            // Vision's word boxes reach to the next word, so readers would see no gap: every word but the line's last
+            // carries its space (as text, in its box)
+            for (size_t i = lineStart; i + 1 < words.size(); ++i) words[i].text += L' ';
         }
         return true;
     }

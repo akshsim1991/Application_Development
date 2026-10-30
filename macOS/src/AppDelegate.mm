@@ -1,5 +1,6 @@
 #import "AppDelegate.h"
 #import "WindowController.h"
+#import "StartWindow.h"
 #import "Trace.h"
 #include <algorithm>
 #include <cstdio>
@@ -45,16 +46,16 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     // The build check (FEATHER_UI_CHECK=folder): after a moment, report the windows and keep a picture of the first one.
     if (const char* dir = getenv("FEATHER_UI_CHECK")) {
         NSString* out = [NSString stringWithUTF8String:dir];
+        if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self uiCheckInto:out];
             [NSApp terminate:nil];
         });
         return;
     }
-    // Started with nothing to open (and no windows brought back from last time): the Open window.
+    // Started with nothing to open (and no windows brought back from last time): the start window, as on Windows.
     dispatch_async(dispatch_get_main_queue(), ^{
-        if ([NSDocumentController sharedDocumentController].documents.count == 0 && self.filesToOpen.count == 0)
-            [[NSDocumentController sharedDocumentController] openDocument:nil];
+        if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
     });
 }
 
@@ -76,6 +77,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     }
     [r appendFormat:@"active %d screens %lu\n", NSApp.isActive, (unsigned long)NSScreen.screens.count];
     [r writeToFile:[dir stringByAppendingPathComponent:@"report.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    if (!first) for (NSWindow* w in NSApp.windows) if (w.isVisible) { first = w; break; }   // the start window
     NSView* v = first.contentView.superview ?: first.contentView;   // with the title bar and toolbar
     if (!v) return;
     NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
@@ -89,7 +91,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 - (BOOL)applicationOpenUntitledFile:(NSApplication*)sender { return NO; }
 
 - (BOOL)applicationShouldHandleReopen:(NSApplication*)app hasVisibleWindows:(BOOL)visible {
-    if (!visible) [[NSDocumentController sharedDocumentController] openDocument:nil];
+    if (!visible) [[FPStartWindowController shared] showIfNoDocuments];   // the Dock icon clicked with no window open
     return NO;
 }
 
@@ -107,6 +109,11 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
         item.state = [[NSUserDefaults standardUserDefaults] integerForKey:FPPageColoursKey] == item.tag ? NSControlStateValueOn
                                                                                                        : NSControlStateValueOff;
     return YES;
+}
+
+- (IBAction)showStartPage:(id)sender {
+    [[FPStartWindowController shared] refresh];
+    [[FPStartWindowController shared] showWindow:nil];
 }
 
 // ---- help and About ----
@@ -209,6 +216,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Zoom", @selector(performZoom:), nil);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Bring All to Front", @selector(arrangeInFront:), nil);
+    add(m, @"Start Page", @selector(showStartPage:), @"1", NSEventModifierFlagCommand | NSEventModifierFlagShift).target = self;
     NSApp.windowsMenu = m;
 
     m = submenu(bar, @"Help");

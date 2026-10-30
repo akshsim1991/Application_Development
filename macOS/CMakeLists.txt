@@ -13,6 +13,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/PageView.mm
   src/Render.mm
   src/Trace.mm
+  src/StartWindow.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")

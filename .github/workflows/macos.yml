@@ -43,13 +43,15 @@ jobs:
         run: |
           app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
           in="$PWD/tests/engine/golden/in"
+          FEATHER_UI_CHECK="$PWD/ui-start" "$app"
           FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
-          cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
+          cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
+          grep -q 'window NSWindow "Feather PDF".*visible 1' ui-start/report.txt
           grep -q "^documents 2" ui/report.txt
           grep -q "tabs 2" ui/report.txt
           grep -q "Page 1 of 1" ui-dark/report.txt
-          for d in ui ui-dark; do
+          for d in ui-start ui ui-dark; do
             sips -s format jpeg -s formatOptions 50 $d/window.png --out $d/window.jpg >/dev/null
             echo "SCREENSHOT-BEGIN $d"; base64 -b 120 -i $d/window.jpg; echo "SCREENSHOT-END"
           done

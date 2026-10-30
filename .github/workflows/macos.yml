@@ -64,6 +64,7 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-rulers" FEATHER_UI_ACTION=toggleRulers: "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-ocr" FEATHER_UI_ACTION=recogniseText: "$app" "$in/hf_basic.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
+          for d in ui-*; do echo "== $d"; cat $d/trace.txt 2>/dev/null; done
           grep -q 'window NSWindow "Feather PDF".*visible 1' ui-start/report.txt
           grep -q "^documents 2" ui/report.txt
           grep -q "tabs 2" ui/report.txt

@@ -460,6 +460,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (_sidebar.hidden) [self toggleThumbnails:nil];
     [_sidebar showBookmarks:NO];
     [_sidebar selectAllPages];
+    FPTrace(@"thumbnails selected: %lu", (unsigned long)[_sidebar selectedPages].count);
 }
 
 - (void)setSidebarShown:(BOOL)shown {

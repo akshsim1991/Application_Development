@@ -54,6 +54,11 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
             tv.editable = NO;
             tv.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
             tv.textColor = NSColor.textColor;
+            NSMutableParagraphStyle* ps = [[NSMutableParagraphStyle alloc] init];
+            ps.tabStops = @[];
+            ps.defaultTabInterval = 120;   // the columns of a table report line up
+            tv.defaultParagraphStyle = ps;
+            tv.typingAttributes = @{NSParagraphStyleAttributeName : ps, NSFontAttributeName : tv.font, NSForegroundColorAttributeName : NSColor.textColor};
             tv.string = ns(text);
             a.accessoryView = sv;
         } else a.informativeText = ns(text);

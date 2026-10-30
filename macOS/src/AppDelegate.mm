@@ -34,8 +34,8 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     [NSApp activateIgnoringOtherApps:YES];   // to the front, also when started from Terminal
     for (NSString* f in self.filesToOpen)
         [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:[NSURL fileURLWithPath:f] display:YES
-                                                                     completionHandler:^(NSDocument*, BOOL, NSError* e) {
-                                                                         if (!e) return;
+                                                                     completionHandler:^(NSDocument* doc, BOOL wasOpen, NSError* e) {
+                                                                         if (!e) { if (wasOpen) [doc showWindows]; return; }
                                                                          fprintf(stderr, "could not open %s: %s\n", f.UTF8String,
                                                                                  e.localizedDescription.UTF8String);
                                                                          [NSApp presentError:e];
@@ -64,13 +64,15 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     NSArray<NSDocument*>* docs = [NSDocumentController sharedDocumentController].documents;
     [r appendFormat:@"documents %lu\n", (unsigned long)docs.count];
     NSWindow* first = nil;
+    for (NSDocument* d in docs) [r appendFormat:@"document %@ windows %lu\n", d.displayName, (unsigned long)d.windowControllers.count];
     for (NSWindow* w in NSApp.windows) {
-        if (!w.isVisible) continue;
-        [r appendFormat:@"window \"%@\" subtitle \"%@\" size %.0fx%.0f tabs %lu key %d\n", w.title,
-                        [w respondsToSelector:@selector(subtitle)] ? w.subtitle : @"", w.frame.size.width, w.frame.size.height,
-                        (unsigned long)(w.tabbedWindows.count ?: 1), w.isKeyWindow];
+        [r appendFormat:@"window %@ \"%@\" subtitle \"%@\" size %.0fx%.0f at %.0f,%.0f visible %d tabs %lu key %d doc %d\n",
+                        NSStringFromClass([w class]), w.title, [w respondsToSelector:@selector(subtitle)] ? w.subtitle : @"",
+                        w.frame.size.width, w.frame.size.height, w.frame.origin.x, w.frame.origin.y, w.isVisible,
+                        (unsigned long)(w.tabbedWindows.count ?: 1), w.isKeyWindow, w.windowController.document != nil];
         if (!first && w.windowController.document) first = w;
     }
+    [r appendFormat:@"active %d screens %lu\n", NSApp.isActive, (unsigned long)NSScreen.screens.count];
     [r writeToFile:[dir stringByAppendingPathComponent:@"report.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
     NSView* v = first.contentView.superview ?: first.contentView;   // with the title bar and toolbar
     if (!v) return;

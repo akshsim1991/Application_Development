@@ -41,7 +41,7 @@ jobs:
           in="$PWD/tests/engine/golden/in"
           FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
-          cat ui/report.txt ui-dark/report.txt
+          cat ui/report.txt; echo; cat ui-dark/report.txt
           grep -q "^documents 2" ui/report.txt
           grep -q "tabs 2" ui/report.txt
           grep -q "Page 1 of 1" ui-dark/report.txt

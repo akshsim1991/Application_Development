@@ -706,6 +706,51 @@ bool tableAt(Document& d, int page, double x, double y, Table& out, std::wstring
     return true;
 }
 
+bool tableIn(Document& d, int page, double l, double b, double r, double t, Table& out, std::wstring* why) {
+    if (l > r) std::swap(l, r);
+    if (b > t) std::swap(b, t);
+    // a table found by the search that lies mostly in the box
+    for (const Table& x : detect(d, page)) {
+        const double ow = std::min(r, x.right()) - std::max(l, x.left()), oh = std::min(t, x.top()) - std::max(b, x.bottom());
+        if (ow <= 0 || oh <= 0 || ow * oh < 0.6 * (x.right() - x.left()) * (x.top() - x.bottom())) continue;
+        return tableAt(d, page, (x.left() + x.right()) / 2, (x.top() + x.bottom()) / 2, out, why);
+    }
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const PageText pt = readText(d, page);
+    std::vector<int> inside;
+    for (size_t i = 0; i < pt.chars.size(); ++i) {
+        const Char& c = pt.chars[i];
+        const double cx = (c.l + c.r) / 2, cy = (c.b + c.t) / 2;
+        if (cx > l && cx < r && cy > b && cy < t) inside.push_back(static_cast<int>(i));
+    }
+    std::vector<TLine> lines = linesOf(pt, inside);
+    std::sort(lines.begin(), lines.end(), [](const TLine& a, const TLine& c) { return a.base > c.base; });
+    if (lines.empty()) {
+        if (why) *why = L"There is no text in that box. On a scanned page, recognise the text first (Edit PDF > Recognise text (OCR)).";
+        return false;
+    }
+    Table x;
+    x.page = page;
+    x.colX = columnsFromText(lines, l, r);
+    x.rowY = rowsFromText(lines, t, b);
+    x.cells.assign(static_cast<size_t>(x.rows()) * x.cols(), Cell{});
+    std::vector<Seg> hs0, vs0;
+    std::vector<Box> fills;
+    collectPaths(pg, hs0, vs0, fills);
+    const std::vector<Seg> hs = joinLines(hs0, 1.0), vs = joinLines(vs0, 1.0);
+    initRules(x, false);
+    for (int k = 0; k <= x.rows(); ++k) x.hRule[k] = coverage(hs, x.rowY[k], x.left(), x.right(), 3.0) > 0.6;
+    for (int k = 0; k <= x.cols(); ++k) x.vRule[k] = coverage(vs, x.colX[k], x.bottom(), x.top(), 3.0) > 0.6;
+    lineStyle(x, hs, vs);
+    x.foundL = l; x.foundR = r; x.foundT = t; x.foundB = b;
+    if (!fillCells(d, x, pt, fills, why) || !takeGraphics(x, hs, vs, fills, pg, why)) return false;
+    std::sort(x.objects.begin(), x.objects.end());
+    x.objects.erase(std::unique(x.objects.begin(), x.objects.end()), x.objects.end());
+    out = std::move(x);
+    return true;
+}
+
 // ---------------------------------------------------------------- changes to the grid
 
 void anchorOf(const Table& t, int r, int c, int& ar, int& ac) {

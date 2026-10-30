@@ -483,6 +483,24 @@ std::vector<RECT> Viewer::rectsFor(int page, int start, int count) const {
 }
 
 void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip) {
+    // the tables found on the page, while a table tool is chosen: a dashed frame and a light tint, so it is clear what can
+    // be clicked
+    if (tableOutlines && (tool_ == Tool::TableEdit || tool_ == Tool::TableDelete)) {
+        const COLORREF col = tool_ == Tool::TableDelete ? RGB(0xD0, 0x30, 0x30) : RGB(0x1F, 0x6F, 0xEB);
+        for (const annot::RectD& tr : tableOutlines(page)) {
+            RECT r = annotScreenRect(page, tr);
+            InflateRect(&r, 4, 4);
+            RECT v;
+            if (IntersectRect(&v, &r, &clip)) fillAlpha(dc, v, col, 28);
+            LOGBRUSH lb{BS_SOLID, col, 0};
+            const DWORD dash[2] = {6, 4};
+            HPEN pen = ExtCreatePen(PS_GEOMETRIC | PS_USERSTYLE | PS_ENDCAP_FLAT, 2, &lb, 2, dash);
+            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+            Rectangle(dc, r.left, r.top, r.right, r.bottom);
+            SelectObject(dc, ob); SelectObject(dc, op);
+            DeleteObject(pen);
+        }
+    }
     auto paintRange = [&](int start, int count, COLORREF col, BYTE alpha) {
         for (const RECT& r : rectsFor(page, start, count)) {
             RECT v;
@@ -893,12 +911,13 @@ void Viewer::drawPreview(HDC dc) {
     }
     if (!drawing_) return;
     const int w = std::max(1, static_cast<int>(std::lround(penWidth_ * pxPerPt())));
-    const bool boxTool = tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo || tool_ == Tool::FormRadio || tool_ == Tool::FormList || tool_ == Tool::FormDate || tool_ == Tool::PicCrop;
+    const bool boxTool = tool_ == Tool::TableEdit || tool_ == Tool::TableDelete || tool_ == Tool::Redact || tool_ == Tool::Link || tool_ == Tool::CopyArea || tool_ == Tool::CropBox || tool_ == Tool::FormText || tool_ == Tool::FormCheck || tool_ == Tool::FormCombo || tool_ == Tool::FormRadio || tool_ == Tool::FormList || tool_ == Tool::FormDate || tool_ == Tool::PicCrop;
     const COLORREF previewCol = tool_ == Tool::Redact ? RGB(0xD0, 0x10, 0x10) : boxTool ? RGB(0x30, 0x80, 0xFF) : (tool_ == Tool::Ruler || tool_ == Tool::Protractor) ? RGB(0x00, 0x90, 0x60) : penColor_;
     HPEN pen = CreatePen(boxTool ? PS_DASH : PS_SOLID, boxTool || tool_ == Tool::Ruler || tool_ == Tool::Protractor ? 1 : w, previewCol);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
     switch (tool_) {
+        case Tool::TableEdit: case Tool::TableDelete:
         case Tool::Rectangle: case Tool::Redact: case Tool::Link: case Tool::CopyArea: case Tool::CropBox: case Tool::FormText: case Tool::FormCheck: case Tool::FormCombo: case Tool::FormRadio: case Tool::FormList: case Tool::FormDate: case Tool::Cloud: case Tool::PicCrop: Rectangle(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Ellipse: Ellipse(dc, drawStart_.x, drawStart_.y, drawNow_.x, drawNow_.y); break;
         case Tool::Line: case Tool::Arrow: case Tool::Ruler: case Tool::Protractor: case Tool::Callout:
@@ -1308,7 +1327,8 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (toPage(cx, cy, drawPage_, end) && onEvent) {
                     Event e; e.page = drawPage_; e.tool = tool_;
                     const bool moved = std::abs(cx - drawStart_.x) + std::abs(cy - drawStart_.y) > 3;
-                    if (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture || tool_ == Tool::Stamp || tool_ == Tool::TableDelete || tool_ == Tool::TablePlace || tool_ == Tool::TableEdit || tool_ == Tool::EditPara) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
+                    const bool tableBox = (tool_ == Tool::TableEdit || tool_ == Tool::TableDelete) && moved;   // a box drawn around a table
+                    if (!tableBox && (tool_ == Tool::Comment || tool_ == Tool::AddText || tool_ == Tool::EditText || tool_ == Tool::Picture || tool_ == Tool::Stamp || tool_ == Tool::TableDelete || tool_ == Tool::TablePlace || tool_ == Tool::TableEdit || tool_ == Tool::EditPara)) { e.kind = Event::Click; e.pts = {drawPts_.front()}; onEvent(e); }
                     else if (moved) {
                         e.kind = Event::Draw;
                         e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};

@@ -61,6 +61,10 @@ std::vector<Table> detect(Document& d, int page);
 // The table around a page point. False when there is none (`why` says so, or why it cannot be edited).
 bool tableAt(Document& d, int page, double x, double y, Table& out, std::wstring* why = nullptr);
 
+// The table in a box drawn on the page (page coordinates): a table found there, else the text inside read as rows (its lines)
+// and columns (where it lines up). For tables the automatic search misses.
+bool tableIn(Document& d, int page, double l, double b, double r, double t, Table& out, std::wstring* why = nullptr);
+
 // ---- changes to the grid (they keep the table's outer size unless they say otherwise) ----
 void setBorders(Table& t, Borders b);
 Borders bordersOf(const Table& t);                // the preset the lines match (All when they match none exactly)

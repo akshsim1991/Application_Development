@@ -48,6 +48,8 @@ public:
         POINT screen{};                   // for ContextMenu
     };
     std::function<void(const Event&)> onEvent;
+    // The tables of a page (page coordinates), outlined while the Edit table or Delete table tool is chosen.
+    std::function<std::vector<annot::RectD>(int page)> tableOutlines;
     // Called before a mouse press is handled; returning true swallows it (side by side: the press makes this pane the active one).
     std::function<bool(UINT msg, WPARAM w, LPARAM l)> onPress;
     void setTool(Tool t);

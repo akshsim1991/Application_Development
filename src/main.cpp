@@ -51,6 +51,7 @@
 #include "inlineedit.hpp"
 #include "startpage.hpp"
 #include "tables.hpp"
+#include "tableeditor.hpp"
 #include "icons.hpp"
 
 namespace {
@@ -757,8 +758,8 @@ const wchar_t* toolHint(Viewer::Tool t) {
         case T::Link: return L"Drag a box over the text or area that should become a link. Esc stops.";
         case T::CopyArea: return L"Drag a box around the area to copy as a picture. Esc stops.";
         case T::CropBox: return L"Drag a box around the part of the page to keep. Esc stops.";
-        case T::TableDelete: return L"Click a table that was inserted with Feather PDF to delete it. Esc stops.";
-        case T::TableEdit: return L"Click a table that was inserted with Feather PDF to change it. Esc stops.";
+        case T::TableDelete: return L"The tables found are outlined: click one to delete it, or drag a box around a table that is not outlined. Esc stops.";
+        case T::TableEdit: return L"The tables found are outlined: click one to edit it, or drag a box around a table that is not outlined. Esc stops.";
         case T::TablePlace: return L"Click where the top-left corner of the table should go. Esc cancels.";
         case T::Select: return L"Click a picture, paragraph or table to pick it, then drag it or its corners. Esc stops.";
         case T::Polygon: return L"Click each corner; double-click, or click the first corner again, to finish. Esc stops.";
@@ -2613,7 +2614,7 @@ void showToolsMenu(const RECT& anchor) {
     { HMENU pm = CreatePopupMenu(); addPictureItems(pm); AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pm), L"Picture (turn, crop, brightness...)"); }
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
     add(N_TABLE_INS, L"Insert table...");
-    add(N_TABLE_EDIT, L"Edit a table (text, rows, width)...");
+    add(N_TABLE_EDIT, L"Edit a table (any table: found automatically)...");
     add(N_TABLE_DEL, L"Delete table", true, app.tool == Viewer::Tool::TableDelete);
     sep();
     add(T_ADD_TEXT, L"Add a text box", true, app.tool == Viewer::Tool::AddText);
@@ -3639,8 +3640,52 @@ void pictureAction(int cmd) {
 }
 
 // ---- events of the new tools ----
+// ---- tables on any page ----
+struct { const Document* doc = nullptr; int revision = -1; std::map<int, std::vector<annot::RectD>> pages; } g_tableCache;
+
+// The tables found on a page, remembered until the document changes (outlined while a table tool is chosen).
+std::vector<annot::RectD> tableOutlines(int page) {
+    Document* d = activeDoc();
+    if (!d) return {};
+    if (g_tableCache.doc != d || g_tableCache.revision != d->revision()) { g_tableCache.doc = d; g_tableCache.revision = d->revision(); g_tableCache.pages.clear(); }
+    auto it = g_tableCache.pages.find(page);
+    if (it != g_tableCache.pages.end()) return it->second;
+    std::vector<annot::RectD> rects;
+    for (const tables::Table& t : tables::detect(*d, page)) rects.push_back({t.left(), t.bottom(), t.right(), t.top()});
+    g_tableCache.pages[page] = rects;
+    return rects;
+}
+
+void afterTableChange(Document& d, int page) {
+    d.resetText(page);
+    app.viewer.documentChanged();
+    app.sidebar.refresh();
+    refresh();
+}
+
+void editTable(Document& d, tables::Table t) {
+    const PageSize& ps = d.pageSize(t.page);
+    const tableeditor::Result r = tableeditor::run(app.wnd, app.inst, t, ps.w, ps.h, app.dpi);
+    if (r == tableeditor::Result::Delete) { if (tables::remove(d, t)) afterTableChange(d, t.page); return; }
+    if (r != tableeditor::Result::Apply) return;
+    std::wstring why;
+    double grew = 0;
+    if (!tables::write(d, t, &why, &grew)) { MessageBoxW(app.wnd, (L"The table could not be changed. " + why).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+    afterTableChange(d, t.page);
+    if (grew > 0.5) notice(L"The table got longer; what was below it moved down with it.");
+}
+
 bool featureDraw(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
+        case Viewer::Tool::TableEdit: case Viewer::Tool::TableDelete: {   // a box drawn around a table
+            if (e.pts.size() < 2) return true;
+            tables::Table t;
+            std::wstring why;
+            if (!tables::tableIn(d, e.page, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y, t, &why)) { notice(why); return true; }
+            if (e.tool == Viewer::Tool::TableEdit) editTable(d, t);
+            else if (MessageBoxW(app.wnd, L"Delete this table from the page?", kAppName, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES && tables::remove(d, t)) afterTableChange(d, t.page);
+            return true;
+        }
         case Viewer::Tool::Select: {
             if (app.sel.page != e.page || e.pts.size() < 4) return true;
             if (pageobj::transformGroup(d, e.page, app.sel.objects, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y, e.pts[2].x, e.pts[2].y, e.pts[3].x, e.pts[3].y)) {
@@ -3748,25 +3793,13 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             editParagraphInPlace(d, hit, clickPoint(e.page, e.pts.front()));
             return true;
         }
-        case Viewer::Tool::TableEdit: {
-            pageobj::TableHit hit = pageobj::tableAt(d, e.page, e.pts.front().x, e.pts.front().y);
-            if (!hit.found) { MessageBoxW(app.wnd, L"No table made by Feather PDF was found there.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
-            pageobj::TableSpec t = hit.spec;
-            if (tableDialog(t, L"Edit table", L"Apply")) {
-                d.beginChange();
-                pageobj::removeTable(d, e.page, hit.id, false);
-                if (pageobj::addTable(d, e.page, hit.left, hit.top, t, false)) { d.resetText(e.page); app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
-                else { d.cancelChange(); }
-            }
-            setTool(Viewer::Tool::TableEdit);
-            return true;
-        }
-        case Viewer::Tool::TableDelete: {
-            pageobj::TableHit hit = pageobj::tableAt(d, e.page, e.pts.front().x, e.pts.front().y);
-            if (!hit.found) { MessageBoxW(app.wnd, L"No table made by Feather PDF was found there.", kAppName, MB_OK | MB_ICONINFORMATION); return true; }
-            if (pageobj::removeTable(d, e.page, hit.id)) { app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
-            setTool(Viewer::Tool::TableDelete);
-            return true;
+        case Viewer::Tool::TableEdit: case Viewer::Tool::TableDelete: {
+            tables::Table t;
+            std::wstring why;
+            if (!tables::tableAt(d, e.page, e.pts.front().x, e.pts.front().y, t, &why)) { notice(why + L" Or drag a box around the table."); return true; }
+            if (e.tool == Viewer::Tool::TableEdit) editTable(d, t);
+            else if (MessageBoxW(app.wnd, L"Delete this table from the page?", kAppName, MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES && tables::remove(d, t)) afterTableChange(d, t.page);
+            return true;   // the tool stays on: the next table can be clicked
         }
         default: return false;
     }
@@ -5496,6 +5529,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.viewer.setOnChange(onViewerChange, nullptr);
             SetTimer(h, TIMER_AUTOSAVE, 20000, nullptr);
             app.viewer.onEvent = onViewerEvent;
+            app.viewer.tableOutlines = tableOutlines;
             app.viewer.onJump = onJump;
             app.viewer.onUri = openUri;
             app.viewer2.create(h, app.inst);

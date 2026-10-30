@@ -1,6 +1,8 @@
 #import "AppDelegate.h"
 #import "WindowController.h"
 #include <algorithm>
+#include <cstdio>
+#include <cstdlib>
 #include "document.hpp"
 
 static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timers (blinking caret, scripts)
@@ -33,13 +35,49 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     for (NSString* f in self.filesToOpen)
         [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:[NSURL fileURLWithPath:f] display:YES
                                                                      completionHandler:^(NSDocument*, BOOL, NSError* e) {
-                                                                         if (e) [NSApp presentError:e];
+                                                                         if (!e) return;
+                                                                         fprintf(stderr, "could not open %s: %s\n", f.UTF8String,
+                                                                                 e.localizedDescription.UTF8String);
+                                                                         [NSApp presentError:e];
                                                                      }];
+    // The build check (FEATHER_UI_CHECK=folder): after a moment, report the windows and keep a picture of the first one.
+    if (const char* dir = getenv("FEATHER_UI_CHECK")) {
+        NSString* out = [NSString stringWithUTF8String:dir];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            [self uiCheckInto:out];
+            [NSApp terminate:nil];
+        });
+        return;
+    }
     // Started with nothing to open (and no windows brought back from last time): the Open window.
     dispatch_async(dispatch_get_main_queue(), ^{
         if ([NSDocumentController sharedDocumentController].documents.count == 0 && self.filesToOpen.count == 0)
             [[NSDocumentController sharedDocumentController] openDocument:nil];
     });
+}
+
+// Writes report.txt (documents, windows, tabs, title, subtitle) and window.png, the first document window as drawn (the
+// app draws it into a picture itself, so no screen-recording permission is needed).
+- (void)uiCheckInto:(NSString*)dir {
+    [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSMutableString* r = [NSMutableString string];
+    NSArray<NSDocument*>* docs = [NSDocumentController sharedDocumentController].documents;
+    [r appendFormat:@"documents %lu\n", (unsigned long)docs.count];
+    NSWindow* first = nil;
+    for (NSWindow* w in NSApp.windows) {
+        if (!w.isVisible) continue;
+        [r appendFormat:@"window \"%@\" subtitle \"%@\" size %.0fx%.0f tabs %lu key %d\n", w.title,
+                        [w respondsToSelector:@selector(subtitle)] ? w.subtitle : @"", w.frame.size.width, w.frame.size.height,
+                        (unsigned long)(w.tabbedWindows.count ?: 1), w.isKeyWindow];
+        if (!first && w.windowController.document) first = w;
+    }
+    [r writeToFile:[dir stringByAppendingPathComponent:@"report.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+    NSView* v = first.contentView.superview ?: first.contentView;   // with the title bar and toolbar
+    if (!v) return;
+    NSBitmapImageRep* rep = [v bitmapImageRepForCachingDisplayInRect:v.bounds];
+    [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
+    [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[dir stringByAppendingPathComponent:@"window.png"]
+                                                                            atomically:YES];
 }
 
 // No empty documents: Feather PDF opens files.

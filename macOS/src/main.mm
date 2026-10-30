@@ -40,7 +40,8 @@ int main(int argc, const char* argv[]) {
         std::vector<std::string> plain;
         for (size_t i = 0; i < args.size(); ++i) {
             if (args[i].rfind("-psn_", 0) == 0) continue;
-            if (args[i].rfind("-NS", 0) == 0 || args[i].rfind("-Apple", 0) == 0) { ++i; continue; }
+            // "-key value": a setting for this run (macOS reads it into the user defaults), e.g. -pageColours 1
+            if (args[i].size() > 1 && args[i][0] == '-' && args[i][1] != '-') { ++i; continue; }
             plain.push_back(args[i]);
         }
 

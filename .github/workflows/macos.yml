@@ -35,18 +35,20 @@ jobs:
           [ "$(sips -g pixelWidth page.png | awk '/pixelWidth/{print $2}')" = "918" ]
           ! cmp -s page.png dark.png
 
-      - name: The app starts and shows a document
+      - name: The app opens documents in tabs and draws its window
         run: |
-          "build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" "$PWD/tests/engine/golden/in/qp.pdf" &
-          pid=$!
-          sleep 10
-          kill -0 $pid && echo "running"
-          screencapture -x screen.png || true
-          kill $pid
-          if [ -f screen.png ]; then
-            sips -Z 1000 -s format jpeg -s formatOptions 45 screen.png --out screen.jpg >/dev/null
-            echo "SCREENSHOT-BEGIN"; base64 -b 120 -i screen.jpg; echo "SCREENSHOT-END"
-          fi
+          app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
+          in="$PWD/tests/engine/golden/in"
+          FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
+          FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
+          cat ui/report.txt ui-dark/report.txt
+          grep -q "^documents 2" ui/report.txt
+          grep -q "tabs 2" ui/report.txt
+          grep -q "Page 1 of 1" ui-dark/report.txt
+          for d in ui ui-dark; do
+            sips -s format jpeg -s formatOptions 50 $d/window.png --out $d/window.jpg >/dev/null
+            echo "SCREENSHOT-BEGIN $d"; base64 -b 120 -i $d/window.jpg; echo "SCREENSHOT-END"
+          done
 
       - name: Disk image
         run: cmake --build build-mac --target dmg
@@ -56,6 +58,7 @@ jobs:
           name: FeatherPDF-mac
           path: |
             dist/*.dmg
-            screen.png
+            ui/window.png
+            ui-dark/window.png
             page.png
             dark.png

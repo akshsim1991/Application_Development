@@ -56,6 +56,9 @@ void checkInBackground(HWND wnd, UINT msg, bool manual) {
         if (download(update::kLatestUrl, bytes, err)) {
             r = new update::Release;
             if (!update::parse(std::string(bytes.begin(), bytes.end()), *r)) { delete r; r = nullptr; }
+        } else if (err.find(L"(404)") != std::wstring::npos) {   // the server answered: nothing published there yet
+            r = new update::Release;
+            r->version = "0";
         }
         if (!PostMessageW(wnd, msg, manual ? 1 : 0, reinterpret_cast<LPARAM>(r))) delete r;
     }).detach();

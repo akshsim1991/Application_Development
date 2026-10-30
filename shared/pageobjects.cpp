@@ -1,6 +1,10 @@
 #include "pageobjects.hpp"
 #include "contentgen.hpp"
 #include "fontlist.hpp"
+#ifdef __APPLE__
+#include <CoreText/CoreText.h>
+#include "platform.hpp"
+#endif
 #include <algorithm>
 #include <chrono>
 #include <ctime>
@@ -875,9 +879,76 @@ FPDF_FONT installedFont(Document& d, FPDF_PAGE pg, const std::string& pdfName, b
     loaded = false;
     const std::wstring face = fontlist::installedFace(pdfName);
     if (face.empty()) return nullptr;
-#ifndef _WIN32
+#if defined(__APPLE__)
+    // The Mac: the installed font of that family and style (CoreText), read from its file.
+    const auto& api = pdfium::api();
+    const std::string faceUtf8 = platform::utf8(face);
+    CFStringRef family = CFStringCreateWithCString(nullptr, faceUtf8.c_str(), kCFStringEncodingUTF8);
+    if (!family) return nullptr;
+    const uint32_t want = (bold ? kCTFontBoldTrait : 0) | (italic ? kCTFontItalicTrait : 0);
+    CFNumberRef sym = CFNumberCreate(nullptr, kCFNumberSInt32Type, &want);
+    const void* tk[] = {kCTFontSymbolicTrait};
+    const void* tv[] = {sym};
+    CFDictionaryRef traits = CFDictionaryCreate(nullptr, tk, tv, 1, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    const void* ak[] = {kCTFontFamilyNameAttribute, kCTFontTraitsAttribute};
+    const void* av[] = {family, traits};
+    CFDictionaryRef attrs = CFDictionaryCreate(nullptr, ak, av, 2, &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+    CTFontDescriptorRef desc = CTFontDescriptorCreateWithAttributes(attrs);
+    CTFontRef font = desc ? CTFontCreateWithFontDescriptor(desc, 200, nullptr) : nullptr;
+    FPDF_FONT result = nullptr;
+    std::vector<uint8_t> data;
+    if (font) {
+        const uint32_t has = CTFontGetSymbolicTraits(font);
+        CFStringRef gotFamily = CTFontCopyFamilyName(font);
+        const bool sameFamily = gotFamily && CFStringCompare(gotFamily, family, kCFCompareCaseInsensitive) == kCFCompareEqualTo;
+        if (gotFamily) CFRelease(gotFamily);
+        bool mayEmbed = true;   // OS/2 fsType bit 1: the licence does not allow embedding
+        if (CFDataRef os2 = CTFontCopyTable(font, kCTFontTableOS2, kCTFontTableOptionNoOptions)) {
+            if (CFDataGetLength(os2) >= 10) mayEmbed = !(CFDataGetBytePtr(os2)[9] & 0x02);
+            CFRelease(os2);
+        }
+        if (sameFamily && mayEmbed && ((has & kCTFontBoldTrait) != 0) == bold && ((has & kCTFontItalicTrait) != 0) == italic) {
+            if (CFURLRef url = static_cast<CFURLRef>(CTFontCopyAttribute(font, kCTFontURLAttribute))) {
+                char path[2048];
+                if (CFURLGetFileSystemRepresentation(url, true, reinterpret_cast<UInt8*>(path), sizeof path)) {
+                    std::vector<unsigned char> bytes;
+                    if (platform::readFile(platform::wide(path), bytes) && bytes.size() > 12 && bytes.size() < 64u * 1024 * 1024 &&
+                        std::memcmp(bytes.data(), "ttcf", 4) != 0 && std::memcmp(bytes.data(), "OTTO", 4) != 0)   // no collections, no CFF
+                        data.assign(bytes.begin(), bytes.end());
+                }
+                CFRelease(url);
+            }
+        }
+    }
+    if (!data.empty()) {
+        // An earlier edit may have embedded it on this page already (the same name, the whole file as its program).
+        const std::wstring wantName = fontlist::squeeze(face);
+        const int n = api.FPDFPage_CountObjects(pg);
+        for (int i = 0; i < n && !result; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+            FPDF_FONT pf = api.FPDFTextObj_GetFont(o);
+            if (!pf || !api.FPDFFont_GetIsEmbedded(pf)) continue;
+            const std::string nm = baseFontName(pf);
+            const std::wstring have = fontlist::squeeze(std::wstring(nm.begin(), nm.end()));
+            size_t len = 0;
+            if (have.rfind(wantName, 0) == 0 && api.FPDFFont_GetFontData(pf, nullptr, 0, &len) && len == data.size()) result = pf;
+        }
+        if (!result) {
+            result = api.FPDFText_LoadFont(d.handle(), data.data(), static_cast<uint32_t>(data.size()), FPDF_FONT_TRUETYPE, 1);
+            loaded = result != nullptr;
+        }
+    }
+    if (font) CFRelease(font);
+    if (desc) CFRelease(desc);
+    CFRelease(attrs);
+    CFRelease(traits);
+    CFRelease(sym);
+    CFRelease(family);
+    return result;
+#elif !defined(_WIN32)
     (void)d; (void)pg; (void)bold; (void)italic;
-    return nullptr;   // macOS: installed fonts are not embedded yet (a later stage); edited text uses a standard PDF font
+    return nullptr;   // the Linux engine check: standard PDF fonts
 #else
     const auto& api = pdfium::api();
     HDC dc = CreateCompatibleDC(nullptr);

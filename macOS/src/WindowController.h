@@ -16,6 +16,7 @@ extern NSString* const FPSidebarShownKey;              // user default: the side
 - (Document*)pdf;
 - (void)afterChange;    // the pages changed: draw them again, mark the document edited, update the toolbar
 - (void)selectAllThumbs; // the sidebar: shown, with every page selected
+- (NSArray<NSNumber*>*)selectedThumbPages;   // the pages selected in the sidebar, else the page shown
 @end
 
 @interface FPWindowController (Annotate)

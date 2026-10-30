@@ -449,6 +449,11 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (BOOL)sidebarShown { return !_sidebar.hidden; }
 
+- (NSArray<NSNumber*>*)selectedThumbPages {
+    NSArray<NSNumber*>* pages = _sidebar.hidden ? @[] : [_sidebar selectedPages];
+    return pages.count ? pages : @[ @([_view currentPage]) ];
+}
+
 - (void)selectAllThumbs {
     if (_sidebar.hidden) [self toggleThumbnails:nil];
     [_sidebar showBookmarks:NO];
@@ -504,6 +509,9 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (IBAction)goToPage:(id)sender { [self.window makeFirstResponder:_pageField]; }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    // ⌘⌫ in a text box (Find, the page number, a form field being typed in) deletes text there, not pages
+    if (item.action == NSSelectorFromString(@"deleteSelectedPages:"))
+        return _view.document && ![self.window.firstResponder isKindOfClass:[NSText class]];
     SEL measure = NSSelectorFromString(@"validateMeasure:");   // Measure.mm
     static NSSet<NSString*>* measuring = [NSSet setWithArray:@[ @"chooseRuler:", @"chooseProtractor:", @"toggleRulers:", @"setMeasureUnits:",
                                                                 @"setMeasureScale:", @"keepMeasurements:", @"clearMeasurements:" ]];

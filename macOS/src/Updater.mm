@@ -122,9 +122,14 @@ void FPCheckForUpdates(BOOL manual) {
     NSURLSessionDataTask* task = [NSURLSession.sharedSession dataTaskWithURL:[NSURL URLWithString:ns(update::kLatestUrl)]
                                                            completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
         update::Release r;
-        const bool ok = data && !err && [(NSHTTPURLResponse*)resp statusCode] == 200 &&
+        const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
+        const bool ok = data && !err && status == 200 &&
                         update::parse(std::string(static_cast<const char*>(data.bytes), data.length), r);
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (!ok && !err && status == 404) {   // the server answered: no version has been published there yet
+                if (manual) tell([NSString stringWithFormat:@"You have the newest version of Feather PDF (%s).", FEATHER_VERSION], NO);
+                return;
+            }
             if (!ok) {
                 if (manual) tell(@"Feather PDF could not find out whether there is a new version. Check the internet connection and try again.", YES);
                 return;

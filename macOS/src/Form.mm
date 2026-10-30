@@ -79,16 +79,17 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
                 // A note has its own width: a form of notes only (Properties, Fonts used) has nothing else to give it one.
                 const size_t lines = static_cast<size_t>(std::count(f.text.begin(), f.text.end(), L'\n')) + 1;
                 if (f.text.size() > 500 || lines > 12) {   // a report: scrollable, and the text can be selected and copied
-                    NSScrollView* sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 560, 320)];
-                    sv.hasVerticalScroller = YES;
+                    // the system's own scrolling text view: it sizes its text view to the scroll view and follows dark mode
+                    NSScrollView* sv = [NSTextView scrollableTextView];
                     sv.borderType = NSBezelBorder;
-                    NSTextView* tv = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 560, 320)];
+                    NSTextView* tv = (NSTextView*)sv.documentView;
                     tv.editable = NO;
+                    tv.selectable = YES;
                     tv.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+                    tv.textColor = NSColor.textColor;
                     tv.string = ns(f.text);
                     tv.textContainerInset = NSMakeSize(6, 6);
-                    tv.autoresizingMask = NSViewWidthSizable;
-                    sv.documentView = tv;
+                    sv.translatesAutoresizingMaskIntoConstraints = NO;
                     [sv.widthAnchor constraintEqualToConstant:560].active = YES;
                     [sv.heightAnchor constraintEqualToConstant:320].active = YES;
                     control = sv;

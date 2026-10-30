@@ -146,10 +146,29 @@ HOME="$W/home" run --search "$W/lib" "Picture test" "$W/srch3.txt"
 check "looks in subfolders"         "grep -q 'sub/img.pdf|1|' '$W/srch3.txt'"
 
 echo "text recognition (OCR)"
-run --ocr "$W/scan.pdf" "$W/scan_ocr.pdf" eng; rc=$?
+"$prog" --ocr "$W/scan.pdf" "$W/scan_ocr.pdf" eng </dev/null >/dev/null 2>"$W/ocr.err"; rc=$?
 if [ $rc -eq 5 ]; then echo "  skip OCR engine not in this build"; else
+[ $rc -eq 0 ] || echo "  (exit code $rc: $(cat "$W/ocr.err"))"
 check "words recognised"            "text '$W/scan_ocr.pdf' | grep -qi 'supplier shall deliver'"
 fi
+
+echo "tables inside a form object (PDFs saved from Word on a Mac)"
+python3 - "$W" <<'PY'
+import sys
+from reportlab.pdfgen import canvas
+c=canvas.Canvas(sys.argv[1]+'/formtbl.pdf',pagesize=(595,842))
+c.beginForm('Page')
+rows=[("Course Code","1BMEL306","Semester","III"),("Credits","2","CIE Marks","50")]
+xs=[60,230,380,500,560]; top=700; h=24
+for i,r in enumerate(rows):
+    for j,v in enumerate(r): c.setFont('Times-Roman',11); c.drawString(xs[j]+4, top-i*h-17, v)
+for i in range(len(rows)+1): c.line(xs[0],top-i*h,xs[-1],top-i*h)
+for x in xs: c.line(x,top,x,top-len(rows)*h)
+c.endForm(); c.doForm('Page'); c.save()
+PY
+run --tableedit "$W/formtbl.pdf" "$W/formtbl_e.pdf" 1 300 690 cell 0 1 "1BMEL307"
+check "the cell is changed"          "text '$W/formtbl_e.pdf' | grep -q '1BMEL307'"
+check "the old text is gone, not drawn over" "! text '$W/formtbl_e.pdf' | grep -q '1BMEL306' && [ \$(text '$W/formtbl_e.pdf' | grep -o 'Course Code' | wc -l) -eq 1 ]"
 
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"

@@ -83,7 +83,9 @@ struct Table {
 // Every table on the page, largest first.
 std::vector<Table> detect(Document& d, int page);
 // The table around a page point. False when there is none (`why` says so, or why it cannot be edited).
+// Text in form objects on the page is first put on the page itself (see unwrapTextForms).
 bool tableAt(Document& d, int page, double x, double y, Table& out, std::wstring* why = nullptr);
+bool unwrapTextForms(Document& d, int page);
 
 // The table in a box drawn on the page (page coordinates): a table found there, else the text inside read as rows (its lines)
 // and columns (where it lines up). For tables the automatic search misses.

@@ -828,7 +828,67 @@ std::vector<Table> detect(Document& d, int page) {
     return out;
 }
 
+namespace {
+
+bool formHasText(FPDF_PAGEOBJECT form, int depth = 0) {
+    const auto& a = pdfium::api();
+    const int n = a.FPDFFormObj_CountObjects(form);
+    for (int i = 0; i < n; ++i) {
+        FPDF_PAGEOBJECT o = a.FPDFFormObj_GetObject(form, static_cast<unsigned long>(i));
+        const int type = o ? a.FPDFPageObj_GetType(o) : 0;
+        if (type == FPDF_PAGEOBJ_TEXT) return true;
+        if (type == FPDF_PAGEOBJ_FORM && depth < 8 && formHasText(o, depth + 1)) return true;
+    }
+    return false;
+}
+
+} // namespace
+
+// Text inside form objects (PDFs saved from Word on a Mac put the whole page in one) cannot be taken out by the editor,
+// which would then draw the changed table over the old one. Such forms are opened up: their objects go onto the page
+// itself, in the same place and order, so the page looks the same and every text object is the page's own. Not a step
+// of its own for Undo: the page looks as it did, and the edit that follows is the step.
+bool unwrapTextForms(Document& d, int page) {
+    const auto& a = pdfium::api();
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    bool changed = false;
+    for (int pass = 0; pass < 8; ++pass) {   // forms inside forms come up one level each pass
+        bool again = false;
+        for (int i = a.FPDFPage_CountObjects(pg) - 1; i >= 0; --i) {
+            FPDF_PAGEOBJECT fo = a.FPDFPage_GetObject(pg, i);
+            if (!fo || a.FPDFPageObj_GetType(fo) != FPDF_PAGEOBJ_FORM || !formHasText(fo)) continue;
+            FS_MATRIX m;
+            if (!a.FPDFPageObj_GetMatrix(fo, &m)) continue;
+            std::vector<FPDF_PAGEOBJECT> kids;
+            for (int k = 0, n = a.FPDFFormObj_CountObjects(fo); k < n; ++k) kids.push_back(a.FPDFFormObj_GetObject(fo, static_cast<unsigned long>(k)));
+            std::vector<FPDF_PAGEOBJECT> moved;
+            for (FPDF_PAGEOBJECT c : kids) {
+                if (!c || !a.FPDFFormObj_RemoveObject(fo, c)) break;
+                moved.push_back(c);
+            }
+            if (moved.empty()) continue;
+            size_t at = static_cast<size_t>(i);   // in the form's place (whatever could not be taken out stays in it, after)
+            for (FPDF_PAGEOBJECT c : moved) {
+                a.FPDFPageObj_Transform(c, m.a, m.b, m.c, m.d, m.e, m.f);
+                a.FPDFPage_InsertObjectAtIndex(pg, c, at++);
+            }
+            if (moved.size() == kids.size() && a.FPDFPage_RemoveObject(pg, fo)) a.FPDFPageObj_Destroy(fo);
+            else again = false;   // a form that keeps some of its objects: not tried again
+            changed = true;
+            if (moved.size() == kids.size()) again = true;
+        }
+        if (!again) break;
+    }
+    if (changed) {
+        contentgen::generate(d.handle(), pg);
+        d.resetText(page);
+    }
+    return changed;
+}
+
 bool tableAt(Document& d, int page, double x, double y, Table& out, std::wstring* why) {
+    unwrapTextForms(d, page);
     std::vector<Table> all = detect(d, page);
     const Table* best = nullptr;
     for (const Table& t : all)
@@ -863,6 +923,7 @@ bool tableAt(Document& d, int page, double x, double y, Table& out, std::wstring
 }
 
 bool tableIn(Document& d, int page, double l, double b, double r, double t, Table& out, std::wstring* why) {
+    unwrapTextForms(d, page);
     if (l > r) std::swap(l, r);
     if (b > t) std::swap(b, t);
     // a table found by the search that lies mostly in the box

@@ -2,6 +2,10 @@
 #ifdef _WIN32
 #include <commctrl.h>
 #endif
+#ifdef __APPLE__
+#include <CoreText/CoreText.h>
+#include "platform.hpp"
+#endif
 #include <algorithm>
 #include <cwchar>
 #include <cwctype>
@@ -348,8 +352,16 @@ std::wstring installedFace(const std::string& pdfName) {
             return 1;
         }, reinterpret_cast<LPARAM>(&families), 0);
         ReleaseDC(nullptr, dc);
+#elif defined(__APPLE__)
+        if (CFArrayRef names = CTFontManagerCopyAvailableFontFamilyNames()) {
+            for (CFIndex i = 0, n = CFArrayGetCount(names); i < n; ++i) {
+                auto s = static_cast<CFStringRef>(CFArrayGetValueAtIndex(names, i));
+                char buf[512];
+                if (s && CFStringGetCString(s, buf, sizeof buf, kCFStringEncodingUTF8) && buf[0] != '.') families.push_back(platform::wide(buf));
+            }
+            CFRelease(names);
+        }
 #endif
-        // macOS: the installed fonts are not listed yet, so edited text uses the standard PDF fonts (a later stage).
     }
     std::string n = pdfName;
     const size_t plus = n.find('+');

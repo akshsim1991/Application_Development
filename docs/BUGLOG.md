@@ -729,3 +729,30 @@ Found and fixed while building it:
   yet: see the next build's pictures.
 - **Check: folder search in subfolders** used the exam-paper sample, which needs LibreOffice and is not made on the
   Mac machine. It uses the picture sample now. Verified on Linux and to be seen on the Mac.
+
+## Reported on the Mac, 31 October (screenshots)
+- **B-051 (Windows too): editing a table drew the whole table again over the old one, in another font.** Seen in a
+  syllabus PDF: after Apply, every cell showed its old text and a new copy in a sans-serif font, overlapping. Cause: the
+  PDF keeps the whole page inside a form object (common in files saved from Word on a Mac). The editor found the table
+  and its text, but none of the text objects were the page's own, so it could take nothing out and wrote every cell
+  again on top. Fix (shared engine): before a table is edited, form objects on the page that hold text are opened up,
+  their objects put on the page itself in the same place and order (the page looks the same). Reproduced with a test
+  file built the same way (`tests/engine/cli_check.sh`, "tables inside a form object"); the check failed before the fix
+  and passes after it on Linux. Windows smoke tests ALL PASSED. To be confirmed with the user's own file.
+- **B-052 (Mac): a changed cell or line came out in another font.** A PDF often embeds only the letters it uses. When
+  an edit needs a letter that is not there, the Windows app takes the full font from the computer; the Mac app had no
+  such step and always used a standard PDF font (Times or Helvetica). The Mac now finds the installed font of the same
+  name and style with CoreText and embeds it (TrueType files whose licence allows it; collections and CFF fonts still
+  fall back). A font that is not installed on the Mac (for example Cambria, which only Microsoft Office brings, inside
+  its own folder) still falls back to the closest standard font. Built; not yet tried on a Mac by hand.
+- **Mac: Properties and Fonts used.** Properties: the lines ran over the heading (see stage 2 above; the fix was in
+  builds that had not reached the user). Fonts used: the report area was empty. It is now the system's own scrolling
+  text view. To be checked in the next build's pictures.
+- **Mac and Windows: "could not find out whether there is a new version".** Nothing had been published to the releases
+  repository yet, so the version file did not exist (the server answered 404) and the app blamed the internet
+  connection. Now a 404 means "no newer version" on both, and 2.14.2 is to be published so the file exists.
+- **Mac: ⌘⌫ deletes pages**, as in the Finder: Pages > Delete Selected Pages deletes the thumbnails selected, or the
+  page shown (Undo brings them back). Not while typing in a text box (there ⌘⌫ deletes text).
+- **Mac build check: OCR found no words on GitHub's Mac.** Those machines are virtual and Vision could not use a
+  graphics processor. Recognition now tries again on the processor alone when Vision fails (also for anyone running
+  macOS in a virtual machine).

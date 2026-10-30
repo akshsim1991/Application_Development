@@ -96,7 +96,7 @@ int run(std::vector<std::wstring> files) {
         std::vector<int> all(doc.pageCount());
         for (int i = 0; i < doc.pageCount(); ++i) all[i] = i;
         ocr::Result r = ocr::run(doc, all, files.size() > 3 ? files[3] : L"eng", true, nullptr);
-        if (!r.error.empty()) return 4;
+        if (!r.error.empty()) { std::fprintf(stderr, "%s\n", platform::utf8(r.error).c_str()); return 4; }
         if (r.words == 0) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }

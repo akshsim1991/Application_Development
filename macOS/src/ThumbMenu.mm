@@ -131,4 +131,7 @@ std::vector<int> pagesOf(NSArray<NSNumber*>* list) {
 
 - (void)sidebarDeletePages:(NSArray<NSNumber*>*)list { [self deleteThumbPages:pagesOf(list)]; }
 
+// Pages > Delete Selected Pages (⌘⌫, as in the Finder): the thumbnails selected, else the page shown. Undo brings them back.
+- (IBAction)deleteSelectedPages:(id)sender { [self deleteThumbPages:pagesOf([self selectedThumbPages])]; }
+
 @end

@@ -369,6 +369,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Insert Blank Page", @selector(insertBlankPage:), nil);
     add(m, @"Insert Pages from a File\u2026", @selector(insertPagesFromFile:), nil);
+    add(m, @"Delete Selected Pages", @selector(deleteSelectedPages:), [NSString stringWithFormat:@"%C", (unichar)NSBackspaceCharacter]);
     add(m, @"Delete Pages\u2026", @selector(deletePages:), nil);
     add(m, @"Extract Pages\u2026", @selector(extractPages:), nil);
     [m addItem:[NSMenuItem separatorItem]];

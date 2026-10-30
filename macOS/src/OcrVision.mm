@@ -58,7 +58,12 @@ bool visionRecognise(const std::vector<unsigned char>& grey, int w, int h, const
         req.recognitionLanguages = @[ visionLanguage(language) ];
         VNImageRequestHandler* handler = [[VNImageRequestHandler alloc] initWithCGImage:img options:@{}];
         NSError* e = nil;
-        const BOOL ok = [handler performRequests:@[ req ] error:&e];
+        BOOL ok = [handler performRequests:@[ req ] error:&e];
+        if (!ok) {   // a Mac without a graphics processor Vision can use (a virtual machine): again on the processor alone
+            req.usesCPUOnly = YES;
+            e = nil;
+            ok = [[[VNImageRequestHandler alloc] initWithCGImage:img options:@{}] performRequests:@[ req ] error:&e];
+        }
         CGImageRelease(img);
         if (!ok) {
             error = L"Text recognition failed: " + form::ws(e.localizedDescription ?: @"unknown reason");

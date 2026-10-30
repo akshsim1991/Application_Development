@@ -16,6 +16,8 @@
 #include "platform.hpp"
 #include "cli.hpp"
 
+void FPInstallOcrEngine();   // OcrVision.mm
+
 static int renderCommand(const std::vector<std::string>& a) {
     if (a.size() < 4) return 2;
     Document doc;
@@ -46,6 +48,7 @@ int main(int argc, const char* argv[]) {
             plain.push_back(args[i]);
         }
 
+        FPInstallOcrEngine();
         std::wstring err;
         const bool loaded = pdfium::load(err);
         const bool command = !plain.empty() && plain[0].rfind("--", 0) == 0;

@@ -145,6 +145,12 @@ check "second search uses the saved index" "grep -q 'scanned=0' '$W/srch2.txt'"
 HOME="$W/home" run --search "$W/lib" "Picture test" "$W/srch3.txt"
 check "looks in subfolders"         "grep -q 'sub/img.pdf|1|' '$W/srch3.txt'"
 
+echo "text recognition (OCR)"
+run --ocr "$W/scan.pdf" "$W/scan_ocr.pdf" eng; rc=$?
+if [ $rc -eq 5 ]; then echo "  skip OCR engine not in this build"; else
+check "words recognised"            "text '$W/scan_ocr.pdf' | grep -qi 'supplier shall deliver'"
+fi
+
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"
 check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fonts.txt'"

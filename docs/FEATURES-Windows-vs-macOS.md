@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 103 of 111 (93 %).**
+**macOS: 104 of 111 (94 %).**
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -109,7 +109,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 100 | Tools | Save a PDF/A-2b copy | Yes | Yes |  |
 | 101 | Tools | Document properties | Yes | Yes | fixed in this batch, being checked |
 | 102 | Tools | Fonts used | Yes | Yes | fixed in this batch, being checked |
-| 103 | Tools | OCR for scanned pages | Yes | **No** |  |
+| 103 | Tools | OCR for scanned pages | Yes | Yes | Apple Vision (in macOS, nothing to install); Tools > Recognise Text, and --ocr; new, to be tried by hand |
 | 104 | Tools | Visual compare of two documents | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 105 | Tools | Ruler and protractor, units, drawing scale | Yes | **No** |  |
 | 106 | Tools | Batch mode for a folder | Yes | **No** |  |

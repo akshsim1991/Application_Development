@@ -7,7 +7,7 @@
 #include "document.hpp"
 #include "pagecolours.hpp"
 
-@protocol FPSidebarDelegate
+@protocol FPSidebarDelegate <NSObject>
 - (void)sidebarGoToPage:(int)page;
 @optional
 - (void)sidebarFillMenu:(NSMenu*)menu pages:(NSArray<NSNumber*>*)pages;   // the right-click menu of these pages

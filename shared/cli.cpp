@@ -87,7 +87,6 @@ int run(std::vector<std::wstring> files) {
     }
 
     // Command line text recognition: FeatherPDF.exe --ocr <in.pdf> <out.pdf> [language]   (exit code 0 ok, 5 not available, 6 no text found)
-#ifdef _WIN32   // not on the Mac yet (macOS/PORTING.md)
     if (!files.empty() && files[0] == L"--ocr") {
         if (files.size() < 3) return 2;
         std::wstring why;
@@ -101,7 +100,6 @@ int run(std::vector<std::wstring> files) {
         if (r.words == 0) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
-#endif
 
     // Command line signing: FeatherPDF.exe --sign <in.pdf> <out.pdf> <certificate.pfx> <password>
     // and checking:         FeatherPDF.exe --checksig <file.pdf> <report.txt>   (exit code 0 ok; the report lists each signature)

@@ -454,6 +454,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     m = submenu(bar, @"Tools");
     add(m, @"Command Palette\u2026", @selector(showCommandPalette:), @"k").target = self;
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Recognise Text (OCR)\u2026", @selector(recogniseText:), nil);
     add(m, @"Compare with Another Document\u2026", @selector(compareDocuments:), nil);
     add(m, @"Search All My PDFs in a Folder\u2026", @selector(searchFolder:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagShift).target = self;
     [m addItem:[NSMenuItem separatorItem]];

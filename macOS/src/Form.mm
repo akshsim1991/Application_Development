@@ -83,7 +83,7 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
         }
         [controls addObject:control];
         NSGridRow* row = [grid addRowWithViews:@[ label, control ]];
-        row.yPlacement = NSGridRowAlignmentLastBaseline;
+        row.rowAlignment = NSGridRowAlignmentLastBaseline;
         if (f.kind == Field::Note) [grid mergeCellsInHorizontalRange:NSMakeRange(0, 2) verticalRange:NSMakeRange(grid.numberOfRows - 1, 1)];
     }
     if (grid.numberOfColumns > 0) [grid columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;

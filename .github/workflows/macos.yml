@@ -23,7 +23,7 @@ jobs:
       - name: Build the app
         run: |
           cmake -S . -B build-mac -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0
-          cmake --build build-mac -j 4
+          cmake --build build-mac -j 4 -- -k || { echo "=== errors ==="; cmake --build build-mac -j 1 2>&1 | grep -E "error:" | sort -u; exit 1; }
           file "build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
           codesign --verify --deep --strict "build-mac/Feather PDF.app" && echo "signature ok"
 

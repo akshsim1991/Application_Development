@@ -42,8 +42,13 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
     [NSApp activateIgnoringOtherApps:YES];   // to the front, also when started from Terminal
-    for (NSString* f in self.filesToOpen)
-        [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:[NSURL fileURLWithPath:f] display:YES
+    // AppKit itself opens the files named on the command line; open here only the ones it has not (so a file is never
+    // opened twice, which would ask "already open" at start). After a turn of the run loop, when AppKit's opens are done.
+    dispatch_async(dispatch_get_main_queue(), ^{
+    for (NSString* f in self.filesToOpen) {
+        NSURL* url = [NSURL fileURLWithPath:f];
+        if ([[NSDocumentController sharedDocumentController] documentForURL:url]) continue;
+        [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:url display:YES
                                                                      completionHandler:^(NSDocument* doc, BOOL wasOpen, NSError* e) {
                                                                          FPTrace(@"opened %@: %@ (already open %d) %@", f, doc.displayName, wasOpen, e);
                                                                          if (!e) { if (wasOpen) [doc showWindows]; return; }
@@ -51,6 +56,8 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
                                                                                  e.localizedDescription.UTF8String);
                                                                          [NSApp presentError:e];
                                                                      }];
+    }
+    });
     // The build check (FEATHER_UI_CHECK=folder): after a moment, report the windows and keep a picture of the first one.
     if (const char* dir = getenv("FEATHER_UI_CHECK")) {
         NSString* out = [NSString stringWithUTF8String:dir];

@@ -780,3 +780,25 @@ Found and fixed while building it:
   callback). Why the build did not catch it: its OCR check ran from the command line, which does not use the form. The
   build check now opens Recognise Text on a scanned page, presses Recognise as a user would, and requires words to be
   found and the app to finish.
+
+## Known open issues on the Mac (31 October)
+Not fixed yet, or not checked yet. Each one is removed from this list only when it is fixed and checked.
+1. The published 2.14.2 download still has the OCR crash (B-053). The fix is in the code and in `releases/`, not yet
+   published; installed copies are offered it only when it is published under a new version number (2.14.3).
+2. Updating from one version to the next has not been tried end to end (needs a second published version).
+3. Edited text in a font that is not installed on the Mac (for example Cambria, which only Microsoft Office brings)
+   falls back to Times or Helvetica. Installed fonts in collection files (.ttc, such as Helvetica) or CFF (.otf) fonts
+   cannot be embedded either and fall back the same way.
+4. The table fix (B-051) is checked with a test file made the same way, not yet with the user's own PDF.
+5. Page up and down and zoom in and out (grouped toolbar buttons) do not take the colourful toolbar icon setting.
+6. Side by side is two windows sharing the screen, not one window split in two as on Windows.
+7. In forms, explanatory notes always sit above the fields, even where Windows shows them between fields.
+8. OCR languages are listed by code (en-US, de-DE) rather than by name.
+9. The app is not signed with an Apple Developer certificate, so macOS asks to allow it on first opening.
+10. Signing with a keychain certificate, making one's own certificate (it writes to the login keychain), time stamps
+    and the handwritten signature pad have not been run on a Mac. Only signing with a .p12 file and checking signatures
+    are run by the build check.
+11. Built and passing the build checks, but not yet tried by hand: annotations, forms, editing text and pictures,
+    tables, page tools, redaction, printing, presentation, read aloud, command palette, compare, side by side,
+    thumbnail page menu and dragging, measuring, batch mode, folder search, Settings, password protection.
+12. One engine measurement differs from Windows by 0.02 pt (PDFium on the Mac); the checks allow 0.15 pt.

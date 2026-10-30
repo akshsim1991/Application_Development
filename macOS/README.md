@@ -24,16 +24,18 @@ so tables, headers and footers and the other tools behave the same way once thei
 
 ## Installing it on your Mac
 
-The app is built on GitHub's Mac computers each time the code changes:
-
-1. Open the repository on GitHub, then **Actions** > **macOS build**, and choose the latest run with a green tick.
-2. Under **Artifacts**, download **FeatherPDF-mac**. Unzip it and open `FeatherPDF-0.1.0-mac.dmg`.
-3. Drag **Feather PDF** onto **Applications**.
-4. The first time only: the app is not signed with an Apple Developer ID yet, so macOS stops it. Open it once, then go
+1. Take `releases/FeatherPDF-0.1.0-mac.dmg` from the repository (on GitHub: open the file, then **Download raw file**)
+   and open it.
+2. Drag **Feather PDF** onto **Applications**.
+3. The first time only: the app is not signed with an Apple Developer ID yet, so macOS stops it. Open it once, then go
    to **System Settings > Privacy & Security**, scroll down and click **Open Anyway** next to "Feather PDF". On
    macOS 14 and earlier, Control-click the app in Applications and choose **Open** instead.
 
 One app runs on Apple silicon (M1 and later) and on Intel Macs, with macOS 11 Big Sur or later.
+
+The disk image is made on GitHub's Macs each time the Mac app or the engine changes, checked (the engine's results
+against the Windows app's, pages drawn, windows opened), and put into `releases/` by the build itself, next to the
+Windows installer.
 
 ## Building it yourself
 

@@ -1,11 +1,15 @@
-# Builds Feather PDF for macOS on a Mac (Apple silicon and Intel in one app), checks it, and offers the disk image to
-# download (the run's "Artifacts": FeatherPDF-mac).
+# Builds Feather PDF for macOS on a Mac (Apple silicon and Intel in one app), checks it, and puts the disk image in
+# releases/ (next to the Windows installer) with a commit to the same branch. That commit does not start this workflow
+# again (pushes made with the workflow's own token never do).
 name: macOS build
 
 on:
   push:
     paths: ["macOS/**", "shared/**", "tests/engine/**", "CMakeLists.txt", "cmake/**", "scripts/fetch-pdfium.sh", ".github/workflows/macos.yml"]
   workflow_dispatch:
+
+permissions:
+  contents: write   # to commit the disk image to releases/
 
 jobs:
   mac:
@@ -62,3 +66,15 @@ jobs:
             ui-dark/window.png
             page.png
             dark.png
+
+      - name: Put the disk image in releases/
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          rm -f releases/*-mac.dmg
+          cp dist/*-mac.dmg releases/
+          git config user.name "Feather PDF Mac build"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A releases
+          git commit -q -m "macOS disk image built from ${GITHUB_SHA::7}" || { echo "unchanged"; exit 0; }
+          # When the branch has moved on since this build started, the next build brings its own disk image.
+          git push origin "HEAD:${GITHUB_REF_NAME}" || echo "the branch moved on; the next build puts its disk image in releases/"

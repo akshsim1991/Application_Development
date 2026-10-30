@@ -94,7 +94,8 @@ F1 user guide · Ctrl+Shift+U read aloud · F11 full screen · F5 presentation (
 | `Windows/` | The Windows app (`Windows/src`, Win32 screens), its resources and its installer (`Windows/installer`). |
 | `macOS/` | The Mac app (AppKit, Objective-C++). An early version that reads PDFs; see [macOS/README.md](macOS/README.md) and the porting plan in [macOS/PORTING.md](macOS/PORTING.md). |
 | `tests/` | `smoke.sh` (Windows app under Wine) and `tests/engine` (the shared engine on other systems, compared with the Windows app). |
-| `docs/`, `scripts/`, `cmake/`, `releases/` | User guide, bug log, helper scripts, build helpers, released installers. |
+| `releases/` | What to install: `FeatherPDF-Setup-<version>.exe` for Windows, `FeatherPDF-<version>-mac.dmg` for macOS (put there by the Mac build on GitHub). |
+| `docs/`, `scripts/`, `cmake/` | User guide, bug log, helper scripts, build helpers. |
 
 ## Building
 

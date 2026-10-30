@@ -168,7 +168,6 @@ int run(std::vector<std::wstring> files) {
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
     }
-#ifdef _WIN32   // not on the Mac yet (macOS/PORTING.md)
     if (!files.empty() && files[0] == L"--batch") {   // --batch preset.ini : runs the saved preset on its folders, writes preset.ini.log
         if (files.size() < 2) return 2;
         batch::Job job;
@@ -180,7 +179,6 @@ int run(std::vector<std::wstring> files) {
         Document::writeFile(files[1] + L".log", std::vector<unsigned char>(u.begin(), u.end()));
         return r.failed ? 5 : 0;
     }
-#endif
     if (!files.empty() && (files[0] == L"--formdetect" || files[0] == L"--formexport" || files[0] == L"--formfill")) {
         // --formdetect in.pdf out.pdf        adds fillable fields where a flat form has blanks
         // --formexport in.pdf out.csv|xlsx   writes the answers

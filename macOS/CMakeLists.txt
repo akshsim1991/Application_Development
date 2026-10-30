@@ -22,6 +22,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/OcrVision.mm
   src/Measure.mm
   src/Signatures.mm
+  src/Batch.mm
   src/Updater.mm
   src/Annotate.mm
   src/Forms.mm

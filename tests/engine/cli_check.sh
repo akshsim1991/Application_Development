@@ -201,6 +201,13 @@ then
   fi
 else echo "  skip no cryptography module"; fi
 
+echo "batch: a whole folder"
+mkdir -p "$W/bin/sub" "$W/bout"; cp "$W/rich.pdf" "$W/bin/"; cp "$W/rich.pdf" "$W/bin/sub/other.pdf"
+printf '[batch]\ninput=%s\noutput=%s\nsubfolders=1\nwatermark=DRAFT\nuserPassword=open1\n' "$W/bin" "$W/bout" > "$W/preset.ini"
+run --batch "$W/preset.ini"; rc=$?
+check "both files done (subfolder kept)" "[ $rc -eq 0 ] && [ -s '$W/bout/rich.pdf' ] && [ -s '$W/bout/sub/other.pdf' ]"
+check "watermark and password set"   "python3 -c \"import pikepdf;p=pikepdf.open('$W/bout/sub/other.pdf',password='open1');assert p.is_encrypted\" && python3 -c \"import sys;from pdfminer.high_level import extract_text;t=extract_text(sys.argv[1],password='open1');assert 'DRAFT' in t or 'AFT' in t\" '$W/bout/rich.pdf'"
+
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"
 check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fonts.txt'"

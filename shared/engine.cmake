@@ -32,6 +32,7 @@ set(ENGINE_SOURCES
   ${SHARED}/foldersearch.cpp
   ${SHARED}/ocr.cpp
   ${SHARED}/sign.cpp
+  ${SHARED}/batch.cpp
   ${SHARED}/pending.cpp)
 
 # PDFium for this system (scripts/fetch-pdfium.sh mac|linux puts it here; third_party/pdfium is the Windows one).

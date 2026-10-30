@@ -1,8 +1,14 @@
 #include "batch.hpp"
+#ifdef _WIN32
 #include <windows.h>
 #include <wincrypt.h>
+#else
+#include <filesystem>
+#include <map>
+#endif
 #include <algorithm>
 #include <cwctype>
+#include "platform.hpp"
 #include "compress.hpp"
 #include "document.hpp"
 #include "ocr.hpp"
@@ -13,6 +19,15 @@
 namespace batch {
 namespace {
 
+bool sameText(const std::wstring& a, const std::wstring& b) {   // ignoring case
+    if (a.size() != b.size()) return false;
+    for (size_t i = 0; i < a.size(); ++i) if (std::towlower(a[i]) != std::towlower(b[i])) return false;
+    return true;
+}
+bool endsWith(const std::wstring& s, const std::wstring& tail) { return s.size() >= tail.size() && sameText(s.substr(s.size() - tail.size()), tail); }
+const std::wstring kSep(1, platform::pathSeparator());
+
+#ifdef _WIN32
 void listPdfs(const std::wstring& dir, bool recurse, std::vector<std::wstring>& out, int depth) {
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
@@ -38,11 +53,54 @@ std::wstring read(const std::wstring& ini, const wchar_t* key, const wchar_t* de
     return buf;
 }
 void put(const std::wstring& ini, const wchar_t* key, const std::wstring& v) { WritePrivateProfileStringW(L"batch", key, v.c_str(), ini.c_str()); }
+bool exists(const std::wstring& path) { return GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES; }
+#else
+namespace fs = std::filesystem;
+void listPdfs(const std::wstring& dir, bool recurse, std::vector<std::wstring>& out, int depth) {
+    std::error_code ec;
+    for (fs::directory_iterator it(platform::utf8(dir), ec), end; !ec && it != end; it.increment(ec)) {
+        const std::wstring name = platform::wide(it->path().filename().string());
+        if (name.empty() || name[0] == L'.') continue;
+        if (it->is_directory(ec) && !it->is_symlink(ec)) { if (recurse && depth < 8) listPdfs(dir + L"/" + name, recurse, out, depth + 1); }
+        else if (endsWith(name, L".pdf")) out.push_back(dir + L"/" + name);
+    }
+}
+void makeDirs(const std::wstring& path) { std::error_code ec; fs::create_directories(platform::utf8(path), ec); }
+
+// The preset file: "key=value" lines under [batch], as the Windows app writes them.
+std::map<std::wstring, std::wstring> readIni(const std::wstring& ini) {
+    std::map<std::wstring, std::wstring> m;
+    const std::wstring text = platform::readTextFile(ini);
+    size_t p = 0;
+    while (p < text.size()) {
+        size_t e = text.find(L'\n', p);
+        std::wstring line = text.substr(p, e == std::wstring::npos ? std::wstring::npos : e - p);
+        p = e == std::wstring::npos ? text.size() : e + 1;
+        while (!line.empty() && (line.back() == L'\r' || line.back() == L' ')) line.pop_back();
+        const size_t eq = line.find(L'=');
+        if (eq != std::wstring::npos && line[0] != L'[' && line[0] != L';') m[line.substr(0, eq)] = line.substr(eq + 1);
+    }
+    return m;
+}
+std::wstring read(const std::wstring& ini, const wchar_t* key, const wchar_t* def = L"") {
+    const auto m = readIni(ini);
+    auto it = m.find(key);
+    return it != m.end() ? it->second : def;
+}
+void put(const std::wstring& ini, const wchar_t* key, const std::wstring& v) {
+    auto m = readIni(ini);
+    m[key] = v;
+    std::string text = "[batch]\n";
+    for (const auto& kv : m) text += platform::utf8(kv.first) + "=" + platform::utf8(kv.second) + "\n";
+    platform::writeFile(ini, std::vector<unsigned char>(text.begin(), text.end()));
+}
+bool exists(const std::wstring& path) { std::error_code ec; return fs::exists(platform::utf8(path), ec); }
+#endif
 
 } // namespace
 
 bool load(const std::wstring& ini, Job& j) {
-    if (GetFileAttributesW(ini.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
+    if (!exists(ini)) return false;
     j.inputDir = read(ini, L"input"); j.outputDir = read(ini, L"output");
     j.subfolders = read(ini, L"subfolders", L"1") == L"1";
     j.ocr = read(ini, L"ocr") == L"1"; j.ocrLanguage = read(ini, L"ocrLanguage", L"eng");
@@ -65,7 +123,7 @@ bool save(const std::wstring& ini, const Job& j) {
     put(ini, L"userPassword", j.userPassword); put(ini, L"ownerPassword", j.ownerPassword);
     put(ini, L"certificate", j.certificate); put(ini, L"certificatePassword", j.certificatePassword);
     put(ini, L"signReason", j.signReason);
-    return GetFileAttributesW(ini.c_str()) != INVALID_FILE_ATTRIBUTES;
+    return exists(ini);
 }
 
 Result run(const Job& job, const std::function<bool(int, int, const std::wstring&)>& progress) {
@@ -73,12 +131,12 @@ Result run(const Job& job, const std::function<bool(int, int, const std::wstring
     std::vector<std::wstring> files;
     listPdfs(job.inputDir, job.subfolders, files, 0);
     std::sort(files.begin(), files.end());
-    const bool sameFolder = job.outputDir.empty() || _wcsicmp(job.outputDir.c_str(), job.inputDir.c_str()) == 0;
+    const bool sameFolder = job.outputDir.empty() || sameText(job.outputDir, job.inputDir);
     // never process the results of an earlier run again
-    files.erase(std::remove_if(files.begin(), files.end(), [&](const std::wstring& f) {
-        return sameFolder && f.size() > 12 && _wcsicmp(f.c_str() + f.size() - 12, L" (batch).pdf") == 0; }), files.end());
+    files.erase(std::remove_if(files.begin(), files.end(), [&](const std::wstring& f) { return sameFolder && endsWith(f, L" (batch).pdf"); }), files.end());
     r.total = static_cast<int>(files.size());
 
+#ifdef _WIN32
     HCERTSTORE store = nullptr;
     PCCERT_CONTEXT cert = nullptr;
     if (!job.certificate.empty()) {
@@ -86,6 +144,15 @@ Result run(const Job& job, const std::function<bool(int, int, const std::wstring
         cert = sign::certFromPfx(job.certificate, job.certificatePassword, store, err);
         if (!cert) { r.problems.push_back(L"The certificate could not be opened: " + err); r.failed = r.total; return r; }
     }
+#else
+    sign::Signer signer;
+    bool cert = false;
+    if (!job.certificate.empty()) {
+        std::wstring err = L"signing is not available in this build";
+        cert = sign::system().signerFromFile && sign::system().signerFromFile(job.certificate, job.certificatePassword, signer, err);
+        if (!cert) { r.problems.push_back(L"The certificate could not be opened: " + err); r.failed = r.total; return r; }
+    }
+#endif
     std::wstring ocrWhy;
     const bool ocrReady = !job.ocr || ocr::available(ocrWhy);
     if (!ocrReady) r.problems.push_back(L"Text recognition is not available: " + ocrWhy);
@@ -93,7 +160,7 @@ Result run(const Job& job, const std::function<bool(int, int, const std::wstring
     int index = 0;
     for (const std::wstring& in : files) {
         if (progress && !progress(index++, r.total, in)) { r.cancelled = true; break; }
-        const std::wstring name = in.substr(in.find_last_of(L'\\') + 1);
+        const std::wstring name = in.substr(in.find_last_of(L"\\/") + 1);
         Document d;
         if (d.open(in) != OpenResult::Ok) { ++r.failed; r.problems.push_back(name + L": could not be opened (damaged or password-protected)"); continue; }
         std::vector<int> all(d.pageCount());
@@ -127,23 +194,30 @@ Result run(const Job& job, const std::function<bool(int, int, const std::wstring
         if (sameFolder) out = in.substr(0, in.size() - 4) + L" (batch).pdf";
         else {
             std::wstring rel = in.substr(std::min(job.inputDir.size() + 1, in.size()));
-            out = job.outputDir + L"\\" + rel;
-            makeDirs(out.substr(0, out.find_last_of(L'\\')));
-            if (_wcsicmp(out.c_str(), in.c_str()) == 0) out = out.substr(0, out.size() - 4) + L" (batch).pdf";
+            out = job.outputDir + kSep + rel;
+            makeDirs(out.substr(0, out.find_last_of(L"\\/")));
+            if (sameText(out, in)) out = out.substr(0, out.size() - 4) + L" (batch).pdf";
         }
         if (problem.empty()) {
             if (cert) {
                 std::vector<unsigned char> plain, signedBytes;
                 std::wstring err;
                 sign::Options so; so.reason = job.signReason;
-                if (!d.serialize(plain, FPDF_REMOVE_SECURITY) || !sign::signPdf(plain, cert, so, signedBytes, err)) problem = L"signing: " + (err.empty() ? std::wstring(L"failed") : err);
+#ifdef _WIN32
+                const bool signedOk = d.serialize(plain, FPDF_REMOVE_SECURITY) && sign::signPdf(plain, cert, so, signedBytes, err);
+#else
+                const bool signedOk = d.serialize(plain, FPDF_REMOVE_SECURITY) && sign::signPdf(plain, signer, so, signedBytes, err);
+#endif
+                if (!signedOk) problem = L"signing: " + (err.empty() ? std::wstring(L"failed") : err);
                 else if (Document::writeFile(out, signedBytes) != SaveResult::Ok) problem = L"the result could not be written";
             } else if (d.saveAs(out) != SaveResult::Ok) problem = L"the result could not be written";
         }
         if (problem.empty()) ++r.done; else { ++r.failed; r.problems.push_back(name + L": " + problem); }
     }
+#ifdef _WIN32
     if (cert) CertFreeCertificateContext(cert);
     if (store) CertCloseStore(store, 0);
+#endif
     return r;
 }
 

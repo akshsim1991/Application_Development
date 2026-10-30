@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 110 of 111 (99 %).**
+**macOS: 111 of 111 (100 %).**
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -112,7 +112,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 103 | Tools | OCR for scanned pages | Yes | Yes | Apple Vision (in macOS, nothing to install); Tools > Recognise Text, and --ocr; new, to be tried by hand |
 | 104 | Tools | Visual compare of two documents | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 105 | Tools | Ruler and protractor, units, drawing scale | Yes | Yes | Tools > Measure: ruler, protractor, rulers on the page, units, drawing scale, keep or clear; new, to be tried by hand |
-| 106 | Tools | Batch mode for a folder | Yes | **No** |  |
+| 106 | Tools | Batch mode for a folder | Yes | Yes | Tools > Batch, presets, and --batch; new, to be tried by hand |
 | 107 | Tools | Search all PDFs in a folder | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 108 | Tools | Print (preview, pages per sheet, greyscale, two-sided) | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 109 | Tools | Set as the default PDF app | Yes | Yes | File > Set as Default PDF App |

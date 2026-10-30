@@ -84,7 +84,7 @@ sign::Signer signerFor(SecIdentityRef identity) {
 }
 
 // 2 valid and trusted on this Mac, 1 valid but not trusted, 0 not matching.
-int verify(const Bytes& cms, const Bytes& data, std::wstring& signer) {
+int verifySignature(const Bytes& cms, const Bytes& data, std::wstring& signer) {
     CMSDecoderRef dec = nullptr;
     if (CMSDecoderCreate(&dec) != errSecSuccess) return -1;
     int verdict = 0;
@@ -111,7 +111,7 @@ int verify(const Bytes& cms, const Bytes& data, std::wstring& signer) {
     return verdict;
 }
 
-bool httpPost(const std::string& url, const Bytes& body, Bytes& response, std::wstring& error) {
+bool postTimestampRequest(const std::string& url, const Bytes& body, Bytes& response, std::wstring& error) {
     NSURL* u = [NSURL URLWithString:[NSString stringWithUTF8String:url.c_str()]];
     if (!u) { error = L"The time stamp address is not valid."; return false; }
     NSMutableURLRequest* req = [NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:20];
@@ -322,8 +322,8 @@ bool typedSignature(const std::wstring& name, const std::wstring& path) {
 
 void FPInstallSignSystem() {
     sign::System s;
-    s.httpPost = httpPost;
-    s.verify = verify;
+    s.httpPost = postTimestampRequest;
+    s.verify = verifySignature;
     s.signerFromFile = signerFromFile;
     sign::setSystem(s);
 }

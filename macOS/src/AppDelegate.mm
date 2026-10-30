@@ -468,6 +468,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Command Palette\u2026", @selector(showCommandPalette:), @"k").target = self;
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Recognise Text (OCR)\u2026", @selector(recogniseText:), nil);
+    add(m, @"Batch: Process a Whole Folder\u2026", @selector(batchFolder:), nil);
     NSMenuItem* measure = add(m, @"Measure", nil, nil);
     measure.submenu = [[NSMenu alloc] initWithTitle:@"Measure"];
     add(measure.submenu, @"Ruler (Measure a Distance)", @selector(chooseRuler:), nil);

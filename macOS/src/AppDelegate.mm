@@ -3,6 +3,7 @@
 #import "StartWindow.h"
 #import "Updater.h"
 #import "PageView.h"
+#import "NewPdf.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -135,6 +136,11 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     [[FPStartWindowController shared] refresh];
     [[FPStartWindowController shared] showWindow:nil];
 }
+
+// ---- new documents ----
+
+- (IBAction)newPdfFromPictures:(id)sender { [FPNewPdf fromPictures]; }
+- (IBAction)newPdfFromText:(id)sender { [FPNewPdf fromTextFile]; }
 
 // ---- updates ----
 
@@ -310,6 +316,14 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Insert Pages from a File\u2026", @selector(insertPagesFromFile:), nil);
     add(m, @"Delete Pages\u2026", @selector(deletePages:), nil);
     add(m, @"Extract Pages\u2026", @selector(extractPages:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Move Pages\u2026", @selector(movePages:), nil);
+    add(m, @"Crop Pages\u2026", @selector(cropPages:), nil);
+    add(m, @"Crop by Drawing a Box", @selector(cropByBox:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Merge: Add Files at the End\u2026", @selector(mergeFiles:), nil);
+    add(m, @"Split into Several Files\u2026", @selector(splitDocument:), nil);
+    add(m, @"Copy Page as Picture", @selector(copyPageAsPicture:), @"c", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Reverse the Order", @selector(reversePages:), nil);
     add(m, @"Remove Blank Pages\u2026", @selector(removeBlankPages:), nil);

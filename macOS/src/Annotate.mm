@@ -54,6 +54,9 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
 @interface FPWindowController (Forms)
 - (void)formFieldDrawn:(const FPToolEvent&)e;   // Forms.mm
 @end
+@interface FPWindowController (PagesMore)
+- (void)cropDrawn:(const FPToolEvent&)e;        // PagesMore.mm
+@end
 
 @implementation FPWindowController (Annotate)
 
@@ -216,6 +219,7 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
                 [self.pageView setNeedsDisplay:YES];
             }
             break;
+        case FPToolCrop: [self cropDrawn:e]; break;
         default:
             if (self.pageView.tool >= FPToolFormText) [self formFieldDrawn:e];
             break;

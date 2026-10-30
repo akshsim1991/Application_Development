@@ -10,4 +10,6 @@ extern NSNotificationName const FPDocumentReloaded;   // the pages were read aga
 @interface FPDocument : NSDocument
 @property(nonatomic, readonly) Document* pdf;
 - (void)changed;   // the PDF was changed (the window's "edited" dot, and the questions on closing)
+// A new, unsaved document from bytes (New PDF from pictures or text): opened in a window of its own; nil on failure.
++ (FPDocument*)openNewWithBytes:(std::vector<unsigned char>)bytes name:(NSString*)name;
 @end

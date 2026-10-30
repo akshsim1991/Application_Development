@@ -7,7 +7,27 @@ NSNotificationName const FPDocumentReloaded = @"FPDocumentReloaded";
 
 @implementation FPDocument {
     std::unique_ptr<Document> _pdf;
+    NSString* _name;   // an unsaved new document's name
 }
+
++ (FPDocument*)openNewWithBytes:(std::vector<unsigned char>)bytes name:(NSString*)name {
+    NSError* e = nil;
+    FPDocument* doc = [[FPDocument alloc] initWithType:@"com.adobe.pdf" error:&e];
+    if (!doc) return nil;
+    auto pdf = std::make_unique<Document>();
+    if (pdf->load(std::move(bytes), {}) != OpenResult::Ok) return nil;
+    pdf->setName(platform::wide(name.UTF8String ?: "New PDF.pdf"));
+    pdf->markModified();
+    doc->_pdf = std::move(pdf);
+    doc->_name = name;
+    [[NSDocumentController sharedDocumentController] addDocument:doc];
+    [doc makeWindowControllers];
+    [doc showWindows];
+    [doc changed];
+    return doc;
+}
+
+- (NSString*)displayName { return self.fileURL || !_name ? [super displayName] : _name; }
 
 // Saving as on Windows: Save writes the file in place, Save As to a new one, and closing or quitting with changes asks
 // first. (Not macOS's automatic saving: a PDF changes only when the user saves it.)

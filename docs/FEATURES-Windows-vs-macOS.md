@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 111 of 111 (100 %).**
+**macOS: 111 of 111 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|

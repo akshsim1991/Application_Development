@@ -20,6 +20,8 @@ Every stage ends with the Mac build on GitHub passing: it builds, its engine giv
   Windows bug on its first run (B-050: the letters of a "ti" ligature read the wrong way round).
 - The Mac app opens and shows PDFs: tabs, zoom, pages, page colours, password, recent files and drag and drop
   ([README.md](README.md)).
+- The Mac build check also opens two PDFs and has the app draw its own window into a picture, in normal and night
+  colours, since GitHub's Macs do not allow screenshots of app windows.
 - The night-mode page colours are one shared file (`shared/pagecolours.hpp`) for both apps.
 
 ## Engine files: where they stand on the Mac

@@ -683,3 +683,24 @@ to draw window frames itself, `HKCU\Software\Wine\X11 Driver\Decorated=N`, so th
 Also found and fixed while doing this: tooltips could sit over an opened menu (they are switched off while a menu is
 open); the active tab's name was cut short (widths are measured in its bold font); the guide's pictures and window
 description were redone for the new layout (`scripts/guide_overview.py` marks the overview).
+
+## macOS version, stage 1 (requested points)
+The request: a Mac version, in a repository with separate Windows and macOS folders. Decided with the user: a third
+folder, `shared/`, for the engine both apps use; this stage is the foundation and a viewer. The plan for the rest is in
+`macOS/PORTING.md`.
+
+| Point | Done | Checked |
+|---|---|---|
+| Folders | `shared/` (engine), `Windows/` (Win32 app, resources, installer), `macOS/` (AppKit app); one CMake project builds the right one for the system | Windows: fresh configure and build, smoke tests ALL PASSED, installer rebuilt |
+| Engine off Windows | `shared/platform.hpp` (the Windows types on the Mac), standard C file reading and safe saving, PDFium loaded from the app, form timers and pointer shapes from the app; passwords and signature checking say "not available on Mac yet" | 17 engine files build with Clang on Linux and Apple Clang on the Mac |
+| Same results as Windows | `tests/engine`: 47 results (tables found and edited, headers and footers found and deleted) compared with the Windows app's | Linux: 47 the same. Mac: 46 the same and 1 a measurement 0.02 pt apart (PDFium on the Mac) |
+| Mac app | Opens PDFs (Open, Open Recent, Finder, drag and drop), tabs, password, sharp pages on Retina, pinch and keyboard zoom, page navigation, night and dimmed page colours for every window, light and dark appearance, user guide under Help | GitHub Actions on a Mac: builds for Apple silicon and Intel, signs, engine check, pages drawn, app opens two PDFs as two tabs and draws its window (normal and night colours), disk image made |
+
+Found and fixed on the way:
+- **B-050** (Windows too): the letters of a ligature read in the wrong order. See above.
+- **Mac, before release: document windows never appeared.** The window controller set its document in its own
+  initializer. NSDocument's addWindowController: then took the window as already added and skipped it, so documents
+  opened without a window. Found by the build check's trace ("window made", then "window controllers 0"). The document
+  now attaches the window itself. Verified: the check reports one window per document and two tabs.
+- **Mac: differences in the last digit.** Apple silicon fuses multiply-adds. The Mac build turns that off
+  (`-ffp-contract=off`), so positions match the Windows app's.

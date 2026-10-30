@@ -704,3 +704,26 @@ Found and fixed on the way:
   now attaches the window itself. Verified: the check reports one window per document and two tabs.
 - **Mac: differences in the last digit.** Apple silicon fuses multiply-adds. The Mac build turns that off
   (`-ffp-contract=off`), so positions match the Windows app's.
+
+## macOS version, stage 2: the features of the Windows app (first build of the whole batch)
+The menus of the Windows app were brought to the Mac: Annotate and redaction, forms, page tools, print, presentation,
+read aloud, palette, compare, editing (text, pictures, objects, tables), folder search, Settings and auto-update.
+They were written while the repository could not be reached and built together for the first time on 30 October.
+The build passes: Mac build, engine check, command-line check (export, compress, passwords, redaction, forms, compare,
+text to PDF, hidden data, page tools, pictures, PDF/A, folder search, fonts, comment shapes) and the window check.
+Built and checked is not the same as tried by hand. Each feature is still to be tried in the app on a Mac.
+
+Found and fixed while building it:
+- **Mac: the build was cancelled before it began.** GitHub is retiring its macOS 14 machines (2 November 2026) and
+  switches them off for test periods. The build now runs on macOS 15.
+- **Mac: compile errors** (a name used twice in the View menu; the toolbar's icon colour set on a type that has no
+  such property; a method declared in the wrong place). Fixed. As a result, page up and down and zoom in and out
+  (grouped buttons) do not take the colourful icon setting on the Mac yet.
+- **Mac: started with files, the app stopped at "already open".** AppKit opens the files named at start, and the app
+  opened them a second time; the new "already open" question then waited for an answer. The app now opens only the
+  ones AppKit has not. Found by a sample of the stuck app in the build check. Verified: the check opens two PDFs as two
+  tabs and finishes.
+- **Mac: Properties and Fonts used: the lines ran over the heading and were cut off.** The sheet kept its first size,
+  480 x 200, whatever it held. It now takes the size its contents need. Not verified yet: see the next build's pictures.
+- **Check: folder search in subfolders** used the exam-paper sample, which needs LibreOffice and is not made on the
+  Mac machine. It uses the picture sample now. Verified on Linux and to be seen on the Mac.

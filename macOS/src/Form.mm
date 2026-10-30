@@ -104,7 +104,7 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
         }
         [controls addObject:control];
         NSGridRow* row = [grid addRowWithViews:@[ label, control ]];
-        row.rowAlignment = NSGridRowAlignmentLastBaseline;
+        row.rowAlignment = f.kind == Field::Note ? NSGridRowAlignmentNone : NSGridRowAlignmentLastBaseline;
         if (f.kind == Field::Note) [grid mergeCellsInHorizontalRange:NSMakeRange(0, 2) verticalRange:NSMakeRange(grid.numberOfRows - 1, 1)];
     }
     if (grid.numberOfColumns > 0) [grid columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
@@ -144,6 +144,9 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
         [cancel.widthAnchor constraintGreaterThanOrEqualToConstant:90],
         [root.widthAnchor constraintGreaterThanOrEqualToConstant:440],
     ]];
+    // The sheet takes the size its contents need (it was made 480 x 200: a long note would run over the heading).
+    [root layoutSubtreeIfNeeded];
+    [panel setContentSize:root.fittingSize];
 
     // Reads the controls back into the fields.
     auto read = [held, controls]() {

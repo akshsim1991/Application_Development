@@ -783,21 +783,23 @@ Found and fixed while building it:
 
 ## Known open issues on the Mac (31 October)
 Not fixed yet, or not checked yet. Each one is removed from this list only when it is fixed and checked.
-1. The published 2.14.2 download still has the OCR crash (B-053). The fix is in the code and in `releases/`, not yet
-   published; installed copies are offered it only when it is published under a new version number (2.14.3).
-2. Updating from one version to the next has not been tried end to end (needs a second published version).
+1. ~~The published 2.14.2 download still has the OCR crash (B-053).~~ Fixed: 2.14.3 is published with the fix. The
+   build check presses Recognise on a scanned page: 25 words found, no crash.
+2. Updating from one version to the next has not been tried end to end. Now possible: an installed 2.14.2 is offered
+   2.14.3 (Help > Update to New Version). To be tried by the user on both systems.
 3. Edited text in a font that is not installed on the Mac (for example Cambria, which only Microsoft Office brings)
    falls back to Times or Helvetica. Installed fonts in collection files (.ttc, such as Helvetica) or CFF (.otf) fonts
    cannot be embedded either and fall back the same way.
 4. The table fix (B-051) is checked with a test file made the same way, not yet with the user's own PDF.
 5. Page up and down and zoom in and out (grouped toolbar buttons) do not take the colourful toolbar icon setting.
-   (Changed in 2.14.3: their symbols are drawn in the colour on macOS 12 and later; to be checked in the picture.)
+   Fixed in 2.14.3: their symbols are drawn in the colour (macOS 12 and later); seen in the build's picture.
 6. Side by side is two windows sharing the screen, not one window split in two as on Windows.
 7. In forms, explanatory notes always sit above the fields, even where Windows shows them between fields.
-8. OCR languages are listed by code (en-US, de-DE) rather than by name. (Changed in 2.14.3: names such as "English
-   (United States)"; to be checked in the picture.)
-9. The app is not signed with an Apple Developer certificate, so macOS asks to allow it on first opening.
-10. Signing with a keychain certificate, making one's own certificate (it writes to the login keychain), time stamps
+8. ~~OCR languages are listed by code.~~ Fixed in 2.14.3: "English (United States)" and so on; seen in the build's
+   picture.
+9. The app is not signed with an Apple Developer certificate, so macOS asks to allow it on first opening (set aside
+   by the user).
+10. (Set aside by the user.) Signing with a keychain certificate, making one's own certificate (it writes to the login keychain), time stamps
     and the handwritten signature pad have not been run on a Mac. Only signing with a .p12 file and checking signatures
     are run by the build check.
 11. Built and passing the build checks, but not yet tried by hand: annotations, forms, editing text and pictures,
@@ -809,3 +811,6 @@ Not fixed yet, or not checked yet. Each one is removed from this list only when 
 From now on every release has a new version number, so installed copies are offered it (Help > Update to New Version
 and the check at start). 2.14.3 carries the OCR crash fix (B-053), grouped toolbar buttons in colour and OCR language
 names on the Mac, and the same Windows app with its new number.
+
+2.14.3 published in akshsim1991/FeatherPDF-releases on 30 October; both downloads match the SHA-256 in latest.json
+(checked by downloading them again).

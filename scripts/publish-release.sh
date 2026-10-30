@@ -39,5 +39,6 @@ Installed copies find new versions themselves (Help > Update to new version) and
 MD
 cd "$dest"
 git add -A
+[ -n "${NO_COMMIT:-}" ] && { echo "files ready in $dest (NO_COMMIT: not committed)"; exit 0; }
 git commit -q -m "Feather PDF $version"
 git push origin HEAD:main

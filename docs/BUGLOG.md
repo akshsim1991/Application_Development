@@ -766,3 +766,8 @@ Found and fixed while building it:
   Now a selection of several pages that holds the page shown is kept.
 - **Mac: the fonts table in Fonts used was squeezed** into the narrow alert. Reports with tables go in the wide
   scrolling text area.
+- **Published: Feather PDF 2.14.2 for Windows and macOS** in akshsim1991/FeatherPDF-releases, with `latest.json`. The
+  file is served at the address both apps check, and both downloads match the SHA-256 in it (checked by downloading
+  them again). The "could not find out whether there is a new version" message is therefore gone for both apps. An
+  update from one version to the next can only be tried end to end when the next version (2.14.3) is published; until
+  then Help > Update to New Version answers "You have the newest version".

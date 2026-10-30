@@ -332,6 +332,16 @@ story += bullets([
     "<b>Right-click</b> the selected picture (or use Edit PDF > Picture) to turn it, flip it, crop it (drag a box), adjust brightness and contrast, make it black and white, replace it, save it as PNG, or bring it to the front / send it to the back.",
 ])
 
+story += [P("Tables", "h2")]
+story += bullets([
+    "Choose <b>Edit PDF > Edit a table</b>. Every table Feather PDF finds on the page is outlined with a dashed blue box: tables with lines, tables drawn with horizontal rules only, tables of lined-up text without any lines, and tables on scanned pages (recognise their text first with Edit PDF > Recognise text).",
+    "Click an outlined table to open it, or right-click it and choose <b>Edit this table</b>. If a table is not outlined, drag a box around it.",
+    "In the Edit table window, double-click a cell (or just start typing) to change its text: Enter finishes, Ctrl+Enter starts a new line, Tab moves to the next cell. Drag across cells to select several.",
+    "The buttons add and delete rows and columns, merge and split cells, and set the alignment, bold, size, cell colour and the lines (all, outside only, rows only, none). Drag a line of the grid to change a column's width or a row's height; the fields at the bottom move and resize the whole table.",
+    "<b>Apply</b> writes the table back into the page: the old text and lines are removed, not covered, and what is below the table moves down when it gets longer. Undo (Ctrl+Z) brings the old table back.",
+    "To delete a table with its lines, choose <b>Edit PDF > Delete table</b> (the tables turn red) and click one, or use Delete table in the Edit table window.",
+])
+
 story += [P("Pages", "h2")]
 story += [P("Most page tools are in <b>Edit PDF > Edit pages</b> and on the right-click menu of the page thumbnails.")]
 story += bullets([

@@ -136,11 +136,11 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 
 | # | Feature | Status | Note |
 |---|---|---|---|
-| 87 | Select vector objects | Partly | Tables made by Feather PDF only |
+| 87 | Select vector objects | Partly | Tables (any table found on the page) and shape annotations |
 | 88 | Move vector objects | Partly | Same |
 | 89 | Resize vector objects | Partly | Same |
 | 90 | Rotate vector objects | Missing |  |
-| 91 | Delete vector objects | Partly | Tables and shape annotations |
+| 91 | Delete vector objects | Partly | Tables (any table found on the page, with its lines) and shape annotations |
 | 92 | Edit lines and curves | Missing |  |
 | 93 | Edit Bezier paths | Missing |  |
 | 94 | Modify shapes | Missing |  |
@@ -243,7 +243,7 @@ Status of every item of *PDF Reader & Editor - 500 Features* (23 modules). **Don
 | 176 | Correct page perspective | Missing |  |
 | 177 | Detect document boundaries | Missing |  |
 | 178 | Separate double-page scans | Missing |  |
-| 179 | Recognize tables | Partly | Tables found in text are exported to Excel/CSV |
+| 179 | Recognize tables | Done | Ruled, rule-only, lineless and scanned (after text recognition) tables are found, outlined and editable |
 | 180 | Recognize columns | Missing |  |
 | 181 | Recognize mathematical equations | Missing |  |
 | 182 | Display OCR confidence scores | Missing |  |

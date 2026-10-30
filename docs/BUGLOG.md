@@ -468,6 +468,53 @@ features.
   (pdftotext confirms each page's first line). Right twice in the normal view: page 3; F5 starts there; Right, Esc: the
   normal view shows page 4 (before: a blank area); F11 and Esc: page 4 again. Guide and README list the keys.
 
+### B-042 Tables could not be edited unless Feather PDF had made them
+- **Status:** Fixed
+- **Root cause:** Edit table and Delete table only recognised tables that Feather PDF itself had inserted (it looked for
+  its own marker). A table from any other program, a table drawn with rules only, a table of lined-up text and a
+  scanned table were all "no table here"; nothing showed where a table was expected to be clicked.
+- **Fix:** a new table finder (`src/tables.cpp`) reads the page itself: lines that cross form a grid (merged cells where
+  a line is missing), a box or rules with the columns taken from the text inside, runs of text lines whose pieces line
+  up in columns, and on scanned pages the dark lines of the picture with the recognised words. Each cell keeps its text,
+  font, size, bold, colour, fill and alignment. With Edit table or Delete table chosen, the tables found are outlined
+  (blue for edit, red for delete); a table not found can be enclosed by dragging a box; right-click on a table offers
+  Edit this table and Delete this table. The Edit table window (`src/tableeditor.cpp`) edits cells, rows, columns,
+  merging, alignment, style, colours, lines and the table's place and size. Writing removes the old text and lines,
+  keeps each unchanged cell's baseline and font, and moves what is below down by as much as the table grew (page
+  footers stay); a table that shares text objects or drawings with other content is refused rather than damaged.
+- **Verified:** smoke tests (`tests/smoke.sh`, "tables"): ruled table with a merged cell, rules-only table and lineless
+  table found as 5 x 4; two-column prose not taken for a table; an unchanged rewrite reads the same; cell text, a new row
+  and a merge read back as written and the old text is gone from the text layer; after lines All / Outside only / Rows
+  only / None the table is found again as the same 5 x 4 table with the same alignment; delete removes text and lines;
+  the scanned table is found. In the app (Wine): five.pdf page 3 outlined, click opens the editor, a cell changed and a
+  row typed in, Apply, the heading below moved down keeping its spacing, Undo restores; the scanned sample edited
+  ("Nuts" to "Washers") and undone; a dragged box around two columns of prose opens it as a table; Delete table with
+  confirmation; right-click Edit this table.
+
+### B-043 Edit table window: typing after a button press pressed the button again
+- **Status:** Fixed
+- **Root cause:** after clicking Row below (or any button) the keyboard stayed on that button, so a space typed into a
+  cell pressed it again, and Tab / Enter walked through and pressed the other buttons (a test added a column and a row
+  instead of typing "Filler wire").
+- **Fix:** after a button or the Bold box, the keyboard goes back to the grid; lists and the position fields keep it.
+- **Verified:** Row below, then typing "Filler wire", Tab, "50", Tab, "2.00", Tab, "100.00", Enter fills the new row.
+
+### B-044 A table re-read after "Outside only" lines became one big cell
+- **Status:** Fixed
+- **Root cause:** with no lines inside the frame, every pair of neighbouring cells was taken as merged (a missing line
+  between ruled cells means a merge). Columns taken from the text also split a column whose heading is on the left and
+  whose figures are on the right, and one differently placed heading decided the whole column's alignment.
+- **Fix:** merges are only read from lines where the column or row edges are drawn lines; two neighbouring text bands
+  that no line has text in both of are one column; a column's alignment is the edge most of its cells share, and a
+  heading that starts where the column starts stays on the left. A box around a single column of text (a framed
+  paragraph) is not a table.
+- **Verified:** smoke tests "lines: outside / rows / none, found again as the same table".
+
+### Note: "Unknown font tag 'F1'" from poppler after a table rewrite
+Harmless. Some generators (reportlab) leave an empty `BT ... ET` block naming a font; after the table's text is removed
+PDFium drops the unused font from the page resources, and pdftotext warns about the leftover name. Viewers ignore it and
+the text reads correctly.
+
 ## UI rework (requested points)
 Each point of the request, what was done, and how it was checked (Wine, 1280 x 800 screen; for these checks Wine was set
 to draw window frames itself, `HKCU\Software\Wine\X11 Driver\Decorated=N`, so the window looks as it does on Windows).

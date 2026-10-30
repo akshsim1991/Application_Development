@@ -399,13 +399,41 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
                 ls.push_back(l); rs.push_back(rr);
             }
             if (ls.size() < 2) continue;
-            auto spread = [](const std::vector<double>& v) { return *std::max_element(v.begin(), v.end()) - *std::min_element(v.begin(), v.end()); };
             std::vector<double> ms;
             for (size_t k = 0; k < ls.size(); ++k) ms.push_back((ls[k] + rs[k]) / 2);
-            const double sl = spread(ls), sr = spread(rs), sm = spread(ms);
-            // the edge that varies least (letters' side bearings make even a shared edge vary by about a point)
-            const int align = sl <= std::min(sr, sm) + 0.5 ? 0 : sr <= sm + 0.5 ? 2 : 1;
-            for (int r = 0; r < R; ++r) if (!t.at(r, c).covered && t.at(r, c).colSpan == 1) t.at(r, c).align = align;
+            // how many cells share an edge (within the letters' side bearings, about a point and a half), and how wide
+            // that edge's spread is otherwise
+            auto shared = [](const std::vector<double>& v) {
+                size_t best = 0;
+                for (double a : v) { size_t n = 0; for (double b : v) n += std::fabs(a - b) <= 1.5; best = std::max(best, n); }
+                return best;
+            };
+            auto spread = [](const std::vector<double>& v) { return *std::max_element(v.begin(), v.end()) - *std::min_element(v.begin(), v.end()); };
+            const size_t nl = shared(ls), nr = shared(rs), nm = shared(ms);
+            int align;
+            if (nl != nr || nl != nm) align = nl >= nr && nl >= nm ? 0 : nr >= nm ? 2 : 1;   // the edge most cells share
+            else {
+                const double sl = spread(ls), sr = spread(rs), sm = spread(ms);
+                align = sl <= std::min(sr, sm) + 0.5 ? 0 : sr <= sm + 0.5 ? 2 : 1;
+            }
+            const double colLeft = *std::min_element(ls.begin(), ls.end());
+            for (int r = 0; r < R; ++r) {
+                Cell& cell = t.at(r, c);
+                if (cell.covered || cell.colSpan != 1) continue;
+                cell.align = align;
+                // a cell that starts where the column starts while the others line up elsewhere (a heading over
+                // figures) stays on the left
+                const auto& idx = inCell[static_cast<size_t>(r) * C + c];
+                if (align != 0 && !idx.empty()) {
+                    double l = 1e9, rr = -1e9;
+                    for (int i : idx) { l = std::min(l, pt.chars[i].l); rr = std::max(rr, pt.chars[i].r); }
+                    const std::vector<double>& own = align == 2 ? rs : ms;
+                    const double edge = align == 2 ? rr : (l + rr) / 2;
+                    size_t alike = 0;
+                    for (double v : own) alike += std::fabs(v - edge) <= 1.5;
+                    if (alike < 2 && std::fabs(l - colLeft) <= 1.5) cell.align = 0;
+                }
+            }
         }
     return true;
 }
@@ -455,6 +483,22 @@ std::vector<double> columnsFromText(const std::vector<TLine>& lines, double l, d
     for (const auto& f : free)
         if (f.first > l + 1 && f.second < r - 1 && f.second - f.first >= 0.8 * size) edges.push_back((f.first + f.second) / 2);
     edges.push_back(r);
+    // two neighbouring bands that no line has text in both of are one column whose pieces are aligned differently
+    // (a heading on the left over numbers on the right, a centred heading over right-aligned figures)
+    for (size_t k = 1; k + 1 < edges.size();) {
+        bool both = false;
+        for (const TLine& ln : lines) {
+            bool left = false, right = false;
+            for (const auto& ch : ln.chunks) {
+                const double mid = (ch.first + ch.second) / 2;
+                if (mid > edges[k - 1] && mid < edges[k]) left = true;
+                if (mid > edges[k] && mid < edges[k + 1]) right = true;
+            }
+            if (left && right) { both = true; break; }
+        }
+        if (both) ++k;
+        else edges.erase(edges.begin() + static_cast<std::ptrdiff_t>(k));
+    }
     return edges;
 }
 
@@ -466,16 +510,18 @@ std::vector<double> rowsFromText(const std::vector<TLine>& lines, double top, do
     return edges;
 }
 
-void markMerges(Table& t, const std::vector<Seg>& hs, const std::vector<Seg>& vs) {
+// `colsFromLines` / `rowsFromLines`: whether the column / row edges are drawn lines (else they came from the text, and a
+// missing line there says nothing about merged cells)
+void markMerges(Table& t, const std::vector<Seg>& hs, const std::vector<Seg>& vs, bool colsFromLines, bool rowsFromLines) {
     const int R = t.rows(), C = t.cols();
     // cells joined where the line between them is missing
     std::vector<int> parent(static_cast<size_t>(R) * C);
     std::iota(parent.begin(), parent.end(), 0);
     std::function<int(int)> find = [&](int x) { return parent[x] == x ? x : parent[x] = find(parent[x]); };
-    for (int r = 0; r < R; ++r)
+    for (int r = 0; r < R && colsFromLines; ++r)
         for (int c = 0; c + 1 < C; ++c)
             if (coverage(vs, t.colX[c + 1], t.rowY[r + 1], t.rowY[r], 1.6) < 0.5) parent[find(r * C + c)] = find(r * C + c + 1);
-    for (int r = 0; r + 1 < R; ++r)
+    for (int r = 0; r + 1 < R && rowsFromLines; ++r)
         for (int c = 0; c < C; ++c)
             if (coverage(hs, t.rowY[r + 1], t.colX[c], t.colX[c + 1], 1.6) < 0.5) parent[find(r * C + c)] = find((r + 1) * C + c);
     std::map<int, std::vector<int>> groups;
@@ -579,11 +625,13 @@ std::vector<Table> detect(Document& d, int page) {
             if (cx > t.left() && cx < t.right() && cy < t.top() && cy > t.bottom()) inside.push_back(static_cast<int>(i));
         }
         const std::vector<TLine> lines = linesOf(pt, inside);
-        if (t.colX.size() == 2 && lines.size() >= 2) t.colX = columnsFromText(lines, t.left(), t.right());
-        if (t.rowY.size() == 2 && lines.size() >= 2) t.rowY = rowsFromText(lines, t.top(), t.bottom());
+        const bool colsFromLines = t.colX.size() > 2, rowsFromLines = t.rowY.size() > 2;
+        if (!colsFromLines && lines.size() >= 2) t.colX = columnsFromText(lines, t.left(), t.right());
+        if (!rowsFromLines && lines.size() >= 2) t.rowY = rowsFromText(lines, t.top(), t.bottom());
         if (t.rows() * t.cols() < 2) continue;   // one box: a frame, not a table
+        if (!colsFromLines && t.cols() < 2) continue;   // a box around a paragraph (one column of text lines)
         t.cells.assign(static_cast<size_t>(t.rows()) * t.cols(), Cell{});
-        markMerges(t, ch, cv);
+        markMerges(t, ch, cv, colsFromLines, rowsFromLines);
         initRules(t, true);
         // the lines that are drawn
         for (int r = 0; r <= t.rows(); ++r) t.hRule[r] = coverage(ch, t.rowY[r], t.left(), t.right(), 1.6) > 0.2;
@@ -1179,6 +1227,9 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
     if (extra > 0.01) {
         std::vector<int> below;
         double nextTop = -1e9, lowest = 1e9;
+        // the strip at the foot of the page (page numbers, footers) stays where it is; the content may move down to it
+        const double footZone = 0.07 * d.pageSize(t.page).h;
+        double floor = 2;
         const int n = api().FPDFPage_CountObjects(pg);
         for (int i = 0; i < n; ++i) {
             if (std::find(t0.objects.begin(), t0.objects.end(), i) != t0.objects.end()) continue;
@@ -1187,15 +1238,20 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy) {
             if (!o || !api().FPDFPageObj_GetBounds(o, &l, &b, &r, &tp)) continue;
             if (tp > oldB + 0.5 || r < std::min(oldL, t.left()) || l > std::max(oldR, t.right())) continue;
             if (api().FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && (r - l) * (tp - b) > 0.5 * d.pageSize(t.page).w * d.pageSize(t.page).h) continue;   // a page-sized picture
+            if (tp < footZone) { floor = std::max(floor, static_cast<double>(tp) + 4); continue; }
             below.push_back(i);
             nextTop = std::max(nextTop, static_cast<double>(tp));
             lowest = std::min(lowest, static_cast<double>(b));
         }
-        if (!below.empty() && oldB - nextTop < extra + 4) {   // not enough free space under the table
-            if (t.scanned) return fail(L"The table no longer fits above what is below it on this scanned page. Make the text shorter or the columns wider.");
-            if (lowest - extra < 2) return fail(L"The table got longer, and there is no room on this page to move what is below it down. "
-                                                L"Make the text shorter or the columns wider.");
+        const bool crowded = !below.empty() && oldB - nextTop < extra + 4;   // the table would run into what is below it
+        if (t.scanned) {
+            if (crowded) return fail(L"The table no longer fits above what is below it on this scanned page. Make the text shorter or the columns wider.");
+        } else if (!below.empty() && lowest - extra >= floor) {
+            // what is below moves down by as much as the table grew, so the space between them stays as it was
             for (int i : below) if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
+        } else if (crowded) {
+            return fail(L"The table got longer, and there is no room on this page to move what is below it down. "
+                        L"Make the text shorter or the columns wider.");
         }
     }
     // 4. the old table goes (last index first, so the others keep theirs); a scanned one is covered with white

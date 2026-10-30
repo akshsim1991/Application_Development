@@ -253,6 +253,28 @@ run --annottest "$(W rich.pdf)" "$(W shapes.pdf)"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');assert len(p.pages[0].Annots)==3\""
 check "callout text changed in place" "python3 -c \"import pikepdf;p=pikepdf.open('$work/shapes.pdf');a=p.pages[0].Annots;c=[x for x in a if '/FeatherCallout' in x];assert len(c)==1 and str(c[0].Contents)=='Check this figure\\nand the table' and str(c[0].FeatherCallout).endswith('308010'), c\""
 
+echo "tables"
+tb() { run --tables "$(W $1.pdf)" "$(W $1.txt)"; }
+for f in tbl_ruled tbl_rules tbl_plain tbl_twocol; do tb $f; done
+check "ruled table: 5 x 4 with a merged cell" "grep -q 'rows 5 cols 4 editable 1' '$work/tbl_ruled.txt' && grep -q 'Grand total{1x3}' '$work/tbl_ruled.txt'"
+check "table drawn with rules only"  "grep -q 'rows 5 cols 4 editable 1' '$work/tbl_rules.txt'"
+check "table of text without lines"  "grep -q 'rows 5 cols 4 editable 1' '$work/tbl_plain.txt' && grep -q '1,250<r>' '$work/tbl_plain.txt'"
+check "two columns of prose: not a table" "! grep -q table '$work/tbl_twocol.txt'"
+run --tableedit "$(W tbl_ruled.pdf)" "$(W te_same.pdf)" 1 200 700
+check "unchanged rewrite reads the same" "diff <(pdftotext -layout '$work/tbl_ruled.pdf' -) <(pdftotext -layout '$work/te_same.pdf' -) >/dev/null"
+run --tableedit "$(W tbl_ruled.pdf)" "$(W te_edit.pdf)" 1 200 700 cell 2 0 "Cutting discs" insrow 4 cell 4 0 "Filler wire" merge 0 1 0 2
+run --tables "$(W te_edit.pdf)" "$(W te_edit.txt)"
+check "cell text, new row and merge" "grep -q 'rows 6 cols 4' '$work/te_edit.txt' && grep -q '|Cutting discs' '$work/te_edit.txt' && grep -q '|Filler wire' '$work/te_edit.txt' && grep -q 'Qty/Unit price{1x2}' '$work/te_edit.txt'"
+check "old text gone (not covered)" "! pdftotext '$work/te_edit.pdf' - | grep -q 'Shielding gas'"
+for b in outside rows none; do
+  run --tableedit "$(W tbl_ruled.pdf)" "$(W te_$b.pdf)" 1 200 700 borders $b; run --tables "$(W te_$b.pdf)" "$(W te_$b.txt)"
+  check "lines: $b, found again as the same table" "grep -q 'rows 5 cols 4 editable 1' '$work/te_$b.txt' && grep -q '|Qty<b>.*|1,200<r>' <(tr -d '\\n' < '$work/te_$b.txt')"
+done
+run --tableedit "$(W tbl_rules.pdf)" "$(W te_del.pdf)" 1 300 700 delete
+check "deleted table: text and rules gone" "! pdftotext '$work/te_del.pdf' - | grep -q 'February' && python3 -c \"import pikepdf;p=pikepdf.open('$work/te_del.pdf');c=pikepdf.unparse_content_stream(pikepdf.parse_content_stream(p.pages[0]));assert b' l' not in c and b're' not in c\""
+run --tables "$(W tbl_scan.pdf)" "$(W tbl_scan.txt)"
+check "scanned table found"          "grep -q 'rows 3 cols 4 editable 1 scanned 1' '$work/tbl_scan.txt'"
+
 
 [ -n "${KEEP:-}" ] && echo "work kept: $work" || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || echo "SOME FAILED"

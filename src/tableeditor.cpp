@@ -422,13 +422,14 @@ void build(State& s) {
     make(s, L"BUTTON", L"No colour", WS_TABSTOP | BS_PUSHBUTTON, x, 46, 80, 26, ID_NOFILL); x += 94;
     label(L"Lines", 38); s.lines = combo(ID_LINES, 120, {L"All lines", L"Outside only", L"Rows only", L"None"});
     label(L"Width", 40); s.width = make(s, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL, x, 48, 44, 22, ID_WIDTH, WS_EX_CLIENTEDGE);
-    s.hint = make(s, L"STATIC", L"Double-click a cell or start typing to change its text (Enter: done, Ctrl+Enter: new line). Drag across cells "
-                                L"to select several; drag a line of the grid to resize a column or row.", SS_LEFT, 12, 80, 900, 20, 0);
+    s.hint = make(s, L"STATIC", L"Double-click a cell or type to change its text (Enter: done, Ctrl+Enter: new line). Drag across cells to "
+                                L"select several; drag a grid line to resize a column or row.", SS_LEFT, 12, 80, 900, 20, 0);
 }
 
 void layout(State& s) {
     RECT rc; GetClientRect(s.wnd, &rc);
     const int bottom = rc.bottom - px(s, 44);
+    MoveWindow(s.hint, px(s, 12), px(s, 80), rc.right - px(s, 24), px(s, 20), TRUE);
     MoveWindow(s.grid, px(s, 12), px(s, 104), rc.right - px(s, 24), bottom - px(s, 112), TRUE);
     // the bottom row: position and size, delete, cancel, apply
     int x = px(s, 12);
@@ -496,6 +497,8 @@ void command(State& s, int id, int code) {
         default: return;
     }
     changed(s);
+    // after a button, the keyboard goes back to the grid, so typing (or Space / Enter) edits cells instead of pressing the button again
+    if (id != ID_ALIGN && id != ID_VALIGN && id != ID_LINES && id != ID_LEFT && id != ID_TOP && id != ID_TW && id != ID_TH) SetFocus(s.grid);
 }
 
 LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {

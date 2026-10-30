@@ -9,7 +9,8 @@
 
 // The tools of the page (Annotate menu), as on Windows. None selects text (and annotations, by clicking them).
 enum FPTool { FPToolNone, FPToolNote, FPToolRectangle, FPToolEllipse, FPToolLine, FPToolArrow, FPToolPen, FPToolPolygon,
-              FPToolCloud, FPToolCallout, FPToolStamp, FPToolRedact, FPToolTextBox, FPToolPicture, FPToolCrop, FPToolLink };
+              FPToolCloud, FPToolCallout, FPToolStamp, FPToolRedact, FPToolTextBox, FPToolPicture, FPToolCrop, FPToolLink,
+              FPToolFormText, FPToolFormCheck, FPToolFormCombo, FPToolFormRadio, FPToolFormList, FPToolFormDate };
 
 // What a tool did: a drag (two points; the pen gives every point; a polygon its corners), a click, a double-click.
 struct FPToolEvent {
@@ -58,6 +59,8 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 @property(nonatomic, readonly) int selectedAnnotPage;
 @property(nonatomic, readonly) int selectedAnnot;
 - (void)clearAnnotSelection;
+- (void)invalidatePage:(int)page;   // a form field on it changed how it looks
+- (void)endFormInput;               // the field being typed in lets go of the keyboard
 // The selected text as page rectangles (for highlight, underline...), false when there is none.
 - (BOOL)selectionRects:(std::vector<annot::RectD>&)rects page:(int*)page;
 @end

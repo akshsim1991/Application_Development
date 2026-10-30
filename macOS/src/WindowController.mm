@@ -111,6 +111,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     if ([document isKindOfClass:[FPDocument class]]) {
         _view.document = [(FPDocument*)document pdf];
         [_sidebar setDocument:_view.document];
+        [self hookDocument];
         [self viewChanged:nil];
     }
 }
@@ -262,7 +263,17 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (n.object != self.document) return;
     _view.document = [(FPDocument*)self.document pdf];
     [_sidebar setDocument:_view.document];
+    [self hookDocument];
     [self viewChanged:nil];
+}
+
+// Form fields: a field that changes how it looks is drawn again; a committed answer marks the document edited.
+- (void)hookDocument {
+    Document* d = _view.document;
+    if (!d) return;
+    __weak FPWindowController* weak = self;
+    d->onFormInvalidate = [weak](int page) { [weak.pageView invalidatePage:page]; };
+    d->onFormChanged = [weak]() { [(FPDocument*)weak.document changed]; };
 }
 
 // ---- find: every match tinted, Return / ⌘G for the next, ⇧⌘G for the previous ----

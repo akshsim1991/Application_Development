@@ -282,6 +282,18 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Notes Summary (highlights and comments)\u2026", @selector(notesSummary:), nil);
     add(m, @"Flatten: Make Comments and Fields Part of the Page\u2026", @selector(flattenComments:), nil);
 
+    m = submenu(bar, @"Forms");
+    struct { NSString* title; FPTool tool; } fields[] = {{@"Add a Text Field", FPToolFormText}, {@"Add a Check Box", FPToolFormCheck},
+        {@"Add a Drop-Down List", FPToolFormCombo}, {@"Add Radio Buttons (one choice of several)", FPToolFormRadio},
+        {@"Add a List Box", FPToolFormList}, {@"Add a Date Field", FPToolFormDate}};
+    for (const auto& f : fields) add(m, f.title, @selector(chooseFormTool:), nil).tag = f.tool;
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Find Fields in a Flat Form", @selector(findFormFields:), nil);
+    add(m, @"Fill from a Spreadsheet (CSV)\u2026", @selector(fillFromCsv:), nil);
+    add(m, @"Export the Answers to Excel or CSV\u2026", @selector(exportFormAnswers:), nil);
+    add(m, @"Clear All Answers (Reset the Form)\u2026", @selector(resetForm:), nil);
+    add(m, @"Flatten: Make Fields and Comments Part of the Page\u2026", @selector(flattenComments:), nil);
+
     m = submenu(bar, @"Edit PDF");
     add(m, @"Watermark\u2026", @selector(addWatermark:), nil);
     add(m, @"Page Numbers\u2026", @selector(addPageNumbers:), nil);

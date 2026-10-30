@@ -37,6 +37,106 @@ constexpr size_t kCachedPages = 10;
     NSPoint _toolStartView, _toolNowView;
     std::vector<NSPoint> _toolPathView;           // the pen and the polygon, as drawn
     int _annotPage, _annotIndex;
+    BOOL _formFocus, _formCapture;                // a form field has the keyboard / the mouse
+    int _formPage;
+}
+
+- (void)invalidatePage:(int)page {
+    auto it = _cache.find(page);
+    if (it != _cache.end()) { CGImageRelease(it->second); _cache.erase(it); }
+    [self setNeedsDisplay:YES];
+}
+
+- (void)endFormInput {
+    if (!_formFocus || !_doc || !_doc->hasForm()) return;
+    pdfium::api().FORM_ForceToKillFocus(_doc->form());
+    _formFocus = NO;
+    [self setNeedsDisplay:YES];
+}
+
+// A form field under a point: the click goes to PDFium's form filling (text, check boxes, lists...), as on Windows.
+- (BOOL)formMouseDown:(NSPoint)p {
+    if (!_doc || !_doc->hasForm()) return NO;
+    const auto& api = pdfium::api();
+    int page;
+    double x, y;
+    const BOOL onPage = [self pageAt:p page:&page x:&x y:&y];
+    const int type = onPage ? api.FPDFPage_HasFormFieldAtPoint(_doc->form(), _doc->page(page), x, y) : -1;
+    if (type < 0 && !_formFocus) return NO;
+    if (!onPage) { [self endFormInput]; return NO; }
+    _doc->currentPageForForm = page;
+    _doc->formBeforeInput();
+    _formPage = page;
+    const bool handled = api.FORM_OnLButtonDown(_doc->form(), _doc->page(page), 0, x, y) != 0;
+    if (type >= 0 || handled) { _formFocus = YES; _formCapture = YES; [self setNeedsDisplay:YES]; return YES; }
+    api.FORM_ForceToKillFocus(_doc->form());   // an ordinary click elsewhere
+    _formFocus = NO;
+    return NO;
+}
+
+- (BOOL)formKey:(NSEvent*)e {
+    if (!_formFocus || !_doc) return NO;
+    const auto& api = pdfium::api();
+    FPDF_FORMHANDLE fh = _doc->form();
+    FPDF_PAGE pg = _doc->page(_formPage);
+    NSString* k = e.charactersIgnoringModifiers;
+    const unichar c = k.length ? [k characterAtIndex:0] : 0;
+    if (e.modifierFlags & NSEventModifierFlagCommand) return NO;   // shortcuts (copy, paste, save...) go on
+    if (c == 27) { [self endFormInput]; return YES; }
+    // keys that move or delete: PDFium takes Windows key codes
+    int vk = 0;
+    switch (c) {
+        case NSLeftArrowFunctionKey: vk = 0x25; break;
+        case NSUpArrowFunctionKey: vk = 0x26; break;
+        case NSRightArrowFunctionKey: vk = 0x27; break;
+        case NSDownArrowFunctionKey: vk = 0x28; break;
+        case NSHomeFunctionKey: vk = 0x24; break;
+        case NSEndFunctionKey: vk = 0x23; break;
+        case NSDeleteFunctionKey: vk = 0x2E; break;
+        case '\t': case 25: vk = 0x09; break;
+        default: break;
+    }
+    const int mods = (e.modifierFlags & NSEventModifierFlagShift) ? 1 : 0;
+    if (vk) { api.FORM_OnKeyDown(fh, pg, vk, mods); api.FORM_OnKeyUp(fh, pg, vk, mods); return YES; }
+    if (c == NSDeleteCharacter || c == NSBackspaceCharacter) { api.FORM_OnKeyDown(fh, pg, 0x08, 0); api.FORM_OnChar(fh, pg, 0x08, 0); api.FORM_OnKeyUp(fh, pg, 0x08, 0); return YES; }
+    if (c == '\r' || c == 3) { api.FORM_OnKeyDown(fh, pg, 0x0D, 0); api.FORM_OnChar(fh, pg, 0x0D, 0); api.FORM_OnKeyUp(fh, pg, 0x0D, 0); return YES; }
+    NSString* typed = e.characters;
+    for (NSUInteger i = 0; i < typed.length; ++i) {
+        const unichar u = [typed characterAtIndex:i];
+        if (u >= 0x20 && (u < 0xF700 || u > 0xF8FF)) api.FORM_OnChar(fh, pg, u, 0);   // UTF-16, as PDFium wants
+    }
+    return YES;
+}
+
+- (NSString*)formSelectedText {
+    const auto& api = pdfium::api();
+    FPDF_PAGE pg = _doc->page(_formPage);
+    const unsigned long bytes = api.FORM_GetSelectedText(_doc->form(), pg, nullptr, 0);
+    if (bytes < 4) return @"";
+    std::vector<unsigned short> buf(bytes / 2 + 1);
+    api.FORM_GetSelectedText(_doc->form(), pg, buf.data(), bytes);
+    return [NSString stringWithCharacters:buf.data() length:bytes / 2 - 1];
+}
+
+- (void)formReplaceSelection:(NSString*)text {
+    std::vector<unsigned short> w(text.length + 1, 0);
+    [text getCharacters:w.data() range:NSMakeRange(0, text.length)];
+    pdfium::api().FORM_ReplaceSelection(_doc->form(), _doc->page(_formPage), w.data());
+}
+
+- (void)paste:(id)sender {
+    if (!_formFocus) return;
+    NSString* t = [NSPasteboard.generalPasteboard stringForType:NSPasteboardTypeString];
+    if (t) [self formReplaceSelection:t];
+}
+
+- (void)cut:(id)sender {
+    if (!_formFocus) return;
+    NSString* t = [self formSelectedText];
+    if (!t.length) return;
+    [NSPasteboard.generalPasteboard clearContents];
+    [NSPasteboard.generalPasteboard setString:t forType:NSPasteboardTypeString];
+    [self formReplaceSelection:@""];
 }
 
 - (int)selectedAnnotPage { return _annotPage; }
@@ -323,6 +423,7 @@ constexpr size_t kCachedPages = 10;
 }
 
 - (void)keyDown:(NSEvent*)event {
+    if ([self formKey:event]) return;
     NSString* k = event.charactersIgnoringModifiers;
     const unichar c = k.length ? [k characterAtIndex:0] : 0;
     const double page = self.visibleRect.size.height - 40;
@@ -653,6 +754,7 @@ constexpr size_t kCachedPages = 10;
     [self.window makeFirstResponder:self];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     if (_tool != FPToolNone) { [self toolDown:e at:p]; return; }
+    if ([self formMouseDown:p]) return;
     {   // an annotation under the pointer is selected (double-click: its comment)
         int page;
         double x, y;
@@ -704,6 +806,12 @@ constexpr size_t kCachedPages = 10;
     [self autoscroll:e];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     if (_tool != FPToolNone) { [self toolDragged:p]; return; }
+    if (_formCapture) {
+        int page;
+        double x, y;
+        if ([self pageAt:p page:&page x:&x y:&y] && page == _formPage) pdfium::api().FORM_OnMouseMove(_doc->form(), _doc->page(page), 0, x, y);
+        return;
+    }
     if (std::hypot(p.x - _downAt.x, p.y - _downAt.y) > 3) _dragged = YES;
     if (_selPage < 0) {   // started beside the text: start at the first character reached
         int page;
@@ -728,6 +836,14 @@ constexpr size_t kCachedPages = 10;
 
 - (void)mouseUp:(NSEvent*)e {
     if (_tool != FPToolNone) { [self toolUp:e]; return; }
+    if (_formCapture) {
+        _formCapture = NO;
+        int page;
+        double x, y;
+        if ([self pageAt:[self convertPoint:e.locationInWindow fromView:nil] page:&page x:&x y:&y] && page == _formPage)
+            pdfium::api().FORM_OnLButtonUp(_doc->form(), _doc->page(page), 0, x, y);
+        return;
+    }
     if (_dragged || e.clickCount > 1) return;
     if (_selPage >= 0 && _selAnchor == _selFocus) [self clearSelection];   // a click, not a selection
     int page;
@@ -776,6 +892,14 @@ constexpr size_t kCachedPages = 10;
 // The pointer: a hand over a link, the text bar over text.
 - (void)mouseMoved:(NSEvent*)e {
     if (_tool != FPToolNone) { [NSCursor.crosshairCursor set]; return; }
+    {
+        int fp;
+        double fx, fy;
+        if (_doc && _doc->hasForm() && [self pageAt:[self convertPoint:e.locationInWindow fromView:nil] page:&fp x:&fx y:&fy]) {
+            pdfium::api().FORM_OnMouseMove(_doc->form(), _doc->page(fp), 0, fx, fy);   // PDFium sets the pointer (FormHost cursor)
+            if (pdfium::api().FPDFPage_HasFormFieldAtPoint(_doc->form(), _doc->page(fp), fx, fy) >= 0) return;
+        }
+    }
     int page;
     double x, y;
     if (_doc && [self pageAt:[self convertPoint:e.locationInWindow fromView:nil] page:&page x:&x y:&y]) {
@@ -787,6 +911,11 @@ constexpr size_t kCachedPages = 10;
 
 // ⌘C copies the selected text; ⌘A selects the text of the page shown.
 - (void)copy:(id)sender {
+    if (_formFocus) {
+        NSString* t = [self formSelectedText];
+        if (t.length) { [NSPasteboard.generalPasteboard clearContents]; [NSPasteboard.generalPasteboard setString:t forType:NSPasteboardTypeString]; }
+        return;
+    }
     if (![self hasSelection]) return;
     NSPasteboard* pb = NSPasteboard.generalPasteboard;
     [pb clearContents];
@@ -794,6 +923,7 @@ constexpr size_t kCachedPages = 10;
 }
 
 - (void)selectAll:(id)sender {
+    if (_formFocus) { pdfium::api().FORM_SelectAllText(_doc->form(), _doc->page(_formPage)); return; }
     if (!_doc || _doc->pageCount() == 0) return;
     const int page = [self currentPage];
     const int n = _doc->charCount(page);
@@ -803,7 +933,8 @@ constexpr size_t kCachedPages = 10;
 }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
-    if (item.action == @selector(copy:)) return [self hasSelection];
+    if (item.action == @selector(copy:)) return [self hasSelection] || _formFocus;
+    if (item.action == @selector(paste:) || item.action == @selector(cut:)) return _formFocus;
     if (item.action == @selector(selectAll:)) return _doc != nullptr;
     return YES;
 }

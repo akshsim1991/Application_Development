@@ -51,6 +51,7 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 @property(nonatomic, copy) void (^jumped)(int fromPage);
 
 @property(nonatomic) FPTool tool;
+@property(nonatomic) BOOL presenting;                    // presentation: a click shows the next page
 @property(nonatomic) double lineWidthPt;                 // for the preview of shapes
 @property(nonatomic) std::function<void(const FPToolEvent&)> onToolEvent;
 // The right-click menu for a point of a page (nil: none).

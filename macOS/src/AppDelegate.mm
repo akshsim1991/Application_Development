@@ -4,6 +4,7 @@
 #import "Updater.h"
 #import "PageView.h"
 #import "NewPdf.h"
+#import "Palette.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -137,6 +138,9 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     [[FPStartWindowController shared] showWindow:nil];
 }
 
+- (IBAction)showCommandPalette:(id)sender { FPShowCommandPalette(NSApp.mainWindow); }
+- (IBAction)setAsDefaultApp:(id)sender { FPSetAsDefaultPdfApp(NSApp.mainWindow); }
+
 // ---- new documents ----
 
 - (IBAction)newPdfFromPictures:(id)sender { [FPNewPdf fromPictures]; }
@@ -212,6 +216,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     services.submenu = [[NSMenu alloc] init];
     NSApp.servicesMenu = services.submenu;
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Set as Default PDF App\u2026", @selector(setAsDefaultApp:), nil).target = self;
+    [m addItem:[NSMenuItem separatorItem]];
     add(m, [@"Hide " stringByAppendingString:app], @selector(hide:), @"h");
     add(m, @"Hide Others", @selector(hideOtherApplications:), @"h", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Show All", @selector(unhideAllApplications:), nil);
@@ -225,6 +231,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Close", @selector(performClose:), @"w");
+    add(m, @"Print\u2026", @selector(printDocument:), @"p");
     add(m, @"Save", @selector(saveDocument:), @"s");
     add(m, @"Save As\u2026", @selector(saveDocumentAs:), @"s", NSEventModifierFlagCommand | NSEventModifierFlagShift);
     add(m, @"Revert to Saved", @selector(revertDocumentToSaved:), nil);
@@ -370,6 +377,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Show Tab Bar", @selector(toggleTabBar:), nil);
     add(m, @"Enter Full Screen", @selector(toggleFullScreen:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagControl);
+    add(m, @"Presentation", @selector(startPresentation:), @"p", NSEventModifierFlagCommand | NSEventModifierFlagOption);
 
     m = submenu(bar, @"Go");
     add(m, @"Previous Page", @selector(previousPage:), [NSString stringWithFormat:@"%C", (unichar)NSUpArrowFunctionKey],
@@ -383,6 +391,18 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Back", @selector(goBack:), @"[");
     add(m, @"Forward", @selector(goForward:), @"]");
+
+    m = submenu(bar, @"Tools");
+    add(m, @"Command Palette\u2026", @selector(showCommandPalette:), @"k").target = self;
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Compare with Another Document\u2026", @selector(compareDocuments:), nil);
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Read Aloud", @selector(readAloud:), nil);
+    add(m, @"Stop Reading", @selector(stopReading:), @".");
+    NSMenuItem* rs = add(m, @"Reading Speed", nil, nil);
+    rs.submenu = [[NSMenu alloc] initWithTitle:@"Reading Speed"];
+    NSString* speeds[] = {@"Slow", @"Normal", @"Fast", @"Very Fast"};
+    for (int i = 0; i < 4; ++i) add(rs.submenu, speeds[i], @selector(setReadingSpeed:), nil).tag = i;
 
     m = submenu(bar, @"Window");
     add(m, @"Minimize", @selector(performMiniaturize:), @"m");

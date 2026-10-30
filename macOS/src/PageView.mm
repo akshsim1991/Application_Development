@@ -145,6 +145,7 @@ constexpr size_t kCachedPages = 10;
 
 - (void)setTool:(FPTool)tool {
     _tool = tool;
+    [[NSNotificationCenter defaultCenter] postNotificationName:FPPageViewChanged object:self];   // the status bar names the tool
     _toolDown = NO;
     _toolPts.clear();
     _toolPathView.clear();
@@ -753,6 +754,10 @@ constexpr size_t kCachedPages = 10;
 - (void)mouseDown:(NSEvent*)e {
     [self.window makeFirstResponder:self];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+    if (_presenting) {   // a click: the next page (with Shift: the one before)
+        [self showPage:[self currentPage] + ((e.modifierFlags & NSEventModifierFlagShift) ? -1 : 1)];
+        return;
+    }
     if (_tool != FPToolNone) { [self toolDown:e at:p]; return; }
     if ([self formMouseDown:p]) return;
     {   // an annotation under the pointer is selected (double-click: its comment)

@@ -32,13 +32,14 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     FPSidebar* _sidebar;
     NSSplitView* _split;
     NSSearchField* _find;
+    NSTextField* _status;
     std::vector<TextHit> _hits;
     int _hit;
     std::wstring _searched;
     std::vector<int> _back, _forward;   // pages to go back and forward to
     NSTextField* _pageField;
     NSTextField* _pageCount;
-    NSPopUpButton* _zoomMenu;
+    NSComboBox* _zoomMenu;
 }
 
 - (instancetype)init {
@@ -81,7 +82,27 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         [_split addSubview:_sidebar];
         [_split addSubview:scroll];
         [_split setHoldingPriority:NSLayoutPriorityDefaultHigh forSubviewAtIndex:0];
-        w.contentView = _split;
+        // the status bar under the pages, as on Windows: page, page size, the tool in use, saved or not
+        NSView* content = [[NSView alloc] initWithFrame:w.contentView.bounds];
+        _status = [NSTextField labelWithString:@""];
+        _status.font = [NSFont systemFontOfSize:11];
+        _status.textColor = NSColor.secondaryLabelColor;
+        _status.lineBreakMode = NSLineBreakByTruncatingTail;
+        _split.translatesAutoresizingMaskIntoConstraints = NO;
+        _status.translatesAutoresizingMaskIntoConstraints = NO;
+        [content addSubview:_split];
+        [content addSubview:_status];
+        [NSLayoutConstraint activateConstraints:@[
+            [_split.topAnchor constraintEqualToAnchor:content.topAnchor],
+            [_split.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+            [_split.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+            [_split.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-24],
+            [_status.leadingAnchor constraintEqualToAnchor:content.leadingAnchor constant:12],
+            [_status.trailingAnchor constraintLessThanOrEqualToAnchor:content.trailingAnchor constant:-12],
+            [_status.centerYAnchor constraintEqualToAnchor:content.bottomAnchor constant:-12],
+        ]];
+        w.contentView = content;
+        [w setContentBorderThickness:24 forEdge:NSRectEdgeMinY];
         [_split setPosition:180 ofDividerAtIndex:0];
         NSNumber* shown = [[NSUserDefaults standardUserDefaults] objectForKey:FPSidebarShownKey];
         if (shown && !shown.boolValue) [self setSidebarShown:NO];
@@ -112,6 +133,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         _view.document = [(FPDocument*)document pdf];
         [_sidebar setDocument:_view.document];
         [self hookDocument];
+        [self restorePosition];
         [self viewChanged:nil];
     }
 }
@@ -185,10 +207,16 @@ static NSImage* symbol(NSString* name, NSString* description) {
                                                                         action:@selector(zoomClicked:)];
         [s setToolTip:@"Zoom out (⌘−)" forSegment:0];
         [s setToolTip:@"Zoom in (⌘+)" forSegment:1];
-        _zoomMenu = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+        // the zoom typed in (200, then Return) or chosen from the list, as the Windows app's zoom box
+        _zoomMenu = [[NSComboBox alloc] initWithFrame:NSZeroRect];
+        [_zoomMenu addItemWithObjectValue:@"Fit width"];
+        [_zoomMenu addItemWithObjectValue:@"Fit page"];
+        for (double z : kZoomPresets) [_zoomMenu addItemWithObjectValue:[NSString stringWithFormat:@"%d %%", static_cast<int>(z * 100)]];
+        _zoomMenu.numberOfVisibleItems = 10;
+        _zoomMenu.completes = NO;
         _zoomMenu.target = self;
         _zoomMenu.action = @selector(zoomChosen:);
-        [_zoomMenu.widthAnchor constraintEqualToConstant:104].active = YES;
+        [_zoomMenu.widthAnchor constraintEqualToConstant:110].active = YES;
         NSStackView* row = [NSStackView stackViewWithViews:@[ s, _zoomMenu ]];
         row.spacing = 8;
         item.view = row;
@@ -206,10 +234,17 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (s.selectedSegment == 0) [self zoomOut:nil]; else [self zoomIn:nil];
 }
 
-- (void)zoomChosen:(NSPopUpButton*)p {
-    const NSInteger tag = p.selectedItem.tag;
-    if (tag == 0) [self fitWidth:nil];
-    else [_view setZoom:tag / 100.0];
+- (void)zoomChosen:(NSComboBox*)c {
+    NSString* t = c.stringValue;
+    if ([t isEqualToString:@"Fit width"]) [self fitWidth:nil];
+    else if ([t isEqualToString:@"Fit page"]) [self fitPage:nil];
+    else {
+        const double z = [t stringByTrimmingCharactersInSet:[NSCharacterSet characterSetWithCharactersInString:@" %"]].doubleValue;
+        if (z >= 10 && z <= 800) [_view setZoom:z / 100.0];
+        else NSBeep();
+    }
+    [self.window makeFirstResponder:_view];
+    [self viewChanged:nil];
 }
 
 - (void)pageEntered:(NSTextField*)f {
@@ -227,20 +262,19 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (_pageField && !_pageField.currentEditor) _pageField.stringValue = [NSString stringWithFormat:@"%d", page];
     _pageCount.stringValue = [NSString stringWithFormat:@"of %d", count];
     const int percent = static_cast<int>(std::lround(_view.zoom * 100));
-    if (_zoomMenu) {
-        [_zoomMenu removeAllItems];
-        [_zoomMenu addItemWithTitle:@"Fit width"];
-        _zoomMenu.lastItem.tag = 0;
-        for (double z : kZoomPresets) {
-            [_zoomMenu addItemWithTitle:[NSString stringWithFormat:@"%d %%", static_cast<int>(z * 100)]];
-            _zoomMenu.lastItem.tag = static_cast<NSInteger>(z * 100);
-        }
-        if (_view.fitWidth) [_zoomMenu selectItemWithTag:0];
-        else if (![_zoomMenu selectItemWithTag:percent]) {
-            [_zoomMenu insertItemWithTitle:[NSString stringWithFormat:@"%d %%", percent] atIndex:1];
-            [_zoomMenu itemAtIndex:1].tag = percent;
-            [_zoomMenu selectItemAtIndex:1];
-        }
+    if (_zoomMenu && !_zoomMenu.currentEditor)
+        _zoomMenu.stringValue = _view.fitWidth ? @"Fit width" : [NSString stringWithFormat:@"%d %%", percent];
+    if (_status && d && count) {
+        const PageSize& ps = d->pageSize(page - 1);
+        const int mw = static_cast<int>(std::lround(ps.w / 72.0 * 25.4)), mh = static_cast<int>(std::lround(ps.h / 72.0 * 25.4));
+        NSString* name = (mw == 210 && mh == 297) || (mw == 297 && mh == 210) ? @" (A4)" : (mw == 216 && mh == 279) || (mw == 279 && mh == 216) ? @" (Letter)"
+                       : (mw == 148 && mh == 210) || (mw == 210 && mh == 148) ? @" (A5)" : (mw == 297 && mh == 420) || (mw == 420 && mh == 297) ? @" (A3)" : @"";
+        static NSString* const tools[] = {@"", @"Add comment", @"Rectangle", @"Ellipse", @"Line", @"Arrow", @"Pen", @"Polygon", @"Cloud", @"Callout",
+                                          @"Stamp", @"Mark areas to redact", @"Text box", @"Picture", @"Crop by drawing a box", @"Link",
+                                          @"Text field", @"Check box", @"Drop-down list", @"Radio buttons", @"List box", @"Date field"};
+        NSString* tool = _view.tool > 0 && _view.tool < static_cast<int>(sizeof(tools) / sizeof(tools[0])) ? [NSString stringWithFormat:@"  \u00B7  Tool: %@ (Esc ends it)", tools[_view.tool]] : @"";
+        _status.stringValue = [NSString stringWithFormat:@"Page %d of %d  \u00B7  %d \u00D7 %d mm%@%@  \u00B7  %@", page, count, mw, mh, name, tool,
+                                                         d->dirty() ? @"Unsaved changes" : @"All changes saved"];
     }
     if (@available(macOS 11.0, *))
         self.window.subtitle = count ? [NSString stringWithFormat:@"Page %d of %d · %d %%", page, count, percent] : @"";
@@ -266,6 +300,36 @@ static NSImage* symbol(NSString* name, NSString* description) {
     [self hookDocument];
     [self viewChanged:nil];
 }
+
+// ---- reading positions: each file opens where it was last read (the last 100 files), as on Windows ----
+
+- (void)restorePosition {
+    NSString* path = [(NSDocument*)self.document fileURL].path;
+    NSDictionary* all = [NSUserDefaults.standardUserDefaults dictionaryForKey:@"positions"];
+    NSArray* pos = path ? all[path] : nil;
+    if (pos.count < 2) return;
+    const int page = [pos[0] intValue];
+    const double zoom = [pos[1] doubleValue];
+    dispatch_async(dispatch_get_main_queue(), ^{   // after the window has its size
+        if (zoom > 0) [self->_view setZoom:zoom];
+        [self->_view showPage:page];
+    });
+}
+
+- (void)rememberPosition {
+    NSString* path = [(NSDocument*)self.document fileURL].path;
+    if (!path || !_view.document) return;
+    NSMutableDictionary* all = [[NSUserDefaults.standardUserDefaults dictionaryForKey:@"positions"] mutableCopy] ?: [NSMutableDictionary dictionary];
+    NSMutableArray* order = [[NSUserDefaults.standardUserDefaults arrayForKey:@"positionsOrder"] mutableCopy] ?: [NSMutableArray array];
+    all[path] = @[ @([_view currentPage]), @(_view.fitWidth ? 0.0 : _view.zoom) ];
+    [order removeObject:path];
+    [order addObject:path];
+    while (order.count > 100) { [all removeObjectForKey:order.firstObject]; [order removeObjectAtIndex:0]; }
+    [NSUserDefaults.standardUserDefaults setObject:all forKey:@"positions"];
+    [NSUserDefaults.standardUserDefaults setObject:order forKey:@"positionsOrder"];
+}
+
+- (void)windowWillClose:(NSNotification*)n { [self rememberPosition]; }
 
 // Form fields: a field that changes how it looks is drawn again; a committed answer marks the document edited.
 - (void)hookDocument {

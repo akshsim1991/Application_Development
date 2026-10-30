@@ -21,6 +21,8 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Annotate.mm
   src/Forms.mm
   src/PagesMore.mm
+  src/Reading.mm
+  src/Palette.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")
@@ -36,7 +38,7 @@ target_compile_definitions(FeatherPDFMac PRIVATE FEATHER_VERSION="${MAC_VERSION}
 target_compile_options(FeatherPDFMac PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc> -ffp-contract=off)
 add_dependencies(FeatherPDFMac buildinfo)
 target_link_libraries(FeatherPDFMac PRIVATE "-framework Cocoa" "-framework CoreGraphics" "-framework ImageIO" "-framework CoreFoundation"
-  "-framework UniformTypeIdentifiers" "-framework Security")
+  "-framework UniformTypeIdentifiers" "-framework Security" "-framework AVFoundation")
 
 # PDFium goes inside the app (Contents/Frameworks), where the app looks for it; then the whole app is signed for this
 # Mac ("ad hoc"): Apple silicon runs nothing unsigned. A Developer ID signature replaces this for a public download.

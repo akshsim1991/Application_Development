@@ -746,14 +746,16 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     std::vector<char> used(objs.size(), 0);
     std::vector<size_t> order(objs.size());
     for (size_t i = 0; i < order.size(); ++i) order[i] = i;
-    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return objs[a].t != objs[b].t ? objs[a].t > objs[b].t : objs[a].l < objs[b].l; });
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
+        return objs[a].t != objs[b].t ? objs[a].t > objs[b].t : objs[a].l != objs[b].l ? objs[a].l < objs[b].l : a < b;
+    });
     for (size_t oi : order) {
         if (used[oi]) continue;
         Line ln{objs[oi].l, objs[oi].b, objs[oi].r, objs[oi].t, objs[oi].size, objs[oi].text, {objs[oi].idx}, objs[oi].o};
         used[oi] = 1;
         std::vector<size_t> same;
         for (size_t oj : order) if (!used[oj] && std::fabs(objs[oj].b - objs[oi].b) < 0.4 * objs[oi].size && std::fabs(objs[oj].size - objs[oi].size) < 0.15 * objs[oi].size) same.push_back(oj);
-        std::sort(same.begin(), same.end(), [&](size_t a, size_t b) { return objs[a].l < objs[b].l; });
+        std::sort(same.begin(), same.end(), [&](size_t a, size_t b) { return objs[a].l != objs[b].l ? objs[a].l < objs[b].l : a < b; });
         for (size_t oj : same) {
             const double gap = objs[oj].l - ln.r;
             if (gap > 2.5 * objs[oi].size || gap < -0.3 * objs[oi].size) continue;   // another column or overlapping

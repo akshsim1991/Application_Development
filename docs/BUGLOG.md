@@ -595,6 +595,19 @@ the text reads correctly.
 - **Verified:** in the app, with Dark page colours saved: restarted, opened two files, Side by side, Show another open
   tab: both sides dark (before the fix the right side was white).
 
+### B-050 Tables: the two letters of a ligature could be read the wrong way round ("representaiton")
+- **Status:** Fixed
+- **Root cause:** found by the new Mac build check, which compares the engine on the Mac with the Windows app. Word
+  draws "ti" as one ligature glyph, so PDFium reports the "t" and the "i" at the same place. The table reader sorted
+  the letters of a line only by their place, so two letters at the same place could come out in either order. The
+  Windows app's C++ library put the "i" first, and the exam paper's question cell read "representaiton". When such a cell
+  was edited, the wrong spelling was written back. The Mac's library happened to put them right, which showed the
+  fault.
+- **Fix:** letters at the same place keep the order the PDF gives them. The same tie-break was added to the other
+  sorts by position (lines of a table, objects of a paragraph), so the result never depends on the system.
+- **Verified:** smoke test "exam paper: the letters of a ligature ("ti") read in order"; the engine check now gives the
+  same 47 results on Windows, Linux and the Mac.
+
 ## Delete Header and Footer (requested points)
 Engine `src/headfoot.cpp`, window `src/hfdialog.cpp`; command line `--hfremove` for the smoke tests ("delete header and
 footer", 15 checks on generated samples: a report with logo / title / date / rules / "Page n of 6" and body text that

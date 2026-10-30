@@ -255,7 +255,8 @@ std::vector<TLine> linesOf(const PageText& pt, const std::vector<int>& idx) {
     std::vector<int> order = idx;
     std::sort(order.begin(), order.end(), [&](int a, int b) {
         const Char& p = pt.chars[a]; const Char& q = pt.chars[b];
-        return std::fabs(p.oy - q.oy) > 0.3 * std::max(p.size, q.size) ? p.oy > q.oy : p.ox < q.ox;
+        if (std::fabs(p.oy - q.oy) > 0.3 * std::max(p.size, q.size)) return p.oy > q.oy;
+        return p.ox != q.ox ? p.ox < q.ox : a < b;   // same place (a ligature such as "ti"): the PDF's own order
     });
     std::vector<TLine> lines;
     for (int i : order) {
@@ -268,7 +269,11 @@ std::vector<TLine> linesOf(const PageText& pt, const std::vector<int>& idx) {
         } else lines.push_back({c.l, c.r, c.b, c.t, c.oy, c.size, {i}, {}});
     }
     for (TLine& L : lines) {
-        std::sort(L.chars.begin(), L.chars.end(), [&](int a, int b) { return pt.chars[a].ox < pt.chars[b].ox; });
+        // Left to right; letters drawn at the same place (the two letters of a ligature such as "ti") keep the PDF's
+        // own order, which a sort by place alone left to chance ("representaiton").
+        std::sort(L.chars.begin(), L.chars.end(), [&](int a, int b) {
+            return pt.chars[a].ox != pt.chars[b].ox ? pt.chars[a].ox < pt.chars[b].ox : a < b;
+        });
         // pieces: a gap of more than one em (and three spaces) starts a new piece
         double s = 0, e = 0;
         bool open = false;

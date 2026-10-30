@@ -277,6 +277,7 @@ check "borders drawn with other lines in one drawing: editable, the rest kept" "
 if [ -s "$work/qp.pdf" ]; then
   run --tables "$(W qp.pdf)" "$(W qp.txt)"
   check "exam paper: USN boxes, details and questions are three tables (the letterhead is none)" "[ \$(grep -c '^page' '$work/qp.txt') -eq 3 ] && grep -q 'rows 1 cols 11' '$work/qp.txt' && grep -q 'INTERNAL ASSESSMENT.*{1x4}' '$work/qp.txt' && grep -q 'rows 6 cols 5 editable 1' '$work/qp.txt' && ! grep -q 'ACHARYA' '$work/qp.txt'"
+  check "exam paper: the letters of a ligature (\"ti\") read in order" "grep -q 'signed integer representation' '$work/qp.txt' && ! grep -q 'representaiton' '$work/qp.txt'"
   run --tableedit "$(W qp.pdf)" "$(W qp_det.pdf)" 1 300 560 cell 2 1 "II / P-cycle" cell 3 1 "30-10-2026"
   check "exam paper: empty cells filled in, no row grows" "grep -q 'same height' '$work/qp_det.pdf.txt' && pdftotext '$work/qp_det.pdf' - | grep -q '30-10-2026'"
   run --tableedit "$(W qp.pdf)" "$(W qp_q.pdf)" 1 300 400 cell 4 1 "Explain signed integer representation using two's complement, with examples, and explain how overflow is detected when two large positive numbers are added together."

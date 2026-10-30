@@ -136,7 +136,6 @@ int run(std::vector<std::wstring> files) {
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
 #endif
-#ifdef _WIN32   // not on the Mac yet (macOS/PORTING.md)
     if (!files.empty() && files[0] == L"--search") {   // --search folder text report.txt
         if (files.size() < 4) return 2;
         const std::wstring dir = platform::appDataDir() + platform::pathSeparator() + L"index";
@@ -148,7 +147,6 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(u.begin(), u.end());
         return Document::writeFile(files[3], rb) == SaveResult::Ok ? 0 : 4;
     }
-#endif
     if (!files.empty() && files[0] == L"--redact") {   // --redact in.pdf out.pdf phrase : marks, applies, saves and checks
         if (files.size() < 4) return 2;
         Document doc;

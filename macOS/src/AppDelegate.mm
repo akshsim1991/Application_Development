@@ -5,6 +5,7 @@
 #import "PageView.h"
 #import "NewPdf.h"
 #import "Palette.h"
+#import "FolderSearch.h"
 #import "Trace.h"
 #include <algorithm>
 #include "buildinfo.h"
@@ -138,6 +139,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     [[FPStartWindowController shared] showWindow:nil];
 }
 
+- (IBAction)searchFolder:(id)sender { FPSearchFolder(NSApp.mainWindow.windowController.document ? NSApp.mainWindow : nil); }
 - (IBAction)showCommandPalette:(id)sender { FPShowCommandPalette(NSApp.mainWindow); }
 - (IBAction)setAsDefaultApp:(id)sender { FPSetAsDefaultPdfApp(NSApp.mainWindow); }
 
@@ -427,6 +429,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Command Palette\u2026", @selector(showCommandPalette:), @"k").target = self;
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Compare with Another Document\u2026", @selector(compareDocuments:), nil);
+    add(m, @"Search All My PDFs in a Folder\u2026", @selector(searchFolder:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagShift).target = self;
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Read Aloud", @selector(readAloud:), nil);
     add(m, @"Stop Reading", @selector(stopReading:), @".");

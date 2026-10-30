@@ -15,6 +15,7 @@ ok()   { echo "  ok   $1"; }
 bad()  { echo "  FAIL $1"; fail=1; }
 check(){ if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 run()  { "$prog" "$@" </dev/null >/dev/null 2>&1; }
+mkdir -p "${TMPDIR:-/tmp}" >/dev/null 2>&1
 text() { python3 -c "import sys;from pdfminer.high_level import extract_text;print(extract_text(sys.argv[1]))" "$1" 2>/dev/null; }
 pages(){ python3 -c "import sys,pikepdf;print(len(pikepdf.open(sys.argv[1]).pages))" "$1"; }
 
@@ -134,6 +135,15 @@ check "no script, attachment"       "python3 -c \"
 import pikepdf;p=pikepdf.open('$W/arch-a.pdf');assert '/OpenAction' not in p.Root and len(p.attachments)==0\""
 check "text still searchable"       "text '$W/arch-a.pdf' | grep -q 'Quarterly Report'"
 fi
+
+echo "search all PDFs in a folder"
+mkdir -p "$W/lib/sub"; cp "$W/rich.pdf" "$W/lib/"; cp "$W/qp.pdf" "$W/lib/sub/"
+HOME="$W/home" run --search "$W/lib" "Quarterly" "$W/srch.txt"
+check "finds the phrase"            "grep -q 'rich.pdf|1|' '$W/srch.txt'"
+HOME="$W/home" run --search "$W/lib" "Quarterly" "$W/srch2.txt"
+check "second search uses the saved index" "grep -q 'scanned=0' '$W/srch2.txt'"
+HOME="$W/home" run --search "$W/lib" "signed integer" "$W/srch3.txt"
+check "looks in subfolders"         "grep -q 'sub/qp.pdf|1|' '$W/srch3.txt'"
 
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"

@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <sys/stat.h>
+#include <filesystem>
+#include <system_error>
 #endif
 
 namespace platform {
@@ -130,7 +132,8 @@ std::wstring appDataDir() {
 #else
     std::string dir = std::string(home) + "/.config/feather-pdf";
 #endif
-    mkdir(dir.c_str(), 0755);
+    std::error_code ec;
+    std::filesystem::create_directories(dir, ec);   // with its parents (~/.config may not exist yet)
     return wide(dir);
 #endif
 }

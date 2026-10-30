@@ -29,6 +29,7 @@ set(ENGINE_SOURCES
   ${SHARED}/picture.cpp
   ${SHARED}/pdfa.cpp
   ${SHARED}/visualdiff.cpp
+  ${SHARED}/foldersearch.cpp
   ${SHARED}/pending.cpp)
 
 # PDFium for this system (scripts/fetch-pdfium.sh mac|linux puts it here; third_party/pdfium is the Windows one).

@@ -25,6 +25,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Palette.mm
   src/Editing.mm
   src/TableSheet.mm
+  src/FolderSearch.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")

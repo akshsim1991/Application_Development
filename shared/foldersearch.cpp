@@ -1,27 +1,20 @@
 #include "foldersearch.hpp"
-#include <windows.h>
+#include "platform.hpp"
 #include <algorithm>
 #include <cwctype>
+#ifndef _WIN32
+#include <filesystem>
+#include <system_error>
+#endif
 #include "document.hpp"
 
 namespace foldersearch {
 namespace {
 
-std::string toUtf8(const std::wstring& w) {
-    if (w.empty()) return {};
-    int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
-    std::string s(n, '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), s.data(), n, nullptr, nullptr);
-    return s;
-}
-std::wstring fromUtf8(const std::string& s) {
-    if (s.empty()) return {};
-    int n = MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), nullptr, 0);
-    std::wstring w(n, L'\0');
-    MultiByteToWideChar(CP_UTF8, 0, s.data(), static_cast<int>(s.size()), w.data(), n);
-    return w;
-}
+std::string toUtf8(const std::wstring& w) { return platform::utf8(w); }
+std::wstring fromUtf8(const std::string& s) { return platform::wide(s); }
 
+#ifdef _WIN32
 void listPdfs(const std::wstring& dir, std::vector<std::wstring>& out, int depth) {
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
@@ -35,7 +28,32 @@ void listPdfs(const std::wstring& dir, std::vector<std::wstring>& out, int depth
     } while (FindNextFileW(h, &fd));
     FindClose(h);
 }
+#else
+void listPdfs(const std::wstring& dir, std::vector<std::wstring>& out, int depth) {
+    std::error_code ec;
+    for (const auto& e : std::filesystem::directory_iterator(platform::utf8(dir), ec)) {
+        const std::string name = e.path().filename().string();
+        if (e.is_symlink(ec)) continue;
+        if (e.is_directory(ec)) { if (depth < 8) listPdfs(platform::wide(e.path().string()), out, depth + 1); continue; }
+        std::string ext = e.path().extension().string();
+        for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+        if (ext == ".pdf" && name.size() > 4) out.push_back(platform::wide(e.path().string()));
+    }
+}
 
+// Size and modification time: what tells a changed file (as Windows' attribute data does there).
+struct FileAttrs { unsigned long long size = 0, time = 0; };
+bool attrsOf(const std::wstring& f, FileAttrs& a) {
+    std::error_code ec;
+    const std::filesystem::path p(platform::utf8(f));
+    a.size = std::filesystem::file_size(p, ec);
+    if (ec) return false;
+    a.time = static_cast<unsigned long long>(std::filesystem::last_write_time(p, ec).time_since_epoch().count());
+    return !ec;
+}
+#endif
+
+#ifdef _WIN32
 std::wstring cacheName(const std::wstring& path, const WIN32_FILE_ATTRIBUTE_DATA& a) {
     std::wstring lo = path;
     for (auto& c : lo) c = static_cast<wchar_t>(towlower(c));
@@ -47,17 +65,23 @@ std::wstring cacheName(const std::wstring& path, const WIN32_FILE_ATTRIBUTE_DATA
     swprintf(buf, 24, L"%016llx.txt", h);
     return buf;
 }
+#else
+std::wstring cacheName(const std::wstring& path, const FileAttrs& a) {
+    unsigned long long h = 1469598103934665603ULL;
+    auto mix = [&](unsigned long long v) { h ^= v; h *= 1099511628211ULL; };
+    for (wchar_t c : path) mix(static_cast<unsigned long long>(c));
+    mix(a.size); mix(a.time);
+    wchar_t buf[24];
+    swprintf(buf, 24, L"%016llx.txt", h);
+    return buf;
+}
+#endif
 
 bool readAll(const std::wstring& path, std::string& out) {
-    HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return false;
-    LARGE_INTEGER sz{};
-    GetFileSizeEx(f, &sz);
-    out.resize(static_cast<size_t>(sz.QuadPart));
-    DWORD got = 0;
-    bool ok = out.empty() || (ReadFile(f, out.data(), static_cast<DWORD>(out.size()), &got, nullptr) && got == out.size());
-    CloseHandle(f);
-    return ok;
+    std::vector<unsigned char> b;
+    if (!platform::readFile(path, b)) return false;
+    out.assign(b.begin(), b.end());
+    return true;
 }
 
 } // namespace
@@ -69,15 +93,20 @@ std::vector<Hit> search(const std::wstring& folder, const std::wstring& query, b
     listPdfs(folder, files, 0);
     std::sort(files.begin(), files.end());
     stats.files = static_cast<int>(files.size());
-    CreateDirectoryW(cacheDir.c_str(), nullptr);
+    platform::makeDirectory(cacheDir);
     auto lower = [](std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; };
     const std::wstring needle = matchCase ? query : lower(query);
     int done = 0;
     for (const std::wstring& f : files) {
         if (progress && !progress(done++, static_cast<int>(files.size()), f)) break;
+#ifdef _WIN32
         WIN32_FILE_ATTRIBUTE_DATA attr{};
         if (!GetFileAttributesExW(f.c_str(), GetFileExInfoStandard, &attr)) { ++stats.skipped; continue; }
-        const std::wstring cache = cacheDir + L"\\" + cacheName(f, attr);
+#else
+        FileAttrs attr;
+        if (!attrsOf(f, attr)) { ++stats.skipped; continue; }
+#endif
+        const std::wstring cache = cacheDir + platform::pathSeparator() + cacheName(f, attr);
         std::vector<std::wstring> pages;
         std::string raw;
         if (readAll(cache, raw)) {

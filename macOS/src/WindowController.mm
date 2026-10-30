@@ -337,7 +337,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
                     if (tint) {
                         if (@available(macOS 12.0, *)) {
                             NSImage* coloured = [img imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPaletteColors:@[ tint ]]];
-                            if (coloured) { coloured.template = NO; img = coloured; }
+                            if (coloured) { [coloured setTemplate:NO]; img = coloured; }
                         }
                     }
                     [sc setImage:img forSegment:i];

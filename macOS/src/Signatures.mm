@@ -475,8 +475,9 @@ void FPInstallSignSystem() {
         static const wchar_t* servers[] = {L"", L"http://timestamp.digicert.com", L"http://timestamp.sectigo.com", L"http://timestamp.globalsign.com/tsa/r6advanced1"};
         const std::wstring url = v[5].choice == 4 ? v[6].text : servers[std::clamp(v[5].choice, 0, 3)];
         opt.timestampUrl.assign(url.begin(), url.end());
+        const bool fromKeychain = v[1].choice == 0;   // a copy: the form's answers are gone when the block runs
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (v[1].choice == 0) [weak chooseKeychainSignerThen:opt];
+            if (fromKeychain) [weak chooseKeychainSignerThen:opt];
             else [weak chooseFileSignerThen:opt];
         });
     });

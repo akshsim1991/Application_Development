@@ -6,6 +6,7 @@
 #import "WindowController.h"
 #import "PageView.h"
 #import "Form.h"
+#import "Trace.h"
 #include <algorithm>
 #include <map>
 #include "ocr.hpp"
@@ -132,8 +133,11 @@ void FPInstallOcrEngine() {
         if (v[2].text.empty()) return L"";
         return d->parseRange(v[2].text).empty() ? L"Type page numbers and ranges such as 1-3, 5, 8-." : L"";
     }, [weak, d, langs](const Fields& v) {
-        dispatch_async(dispatch_get_main_queue(), ^{ [weak runOcr:d language:langs[static_cast<size_t>(std::clamp(v[1].choice, 0, static_cast<int>(langs.size()) - 1))]
-                                                             pages:v[2].text skip:v[3].checked]; });
+        // copies: the answers belong to the form, which is gone when the block runs (reading them then crashed the app)
+        const std::wstring language = langs[static_cast<size_t>(std::clamp(v[1].choice, 0, static_cast<int>(langs.size()) - 1))];
+        const std::wstring pages = v[2].text;
+        const bool skip = v[3].checked;
+        dispatch_async(dispatch_get_main_queue(), ^{ [weak runOcr:d language:language pages:pages skip:skip]; });
     });
 }
 
@@ -165,6 +169,7 @@ void FPInstallOcrEngine() {
     });
     [NSApp endModalSession:session];
     [panel close];
+    FPTrace(@"ocr words %d pages %d error %s", r.words, r.pagesDone, platform::utf8(r.error).c_str());
     if (r.words > 0) [self afterChange];
     std::wstring msg;
     if (!r.error.empty()) msg = r.error + L"\n\n";

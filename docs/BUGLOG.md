@@ -771,3 +771,12 @@ Found and fixed while building it:
   them again). The "could not find out whether there is a new version" message is therefore gone for both apps. An
   update from one version to the next can only be tried end to end when the next version (2.14.3) is published; until
   then Help > Update to New Version answers "You have the newest version".
+
+## Reported on the Mac, 31 October: the app quit when OCR was started
+- **B-053 (Mac): Feather PDF quit as soon as Recognise was pressed** (EXC_BAD_ACCESS on the main thread). The OCR form
+  handed its answers to a block that ran a moment later; the block kept a reference to the answers, not a copy, and
+  the form had freed them by then. The signing form had the same fault (it would have crashed after "Choose
+  Certificate"). Both now copy the answers first; no other form does this (checked with a scan of every form's
+  callback). Why the build did not catch it: its OCR check ran from the command line, which does not use the form. The
+  build check now opens Recognise Text on a scanned page, presses Recognise as a user would, and requires words to be
+  found and the app to finish.

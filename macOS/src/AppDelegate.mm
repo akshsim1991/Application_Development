@@ -69,7 +69,24 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
                 FPTrace(@"action %@: %d", a, [NSApp sendAction:NSSelectorFromString(a) to:nil from:nil]);
             });
         }
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        // FEATHER_UI_PRESS=1: a second later, the default button of the form that opened is pressed (as the user would)
+        if (getenv("FEATHER_UI_PRESS")) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+            NSWindow* sheet = nil;
+            for (NSWindow* w in NSApp.windows) if (w.attachedSheet) { sheet = w.attachedSheet; break; }
+            __block NSButton* found = nil;
+            __block void (^look)(NSView*) = nil;
+            void (^walk)(NSView*) = ^(NSView* v) {
+                if ([v isKindOfClass:[NSButton class]] && [((NSButton*)v).keyEquivalent isEqualToString:@"\r"]) found = (NSButton*)v;
+                for (NSView* s in v.subviews) if (!found) look(s);
+            };
+            look = walk;
+            if (sheet) look(sheet.contentView);
+            FPTrace(@"press: sheet %d button %@", sheet != nil, found.title);
+            [found performClick:nil];
+            look = nil;
+        });
+        const char* wait = getenv("FEATHER_UI_WAIT");   // seconds before the picture (default 5)
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (wait ? atoi(wait) : 5) * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self uiCheckInto:out];
             exit(0);   // not terminate: a sheet left open (Properties) would hold the quit forever
         });

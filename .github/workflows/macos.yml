@@ -30,9 +30,13 @@ jobs:
       - name: The engine gives the Windows app's results
         run: bash tests/engine/check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
 
+      - uses: actions/setup-python@v5   # a Python the checking tools (pikepdf) have ready-made packages for
+        with:
+          python-version: "3.12"
+
       - name: The command line features work as on Windows
         run: |
-          python3 -m pip install --quiet --break-system-packages reportlab pillow pikepdf python-docx openpyxl pdfminer.six
+          python3 -m pip install --quiet reportlab pillow pikepdf python-docx openpyxl pdfminer.six
           bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
 
       - name: Pages are drawn (normal and night colours)

@@ -1,7 +1,7 @@
 # Feather PDF for macOS: the AppKit screens in src/ (Objective-C++), the PDF engine in ../shared.
 # Builds "Feather PDF.app" for Apple silicon and Intel (CMAKE_OSX_ARCHITECTURES="arm64;x86_64"); see macOS/README.md.
 include(${CMAKE_SOURCE_DIR}/shared/engine.cmake)
-set(MAC_VERSION 0.2.0)   # the Mac version counts on its own until it does what the Windows app does
+set(MAC_VERSION ${PROJECT_VERSION})   # the same version as the Windows app (top CMakeLists.txt)
 
 set(GUIDE "${CMAKE_SOURCE_DIR}/docs/Feather PDF User Guide.pdf")
 set(ICON "${CMAKE_CURRENT_SOURCE_DIR}/resources/AppIcon.icns")
@@ -16,6 +16,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/StartWindow.mm
   src/Form.mm
   src/Tools.mm
+  src/Sidebar.mm
   ${ENGINE_SOURCES}
   "${ICON}"
   "${GUIDE}")

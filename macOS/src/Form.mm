@@ -1,4 +1,5 @@
 #import "Form.h"
+#include <algorithm>
 #include <memory>
 #include "platform.hpp"
 
@@ -74,10 +75,30 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
                 break;
             }
             case Field::Note: {
-                NSTextField* n = [NSTextField wrappingLabelWithString:ns(f.text)];
-                n.textColor = NSColor.secondaryLabelColor;
-                [n.widthAnchor constraintLessThanOrEqualToConstant:420].active = YES;
-                control = n;
+                // A note has its own width: a form of notes only (Properties, Fonts used) has nothing else to give it one.
+                const size_t lines = static_cast<size_t>(std::count(f.text.begin(), f.text.end(), L'\n')) + 1;
+                if (f.text.size() > 500 || lines > 12) {   // a report: scrollable, and the text can be selected and copied
+                    NSScrollView* sv = [[NSScrollView alloc] initWithFrame:NSMakeRect(0, 0, 560, 320)];
+                    sv.hasVerticalScroller = YES;
+                    sv.borderType = NSBezelBorder;
+                    NSTextView* tv = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 560, 320)];
+                    tv.editable = NO;
+                    tv.font = [NSFont monospacedSystemFontOfSize:11 weight:NSFontWeightRegular];
+                    tv.string = ns(f.text);
+                    tv.textContainerInset = NSMakeSize(6, 6);
+                    tv.autoresizingMask = NSViewWidthSizable;
+                    sv.documentView = tv;
+                    [sv.widthAnchor constraintEqualToConstant:560].active = YES;
+                    [sv.heightAnchor constraintEqualToConstant:320].active = YES;
+                    control = sv;
+                } else {
+                    NSTextField* n = [NSTextField wrappingLabelWithString:ns(f.text)];
+                    n.textColor = NSColor.secondaryLabelColor;
+                    n.selectable = YES;
+                    n.preferredMaxLayoutWidth = 440;
+                    [n.widthAnchor constraintEqualToConstant:440].active = YES;
+                    control = n;
+                }
                 break;
             }
         }

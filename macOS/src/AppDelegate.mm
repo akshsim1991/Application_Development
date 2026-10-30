@@ -3,6 +3,7 @@
 #import "StartWindow.h"
 #import "Trace.h"
 #include <algorithm>
+#include "buildinfo.h"
 #include <cstdio>
 #include <cstdlib>
 #include "document.hpp"
@@ -47,7 +48,14 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     if (const char* dir = getenv("FEATHER_UI_CHECK")) {
         NSString* out = [NSString stringWithUTF8String:dir];
         if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        // FEATHER_UI_ACTION=showProperties: (a menu command) is chosen after 3 s, so the picture shows what it opens.
+        if (const char* action = getenv("FEATHER_UI_ACTION")) {
+            NSString* a = [NSString stringWithUTF8String:action];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                FPTrace(@"action %@: %d", a, [NSApp sendAction:NSSelectorFromString(a) to:nil from:nil]);
+            });
+        }
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
             [self uiCheckInto:out];
             [NSApp terminate:nil];
         });
@@ -84,6 +92,13 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     [v cacheDisplayInRect:v.bounds toBitmapImageRep:rep];
     [[rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[dir stringByAppendingPathComponent:@"window.png"]
                                                                             atomically:YES];
+    if (NSWindow* sheet = first.attachedSheet) {   // a form or message on the window
+        NSView* sv = sheet.contentView.superview ?: sheet.contentView;
+        NSBitmapImageRep* sr = [sv bitmapImageRepForCachingDisplayInRect:sv.bounds];
+        [sv cacheDisplayInRect:sv.bounds toBitmapImageRep:sr];
+        [[sr representationUsingType:NSBitmapImageFileTypePNG properties:@{}] writeToFile:[dir stringByAppendingPathComponent:@"sheet.png"]
+                                                                               atomically:YES];
+    }
 }
 
 // No empty documents: Feather PDF opens files.
@@ -125,14 +140,23 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
                                                                      completionHandler:^(NSDocument*, BOOL, NSError*) {}];
 }
 
+// The About window, with the Windows app's words, version and build date.
 - (IBAction)showAbout:(id)sender {
-    NSString* credits = @"A fast, lightweight PDF reader and editor. Everything happens on your Mac, with no account, cloud "
-                        @"service or tracking.\n\nCreated by: Akshaya Simha\nFree to use and share, always.\n"
-                        @"PDF rendering by PDFium.\n\nThis is an early Mac version: reading only for now. "
-                        @"Editing comes in the next stages.";
+    NSString* credits =
+        @"A fast, lightweight PDF reader and editor for macOS. Read, search, print and present documents in tabs; change "
+        @"text, add comments, watermarks, page numbers, headers and footers; reorganise pages; compress, password-protect "
+        @"and export. Everything happens on your Mac, with no account, cloud service or tracking.\n\n"
+        @"Created by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\n"
+        @"PDF rendering by PDFium.\n\nBuilt with care for a faster, simpler document experience.";
+    NSMutableParagraphStyle* centred = [[NSMutableParagraphStyle alloc] init];
+    centred.alignment = NSTextAlignmentCenter;
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
+        NSAboutPanelOptionApplicationName : @"Feather PDF",
+        NSAboutPanelOptionApplicationVersion : [NSString stringWithFormat:@"Version %s, built %@", FEATHER_VERSION, [NSString stringWithUTF8String:FEATHER_BUILD_DATE_LONG]],
+        NSAboutPanelOptionVersion : @"",
         NSAboutPanelOptionCredits : [[NSAttributedString alloc] initWithString:credits attributes:@{
-            NSFontAttributeName : [NSFont systemFontOfSize:11], NSForegroundColorAttributeName : [NSColor labelColor]
+            NSFontAttributeName : [NSFont systemFontOfSize:11], NSForegroundColorAttributeName : NSColor.labelColor,
+            NSParagraphStyleAttributeName : centred
         }]
     }];
 }
@@ -223,6 +247,9 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Remove Hidden Data\u2026", @selector(removeHiddenData:), nil);
 
     m = submenu(bar, @"View");
+    add(m, @"Show Sidebar", @selector(toggleThumbnails:), @"b");
+    add(m, @"Bookmarks", @selector(showBookmarksPanel:), @"b", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Actual Size", @selector(actualSize:), @"0");
     add(m, @"Zoom In", @selector(zoomIn:), @"=");
     add(m, @"Zoom Out", @selector(zoomOut:), @"-");
@@ -260,6 +287,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
 
     m = submenu(bar, @"Help");
     add(m, @"Feather PDF User Guide", @selector(showUserGuide:), @"?").target = self;
+    [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"About Feather PDF", @selector(showAbout:), nil).target = self;   // also here, where the Windows app has it
     NSApp.helpMenu = m;
     return bar;
 }

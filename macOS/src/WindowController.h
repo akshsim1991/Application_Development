@@ -5,6 +5,7 @@
 
 extern NSString* const FPPageColoursKey;                // user default: 0 normal, 1 dark (night), 2 dimmed
 extern NSNotificationName const FPPageColoursChanged;   // posted when it changes: every window follows at once
+extern NSString* const FPSidebarShownKey;              // user default: the sidebar is shown (it is, unless hidden)
 
 #include "document.hpp"
 @class FPPageView;

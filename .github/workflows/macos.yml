@@ -55,14 +55,21 @@ jobs:
           FEATHER_UI_CHECK="$PWD/ui-start" "$app"
           FEATHER_UI_CHECK="$PWD/ui" "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           FEATHER_UI_CHECK="$PWD/ui-dark" "$app" "$in/qp.pdf" -pageColours 1
+          FEATHER_UI_CHECK="$PWD/ui-props" FEATHER_UI_ACTION=showProperties: "$app" "$in/hf_basic.pdf"
+          FEATHER_UI_CHECK="$PWD/ui-fonts" FEATHER_UI_ACTION=showFonts: "$app" "$in/qp.pdf"
+          FEATHER_UI_CHECK="$PWD/ui-marks" FEATHER_UI_ACTION=showBookmarksPanel: "$app" "$in/hf_basic.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
           grep -q 'window NSWindow "Feather PDF".*visible 1' ui-start/report.txt
           grep -q "^documents 2" ui/report.txt
           grep -q "tabs 2" ui/report.txt
           grep -q "Page 1 of 1" ui-dark/report.txt
-          for d in ui-start ui ui-dark; do
-            sips -s format jpeg -s formatOptions 50 $d/window.png --out $d/window.jpg >/dev/null
-            echo "SCREENSHOT-BEGIN $d"; base64 -b 120 -i $d/window.jpg; echo "SCREENSHOT-END"
+          [ -f ui-props/sheet.png ] && [ -f ui-fonts/sheet.png ]
+          for d in ui-start ui ui-dark ui-props ui-fonts ui-marks; do
+            for f in window sheet; do
+              [ -f $d/$f.png ] || continue
+              sips -s format jpeg -s formatOptions 50 $d/$f.png --out $d/$f.jpg >/dev/null
+              echo "SCREENSHOT-BEGIN $d-$f"; base64 -b 120 -i $d/$f.jpg; echo "SCREENSHOT-END"
+            done
           done
 
       - name: Disk image

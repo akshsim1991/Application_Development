@@ -1,6 +1,7 @@
 #import "WindowController.h"
 #import "FPDocument.h"
 #import "PageView.h"
+#import "Sidebar.h"
 #import "Trace.h"
 #include <cmath>
 
@@ -8,6 +9,7 @@ NSString* const FPPageColoursKey = @"pageColours";
 NSNotificationName const FPPageColoursChanged = @"FPPageColoursChanged";
 
 static NSToolbarItemIdentifier const kPagesItem = @"pages";
+static NSToolbarItemIdentifier const kSidebarItem = @"sidebar";
 static NSToolbarItemIdentifier const kPageItem = @"page";
 static NSToolbarItemIdentifier const kZoomItem = @"zoom";
 
@@ -18,8 +20,15 @@ static pagecolours::Mode savedColours() {
     return c == 1 ? pagecolours::Mode::Dark : c == 2 ? pagecolours::Mode::Dimmed : pagecolours::Mode::Normal;
 }
 
+NSString* const FPSidebarShownKey = @"sidebarShown";
+
+@interface FPWindowController () <FPSidebarDelegate, NSSplitViewDelegate>
+@end
+
 @implementation FPWindowController {
     FPPageView* _view;
+    FPSidebar* _sidebar;
+    NSSplitView* _split;
     NSTextField* _pageField;
     NSTextField* _pageCount;
     NSPopUpButton* _zoomMenu;
@@ -49,7 +58,23 @@ static pagecolours::Mode savedColours() {
         _view = [[FPPageView alloc] initWithFrame:scroll.contentView.bounds];
         _view.colours = savedColours();
         scroll.documentView = _view;
-        w.contentView = scroll;
+
+        // The sidebar (thumbnails, bookmarks) to the left of the pages, shown or hidden with ⌘B as Ctrl+B on Windows.
+        _sidebar = [[FPSidebar alloc] initWithFrame:NSMakeRect(0, 0, 180, 600)];
+        _sidebar.delegate = self;
+        _sidebar.colours = savedColours();
+        _split = [[NSSplitView alloc] initWithFrame:w.contentView.bounds];
+        _split.vertical = YES;
+        _split.dividerStyle = NSSplitViewDividerStyleThin;
+        _split.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+        _split.delegate = self;
+        [_split addSubview:_sidebar];
+        [_split addSubview:scroll];
+        [_split setHoldingPriority:NSLayoutPriorityDefaultHigh forSubviewAtIndex:0];
+        w.contentView = _split;
+        [_split setPosition:180 ofDividerAtIndex:0];
+        NSNumber* shown = [[NSUserDefaults standardUserDefaults] objectForKey:FPSidebarShownKey];
+        if (shown && !shown.boolValue) [self setSidebarShown:NO];
 
         NSToolbar* bar = [[NSToolbar alloc] initWithIdentifier:@"FeatherPDFToolbar"];
         bar.delegate = self;
@@ -75,6 +100,7 @@ static pagecolours::Mode savedColours() {
     [super setDocument:document];
     if ([document isKindOfClass:[FPDocument class]]) {
         _view.document = [(FPDocument*)document pdf];
+        [_sidebar setDocument:_view.document];
         [self viewChanged:nil];
     }
 }
@@ -87,11 +113,11 @@ static pagecolours::Mode savedColours() {
 // ---- the toolbar ----
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem ];
+    return @[ kSidebarItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem ];
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kPagesItem, kPageItem, kZoomItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
+    return @[ kSidebarItem, kPagesItem, kPageItem, kZoomItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
 static NSImage* symbol(NSString* name, NSString* description) {
@@ -101,7 +127,13 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
     NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
-    if ([ident isEqualToString:kPagesItem]) {
+    if ([ident isEqualToString:kSidebarItem]) {
+        NSButton* b = [NSButton buttonWithImage:symbol(@"sidebar.left", @"Thumbnails and bookmarks") target:self action:@selector(toggleThumbnails:)];
+        b.bezelStyle = NSBezelStyleTexturedRounded;
+        b.toolTip = @"Show or hide the thumbnails and bookmarks (\u2318B)";
+        item.view = b;
+        item.label = @"Sidebar";
+    } else if ([ident isEqualToString:kPagesItem]) {
         NSSegmentedControl* s = [NSSegmentedControl segmentedControlWithImages:@[ symbol(@"chevron.up", @"Previous page"),
                                                                                     symbol(@"chevron.down", @"Next page") ]
                                                                   trackingMode:NSSegmentSwitchTrackingMomentary
@@ -167,6 +199,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 // The page number, page count, zoom and the window's subtitle follow the view.
 - (void)viewChanged:(NSNotification*)n {
+    [_sidebar setCurrentPage:[_view currentPage]];
     Document* d = _view.document;
     const int count = d ? d->pageCount() : 0;
     const int page = [_view currentPage] + 1;
@@ -197,6 +230,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (void)afterChange {
     [_view documentChanged];
+    [_sidebar documentChanged];
     [(FPDocument*)self.document changed];
     [self viewChanged:nil];
 }
@@ -204,8 +238,35 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (void)reloaded:(NSNotification*)n {
     if (n.object != self.document) return;
     _view.document = [(FPDocument*)self.document pdf];
+    [_sidebar setDocument:_view.document];
     [self viewChanged:nil];
 }
+
+// ---- the sidebar ----
+
+- (void)sidebarGoToPage:(int)page { [_view showPage:page]; }
+
+- (BOOL)sidebarShown { return !_sidebar.hidden; }
+
+- (void)setSidebarShown:(BOOL)shown {
+    _sidebar.hidden = !shown;
+    [_split adjustSubviews];
+    if (shown) [_split setPosition:180 ofDividerAtIndex:0];
+}
+
+- (IBAction)toggleThumbnails:(id)sender {
+    [self setSidebarShown:!self.sidebarShown];
+    [[NSUserDefaults standardUserDefaults] setBool:self.sidebarShown forKey:FPSidebarShownKey];
+}
+
+- (IBAction)showBookmarksPanel:(id)sender {
+    [self setSidebarShown:YES];
+    [_sidebar showBookmarks:YES];
+}
+
+- (CGFloat)splitView:(NSSplitView*)sv constrainMinCoordinate:(CGFloat)min ofSubviewAt:(NSInteger)i { return 140; }
+- (CGFloat)splitView:(NSSplitView*)sv constrainMaxCoordinate:(CGFloat)max ofSubviewAt:(NSInteger)i { return 360; }
+- (BOOL)splitView:(NSSplitView*)sv canCollapseSubview:(NSView*)v { return v == _sidebar; }
 
 // Undo and redo (the engine's: every change is one step, 30 kept, as on Windows). Not NSWindow's undo: / redo:, which
 // would go to macOS's own undo manager.
@@ -220,6 +281,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (void)coloursChanged:(NSNotification*)n {
     _view.colours = savedColours();
+    _sidebar.colours = savedColours();
 }
 
 // ---- menu commands (View and Go menus) ----
@@ -235,6 +297,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (IBAction)goToPage:(id)sender { [self.window makeFirstResponder:_pageField]; }
 
 - (BOOL)validateMenuItem:(NSMenuItem*)item {
+    if (item.action == @selector(toggleThumbnails:)) item.title = self.sidebarShown ? @"Hide Sidebar" : @"Show Sidebar";
     if (item.action == @selector(featherUndo:)) return self.pdf && self.pdf->canUndo();
     if (item.action == @selector(featherRedo:)) return self.pdf && self.pdf->canRedo();
     if (item.action == @selector(fitWidth:)) item.state = _view.fitWidth ? NSControlStateValueOn : NSControlStateValueOff;

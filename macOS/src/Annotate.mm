@@ -49,8 +49,6 @@ std::wstring g_stamp;
 COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
 } // namespace
 
-@interface FPWindowController (Annotate)
-@end
 @interface FPWindowController (Forms)
 - (void)formFieldDrawn:(const FPToolEvent&)e;   // Forms.mm
 @end

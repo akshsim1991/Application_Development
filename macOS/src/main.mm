@@ -68,7 +68,7 @@ int main(int argc, const char* argv[]) {
             [a runModal];
             return 1;
         }
-        [[FPDocumentController alloc] init];   // the first one made is the app's document controller (Settings.mm)
+        (void)[[FPDocumentController alloc] init];   // the first one made is the app's document controller (Settings.mm)
         FPAppDelegate* delegate = [[FPAppDelegate alloc] init];
         NSMutableArray<NSString*>* files = [NSMutableArray array];
         for (const auto& s : plain) [files addObject:[NSString stringWithUTF8String:s.c_str()]];

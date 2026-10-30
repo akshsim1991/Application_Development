@@ -319,7 +319,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
     for (NSToolbarItem* item in self.window.toolbar.items) {
         NSColor* tint = FPColourIcons() ? tints[item.itemIdentifier] : nil;
         for (NSView* v in [item.view isKindOfClass:[NSStackView class]] ? ((NSStackView*)item.view).views : @[ item.view ?: [NSView new] ])
-            if ([v isKindOfClass:[NSButton class]] || [v isKindOfClass:[NSSegmentedControl class]]) ((NSControl*)v).contentTintColor = tint;
+            if ([v isKindOfClass:[NSButton class]]) ((NSButton*)v).contentTintColor = tint;
     }
     for (NSWindow* w in self.window.tabbedWindows ?: @[ self.window ])
         [(NSWindowController*)w.windowController synchronizeWindowTitleWithDocumentName];

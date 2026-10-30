@@ -2383,11 +2383,18 @@ void registerAsViewer() {
     ok = set(L"Software\\Classes\\FeatherPDF.Document\\DefaultIcon", nullptr, std::wstring(exe) + L",0") && ok;
     ok = set(L"Software\\Classes\\FeatherPDF.Document\\shell\\open\\command", nullptr, L"\"" + std::wstring(exe) + L"\" \"%1\"") && ok;
     ok = set(L"Software\\Classes\\.pdf\\OpenWithProgids", L"FeatherPDF.Document", L"") && ok;
+    // listed on Windows' Default apps page under its own name (the installer does the same for every user)
+    set(L"Software\\FeatherPDF\\Capabilities", L"ApplicationName", kAppName);
+    set(L"Software\\FeatherPDF\\Capabilities", L"ApplicationDescription", L"A fast, free PDF reader and editor.");
+    set(L"Software\\FeatherPDF\\Capabilities\\FileAssociations", L".pdf", L"FeatherPDF.Document");
+    set(L"Software\\RegisteredApplications", kAppName, L"Software\\FeatherPDF\\Capabilities");
     if (!ok) { MessageBoxW(app.wnd, L"The file association could not be registered.", kAppName, MB_OK | MB_ICONWARNING); return; }
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     if (MessageBoxW(app.wnd, L"Feather PDF now appears in the \"Open with\" list for PDF files.\n\nWindows only lets you choose the default app yourself. "
                              L"Open the Windows settings to choose Feather PDF for .pdf files?", kAppName, MB_YESNO | MB_ICONQUESTION) == IDYES)
-        ShellExecuteW(app.wnd, L"open", L"ms-settings:defaultapps", nullptr, nullptr, SW_SHOWNORMAL);
+        // Windows 11 opens Feather PDF's own page there; older versions ignore the address's end and show the list
+        if (reinterpret_cast<INT_PTR>(ShellExecuteW(app.wnd, L"open", L"ms-settings:defaultapps?registeredAppUser=Feather%20PDF", nullptr, nullptr, SW_SHOWNORMAL)) <= 32)
+            ShellExecuteW(app.wnd, L"open", L"ms-settings:defaultapps", nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 void startPicture() {

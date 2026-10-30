@@ -80,3 +80,22 @@ add_custom_command(TARGET FeatherPDF POST_BUILD
 add_custom_command(TARGET FeatherPDF POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PDFIUM_DIR}/bin/pdfium.dll" "$<TARGET_FILE_DIR:FeatherPDF>"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${PDFIUM_DIR}/licenses" "$<TARGET_FILE_DIR:FeatherPDF>/licenses")
+
+# ---- the installer: a setup program with the files packed into it (installer/README in installer/pack.py) ----
+add_executable(FeatherPDFSetup WIN32 installer/setup.cpp installer/inflate.cpp installer/setup.rc)
+target_include_directories(FeatherPDFSetup PRIVATE installer "${CMAKE_BINARY_DIR}")
+target_compile_definitions(FeatherPDFSetup PRIVATE UNICODE _UNICODE NOMINMAX)
+add_dependencies(FeatherPDFSetup buildinfo)
+set_source_files_properties(installer/setup.rc PROPERTIES OBJECT_DEPENDS "${CMAKE_BINARY_DIR}/buildinfo.h")
+target_link_libraries(FeatherPDFSetup PRIVATE user32 gdi32 gdiplus shell32 ole32 oleaut32 comctl32 uuid dwmapi advapi32)
+if(MINGW)
+  target_link_options(FeatherPDFSetup PRIVATE -municode -static -static-libgcc -static-libstdc++)
+endif()
+# `ninja installer` writes dist/FeatherPDF-Setup-<version>.exe
+find_package(Python3 COMPONENTS Interpreter)
+set(SETUP_OUT "${CMAKE_SOURCE_DIR}/dist/FeatherPDF-Setup-${PROJECT_VERSION}.exe")
+add_custom_target(installer
+  COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/dist"
+  COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/installer/pack.py" "$<TARGET_FILE_DIR:FeatherPDF>" "$<TARGET_FILE:FeatherPDFSetup>" "${SETUP_OUT}"
+  DEPENDS FeatherPDF FeatherPDFSetup
+  COMMENT "Packing the installer")

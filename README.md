@@ -103,11 +103,22 @@ Without `third_party/tesseract` the app still builds; "Recognise text (OCR)" the
 ### Installer
 
 ```
-wine "C:\InnoSetup\ISCC.exe" installer\FeatherPDF.iss      # or ISCC on Windows → dist/FeatherPDF-Setup-2.14.2.exe
+cmake --build build --target installer     # → dist/FeatherPDF-Setup-2.14.2.exe (needs Python 3)
 ```
 
-Installs for the current user without an administrator prompt (or for all users on request), adds Start menu / optional
-desktop shortcuts and an "Open with" entry for PDFs, and uninstalls cleanly.
+`installer/setup.cpp` is a small native setup program; `installer/pack.py` appends the program's files to it, compressed
+in 1 MB blocks (raw deflate, unpacked by `installer/inflate.cpp`, each file checked by CRC-32). Two screens: the install
+location (default `C:\Program Files\Feather PDF`, read-only with Change...), "Developed by Akshaya Simha", the build date
+read from FeatherPDF.exe, and Install; then the real progress and, at the end, "Set Feather PDF as the default PDF
+application" (opens Windows' own Default apps page) and "Launch Feather PDF" (started as the signed-in user, not as
+administrator), and Finish. It asks for administrator rights, checks free space, writes each file beside the old one
+and swaps them only when all are in (an error or Cancel leaves the old installation as it was), adds Start menu
+shortcuts, an Installed apps entry and the "Open with" / Default apps registration, removes files an older version had
+and this one has not, and removes a copy installed by the earlier (Inno Setup) installer so there is only one.
+Running it again over the same version repairs; over an older one updates, always in the installed folder.
+`uninstall.exe` (in the program folder, also run from Installed apps) removes everything it installed and keeps the
+user's settings. Switches: `/S` (silent), `/D=folder` (silent location of a first installation), `/uninstall`.
+Log: `%TEMP%\FeatherPDF-Setup.log`.
 
 ## Testing
 

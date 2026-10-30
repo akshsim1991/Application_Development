@@ -190,8 +190,8 @@ story += [P("It is <b>free forever</b>. There are no subscriptions, trials, lice
 story += [P("At a glance", "h2")]
 story += [table([["", ""],
                  ["Runs on", "Windows 10 and Windows 11 (64-bit)"],
-                 ["Size", "About 9 MB, including the text recognition (OCR) engine"],
-                 ["Installs", "For the current user without an administrator prompt, or for all users on request"],
+                 ["Size", "A 12 MB setup program; about 25 MB installed, including the text recognition (OCR) engine"],
+                 ["Installs", "In C:\\Program Files\\Feather PDF (or a folder you choose), for every user of the PC; Windows asks for administrator rights once. Run the setup again to update or repair; uninstall from Installed apps (your settings stay)"],
                  ["Opens", "PDF files (also password-protected ones), plain text and Markdown files, and pictures as new PDFs"],
                  ["Saves", "PDF, PDF/A-2b, PNG and JPEG pictures, plain text, Markdown, Word (.docx), Excel (.xlsx / .csv)"],
                  ["Your work is safe", "Unsaved changes are kept in the background and offered again after a crash"]],

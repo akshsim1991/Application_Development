@@ -534,6 +534,32 @@ the text reads correctly.
 | 6 | Duplicate PDF detection | Opening a file already open in a tab, by any route (Open, Explorer / second launch, drag and drop, Open recent), compares the file's identity on disk (volume and file number), so another path to the same file is recognised (other capitals, `..`, a mapped drive, a network or short name, a link). "This PDF is already open in Tab 3." with Go to Tab 3 / Cancel; the tab is never reloaded, so unsaved changes stay (the message says so when there are some). Settings > Tabs can go to the tab without asking | five.pdf opened again as `Z:\...\FIVE.pdf` and as `c:\TEST\..\test\Five.PDF`: "already open in Tab 1", then "Tab 2" after the tabs were reordered; Go to Tab 2 showed it |
 | 7 | Every setting ON and OFF, every theme, no new bugs | Smoke tests pass (including the menu check for duplicate items); B-045 found and fixed | As above |
 
+## Installer (requested points)
+The Inno Setup wizard was replaced by a native setup program (`installer/`), because Inno Setup 6.4 cannot draw its
+buttons, check boxes and progress bar in a dark theme. Checked under Wine (which runs as administrator; Windows' UAC
+prompt, the Windows 11 Default apps deep link and the dark title bar are Windows features not present in Wine).
+
+| Request | Done | Checked |
+|---|---|---|
+| Screen 1: default `C:\Program Files\Feather PDF` on the system drive, read-only, Change button | Default from Windows' Program Files folder; shown in a read-only box; Change... opens the folder picker (a folder of its own, "Feather PDF", is added inside the one chosen). For updates and repairs the location is the installed one and Change is disabled | Screenshot; `/D=` and the picker path |
+| Administrator rights | The setup's manifest asks for them (requireAdministrator) | Manifest in the exe |
+| "Developed by Akshaya Simha", "Build Date: [build metadata]" | Both on screen 1; the date is read by `pack.py` from FeatherPDF.exe's own version information ("Built 2026-10-30") and also stored in the Installed apps entry | "Build Date: 30 October 2026" |
+| Prominent Install button | Large accent button; says Update or Repair when Feather PDF is installed | Screenshots of Install, Update |
+| Screen 2: real progress 0-100 % and the current activity | Driven by the bytes unpacked (1 MB blocks) and the steps after; the file being copied or the step is named | Screenshots at 0 %, during, 100 % |
+| Graceful errors; permissions, disk space | Free space shown on screen 1 (in red, with Install disabled, when short) and checked again before copying; the folder is tested for writing first; a write error, a full disk or a damaged setup file ends on screen 2 with the reason, Try again (back to screen 1) and Close; files are copied beside the old ones and swapped in only when all are there, so a failure or Cancel leaves the old installation untouched and removes a folder made for the attempt | 5 MB drive: "Not enough free space here..." and Install disabled, silent run exit 1 with nothing left behind; `C:\blocked\Feather PDF` (a file in the way): "could not be created... Choose another place"; Feather PDF running: refused (exit 3 when silent, a Retry / Cancel question otherwise) |
+| Success message and the two choices | "Feather PDF has been installed successfully!"; "Set Feather PDF as the default PDF application" (unchecked) opens Windows' own Default apps page (at Feather PDF on Windows 11) - Windows does not let programs set it themselves, and the setup does not try; "Launch Feather PDF" (checked) starts it through Explorer as the signed-in user, not as administrator; Finish | Finish with Launch: Feather PDF opened |
+| Dark theme, branding, icon | Dark window drawn by the setup itself (buttons, check boxes, bar), the program icon and name, dark title bar where Windows supports it | Screenshots |
+| Install, repair, update, uninstall | Same version again: repair (a deleted pdfium.dll came back); older version installed: update in place (the exe replaced, a file the old version had and the new one has not removed); `uninstall.exe` (Installed apps, or `/uninstall`): removes the files it installed, the shortcuts and every registry entry it made, the folder when empty; settings stay | Scripted test matrix: all checks pass |
+| Start Menu shortcuts, Installed Apps entry | "Feather PDF" and "Feather PDF User Guide" for all users; Installed apps: name, version, publisher, icon, size, date, location, uninstall | Registry and Start menu folder checked |
+| No duplicate installations | One entry and one folder: an installed copy keeps its folder (`/D=` elsewhere is ignored); a copy made by the earlier Inno Setup installer (per user or for all users) is uninstalled first, and what its uninstaller leaves is cleaned up | Inno copy in AppData: removed with its folder, one entry left |
+| Windows 10 / 11 | Manifest declares Windows 10/11, per-monitor DPI; sizes scale with the display | - |
+| No extra screens | Two screens for installing (and two for uninstalling) | - |
+
+Found and fixed while testing: a quoted `/D="C:\Tools\My PDF"` kept a trailing quote (arguments are now parsed as
+Windows does); the earlier installer's folder could stay behind, empty, because its uninstaller still held it (now
+retried, else removed at the next restart); a failed attempt left an empty folder; the progress bar stood at 0 %
+while the earlier installation was being removed.
+
 ## UI rework (requested points)
 Each point of the request, what was done, and how it was checked (Wine, 1280 x 800 screen; for these checks Wine was set
 to draw window frames itself, `HKCU\Software\Wine\X11 Driver\Decorated=N`, so the window looks as it does on Windows).

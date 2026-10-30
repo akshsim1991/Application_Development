@@ -51,6 +51,8 @@
 #include "inlineedit.hpp"
 #include "startpage.hpp"
 #include "tables.hpp"
+#include "headfoot.hpp"
+#include "hfdialog.hpp"
 #include "tableeditor.hpp"
 #include "icons.hpp"
 #include "themeui.hpp"
@@ -409,7 +411,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY, M_EDIT_CALLOUT,
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
-              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
 enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
@@ -1713,6 +1715,13 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
             if (pageobj::addBackground(*d, pagesFromText(*d, f[1].text), cols[f[0].choice])) afterPagesChanged();
             break;
         }
+        case P_HFDELETE: {
+            if (hfdialog::run(app.wnd, app.inst, *d, cur, app.dpi, app.font, app.fontBold)) {
+                afterPagesChanged();
+                notice(L"The header and footer items were deleted. Undo (Ctrl+Z) brings them back.");
+            }
+            break;
+        }
         case P_DELETE: {
             auto pages = askPages(*d, L"Delete pages", L"Which pages should be deleted?", curText);
             if (pages.empty()) break;
@@ -2801,7 +2810,8 @@ void showToolsMenu(const RECT& anchor) {
     padd(P_BLANKS, L"Remove blank pages...", d->pageCount() > 1);
     padd(P_DUPES, L"Find duplicate pages...", d->pageCount() > 1);
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
-    padd(P_HEADER, L"Headers and footers...");
+    padd(P_HEADER, L"Add headers and footers...");
+    padd(P_HFDELETE, L"Delete header and footer...");
     padd(P_BGCOLOR, L"Background colour...");
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
     padd(P_CROP, L"Crop pages...");
@@ -4983,7 +4993,8 @@ void commandPalette() {
         add(L"Reverse the page order", [] { pagesMenuAction(P_REVERSE, {}); });
         add(L"Remove blank pages", [] { pagesMenuAction(P_BLANKS, {}); });
         add(L"Find duplicate pages", [] { pagesMenuAction(P_DUPES, {}); });
-        add(L"Headers and footers", [] { pagesMenuAction(P_HEADER, {}); });
+        add(L"Add headers and footers", [] { pagesMenuAction(P_HEADER, {}); });
+        add(L"Delete header and footer (page numbers, running titles, logos)", [] { pagesMenuAction(P_HFDELETE, {}); });
         add(L"Background colour", [] { pagesMenuAction(P_BGCOLOR, {}); });
     }
     add(L"New PDF from pictures", [] { newPdfFromPictures(); });
@@ -6574,6 +6585,48 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::string u(static_cast<size_t>(n > 0 ? n - 1 : 0), '\0');
         if (n > 1) WideCharToMultiByte(CP_UTF8, 0, t.c_str(), -1, u.data(), n, nullptr, nullptr);
         return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--hfremove") {
+        // --hfremove in.pdf out.pdf report.txt header|footer|both|numbers all|odd|even|<list> [area l t r b] : the
+        // headers and footers found (report), and with out.pdf other than "-" what is left after deleting them
+        if (files.size() < 6) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        headfoot::Detection det = headfoot::detect(doc);
+        const std::wstring& what = files[4];
+        headfoot::selectFor(det, what == L"header" ? 0 : what == L"footer" ? 1 : what == L"numbers" ? 3 : 2);
+        if (files.size() >= 12 && files[6] == L"area") {
+            headfoot::Element a;
+            a.kind = headfoot::Kind::Area;
+            a.area = {_wtof(files[7].c_str()), _wtof(files[8].c_str()), _wtof(files[9].c_str()), _wtof(files[10].c_str())};
+            a.fromBottom = files[11] == L"bottom";
+            a.refHeight = doc.pageCount() ? pdfium::api().FPDF_GetPageHeightF(doc.page(0)) : 0;
+            a.label = L"Area";
+            det.elements.push_back(a);
+        }
+        const std::wstring& pg = files[5];
+        std::wstring why;
+        const std::vector<int> pages = headfoot::choosePages(doc, pg == L"all" ? 0 : pg == L"odd" ? 2 : pg == L"even" ? 3 : 4, 0, pg, &why);
+        std::wstring rep;
+        for (const auto& e : det.elements) {
+            wchar_t head[64];
+            swprintf(head, 64, L"%ls %ls pages %d items %d: ", e.band == headfoot::Band::Header ? L"header" : L"footer", e.selected ? L"[x]" : L"[ ]", e.pageCount(), static_cast<int>(e.items.size()));
+            rep += head + e.label + L"\n";
+        }
+        for (size_t p = 0; p < det.scannedPage.size(); ++p) if (det.scannedPage[p]) rep += L"scanned page " + std::to_wstring(p + 1) + (det.scannedNoText[p] ? L" (no text)" : L"") + L"\n";
+        const headfoot::Plan plan = headfoot::plan(doc, det, pages);
+        rep += L"plan pages " + std::to_wstring(plan.pages.size()) + L" objects " + std::to_wstring(plan.objects) + L" areas " + std::to_wstring(plan.areas) +
+               L" crossing " + std::to_wstring(plan.crossing) + L" sharedKept " + std::to_wstring(plan.sharedKept) + L" body " + std::to_wstring(plan.bodyTaken) + L"\n";
+        int rc = 0;
+        if (files[2] != L"-") {
+            if (!headfoot::apply(doc, plan, &why)) { rep += L"failed: " + why + L"\n"; rc = 6; }
+            else if (doc.saveAs(files[2]) != SaveResult::Ok) rc = 4;
+        }
+        const int n = WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, nullptr, 0, nullptr, nullptr);
+        std::string u(n > 1 ? static_cast<size_t>(n - 1) : 0, '\0');
+        if (n > 1) WideCharToMultiByte(CP_UTF8, 0, rep.c_str(), -1, u.data(), n, nullptr, nullptr);
+        Document::writeFile(files[3], std::vector<unsigned char>(u.begin(), u.end()));
+        return rc;
     }
     if (!files.empty() && files[0] == L"--tables") {   // --tables in.pdf report.txt : the tables found on every page
         if (files.size() < 3) return 2;

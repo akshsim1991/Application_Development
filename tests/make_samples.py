@@ -136,3 +136,78 @@ for r, row in enumerate(cells):
         d.text((cols[k] + 20, rws[r] + 30), txt, font=f2, fill=0)
 scanT.save(f"{out}/tbl_scan.png")
 c = canvas.Canvas(f"{out}/tbl_scan.pdf", pagesize=A4); c.drawImage(f"{out}/tbl_scan.png", 0, 0, width=595.27, height=841.89); c.save()
+
+# ---- headers and footers (Delete header and footer) ----
+def logo(path):
+    im = Image.new("RGB", (60, 60), (220, 50, 50)); dd = ImageDraw.Draw(im)
+    dd.rectangle([18, 12, 26, 48], fill=(255, 255, 255)); dd.rectangle([18, 12, 44, 20], fill=(255, 255, 255)); dd.rectangle([18, 28, 38, 35], fill=(255, 255, 255))
+    im.save(path)
+logo(f"{out}/hf_logo.png")
+body = ("Welding joins metals by melting them together and letting them cool so that they fuse into one piece. "
+        "Inspection planning and distortion control matter for large structures such as draglines and shovels. ").split()
+
+def body_text(c, page, top=748):
+    y = top; line = f"Body text of page {page}:"
+    for w in body * 4:
+        if c.stringWidth(line + " " + w, "Helvetica", 11) > 440:
+            c.drawString(70, y, line); y -= 15; line = w
+        else:
+            line = (line + " " + w).strip()
+    c.drawString(70, y, line)
+
+# 1. a report: logo, running title, date and a rule at the top; a rule and "Page n of 6" at the foot; body text that
+#    starts inside the top strip (different on every page: it must stay); a link and bookmarks that must survive
+c = canvas.Canvas(f"{out}/hf_basic.pdf", pagesize=A4)
+for p in range(1, 7):
+    c.drawImage(f"{out}/hf_logo.png", 50, 790, width=28, height=28)
+    c.setFont("Helvetica", 10); c.drawString(90, 800, "Annual Plant Report 2026"); c.drawRightString(545, 800, "30 October 2026")
+    c.setLineWidth(0.8); c.line(50, 782, 545, 782)
+    c.setFont("Helvetica", 11); body_text(c, p)
+    c.linkURL("https://example.com/p%d" % p, (70, 735, 300, 760))
+    c.bookmarkPage("p%d" % p); c.addOutlineEntry("Page %d" % p, "p%d" % p)
+    c.setLineWidth(0.5); c.line(50, 48, 545, 48)
+    c.setFont("Helvetica", 9); c.drawCentredString(297.6, 30, "Page %d of 6" % p)
+    c.showPage()
+c.save()
+
+# 2. a book: odd pages have the chapter on the right and the number bottom right, even pages the title on the left and
+#    the number bottom left
+c = canvas.Canvas(f"{out}/hf_oddeven.pdf", pagesize=A4)
+for p in range(1, 7):
+    c.setFont("Helvetica-Oblique", 9)
+    if p % 2: c.drawRightString(545, 805, "Chapter 1: Getting started"); c.drawRightString(545, 28, str(p))
+    else: c.drawString(50, 805, "Feather PDF Handbook"); c.drawString(50, 28, str(p))
+    c.setFont("Helvetica", 11); body_text(c, p, 760)
+    c.showPage()
+c.save()
+
+# 3. shared form XObjects: a letterhead form at the top of every page, and a whole-page template (a header line and a note
+#    in the middle of the page) on every page; the page number is ordinary page content
+c = canvas.Canvas(f"{out}/hf_xobject.pdf", pagesize=A4)
+c.beginForm("letterhead"); c.setFont("Helvetica-Bold", 12); c.drawString(50, 805, "Shared Letterhead Ltd"); c.setLineWidth(1); c.line(50, 798, 545, 798); c.endForm()
+c.beginForm("template"); c.setFont("Helvetica", 8); c.drawString(400, 820, "Template header line"); c.drawString(70, 420, "Template note in the body"); c.endForm()
+for p in range(1, 5):
+    c.doForm("letterhead"); c.doForm("template")
+    c.setFont("Helvetica", 11); body_text(c, p, 740)
+    c.setFont("Helvetica", 9); c.drawCentredString(297.6, 30, "- %d -" % p)
+    c.showPage()
+c.save()
+
+# 4. scanned pages: a header and a page number drawn into each page's picture (smoke.sh recognises the text first)
+fh = ImageFont.truetype(fonts[0], 40); fb = ImageFont.truetype(fonts[0], 44)
+c = canvas.Canvas(f"{out}/hf_scan.pdf", pagesize=A4)
+for p in range(1, 4):
+    im = Image.new("L", (1654, 2339), 255); dd = ImageDraw.Draw(im)
+    dd.text((140, 110), "ACME CONFIDENTIAL REPORT", font=fh, fill=0)
+    dd.line([(140, 170), (1514, 170)], fill=0, width=3)
+    for k, ln in enumerate(["Scanned body text on page %d with some words" % p, "that continue on a second line of the scan", "and a third line to make it a real page."]):
+        dd.text((140, 420 + 70 * k), ln, font=fb, fill=0)
+    dd.text((780, 2230), "Page %d" % p, font=fh, fill=0)
+    im.save(f"{out}/hf_scan{p}.png")
+    c.drawImage(f"{out}/hf_scan{p}.png", 0, 0, width=595.27, height=841.89); c.showPage()
+c.save()
+
+# 5. one page: nothing repeats, so nothing may be found
+c = canvas.Canvas(f"{out}/hf_one.pdf", pagesize=A4)
+c.setFont("Helvetica", 10); c.drawString(90, 800, "A title at the top"); c.setFont("Helvetica", 11); body_text(c, 1); c.drawCentredString(297.6, 30, "1")
+c.save()

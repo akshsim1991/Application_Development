@@ -1,5 +1,6 @@
 #import "WindowController.h"
 #import <objc/message.h>
+#import <objc/runtime.h>
 #import "FPDocument.h"
 #import "PageView.h"
 #import "Sidebar.h"
@@ -323,6 +324,25 @@ static NSImage* symbol(NSString* name, NSString* description) {
         NSColor* tint = FPColourIcons() ? tints[item.itemIdentifier] : nil;
         for (NSView* v in [item.view isKindOfClass:[NSStackView class]] ? ((NSStackView*)item.view).views : @[ item.view ?: [NSView new] ])
             if ([v isKindOfClass:[NSButton class]]) ((NSButton*)v).contentTintColor = tint;
+            else if ([v isKindOfClass:[NSSegmentedControl class]]) {   // grouped buttons: their symbols drawn in the colour
+                NSSegmentedControl* sc = (NSSegmentedControl*)v;
+                NSMutableArray<NSImage*>* plain = objc_getAssociatedObject(sc, "plainImages");
+                if (!plain) {
+                    plain = [NSMutableArray array];
+                    for (NSInteger i = 0; i < sc.segmentCount; ++i) [plain addObject:[sc imageForSegment:i] ?: [NSImage new]];
+                    objc_setAssociatedObject(sc, "plainImages", plain, OBJC_ASSOCIATION_RETAIN);
+                }
+                for (NSInteger i = 0; i < sc.segmentCount && i < static_cast<NSInteger>(plain.count); ++i) {
+                    NSImage* img = plain[static_cast<NSUInteger>(i)];
+                    if (tint) {
+                        if (@available(macOS 12.0, *)) {
+                            NSImage* coloured = [img imageWithSymbolConfiguration:[NSImageSymbolConfiguration configurationWithPaletteColors:@[ tint ]]];
+                            if (coloured) { coloured.template = NO; img = coloured; }
+                        }
+                    }
+                    [sc setImage:img forSegment:i];
+                }
+            }
     }
     for (NSWindow* w in self.window.tabbedWindows ?: @[ self.window ])
         [(NSWindowController*)w.windowController synchronizeWindowTitleWithDocumentName];

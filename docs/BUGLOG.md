@@ -791,9 +791,11 @@ Not fixed yet, or not checked yet. Each one is removed from this list only when 
    cannot be embedded either and fall back the same way.
 4. The table fix (B-051) is checked with a test file made the same way, not yet with the user's own PDF.
 5. Page up and down and zoom in and out (grouped toolbar buttons) do not take the colourful toolbar icon setting.
+   (Changed in 2.14.3: their symbols are drawn in the colour on macOS 12 and later; to be checked in the picture.)
 6. Side by side is two windows sharing the screen, not one window split in two as on Windows.
 7. In forms, explanatory notes always sit above the fields, even where Windows shows them between fields.
-8. OCR languages are listed by code (en-US, de-DE) rather than by name.
+8. OCR languages are listed by code (en-US, de-DE) rather than by name. (Changed in 2.14.3: names such as "English
+   (United States)"; to be checked in the picture.)
 9. The app is not signed with an Apple Developer certificate, so macOS asks to allow it on first opening.
 10. Signing with a keychain certificate, making one's own certificate (it writes to the login keychain), time stamps
     and the handwritten signature pad have not been run on a Mac. Only signing with a .p12 file and checking signatures
@@ -802,3 +804,8 @@ Not fixed yet, or not checked yet. Each one is removed from this list only when 
     tables, page tools, redaction, printing, presentation, read aloud, command palette, compare, side by side,
     thumbnail page menu and dragging, measuring, batch mode, folder search, Settings, password protection.
 12. One engine measurement differs from Windows by 0.02 pt (PDFium on the Mac); the checks allow 0.15 pt.
+
+## Version 2.14.3 (both apps)
+From now on every release has a new version number, so installed copies are offered it (Help > Update to New Version
+and the check at start). 2.14.3 carries the OCR crash fix (B-053), grouped toolbar buttons in colour and OCR language
+names on the Mac, and the same Windows app with its new number.

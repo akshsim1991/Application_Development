@@ -124,7 +124,12 @@ void FPInstallOcrEngine() {
     const std::vector<std::wstring> langs = ocr::languages();
     Fields f(4);
     f[0] = {Field::Note, L"", {}, L"Finds the words on scanned pages and adds them invisibly, so the pages can be searched, selected and copied. The pages look exactly the same."};
-    f[1] = {Field::Choice, L"Language:", langs, L"", 0};
+    std::vector<std::wstring> names;   // "English (United States)" for en-US
+    for (const auto& code : langs) {
+        NSString* n = [NSLocale.currentLocale localizedStringForLocaleIdentifier:ns(code)];
+        names.push_back(n.length ? form::ws(n) : code);
+    }
+    f[1] = {Field::Choice, L"Language:", names, L"", 0};
     f[2] = {Field::Text, L"Pages (empty = all):", {}, L""};
     f[3] = {Field::Check, L"Skip pages that already have text"};
     f[3].checked = true;

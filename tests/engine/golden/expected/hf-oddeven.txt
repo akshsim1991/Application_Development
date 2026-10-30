@@ -1,0 +1,4 @@
+header [x] pages 3 items 3: Text (top) “Chapter 1: Getting started”, odd pages
+header [x] pages 3 items 3: Text (top) “Feather PDF Handbook”, even pages
+footer [x] pages 6 items 6: Page number (bottom), e.g. “1”
+plan pages 6 objects 12 areas 0 crossing 0 sharedKept 0 body 0

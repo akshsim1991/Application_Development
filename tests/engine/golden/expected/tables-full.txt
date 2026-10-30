@@ -1,0 +1,6 @@
+page 1 table 70.0 726.0 520.0 780.0 rows 3 cols 2 editable 1 scanned 0 objects 13 line 0.50
+  h1111
+  v111
+  |Name<11.0>|Value<11.0>|
+  |Plant<11.0>|North site<11.0>|
+  |Shift<11.0>|Night<11.0>|

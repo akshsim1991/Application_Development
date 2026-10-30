@@ -1,0 +1,7 @@
+header [x] pages 6 items 6: Picture or logo (top)
+header [x] pages 6 items 6: Text (top) “Annual Plant Report 2026”
+header [x] pages 6 items 6: Date (top) “30 October 2026”
+header [x] pages 6 items 6: Line (top)
+footer [x] pages 6 items 6: Page number (bottom), e.g. “Page 1 of 6”
+footer [x] pages 6 items 6: Line (bottom)
+plan pages 3 objects 18 areas 0 crossing 0 sharedKept 0 body 0

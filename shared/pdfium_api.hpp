@@ -1,0 +1,235 @@
+#pragma once
+// Run-time binding to pdfium.dll (libpdfium.dylib on macOS). Loading it dynamically lets the app show a clear message
+// instead of failing to start when the DLL is missing or damaged.
+#include <string>
+#include "fpdfview.h"
+#include "fpdf_text.h"
+#include "fpdf_doc.h"
+#include "fpdf_annot.h"
+#include "fpdf_save.h"
+#include "fpdf_edit.h"
+#include "fpdf_formfill.h"
+#include "fpdf_ppo.h"
+#include "fpdf_transformpage.h"
+#include "fpdf_flatten.h"
+#include "fpdf_attachment.h"
+
+// Every PDFium function the app calls. Add a name here and it is available as pdfium::api().NAME.
+#define PDFIUM_FUNCS(X)          \
+    X(FPDF_InitLibrary)          \
+    X(FPDFText_LoadFont) \
+    X(FPDFPageObj_CreateTextObj) \
+    X(FPDFTextObj_GetTextRenderMode) \
+    X(FPDFPageObj_GetStrokeColor) \
+    X(FPDFFont_Close) \
+    X(FPDFImageObj_GetImageMetadata) \
+    X(FPDFFormObj_CountObjects) \
+    X(FPDFFormObj_GetObject) \
+    X(FPDFFormObj_RemoveObject) \
+    X(FPDFPageObj_GetLineCap) \
+    X(FPDFPageObj_GetLineJoin) \
+    X(FPDFBitmap_Create) \
+    X(FPDF_GetPageWidthF) \
+    X(FPDF_GetPageHeightF) \
+    X(FPDF_GetFileIdentifier) \
+    X(FPDFPageObj_SetLineCap) \
+    X(FPDFPageObj_SetLineJoin) \
+    X(FPDFAnnot_GetFlags) \
+    X(FPDFDoc_DeleteAttachment) \
+    X(FPDFDoc_GetAttachmentCount) \
+    X(FPDFImageObj_GetImagePixelSize) \
+    X(FPDFImageObj_GetRenderedBitmap) \
+    X(FPDFPage_Flatten) \
+    X(FPDFPath_Close) \
+    X(FPDFPath_BezierTo) \
+    X(FPDFPath_LineTo) \
+    X(FPDFPath_MoveTo) \
+    X(FPDFPageObj_CreateNewPath) \
+    X(FPDFAnnot_AppendObject) \
+    X(FPDFPathSegment_GetPoint) \
+    X(FPDFPath_GetPathSegment) \
+    X(FPDFPath_CountSegments) \
+    X(FPDFPath_GetDrawMode) \
+    X(FPDFPathSegment_GetType) \
+    X(FPDFPathSegment_GetClose) \
+    X(FPDFAnnot_GetOptionLabel) \
+    X(FPDFAnnot_GetOptionCount) \
+    X(FPDFAnnot_GetFormFieldExportValue) \
+    X(FPDFAnnot_IsChecked) \
+    X(FPDFAnnot_GetFormFieldType) \
+    X(FPDFAnnot_GetFormFieldValue) \
+    X(FPDFAnnot_GetFormFieldName) \
+    X(FPDFDest_GetLocationInPage) \
+    X(FPDFPageObj_RemoveMark) \
+    X(FPDFPageObjMark_GetName) \
+    X(FPDFPageObjMark_GetParamStringValue) \
+    X(FPDFPageObjMark_SetStringParam) \
+    X(FPDFPageObj_GetMark) \
+    X(FPDFPageObj_CountMarks) \
+    X(FPDFPageObj_AddMark) \
+    X(FPDFAnnot_SetURI) \
+    X(FPDFAction_GetURIPath) \
+    X(FPDFAction_GetType) \
+    X(FPDFLink_GetDest) \
+    X(FPDFLink_GetAction) \
+    X(FPDFLink_GetLinkAtPoint) \
+    X(FPDF_DestroyLibrary)       \
+    X(FPDF_GetLastError)         \
+    X(FPDF_LoadMemDocument64)    \
+    X(FPDF_CloseDocument)        \
+    X(FPDF_GetPageCount)         \
+    X(FPDF_GetPageSizeByIndexF)  \
+    X(FPDF_LoadPage)             \
+    X(FPDF_ClosePage)            \
+    X(FPDF_RenderPageBitmap)     \
+    X(FPDF_PageToDevice)         \
+    X(FPDF_DeviceToPage)         \
+    X(FPDFBitmap_CreateEx)       \
+    X(FPDFBitmap_FillRect)       \
+    X(FPDFBitmap_Destroy)        \
+    X(FPDFText_LoadPage)         \
+    X(FPDFText_ClosePage)        \
+    X(FPDFText_GetTextObject)    \
+    X(FPDFText_IsGenerated)      \
+    X(FPDFText_HasUnicodeMapError) \
+    X(FPDFText_GetCharOrigin)    \
+    X(FPDFPageObj_GetClipPath)   \
+    X(FPDFClipPath_CountPaths)   \
+    X(FPDFPageObj_GetStrokeWidth) \
+    X(FPDFText_CountChars)       \
+    X(FPDFText_GetText)          \
+    X(FPDFText_GetCharIndexAtPos) \
+    X(FPDFText_CountRects)       \
+    X(FPDFText_GetRect)          \
+    X(FPDFText_FindStart)        \
+    X(FPDFText_FindNext)         \
+    X(FPDFText_FindClose)        \
+    X(FPDFText_GetSchResultIndex) \
+    X(FPDFText_GetSchCount)      \
+    X(FPDFBookmark_GetFirstChild) \
+    X(FPDFBookmark_GetNextSibling) \
+    X(FPDFBookmark_GetTitle)     \
+    X(FPDFBookmark_GetDest)      \
+    X(FPDFBookmark_GetAction)    \
+    X(FPDFAction_GetDest)        \
+    X(FPDFDest_GetDestPageIndex) \
+    X(FPDF_SaveAsCopy)           \
+    X(FPDFPage_CreateAnnot)      \
+    X(FPDFPage_CloseAnnot)       \
+    X(FPDFPage_GetAnnotCount)    \
+    X(FPDFPage_GetAnnot)         \
+    X(FPDFPage_RemoveAnnot)      \
+    X(FPDFAnnot_GetSubtype)      \
+    X(FPDFAnnot_SetColor)        \
+    X(FPDFAnnot_GetColor)        \
+    X(FPDFAnnot_SetRect)         \
+    X(FPDFAnnot_GetRect)         \
+    X(FPDFAnnot_CountAttachmentPoints) \
+    X(FPDFAnnot_GetAttachmentPoints) \
+    X(FPDFAnnot_SetAttachmentPoints) \
+    X(FPDFAnnot_AppendAttachmentPoints) \
+    X(FPDFAnnot_SetBorder)       \
+    X(FPDFAnnot_SetFlags)        \
+    X(FPDFAnnot_SetStringValue)  \
+    X(FPDFAnnot_GetStringValue)  \
+    X(FPDFAnnot_AddInkStroke)    \
+    X(FPDF_CreateNewDocument)    \
+    X(FPDFPage_New)              \
+    X(FPDFPage_Delete)           \
+    X(FPDFPage_GetRotation)      \
+    X(FPDFPage_SetRotation)      \
+    X(FPDF_MovePages)            \
+    X(FPDF_ImportPagesByIndex)   \
+    X(FPDFPage_GetMediaBox)      \
+    X(FPDFPage_GetCropBox)       \
+    X(FPDFPage_SetCropBox)       \
+    X(FPDF_GetMetaText)          \
+    X(FPDF_GetFileVersion)       \
+    X(FPDFText_GetUnicode)       \
+    X(FPDFText_GetCharBox)       \
+    X(FPDFText_GetFontSize)      \
+    X(FPDFText_GetFontWeight)    \
+    X(FPDFPageObj_GetType)       \
+    X(FPDFImageObj_GetBitmap)    \
+    X(FPDFImageObj_LoadJpegFileInline) \
+    X(FPDFBitmap_GetBuffer)      \
+    X(FPDFBitmap_GetWidth)       \
+    X(FPDFBitmap_GetHeight)      \
+    X(FPDFBitmap_GetStride)      \
+    X(FPDFBitmap_GetFormat)      \
+    X(FPDFTextObj_GetText)       \
+    X(FPDFTextObj_GetFont)       \
+    X(FPDFTextObj_GetFontSize)   \
+    X(FPDFFont_GetBaseFontName)  \
+    X(FPDFFont_GetIsEmbedded)    \
+    X(FPDFFont_GetFontData) \
+    X(FPDFFont_GetFlags)         \
+    X(FPDFPageObj_GetMatrix)     \
+    X(FPDFPageObj_SetMatrix)     \
+    X(FPDFPageObj_GetFillColor)  \
+    X(FPDFTextObj_SetTextRenderMode) \
+    X(FPDF_GetFormType)          \
+    X(FPDFDOC_InitFormFillEnvironment) \
+    X(FPDFDOC_ExitFormFillEnvironment) \
+    X(FORM_OnAfterLoadPage)      \
+    X(FORM_OnBeforeClosePage)    \
+    X(FPDF_FFLDraw)              \
+    X(FPDFPage_HasFormFieldAtPoint) \
+    X(FORM_OnLButtonDown)        \
+    X(FORM_OnLButtonUp)          \
+    X(FORM_OnMouseMove)          \
+    X(FORM_OnChar)               \
+    X(FORM_OnKeyDown)            \
+    X(FORM_OnKeyUp)              \
+    X(FORM_ForceToKillFocus)     \
+    X(FORM_SelectAllText)        \
+    X(FORM_ReplaceSelection)     \
+    X(FORM_GetSelectedText)      \
+    X(FORM_SetIndexSelected)     \
+    X(FORM_IsIndexSelected)      \
+    X(FPDF_SetFormFieldHighlightColor) \
+    X(FPDF_SetFormFieldHighlightAlpha) \
+    X(FPDFText_GetBoundedText)   \
+    X(FPDFPageObj_CreateNewRect) \
+    X(FPDFPath_SetDrawMode)      \
+    X(FPDFPageObj_SetStrokeColor) \
+    X(FPDFPageObj_SetStrokeWidth) \
+    X(FPDFPage_CountObjects)     \
+    X(FPDFPage_GetObject)        \
+    X(FPDFPage_RemoveObject)     \
+    X(FPDFPageObj_NewImageObj)   \
+    X(FPDFImageObj_SetBitmap)    \
+    X(FPDFImageObj_SetMatrix)    \
+    X(FPDFPage_SetMediaBox)      \
+    X(FPDFPageObj_NewTextObj)    \
+    X(FPDFText_SetText)          \
+    X(FPDFPageObj_SetFillColor)  \
+    X(FPDFPageObj_Transform)     \
+    X(FPDFPageObj_GetBounds)     \
+    X(FPDFPageObj_Destroy)       \
+    X(FPDFPage_InsertObject)     \
+    X(FPDFPage_InsertObjectAtIndex) \
+    X(FPDFPage_GenerateContent)
+
+// Drawing straight onto a Windows device context (printing): only PDFium for Windows has it.
+#ifdef _WIN32
+#define PDFIUM_FUNCS_SYSTEM(X) X(FPDF_RenderPage)
+#else
+#define PDFIUM_FUNCS_SYSTEM(X)
+#endif
+
+namespace pdfium {
+
+struct Api {
+#define PDFIUM_DECL(name) decltype(&name) name;
+    PDFIUM_FUNCS(PDFIUM_DECL)
+    PDFIUM_FUNCS_SYSTEM(PDFIUM_DECL)
+#undef PDFIUM_DECL
+};
+
+// Looks for pdfium.dll next to the exe (on macOS: libpdfium.dylib in the app's Frameworks folder). On failure returns
+// false and fills `error`.
+bool load(std::wstring& error);
+const Api& api();
+
+} // namespace pdfium

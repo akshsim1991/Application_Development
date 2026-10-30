@@ -1,0 +1,2 @@
+header [ ] pages 4 items 4: Text (top) “Template header line” – part of a page template, kept
+plan pages 0 objects 0 areas 0 crossing 0 sharedKept 0 body 0

@@ -1,0 +1,5 @@
+header [x] pages 5 items 5: Text (top) “Quarterly Operations Review”
+header [x] pages 5 items 5: Text (top) “Confidential”
+header [x] pages 5 items 5: Date (top) “30 October 2026”
+footer [x] pages 5 items 20: Page number (bottom), e.g. “Page 1 of 5”
+plan pages 5 objects 35 areas 0 crossing 0 sharedKept 0 body 0

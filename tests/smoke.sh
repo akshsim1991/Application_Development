@@ -223,7 +223,7 @@ check "OCR layer is invisible text" "grep -q 'invisible only (OCR text layer)' '
 
 echo "menus: every command number used once per menu"
 run --menucheck "$(W menus.txt)" "$(W rich.pdf)"; rc=$?
-check "every menu command is handled (static check)" "python3 '$root/tests/dispatchcheck.py' '$root/src/main.cpp' >/dev/null"
+check "every menu command is handled (static check)" "python3 '$root/tests/dispatchcheck.py' '$root/Windows/src/main.cpp' >/dev/null"
 check "no menu item runs another item's command" "[ $rc -eq 0 ] && grep -q 'document=yes' '$work/menus.txt'"
 [ $rc -ne 0 ] && sed 's/^/       /' "$work/menus.txt"
 

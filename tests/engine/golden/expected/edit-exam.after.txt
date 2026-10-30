@@ -1,0 +1,20 @@
+page 1 table 51.3 261.3 533.2 490.4 rows 6 cols 5 editable 1 scanned 0 objects 54 line 0.50
+  h1111111
+  v111111
+  |Note: Answer ONE question from each OR pair{1x5}<c><b><14.0>|^|^|^|^|
+  |Q. No.<c><b><14.0>|Questions<c><b><14.0>|CO<c><b><14.0>|RBT<c><b><14.0>|Marks<c><b><14.0>|
+  |1<c><b><14.0>|Explain how the CPU, main memory and/input/output units cooperate while a computer executes a program.<14.0>|CO1<c><14.0>|L2<c><14.0>|5<c><14.0>|
+  |OR{1x5}<c><b><14.0>|^|^|^|^|
+  |2<c><b><14.0>|Explain signed integer representaiton using n-bit two’s complement. Describe how the sign and value are obtained from a bit pattern.<14.0>|CO1<c><14.0>|L2<c><14.0>|5<c><14.0>|
+  |3<c><b><14.0>|Explain the roles of memory addresses and read/write operations in storing and retrieving data from main memory.<14.0>|CO1<c><14.0>|L2<c><14.0>|5<c><14.0>|
+page 1 table 51.3 517.7 533.2 607.5 rows 4 cols 4 editable 1 scanned 0 objects 25 line 0.50
+  h11111
+  v11111
+  |INTERNAL ASSESSMENT – I [Academic Year: 2026-27]{1x4}<c><b><16.0>|^|^|^|
+  |Course Name:<r><14.0>|Essentials of Computers<14.0>|Course Code:<r><14.0>|1BESC204E<c><b><14.0>|
+  |Semester/Section:<r><14.0>|II / P-cycle<14.0>|Max Marks:<r><14.0>|25<c><b><14.0>|
+  |Date:<r><14.0>|30-10-2026<14.0>|Duration:<r><14.0>|60 mins<c><b><14.0>|
+page 1 table 56.5 701.2 555.3 719.5 rows 1 cols 11 editable 1 scanned 0 objects 16 line 0.50
+  h11
+  v111111111111
+  |USN<b><14.0>|||||||||||

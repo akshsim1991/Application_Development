@@ -1,0 +1,2 @@
+plan pages 0 objects 0 areas 0 crossing 0 sharedKept 0 body 0
+failed: Nothing is chosen to delete on these pages.

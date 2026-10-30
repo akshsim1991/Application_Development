@@ -86,6 +86,16 @@ Ctrl+B bookmarks · Ctrl+Shift+B thumbnails · Ctrl+H highlight · Ctrl+U underl
 Ctrl+M comment · Ctrl+E edit text · Del delete selected annotation · Ctrl+P print · Ctrl+D properties ·
 F1 user guide · Ctrl+Shift+U read aloud · F11 full screen · F5 presentation (click, Space or arrows for the next page) · ← → previous / next page · Ctrl+0 fit page · Ctrl+1 actual size · Ctrl+2 fit width · Ctrl+Q quit · Esc cancel.
 
+## Repository layout
+
+| Folder | What is in it |
+|---|---|
+| `shared/` | The PDF engine both apps use: documents, page objects, tables, header and footer, forms, annotations, redaction, export, and more. A fix here is a fix for Windows and macOS. |
+| `Windows/` | The Windows app (`Windows/src`, Win32 screens), its resources and its installer (`Windows/installer`). |
+| `macOS/` | The Mac app (AppKit, Objective-C++). An early version that reads PDFs; see [macOS/README.md](macOS/README.md) and the porting plan in [macOS/PORTING.md](macOS/PORTING.md). |
+| `tests/` | `smoke.sh` (Windows app under Wine) and `tests/engine` (the shared engine on other systems, compared with the Windows app). |
+| `docs/`, `scripts/`, `cmake/`, `releases/` | User guide, bug log, helper scripts, build helpers, released installers. |
+
 ## Building
 
 Builds on Windows (MSVC or MinGW) or cross-compiles from Linux with mingw-w64.
@@ -106,8 +116,8 @@ Without `third_party/tesseract` the app still builds; "Recognise text (OCR)" the
 cmake --build build --target installer     # → dist/FeatherPDF-Setup-2.14.2.exe (needs Python 3)
 ```
 
-`installer/setup.cpp` is a small native setup program; `installer/pack.py` appends the program's files to it, compressed
-in 1 MB blocks (raw deflate, unpacked by `installer/inflate.cpp`, each file checked by CRC-32). Two screens: the install
+`Windows/installer/setup.cpp` is a small native setup program; `Windows/installer/pack.py` appends the program's files to it, compressed
+in 1 MB blocks (raw deflate, unpacked by `Windows/installer/inflate.cpp`, each file checked by CRC-32). Two screens: the install
 location (default `C:\Program Files\Feather PDF`, read-only with Change...), "Developed by Akshaya Simha", the build date
 read from FeatherPDF.exe, and Install; then the real progress and, at the end, "Set Feather PDF as the default PDF
 application" (opens Windows' own Default apps page) and "Launch Feather PDF" (started as the signed-in user, not as
@@ -128,16 +138,32 @@ generated sample files and checks the results with independent tools (Poppler, p
 `VERAPDF` to the veraPDF command line to also validate the PDF/A output (`VERAPDF=/path/to/verapdf tests/smoke.sh`).
 `tests/make_samples.py` creates the samples; `tests/paracheck.py` compares word positions for the editing tests.
 
+`tests/engine/check.sh PROGRAM` runs the engine's test commands (tables found and edited, headers and footers removed)
+with another build of the shared engine and compares the results with the Windows app's, kept in
+`tests/engine/golden/expected` (rewritten with `tests/engine/run.sh windows tests/engine/golden/expected` when the engine
+changes on purpose). The Mac build runs it on every push (`.github/workflows/macos.yml`); on Linux, build the engine
+check with `scripts/fetch-pdfium.sh linux && cmake -S . -B build-linux && cmake --build build-linux` and run
+`tests/engine/check.sh build-linux/engine_check`.
+
 ## Code map
 
-`src/main.cpp` window, tabs, toolbar, status bar, menus, commands · `startpage.*` the start page · `viewer.*` page view, selection, tools, form input ·
-`document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations · `pageobjects.*` watermark,
-page numbers, text boxes, text and paragraph editing · `contentgen.*` writing page content without losing text spacing ·
-`inlineedit.*` the edit box over the page · `picture.*` pictures, copy as picture · `redact.*` · `compress.*` ·
-`protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` · `exporter.*` · `speech.*` · `sidebar.*` bookmarks and thumbnails ·
-`formdialog.*` reusable dialogs · `formcreate.*` / `formdata.*` creating and filling form fields · `textpdf.*` text and
-Markdown to PDF · `sanitize.*` hidden data removal · `printing.*` the Print window, sheet layout and printing · `pdfa.*` PDF/A-2b · `fontlist.*` fonts report ·
-`pdfedit.hpp` small raw PDF edits · `pdfium_api.*` run-time binding to pdfium.dll.
+Windows screens (`Windows/src`): `main.cpp` window, tabs, toolbar, status bar, menus, commands · `startpage.*` the start
+page · `viewer.*` page view, selection, tools, form input · `sidebar.*` bookmarks and thumbnails · `inlineedit.*` the edit
+box over the page · `formdialog.*` reusable dialogs · `printing.*` the Print window, sheet layout and printing ·
+`speech.*` read aloud · `sigpad.*` drawn signatures · `tableeditor.*` / `hfdialog.*` the table and header-and-footer
+windows · `themeui.*` / `theme.hpp` themes and themed controls · `settingsdlg.*` Settings · `icons.*`.
+
+Engine (`shared`): `document.*` PDFium document, undo, saving, page operations, forms · `annot.*` annotations ·
+`pageobjects.*` watermark, page numbers, text boxes, text and paragraph editing · `contentgen.*` writing page content
+without losing text spacing · `tables.*` finding and editing tables · `headfoot.*` finding and deleting headers and
+footers · `picture.*` pictures · `redact.*` · `compress.*` · `protect.*` AES-256 writer · `sign.*` signatures · `ocr.*` ·
+`exporter.*` · `formcreate.*` / `formdata.*` creating and filling form fields · `textpdf.*` text and Markdown to PDF ·
+`sanitize.*` hidden data removal · `pdfa.*` PDF/A-2b · `fontlist.*` fonts report · `pdfedit.hpp` small raw PDF edits ·
+`pdfium_api.*` run-time binding to pdfium.dll / libpdfium.dylib · `platform.*` the few system differences ·
+`pagecolours.hpp` night and dimmed page colours · `selftest.*` the engine's test commands · `pending.cpp` what the Mac
+version does not have yet.
+
+Mac screens (`macOS/src`): see [macOS/README.md](macOS/README.md).
 
 ## Not in 2.14 yet
 

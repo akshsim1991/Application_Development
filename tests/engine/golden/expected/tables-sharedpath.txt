@@ -1,0 +1,11 @@
+page 1 table 70.0 726.0 400.0 780.0 rows 3 cols 2 editable 1 scanned 0 objects 7 line 0.60
+  h1111
+  v111
+  |Item<11.0>|Qty<11.0>|
+  |Bolts<11.0>|120<11.0>|
+  |Nuts<11.0>|300<11.0>|
+page 1 table 70.0 604.0 400.0 640.0 rows 2 cols 3 editable 1 scanned 0 objects 7 line 0.60
+  h111
+  v1111
+  |A<11.0>|B<11.0>|C<11.0>|
+  |1<11.0>|2<11.0>|3<11.0>|

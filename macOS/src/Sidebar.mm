@@ -177,6 +177,8 @@ static NSPasteboardType const kPagesType = @"com.featherpdf.pages";
 
 - (void)setCurrentPage:(int)page {
     if (page < 0 || page >= _thumbs.numberOfRows || _thumbs.selectedRow == page) return;
+    // several pages selected (for the page menu, dragging, ⌘⌫): reading on through them keeps the selection
+    if (_thumbs.selectedRowIndexes.count > 1 && [_thumbs.selectedRowIndexes containsIndex:static_cast<NSUInteger>(page)]) return;
     _following = YES;
     [_thumbs selectRowIndexes:[NSIndexSet indexSetWithIndex:static_cast<NSUInteger>(page)] byExtendingSelection:NO];
     [_thumbs scrollRowToVisible:page];

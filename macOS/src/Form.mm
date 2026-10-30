@@ -46,9 +46,9 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
         a.messageText = ns(title);
         [a addButtonWithTitle:ns(okText.substr(1))];
         const size_t lines = static_cast<size_t>(std::count(text.begin(), text.end(), L'\n')) + 1;
-        if (text.size() > 600 || lines > 14) {
+        if (text.size() > 600 || lines > 14 || text.find(L'\t') != std::wstring::npos) {   // long, or a table (tab-separated)
             NSScrollView* sv = [NSTextView scrollableTextView];
-            sv.frame = NSMakeRect(0, 0, 560, 320);
+            sv.frame = NSMakeRect(0, 0, 560, std::min<CGFloat>(320, 24 + 15 * static_cast<CGFloat>(lines)));
             sv.borderType = NSBezelBorder;
             NSTextView* tv = (NSTextView*)sv.documentView;
             tv.editable = NO;

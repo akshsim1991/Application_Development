@@ -761,3 +761,8 @@ Found and fixed while building it:
   given. Now information boxes (Properties, Fonts used, Show Signatures) are the system's own alert sheet, which sizes
   itself (long reports in a scrolling text area), and in other forms notes sit in a plain column above the fields
   instead of in the grid. The build check now also pictures a form with a note and fields (Recognise Text).
+- **Mac: selecting several thumbnails did not last.** Found in the build's picture of Select All Pages: only page 1
+  stayed selected. The page view tells the sidebar which page is shown, and the sidebar then selected that page alone.
+  Now a selection of several pages that holds the page shown is kept.
+- **Mac: the fonts table in Fonts used was squeezed** into the narrow alert. Reports with tables go in the wide
+  scrolling text area.

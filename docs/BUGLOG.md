@@ -585,6 +585,16 @@ the text reads correctly.
   is edited with the text set smaller; one drawing shared by two tables and a rule. In the app: Edit table on the
   details table, Date typed, Apply: filled in, everything else on the page unchanged, no error.
 
+### B-049 Side by side: the dark page colours (night mode) showed on one side only
+- **Status:** Fixed
+- **Root cause:** reported by the user. The page colours chosen in Settings (Normal, Dark, Dimmed) are saved and read
+  back when the app starts, but the start-up code gave them only to the main view, not to the second view used by
+  side by side. Changing the setting while the app ran set both views, so it showed only after a restart: the left
+  side dark, the right side white. The page memory size had the same omission.
+- **Fix:** at start-up both views get the saved page colours and page memory size.
+- **Verified:** in the app, with Dark page colours saved: restarted, opened two files, Side by side, Show another open
+  tab: both sides dark (before the fix the right side was white).
+
 ## Delete Header and Footer (requested points)
 Engine `src/headfoot.cpp`, window `src/hfdialog.cpp`; command line `--hfremove` for the smoke tests ("delete header and
 footer", 15 checks on generated samples: a report with logo / title / date / rules / "Page n of 6" and body text that

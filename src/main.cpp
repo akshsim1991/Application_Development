@@ -526,6 +526,7 @@ void loadSettings() {
     app.widthIdx = std::clamp(num(L"lineWidth", app.widthIdx), 0, 2);
     app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
     app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
+    app.viewer2.setColours(app.viewer.colours());   // the second view of side by side shows pages the same way
     app.theme = std::clamp(num(L"theme", 2), 0, ThemeCount - 1);
     app.colourIcons = num(L"colourIcons", 1) != 0;
     app.tabColours = num(L"tabColours", 0) != 0;
@@ -535,6 +536,7 @@ void loadSettings() {
     app.cacheIdx = std::clamp(num(L"pageCache", 1), 0, 2);
     app.autosaveIdx = std::clamp(num(L"recoveryCopy", 0), 0, 3);
     app.viewer.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
+    app.viewer2.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
     app.layout = std::clamp(num(L"layout", 1), 0, 2);
     app.cover = num(L"cover", 0) != 0;
     app.units = std::clamp(num(L"units", 0), 0, 3);

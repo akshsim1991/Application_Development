@@ -819,3 +819,25 @@ names on the Mac, and the same Windows app with its new number.
 Mac: side by side in one window, forms keep their notes in place, fonts from collection files and from Microsoft
 Office kept when text is edited. Windows: the same app with its new number.
 2.14.4 published in akshsim1991/FeatherPDF-releases; both downloads match the size and SHA-256 in latest.json (checked by downloading them again).
+
+## Reported on the Mac, 31 October: editing a line or a paragraph
+Seen in the user's screenshots (a question bank made in Word; numbered, justified questions):
+- **B-054 (both apps): a numbered item's paragraph took the end of the item before it and left out its own last line**
+  (question 10 lost "diagram."). The list number ("10.") was read as a line of its own between the item's lines, so the
+  paragraph stopped after one line and joined the line above. Numbers and bullets are now recognised: each starts an
+  item, and is left as it is. Reproduced with a LibreOffice file and a reportlab file built the same way; checked by
+  `cli_check.sh` ("numbered list items"), which failed before and passes now on Linux and on the build Mac.
+- **B-055 (both apps): hyphens could become spaces** ("proportional-plus-integral"). Hyphen look-alikes (non-breaking
+  and soft hyphens) are now read as hyphens, and a text object whose text cannot be read from it directly is read from
+  the page's text. The test files keep their hyphens; the user's own file is still to be tried.
+- **B-056 (both apps): a justified paragraph of two lines read as "Left".** It is now justified when its first line
+  reaches the right edge of its column (shared with other lines) and its last line is shorter.
+- **B-057 (Mac): the editor showed the old text through it, in another font, in the wrong place, with its style bar
+  over the paragraph above, spell-check marks, and no wrapping.** The editor was a plain box over the page. Now: the
+  page's own text is hidden while it is open (put back on close; nothing in the file changes); the text sits on the
+  page's baseline in the document's own font (when the Mac has it), size and colour (also in night colours), wrapped
+  at the paragraph's width with its line spacing, indents and alignment; spelling, grammar, smart quotes, dashes and
+  replacements are off; the style bar is at the foot of the window, starts with the document's own font and exact
+  size, and restyles the text as it is changed; Cancel and Apply (⌘Return) are on it. A zoom while editing applies.
+  Checked in the build's pictures (a line, a paragraph). "Unsaved changes" with nothing changed: opening the editor
+  no longer changes the document (the earlier status came from an earlier edit).

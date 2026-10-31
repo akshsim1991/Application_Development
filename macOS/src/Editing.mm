@@ -459,7 +459,9 @@ NSTextAlignment textAlignment(pageobj::Align a) {
     const NSRect pageRect = [v viewRectOnPage:hit.page rect:annot::RectD{hit.originX, hit.baseline, hit.originX, hit.baseline}];
     const NSRect whole = [v viewRectOnPage:hit.page rect:annot::RectD{0, 0, self.pdf ? self.pdf->pageSize(hit.page).w : 600, 1}];
     const CGFloat x = NSMinX(pageRect);
-    CGFloat width = ed.paragraph ? std::max(40.0, hit.wrapWidth * zoom) : std::max(40.0, NSMaxX(whole) - x - 4);
+    // the engine wraps where the last letter's ink fits (plus 0.25 pt); the text view counts a letter's whole advance, a
+    // point or two more at the end of a line: that much more room, or it would break lines earlier than the page does
+    CGFloat width = ed.paragraph ? std::max(40.0, (hit.wrapWidth + 0.25 + 0.12 * size) * zoom) : std::max(40.0, NSMaxX(whole) - x - 4);
     tv.textContainer.containerSize = NSMakeSize(ed.paragraph ? width : 1e7, 1e7);
     tv.textContainer.widthTracksTextView = NO;
     tv.horizontallyResizable = NO;

@@ -818,3 +818,4 @@ names on the Mac, and the same Windows app with its new number.
 ## Version 2.14.4 (both apps)
 Mac: side by side in one window, forms keep their notes in place, fonts from collection files and from Microsoft
 Office kept when text is edited. Windows: the same app with its new number.
+2.14.4 published in akshsim1991/FeatherPDF-releases; both downloads match the size and SHA-256 in latest.json (checked by downloading them again).

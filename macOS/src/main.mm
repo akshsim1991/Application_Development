@@ -3,6 +3,7 @@
 //   --render in.pdf page out.png [zoom] [normal|dark|dimmed]   draws a page as the window does, into a PNG
 //   --tables / --tableedit / --hfremove ...                     the engine's test commands (shared/selftest.hpp)
 #import <Cocoa/Cocoa.h>
+#import <CoreText/CoreText.h>
 #import "AppDelegate.h"
 #import "Settings.h"
 #import "Render.h"
@@ -18,6 +19,22 @@
 
 void FPInstallOcrEngine();   // OcrVision.mm
 void FPInstallSignSystem();  // Signatures.mm
+
+// Microsoft Office keeps its fonts (Cambria, Calibri, Aptos...) inside its own apps, where other apps do not see them.
+// PDFs made with Office use them, so edited text can only keep its font if Feather PDF finds them: they are made known
+// to this app alone (nothing is installed or changed on the Mac).
+static void registerOfficeFonts() {
+    NSFileManager* fm = NSFileManager.defaultManager;
+    for (NSString* app in @[ @"Microsoft Word", @"Microsoft Excel", @"Microsoft PowerPoint", @"Microsoft Outlook", @"Microsoft OneNote" ]) {
+        NSString* dir = [NSString stringWithFormat:@"/Applications/%@.app/Contents/Resources/DFonts", app];
+        NSMutableArray<NSURL*>* urls = [NSMutableArray array];
+        for (NSString* f in [fm contentsOfDirectoryAtPath:dir error:nil]) {
+            NSString* ext = f.pathExtension.lowercaseString;
+            if ([@[ @"ttf", @"ttc", @"otf" ] containsObject:ext]) [urls addObject:[NSURL fileURLWithPath:[dir stringByAppendingPathComponent:f]]];
+        }
+        if (urls.count) CTFontManagerRegisterFontURLs((__bridge CFArrayRef)urls, kCTFontManagerScopeProcess, true, nil);
+    }
+}
 
 static int renderCommand(const std::vector<std::string>& a) {
     if (a.size() < 4) return 2;
@@ -49,6 +66,7 @@ int main(int argc, const char* argv[]) {
             plain.push_back(args[i]);
         }
 
+        registerOfficeFonts();   // before the installed fonts are first listed
         FPInstallOcrEngine();
         FPInstallSignSystem();
         std::wstring err;

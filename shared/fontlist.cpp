@@ -330,6 +330,45 @@ void show(HWND parent, HINSTANCE inst, const Report& r, const std::wstring& titl
 }
 #endif
 
+std::vector<unsigned char> buildSfnt(const std::map<uint32_t, std::vector<unsigned char>>& tables) {
+    std::vector<unsigned char> out;
+    if (tables.empty() || !tables.count(0x676C7966u /* glyf */)) return out;   // TrueType outlines only
+    auto put16 = [&](uint32_t v) { out.push_back(static_cast<unsigned char>(v >> 8)); out.push_back(static_cast<unsigned char>(v)); };
+    auto put32 = [&](uint32_t v) { put16(v >> 16); put16(v & 0xFFFF); };
+    auto set32 = [&](size_t at, uint32_t v) { for (int i = 0; i < 4; ++i) out[at + i] = static_cast<unsigned char>(v >> (24 - 8 * i)); };
+    auto checksum = [](const unsigned char* p, size_t n) {
+        uint32_t sum = 0;
+        for (size_t i = 0; i < n; i += 4) {
+            uint32_t w = 0;
+            for (size_t k = 0; k < 4; ++k) w = (w << 8) | (i + k < n ? p[i + k] : 0);
+            sum += w;
+        }
+        return sum;
+    };
+    const uint32_t count = static_cast<uint32_t>(tables.size());
+    uint32_t pow2 = 1, log2 = 0;
+    while (pow2 * 2 <= count) { pow2 *= 2; ++log2; }
+    put32(0x00010000);   // TrueType
+    put16(count); put16(pow2 * 16); put16(log2); put16(count * 16 - pow2 * 16);
+    const size_t dir = out.size();
+    out.resize(dir + 16 * count);
+    size_t headAt = 0, i = 0;
+    for (const auto& [tag, data] : tables) {   // std::map: tags in ascending order, as the directory needs
+        std::vector<unsigned char> t = data;
+        if (tag == 0x68656164u /* head */ && t.size() >= 12) { headAt = out.size(); std::fill(t.begin() + 8, t.begin() + 12, 0); }   // checkSumAdjustment 0 for now
+        const size_t at = out.size();
+        out.insert(out.end(), t.begin(), t.end());
+        while (out.size() % 4) out.push_back(0);
+        set32(dir + 16 * i, tag);
+        set32(dir + 16 * i + 4, checksum(t.data(), t.size()));
+        set32(dir + 16 * i + 8, static_cast<uint32_t>(at));
+        set32(dir + 16 * i + 12, static_cast<uint32_t>(t.size()));
+        ++i;
+    }
+    if (headAt) set32(headAt + 8, 0xB1B0AFBAu - checksum(out.data(), out.size()));
+    return out;
+}
+
 std::wstring squeeze(const std::wstring& s) {   // lower case, letters and digits only: "Times New Roman" -> "timesnewroman"
     std::wstring r;
     for (wchar_t c : s) if (iswalnum(c)) r += static_cast<wchar_t>(towlower(c));

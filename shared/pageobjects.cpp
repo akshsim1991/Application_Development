@@ -912,9 +912,24 @@ FPDF_FONT installedFont(Document& d, FPDF_PAGE pg, const std::string& pdfName, b
                 char path[2048];
                 if (CFURLGetFileSystemRepresentation(url, true, reinterpret_cast<UInt8*>(path), sizeof path)) {
                     std::vector<unsigned char> bytes;
-                    if (platform::readFile(platform::wide(path), bytes) && bytes.size() > 12 && bytes.size() < 64u * 1024 * 1024 &&
-                        std::memcmp(bytes.data(), "ttcf", 4) != 0 && std::memcmp(bytes.data(), "OTTO", 4) != 0)   // no collections, no CFF
-                        data.assign(bytes.begin(), bytes.end());
+                    if (platform::readFile(platform::wide(path), bytes) && bytes.size() > 12 && bytes.size() < 64u * 1024 * 1024) {
+                        if (std::memcmp(bytes.data(), "ttcf", 4) == 0) {
+                            // a collection (.ttc: Helvetica, Times, Avenir...): this one font, rebuilt from its tables
+                            std::map<uint32_t, std::vector<unsigned char>> tables;
+                            if (CFArrayRef tags = CTFontCopyAvailableTables(font, kCTFontTableOptionNoOptions)) {
+                                for (CFIndex t = 0, nt = CFArrayGetCount(tags); t < nt; ++t) {
+                                    const auto tag = static_cast<CTFontTableTag>(reinterpret_cast<uintptr_t>(CFArrayGetValueAtIndex(tags, t)));
+                                    if (CFDataRef td = CTFontCopyTable(font, tag, kCTFontTableOptionNoOptions)) {
+                                        tables[tag] = std::vector<unsigned char>(CFDataGetBytePtr(td), CFDataGetBytePtr(td) + CFDataGetLength(td));
+                                        CFRelease(td);
+                                    }
+                                }
+                                CFRelease(tags);
+                            }
+                            const std::vector<unsigned char> one = fontlist::buildSfnt(tables);   // empty for CFF outlines
+                            data.assign(one.begin(), one.end());
+                        } else if (std::memcmp(bytes.data(), "OTTO", 4) != 0) data.assign(bytes.begin(), bytes.end());   // CFF: see below
+                    }
                 }
                 CFRelease(url);
             }

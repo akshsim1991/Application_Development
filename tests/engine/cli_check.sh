@@ -208,6 +208,16 @@ run --batch "$W/preset.ini"; rc=$?
 check "both files done (subfolder kept)" "[ $rc -eq 0 ] && [ -s '$W/bout/rich.pdf' ] && [ -s '$W/bout/sub/other.pdf' ]"
 check "watermark and password set"   "python3 -c \"import pikepdf;p=pikepdf.open('$W/bout/sub/other.pdf',password='open1');assert p.is_encrypted\" && python3 -c \"import sys;from pdfminer.high_level import extract_text;t=extract_text(sys.argv[1],password='open1');assert 'DRAFT' in t or 'AFT' in t\" '$W/bout/rich.pdf'"
 
+echo "one font out of a collection file (edited text in fonts such as Helvetica on the Mac)"
+ttc=""; for f in /System/Library/Fonts/Helvetica.ttc /usr/share/fonts/truetype/wqy/wqy-zenhei.ttc; do [ -f "$f" ] && { ttc="$f"; break; }; done
+if [ -n "$ttc" ] && python3 -c "import fontTools" 2>/dev/null; then
+  run --sfnttest "$ttc" 1 "$W/one.ttf"
+  check "a font file of its own, checksums right (fontTools)" "python3 -c \"
+from fontTools.ttLib import TTFont, TTCollection
+f=TTFont('$W/one.ttf', checkChecksums=2); c=TTCollection('$ttc').fonts[1]
+assert f['maxp'].numGlyphs==c['maxp'].numGlyphs and f['name'].getDebugName(4)==c['name'].getDebugName(4)\""
+else echo "  skip no collection font or fontTools here"; fi
+
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"
 check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fonts.txt'"

@@ -108,7 +108,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     NSMutableString* r = [NSMutableString string];
     NSArray<NSDocument*>* docs = [NSDocumentController sharedDocumentController].documents;
     [r appendFormat:@"documents %lu\n", (unsigned long)docs.count];
-    NSWindow* first = nil;
+    NSWindow* first = NSApp.keyWindow.windowController.document ? NSApp.keyWindow : nil;   // the window in front first
     for (NSDocument* d in docs) [r appendFormat:@"document %@ windows %lu\n", d.displayName, (unsigned long)d.windowControllers.count];
     for (NSWindow* w in NSApp.windows) {
         [r appendFormat:@"window %@ \"%@\" subtitle \"%@\" size %.0fx%.0f at %.0f,%.0f visible %d tabs %lu key %d doc %d\n",

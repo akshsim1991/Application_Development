@@ -17,6 +17,9 @@ extern NSString* const FPSidebarShownKey;              // user default: the side
 - (void)afterChange;    // the pages changed: draw them again, mark the document edited, update the toolbar
 - (void)selectAllThumbs; // the sidebar: shown, with every page selected
 - (NSArray<NSNumber*>*)selectedThumbPages;   // the pages selected in the sidebar, else the page shown
+// Side by side (SideBySide.mm): `other` shown next to the pages (left and right, or top and bottom when `stacked`; on
+// the left or above when `swapped`), in this window. nil: the pages alone again.
+- (void)setBesideView:(NSView*)other stacked:(BOOL)stacked swapped:(BOOL)swapped;
 @end
 
 @interface FPWindowController (Annotate)

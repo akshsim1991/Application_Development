@@ -75,14 +75,15 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
 
     NSTextField* heading = [NSTextField labelWithString:ns(title)];
     heading.font = [NSFont systemFontOfSize:15 weight:NSFontWeightSemibold];
-    NSGridView* grid = [NSGridView gridViewWithViews:@[]];
-    grid.rowSpacing = 10;
-    grid.columnSpacing = 10;
     NSMutableArray<NSView*>* controls = [NSMutableArray array];
-    NSStackView* notes = [[NSStackView alloc] init];
-    notes.orientation = NSUserInterfaceLayoutOrientationVertical;
-    notes.alignment = NSLayoutAttributeLeading;
-    notes.spacing = 8;
+    // The form from top to bottom in the fields' order: a note is a paragraph of its own; fields next to each other share
+    // a grid (labels right-aligned beside their controls). Notes are not put in a grid: there they got one line's height.
+    NSStackView* body = [[NSStackView alloc] init];
+    body.orientation = NSUserInterfaceLayoutOrientationVertical;
+    body.alignment = NSLayoutAttributeLeading;
+    body.spacing = 14;
+    NSGridView* grid = nil;
+    NSMutableArray<NSGridView*>* grids = [NSMutableArray array];
     for (const Field& f : fields) {
         NSView* control = nil;
         NSView* label = [NSGridCell emptyContentView];
@@ -139,14 +140,30 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
             }
         }
         [controls addObject:control];
-        if (f.kind == Field::Note) {   // notes above the grid, one under the other: in the grid they got the height of one line
-            [notes addArrangedSubview:control];
+        if (f.kind == Field::Note) {
+            [body addArrangedSubview:control];
+            grid = nil;   // fields after the note start a new grid
             continue;
+        }
+        if (!grid) {
+            grid = [NSGridView gridViewWithViews:@[]];
+            grid.rowSpacing = 10;
+            grid.columnSpacing = 10;
+            [grids addObject:grid];
+            [body addArrangedSubview:grid];
         }
         NSGridRow* row = [grid addRowWithViews:@[ label, control ]];
         row.rowAlignment = NSGridRowAlignmentLastBaseline;
     }
-    if (grid.numberOfColumns > 0) [grid columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
+    for (NSGridView* g in grids)
+        if (g.numberOfColumns > 0) [g columnAtIndex:0].xPlacement = NSGridCellPlacementTrailing;
+    // the label columns of all grids the same width, so the fields line up across the notes between them
+    if (grids.count > 1) {
+        CGFloat widest = 0;
+        for (NSGridView* g in grids)
+            for (NSInteger r = 0; r < g.numberOfRows; ++r) widest = std::max(widest, [g cellAtColumnIndex:0 rowIndex:r].contentView.fittingSize.width);
+        for (NSGridView* g in grids) if (g.numberOfColumns > 0) [g columnAtIndex:0].width = widest;
+    }
 
     NSTextField* problem = [NSTextField wrappingLabelWithString:@""];
     problem.textColor = NSColor.systemRedColor;
@@ -161,20 +178,17 @@ void show(NSWindow* window, const std::wstring& title, Fields given, const std::
     ok.keyEquivalent = @"\r";
     cancel.hidden = noCancel;
 
-    for (NSView* v in @[ heading, notes, grid, problem, cancel, ok ]) {
+    for (NSView* v in @[ heading, body, problem, cancel, ok ]) {
         v.translatesAutoresizingMaskIntoConstraints = NO;
         [root addSubview:v];
     }
     [NSLayoutConstraint activateConstraints:@[
         [heading.topAnchor constraintEqualToAnchor:root.topAnchor constant:20],
         [heading.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
-        [notes.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:12],
-        [notes.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
-        [notes.trailingAnchor constraintLessThanOrEqualToAnchor:root.trailingAnchor constant:-20],
-        [grid.topAnchor constraintEqualToAnchor:notes.bottomAnchor constant:notes.arrangedSubviews.count ? 14 : 4],
-        [grid.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
-        [grid.trailingAnchor constraintLessThanOrEqualToAnchor:root.trailingAnchor constant:-20],
-        [problem.topAnchor constraintEqualToAnchor:grid.bottomAnchor constant:12],
+        [body.topAnchor constraintEqualToAnchor:heading.bottomAnchor constant:12],
+        [body.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
+        [body.trailingAnchor constraintLessThanOrEqualToAnchor:root.trailingAnchor constant:-20],
+        [problem.topAnchor constraintEqualToAnchor:body.bottomAnchor constant:12],
         [problem.leadingAnchor constraintEqualToAnchor:root.leadingAnchor constant:20],
         [problem.trailingAnchor constraintEqualToAnchor:root.trailingAnchor constant:-20],
         [ok.topAnchor constraintEqualToAnchor:problem.bottomAnchor constant:14],

@@ -1,8 +1,10 @@
 #include "selftest.hpp"
+#include "fontlist.hpp"
 #include "headfoot.hpp"
 #include "platform.hpp"
 #include "tables.hpp"
 #include <cstdio>
+#include <map>
 #include <cwchar>
 #include <string>
 
@@ -86,6 +88,24 @@ int run(const std::vector<std::wstring>& files) {
             }
         const std::string u = platform::utf8(rep);
         return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--sfnttest") {   // --sfnttest in.ttc index out.ttf : one font of a collection as its own file
+        if (files.size() < 4) return 2;
+        std::vector<unsigned char> b;
+        if (!platform::readFile(files[1], b) || b.size() < 16) return 3;
+        auto u32 = [&](size_t at) { return at + 4 <= b.size() ? (uint32_t(b[at]) << 24) | (uint32_t(b[at + 1]) << 16) | (uint32_t(b[at + 2]) << 8) | b[at + 3] : 0u; };
+        size_t font = 0;
+        if (u32(0) == 0x74746366u) font = u32(12 + 4 * static_cast<size_t>(std::wcstol(files[2].c_str(), nullptr, 10)));   // "ttcf"
+        const uint32_t n = (u32(font + 4) >> 16);
+        std::map<uint32_t, std::vector<unsigned char>> tables;
+        for (uint32_t i = 0; i < n; ++i) {
+            const size_t rec = font + 12 + 16 * i;
+            const uint32_t off = u32(rec + 8), len = u32(rec + 12);
+            if (off + static_cast<size_t>(len) > b.size()) return 4;
+            tables[u32(rec)] = std::vector<unsigned char>(b.begin() + off, b.begin() + off + len);
+        }
+        const std::vector<unsigned char> out = fontlist::buildSfnt(tables);
+        return !out.empty() && platform::writeFile(files[3], out) ? 0 : 5;
     }
     if (!files.empty() && files[0] == L"--tableedit") {   // --tableedit in.pdf out.pdf page x y op args... : changes the table there
         if (files.size() < 6) return 2;

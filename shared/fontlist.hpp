@@ -1,6 +1,8 @@
 #pragma once
 // The fonts a PDF uses (name, type, embedded or not, pages), and which pages have no text at all (scans that need OCR).
 #include "platform.hpp"
+#include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 #include "document.hpp"
@@ -34,6 +36,10 @@ std::wstring squeeze(const std::wstring& s);
 // The installed font family a PDF font name stands for, or "" when it is not installed. "ABCDEF+Calibri-Bold",
 // "Calibri,Bold", "ArialMT" and "TimesNewRomanPSMT" become Calibri, Calibri, Arial and Times New Roman.
 std::wstring installedFace(const std::string& pdfName);
+
+// A standalone TrueType font file from its tables (tag -> bytes), with a correct table directory and checksums. Used to
+// take one font out of a collection file (.ttc), which cannot be embedded as it is.
+std::vector<unsigned char> buildSfnt(const std::map<uint32_t, std::vector<unsigned char>>& tables);
 
 // Shows the report in a window with a table, Copy and Close.
 #ifdef _WIN32

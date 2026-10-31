@@ -478,6 +478,28 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (IBAction)selectAllPages:(id)sender { [self selectAllThumbs]; }   // Pages > Select All Pages
 
+- (void)setBesideView:(NSView*)other stacked:(BOOL)stacked swapped:(BOOL)swapped {
+    NSScrollView* main = _view.enclosingScrollView;
+    NSView* holder = main.superview;
+    if (holder != _split) {   // a pair already: back to the pages alone first
+        [main removeFromSuperview];
+        [_split replaceSubview:holder with:main];
+        for (NSView* v in [holder.subviews copy]) [v removeFromSuperview];
+    }
+    if (other) {
+        NSSplitView* pair = [[NSSplitView alloc] initWithFrame:main.frame];
+        pair.vertical = !stacked;   // dividers upright: left and right
+        pair.dividerStyle = NSSplitViewDividerStyleThin;
+        [_split replaceSubview:main with:pair];
+        [pair addSubview:swapped ? other : main];
+        [pair addSubview:swapped ? main : other];
+        [pair adjustSubviews];
+        [pair setPosition:(stacked ? pair.bounds.size.height : pair.bounds.size.width) / 2 ofDividerAtIndex:0];
+    }
+    [_split adjustSubviews];
+    _view.fitWidth = YES;
+}
+
 - (void)selectAllThumbs {
     if (_sidebar.hidden) [self toggleThumbnails:nil];
     [_sidebar showBookmarks:NO];

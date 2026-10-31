@@ -841,3 +841,6 @@ Seen in the user's screenshots (a question bank made in Word; numbered, justifie
   size, and restyles the text as it is changed; Cancel and Apply (⌘Return) are on it. A zoom while editing applies.
   Checked in the build's pictures (a line, a paragraph). "Unsaved changes" with nothing changed: opening the editor
   no longer changes the document (the earlier status came from an earlier edit).
+
+## Version 2.14.5 (both apps)
+Editing lines and paragraphs: B-054 to B-057.

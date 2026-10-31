@@ -34,7 +34,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 25 | Reading | Themes (7) for menus, dialogs, scroll bars | Yes | Yes | 7 themes; Mac controls keep the system look, the theme colours the pages' surround and sidebar |
 | 26 | Reading | Colourful toolbar icons | Yes | Yes | single buttons; grouped page / zoom buttons not yet |
 | 27 | Reading | Status bar (page, page size, tool, saved state) | Yes | Yes | new in this build; built and checked, to be tried by hand |
-| 28 | Reading | Side by side view of two documents | Yes | Yes | two windows sharing the screen: left / right or top / bottom, linked scrolling, swap; new, to be tried by hand |
+| 28 | Reading | Side by side view of two documents | Yes | Yes | one window, two views, linked scrolling, swap |
 | 29 | Reading | Command palette (Ctrl+K) | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 30 | Reading | Reload from disk | Yes | Yes | File > Revert to Saved |
 | 31 | Reading | Full screen | Yes | Yes |  |

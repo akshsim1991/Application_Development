@@ -781,31 +781,31 @@ Found and fixed while building it:
   build check now opens Recognise Text on a scanned page, presses Recognise as a user would, and requires words to be
   found and the app to finish.
 
-## Known open issues on the Mac (31 October)
-Not fixed yet, or not checked yet. Each one is removed from this list only when it is fixed and checked.
-1. ~~The published 2.14.2 download still has the OCR crash (B-053).~~ Fixed: 2.14.3 is published with the fix. The
-   build check presses Recognise on a scanned page: 25 words found, no crash.
-2. Updating from one version to the next has not been tried end to end. Now possible: an installed 2.14.2 is offered
-   2.14.3 (Help > Update to New Version). To be tried by the user on both systems.
-3. Edited text in a font that is not installed on the Mac (for example Cambria, which only Microsoft Office brings)
-   falls back to Times or Helvetica. Installed fonts in collection files (.ttc, such as Helvetica) or CFF (.otf) fonts
-   cannot be embedded either and fall back the same way.
-4. The table fix (B-051) is checked with a test file made the same way, not yet with the user's own PDF.
-5. Page up and down and zoom in and out (grouped toolbar buttons) do not take the colourful toolbar icon setting.
-   Fixed in 2.14.3: their symbols are drawn in the colour (macOS 12 and later); seen in the build's picture.
-6. Side by side is two windows sharing the screen, not one window split in two as on Windows.
-7. In forms, explanatory notes always sit above the fields, even where Windows shows them between fields.
-8. ~~OCR languages are listed by code.~~ Fixed in 2.14.3: "English (United States)" and so on; seen in the build's
-   picture.
-9. The app is not signed with an Apple Developer certificate, so macOS asks to allow it on first opening (set aside
-   by the user).
-10. (Set aside by the user.) Signing with a keychain certificate, making one's own certificate (it writes to the login keychain), time stamps
-    and the handwritten signature pad have not been run on a Mac. Only signing with a .p12 file and checking signatures
-    are run by the build check.
-11. Built and passing the build checks, but not yet tried by hand: annotations, forms, editing text and pictures,
-    tables, page tools, redaction, printing, presentation, read aloud, command palette, compare, side by side,
-    thumbnail page menu and dragging, measuring, batch mode, folder search, Settings, password protection.
-12. One engine measurement differs from Windows by 0.02 pt (PDFium on the Mac); the checks allow 0.15 pt.
+## Known open issues on the Mac (31 October, updated for 2.14.4)
+Each one is removed from this list only when it is fixed and checked.
+1. ~~OCR crash in the published download~~ Fixed in 2.14.3 (published).
+2. Updating from one version to the next: 2.14.3 and 2.14.4 are published; to be tried by the user (Help > Update to
+   New Version).
+3. ~~Fonts in collection files (.ttc: Helvetica, Times, Avenir...) could not be embedded~~ Fixed in 2.14.4: the one
+   font needed is rebuilt as a font file of its own from its tables (checked with fontTools, at its strictest checksum
+   setting, on a collection font on Linux and on Helvetica on the build Mac).
+   ~~Fonts that only Microsoft Office brings (Cambria, Calibri...) were not found~~ Fixed in 2.14.4: Office's own font
+   folders are made known to the app at start (nothing is installed on the Mac); not checked on a Mac with Office.
+   Still open: fonts with PostScript (CFF) outlines, a few .otf fonts, cannot be embedded by PDFium; edited text in such
+   a font uses the closest standard font. A font that is not on the Mac at all still falls back the same way.
+4. The table fix (B-051): checked with a test file made the same way; to be confirmed with the user's PDF.
+5. ~~Grouped toolbar buttons~~ Fixed in 2.14.3.
+6. ~~Side by side was two windows~~ Fixed in 2.14.4: both documents in one window, left and right or top and bottom,
+   linked scrolling, swap; the other document stays open in its tab. The build check opens two PDFs, chooses Side by
+   Side, presses Show and requires two views in one window (seen in its picture).
+7. ~~Notes in forms were always above the fields~~ Fixed in 2.14.4: notes stay where the form puts them, with the
+   fields before and after them lined up.
+8. ~~OCR languages by code~~ Fixed in 2.14.3.
+9. and 10. Set aside by the user (Apple signing; signing with keychain certificates on a real Mac).
+11. Features not yet tried by hand: only the user can do this; the build checks now also press buttons in forms
+   (OCR, side by side) as a user would.
+12. Not a bug: one measurement of the engine check differs from Windows by 0.02 pt because the PDFium library for the
+   Mac computes the outer edge of a 1 pt line a hair differently. It changes nothing on screen or in files.
 
 ## Version 2.14.3 (both apps)
 From now on every release has a new version number, so installed copies are offered it (Help > Update to New Version
@@ -814,3 +814,7 @@ names on the Mac, and the same Windows app with its new number.
 
 2.14.3 published in akshsim1991/FeatherPDF-releases on 30 October; both downloads match the SHA-256 in latest.json
 (checked by downloading them again).
+
+## Version 2.14.4 (both apps)
+Mac: side by side in one window, forms keep their notes in place, fonts from collection files and from Microsoft
+Office kept when text is edited. Windows: the same app with its new number.

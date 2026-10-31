@@ -218,6 +218,31 @@ f=TTFont('$W/one.ttf', checkChecksums=2); c=TTCollection('$ttc').fonts[1]
 assert f['maxp'].numGlyphs==c['maxp'].numGlyphs and f['name'].getDebugName(4)==c['name'].getDebugName(4)\""
 else echo "  skip no collection font or fontTools here"; fi
 
+echo "numbered list items (editing a paragraph)"
+python3 - "$W" <<'PY'
+import sys
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase.pdfmetrics import stringWidth
+c=canvas.Canvas(sys.argv[1]+'/list.pdf',pagesize=(612,792))
+items=[("2.",["Explain the types of controllers with their transfer functions and mention","their advantages."]),
+       ("3.",["Explain proportional-plus-integral (PI) controller with its characteristics","and block diagram."]),
+       ("4.",["Explain the proportional-derivative (PD) controller with its","characteristics and block diagram."])]
+y=700; right=520
+for num,lines in items:
+    c.setFont('Times-Roman',14); c.drawString(72,y,num)
+    for k,l in enumerate(lines):
+        t=c.beginText(); t.setFont('Times-Roman',14); t.setTextOrigin(97,y)
+        if k==0:   # justified: the spaces widened to reach the right edge
+            gaps=l.count(' '); t.setWordSpace((right-97-stringWidth(l,'Times-Roman',14))/gaps)
+        else: t.setWordSpace(0)
+        t.textOut(l); c.drawText(t); y-=18.5
+c.save()
+PY
+run --paratest "$W/list.pdf" "$W/list_e.pdf" "$W/list.txt" 200 667 append "Draw it neatly."
+check "item 3 alone, both its lines"   "grep -q '^text=Explain proportional-plus-integral (PI) controller with its characteristics and block diagram.$' '$W/list.txt'"
+check "justified, as it is set"        "grep -q 'align=3' '$W/list.txt'"
+check "numbers and the other items kept" "text '$W/list_e.pdf' > '$W/list_e.txt'; grep -qx '3.' '$W/list_e.txt' && grep -q 'Explain proportional-plus-integral' '$W/list_e.txt' && grep -q 'their advantages.' '$W/list_e.txt' && grep -q 'Draw it neatly.' '$W/list_e.txt'"
+
 echo "fonts and comment shapes"
 run --fonts "$W/rich.pdf" "$W/fonts.txt"
 check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fonts.txt'"

@@ -610,7 +610,38 @@ bool removeTable(Document& d, int page, const std::string& id, bool track) {
 
 // ---- paragraphs ----
 namespace {
-struct Line { double l, b, r, t, size; std::wstring text; std::vector<int> idx; FPDF_PAGEOBJECT first; };
+struct Line {
+    double l, b, r, t, size; std::wstring text; std::vector<int> idx; FPDF_PAGEOBJECT first;
+    bool startsItem = false;   // the first line of a list item (a number or bullet before it, or at its start)
+    bool marker = false;       // only a list number or bullet ("3.", "a)", "iv.", "•")
+};
+
+// A list number or bullet on its own: "3.", "12)", "(a)", "b.", "iv.", "•", "–", "▪".
+bool isListMarker(const std::wstring& raw) {
+    std::wstring t = raw;
+    while (!t.empty() && (t.back() == L' ' || t.back() == L'\t')) t.pop_back();
+    while (!t.empty() && (t.front() == L' ' || t.front() == L'\t')) t.erase(0, 1);
+    if (t.empty() || t.size() > 6) return false;
+    static const std::wstring bullets = L"\u2022\u2023\u25E6\u25AA\u25AB\u25CF\u25CB\u25A0\u25A1\u2013\u2014\u2043\u2219\u00B7-*\uF0B7\uF0A7\uF076\uF0D8";
+    if (t.size() == 1 && bullets.find(t[0]) != std::wstring::npos) return true;
+    size_t i = 0;
+    if (t[i] == L'(') ++i;
+    const size_t start = i;
+    while (i < t.size() && (iswdigit(t[i]) || iswalpha(t[i]))) ++i;
+    const size_t len = i - start;
+    if (len == 0 || i + 1 != t.size() || (t[i] != L'.' && t[i] != L')')) return false;
+    const std::wstring body = t.substr(start, len);
+    bool digits = true, roman = true;
+    for (wchar_t c : body) { digits = digits && iswdigit(c); roman = roman && std::wstring(L"ivxlcIVXLC").find(c) != std::wstring::npos; }
+    return digits ? len <= 3 : (len == 1 || roman);   // 1. 12) a. (b) iv.
+}
+
+// The same text with the hyphen look-alikes made plain hyphens (a hyphen that must not break the line, a soft hyphen in
+// the middle of a word): the editor shows them, and the paragraph's own font, or a standard one, can draw them.
+std::wstring plainHyphens(std::wstring t) {
+    for (wchar_t& c : t) if (c == 0x2010 || c == 0x2011 || c == 0x00AD || c == 0x2012) c = L'-';
+    return t;
+}
 
 std::wstring textOfObject(FPDF_TEXTPAGE tp, FPDF_PAGEOBJECT o) {
     const auto& api = pdfium::api();
@@ -737,6 +768,16 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         float l, b, r, t;
         if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
         std::wstring text = textOfObject(tp, o);
+        if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos && r - l > 0.5f) {
+            // nothing read from the object itself (some PDFs give a hyphen this way): the text page's letters in its box
+            const int nb = api.FPDFText_GetBoundedText(tp, l + 0.1, t - 0.1, r - 0.1, b + 0.1, nullptr, 0);
+            if (nb > 0) {
+                std::vector<unsigned short> buf(static_cast<size_t>(nb) + 1);
+                api.FPDFText_GetBoundedText(tp, l + 0.1, t - 0.1, r - 0.1, b + 0.1, buf.data(), nb);
+                text.assign(buf.begin(), buf.begin() + nb);
+            }
+        }
+        text = plainHyphens(text);
         if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) continue;
         float fs = 0;
         api.FPDFTextObj_GetFontSize(o, &fs);
@@ -773,6 +814,21 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         lines.push_back(ln);
     }
     std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.t > b.t; });
+    // 2b. numbered and bulleted lists: a number on its own marks the line beside it as the start of an item, and is not
+    // part of the text (it stays as it is). Without this, the number was a line of its own between the item's lines, so
+    // an item's paragraph stopped after its first line and took in the end of the item before.
+    for (Line& m : lines) {
+        if (!isListMarker(m.text)) continue;
+        for (Line& ln : lines) {
+            if (&ln == &m || ln.marker || std::fabs(ln.b - m.b) > 0.4 * std::max(ln.size, m.size)) continue;
+            if (ln.l > m.r - 0.5 && ln.l - m.r < 6 * std::max(ln.size, m.size)) { ln.startsItem = true; m.marker = true; break; }
+        }
+    }
+    for (Line& ln : lines) {   // a number at the start of the line itself ("3. Explain ...")
+        const size_t sp = ln.text.find(L' ');
+        if (!ln.marker && sp != std::wstring::npos && sp > 0 && isListMarker(ln.text.substr(0, sp))) ln.startsItem = true;
+    }
+    lines.erase(std::remove_if(lines.begin(), lines.end(), [](const Line& ln) { return ln.marker; }), lines.end());
     // 3. the line under the click
     int hitLine = -1;
     double best = 1e18;
@@ -794,8 +850,8 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         return below.r >= above.l && below.l <= above.r;
     };
     int first = hitLine, last = hitLine;
-    while (!lineOnly && first > 0 && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
-    while (!lineOnly && last + 1 < static_cast<int>(lines.size()) && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
+    while (!lineOnly && first > 0 && !lines[first].startsItem && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
+    while (!lineOnly && last + 1 < static_cast<int>(lines.size()) && !lines[last + 1].startsItem && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
     hit.found = true;
     hit.page = page;
     hit.lines = last - first + 1;
@@ -864,6 +920,20 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         for (size_t i = 0; i + 1 < lineEnds.size(); ++i) { lo = std::min(lo, lineEnds[i]); hi = std::max(hi, lineEnds[i]); }
         const bool leftEdge = std::fabs(hit.restIndent) < 0.5 && hit.firstIndent > -0.5 && hit.firstIndent < 3.5 * lines[first].size;
         if (hi - lo <= 0.6 + 0.002 * widest && leftEdge) hit.align = Align::Justify;
+    } else if (last - first == 1) {
+        // two lines: justified when the first one reaches the right edge of its column (the farthest line end of the
+        // text that starts near it on this page) and the last one is clearly shorter
+        double column = -1e9;
+        for (const Line& ln : lines)
+            if (std::fabs(ln.l - lines[last].l) < 3.6 * lines[first].size && ln.r > lines[last].l) column = std::max(column, ln.r);
+        const double size = lines[first].size;
+        const bool leftEdge = std::fabs(hit.restIndent) < 0.5 && hit.firstIndent > -0.5 && hit.firstIndent < 3.5 * size;
+        if (leftEdge && column - lines[first].r < 0.6 + 0.002 * widest && lines[first].r - lines[last].r > 1.5 * size) {
+            // and the column edge is shared by other lines (not just this one being the longest)
+            int reach = 0;
+            for (const Line& ln : lines) if (std::fabs(ln.r - column) < 0.6 + 0.002 * widest && std::fabs(ln.l - lines[last].l) < 3.6 * size) ++reach;
+            if (reach >= 2) hit.align = Align::Justify;
+        }
     }
     // style from the first line's first object
     styleOfObject(lines[first].first, lines[first].size, hit.style, hit.fontName);

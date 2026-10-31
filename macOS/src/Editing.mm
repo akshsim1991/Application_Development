@@ -5,12 +5,17 @@
 #import "FPDocument.h"
 #import "Form.h"
 #import "PageView.h"
+#import "Trace.h"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import <objc/runtime.h>
+#import <objc/message.h>
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include "fontlist.hpp"
 #include "pageobjects.hpp"
+#include "pdfium_api.hpp"
+#include "pagecolours.hpp"
 #include "picture.hpp"
 #include "platform.hpp"
 #include "tables.hpp"
@@ -72,17 +77,22 @@ pageobj::TableSpec g_newTable;
 // Esc cancels, leaving it (a click elsewhere) applies.
 @interface FPInlineEditor : NSObject <NSTextViewDelegate, NSTextFieldDelegate>
 @property(nonatomic, weak) FPWindowController* owner;
-@property(nonatomic, strong) NSView* box;          // the text field, or the scroll view with the text view
-@property(nonatomic, strong) NSStackView* bar;     // the paragraph's style bar
+@property(nonatomic, strong) NSView* box;          // the text view, over the page where the text was
+@property(nonatomic, strong) NSStackView* bar;     // the paragraph's style bar, at the foot of the window
 @property(nonatomic, strong) NSTextView* textView;
-@property(nonatomic, strong) NSTextField* field;
+@property(nonatomic, strong) NSTextField* field;   // not used any more (kept for the old code paths)
 @property(nonatomic, strong) NSPopUpButton *family, *size, *colour, *align;
 @property(nonatomic, strong) NSButton *bold, *italic;
 @property(nonatomic) BOOL finished;
+@property(nonatomic) BOOL paragraph;
+@property(nonatomic) double zoom;                  // the zoom it was opened at (another zoom applies and closes it)
+@property(nonatomic, strong) id zoomWatch;
+- (void)styleChanged:(id)sender;
 @end
 
 @interface FPWindowController (Editing)
 - (void)inlineFinished:(FPInlineEditor*)ed apply:(BOOL)apply;
+- (void)restyleInlineEditor;
 @end
 @interface FPWindowController (TableSheet)
 - (void)editTable:(std::shared_ptr<tables::Table>)t;   // TableSheet.mm
@@ -104,10 +114,16 @@ static FPInlineEditor* g_editor = nil;
 }
 - (void)controlTextDidEndEditing:(NSNotification*)n { [self end:YES]; }
 - (void)applyClicked:(id)sender { [self end:YES]; }
+- (void)cancelClicked:(id)sender { [self end:NO]; }
 - (BOOL)textView:(NSTextView*)tv doCommandBySelector:(SEL)cmd {
     if (cmd == @selector(cancelOperation:)) { [self end:NO]; return YES; }
-    if (cmd == @selector(insertNewline:) && (NSApp.currentEvent.modifierFlags & NSEventModifierFlagCommand)) { [self end:YES]; return YES; }
+    // a line: Return applies; a paragraph: ⌘Return applies (Return starts a new line in it)
+    if (cmd == @selector(insertNewline:) && (!self.paragraph || (NSApp.currentEvent.modifierFlags & NSEventModifierFlagCommand))) { [self end:YES]; return YES; }
     return NO;
+}
+- (void)styleChanged:(id)sender {
+    SEL restyle = NSSelectorFromString(@"restyleInlineEditor");   // FPWindowController (Editing)
+    if ([self.owner respondsToSelector:restyle]) ((void (*)(id, SEL))objc_msgSend)(self.owner, restyle);
 }
 - (void)textDidEndEditing:(NSNotification*)n {
     // the style bar takes the keyboard for a moment: only a click outside both ends the editing
@@ -245,72 +261,241 @@ static FPInlineEditor* g_editor = nil;
 
 // ---- editing a line or a paragraph in place ----
 
+// The paragraph's own text objects are hidden on the page while it is edited (their render mode, put back afterwards:
+// nothing in the file changes), so the box shows the text once, where it was.
+namespace {
+std::vector<std::pair<FPDF_PAGEOBJECT, FPDF_TEXT_RENDERMODE>> g_hidden;
+int g_hiddenPage = -1;
+
+void hideParagraph(Document* d, const pageobj::ParagraphHit& hit) {
+    const auto& api = pdfium::api();
+    g_hidden.clear();
+    g_hiddenPage = hit.page;
+    FPDF_PAGE pg = d->page(hit.page);
+    if (!pg) return;
+    for (int idx : hit.objects) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, idx);
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+        g_hidden.push_back({o, api.FPDFTextObj_GetTextRenderMode(o)});
+        api.FPDFTextObj_SetTextRenderMode(o, FPDF_TEXTRENDERMODE_INVISIBLE);
+    }
+}
+
+void showParagraph() {
+    const auto& api = pdfium::api();
+    for (const auto& [o, mode] : g_hidden) api.FPDFTextObj_SetTextRenderMode(o, mode);
+    g_hidden.clear();
+}
+
+// The PDF's own font when this Mac has it ("ABCDEF+TimesNewRomanPSMT" -> Times New Roman), else the closest family.
+NSFont* pdfFont(const pageobj::ParagraphHit& hit, const pageobj::TextStyle& style, double size, bool own) {
+    if (own && !hit.fontName.empty()) {
+        std::string n = hit.fontName;
+        if (n.size() > 7 && n[6] == '+') n = n.substr(7);
+        for (std::string name : {n, n.substr(0, n.find(',')) + (n.find(',') != std::string::npos ? "-" + n.substr(n.find(',') + 1) : std::string())}) {
+            if (NSFont* f = [NSFont fontWithName:[NSString stringWithUTF8String:name.c_str()] size:size]) return f;
+        }
+        const std::wstring face = fontlist::installedFace(hit.fontName);
+        if (!face.empty())
+            if (NSFont* f = [NSFontManager.sharedFontManager fontWithFamily:ns(face) traits:(style.bold ? NSBoldFontMask : 0) | (style.italic ? NSItalicFontMask : 0)
+                                                                     weight:5 size:size]) return f;
+    }
+    return fontFor(style, size);
+}
+
+// A text colour as the page shows it in the reading colours (night mode turns dark text light).
+NSColor* shownColour(COLORREF c, pagecolours::Mode m) {
+    unsigned char px[4] = {static_cast<unsigned char>(GetBValue(c)), static_cast<unsigned char>(GetGValue(c)), static_cast<unsigned char>(GetRValue(c)), 255};
+    pagecolours::apply(m, px, 1, 1, 4);
+    return [NSColor colorWithSRGBRed:px[2] / 255.0 green:px[1] / 255.0 blue:px[0] / 255.0 alpha:1];
+}
+
+NSTextAlignment textAlignment(pageobj::Align a) {
+    switch (a) {
+        case pageobj::Align::Centre: return NSTextAlignmentCenter;
+        case pageobj::Align::Right: return NSTextAlignmentRight;
+        case pageobj::Align::Justify: return NSTextAlignmentJustified;
+        default: return NSTextAlignmentLeft;
+    }
+}
+} // namespace
+
 - (void)beginInlineEdit:(const pageobj::ParagraphHit&)hit paragraph:(BOOL)para {
     [self endInlineEdit:YES];
+    Document* d = self.pdf;
+    if (!d) return;
     g_edit = EditState{hit, static_cast<bool>(para), false};
     FPPageView* v = self.pageView;
-    const double zoom = v.zoom;
-    const double height = para ? std::max(hit.lineHeight * hit.lines, hit.lineHeight) : hit.lineHeight;
-    NSRect r = [v viewRectOnPage:hit.page rect:annot::RectD{hit.left, hit.top - height, hit.left + hit.width, hit.top}];
-    r = NSInsetRect(r, -4, -3);
-    r.size.width = std::max(r.size.width, 160.0);
     FPInlineEditor* ed = [[FPInlineEditor alloc] init];
     ed.owner = self;
-    NSFont* font = fontFor(hit.style, hit.style.sizePt * zoom);
-    if (!para) {
-        NSTextField* f = [[NSTextField alloc] initWithFrame:r];
-        f.stringValue = ns(hit.text);
-        f.font = font;
-        f.textColor = colourOf(hit.style.color);
-        f.delegate = ed;
-        f.focusRingType = NSFocusRingTypeExterior;
-        ed.field = f;
-        ed.box = f;
-    } else {
-        NSScrollView* sv = [[NSScrollView alloc] initWithFrame:NSInsetRect(r, 0, -std::max(0.0, hit.lineHeight * zoom))];
-        sv.hasVerticalScroller = YES;
-        sv.borderType = NSLineBorder;
-        NSTextView* tv = [[NSTextView alloc] initWithFrame:sv.bounds];
-        tv.string = ns(hit.text);
-        tv.font = font;
-        tv.textColor = colourOf(hit.style.color);
-        tv.delegate = ed;
-        tv.autoresizingMask = NSViewWidthSizable;
-        tv.richText = NO;
-        sv.documentView = tv;
-        ed.textView = tv;
-        ed.box = sv;
-        // the style bar: font, size, bold, italic, colour, alignment
+    ed.paragraph = para;
+    ed.zoom = v.zoom;
+
+    NSTextView* tv = [[NSTextView alloc] initWithFrame:NSMakeRect(0, 0, 100, 20)];
+    tv.richText = NO;
+    tv.drawsBackground = NO;
+    tv.textContainerInset = NSZeroSize;
+    tv.textContainer.lineFragmentPadding = 0;
+    tv.allowsUndo = YES;
+    // the text exactly as typed: no spelling marks, no smart quotes, dashes or replacements
+    tv.continuousSpellCheckingEnabled = NO;
+    tv.grammarCheckingEnabled = NO;
+    tv.automaticSpellingCorrectionEnabled = NO;
+    tv.automaticQuoteSubstitutionEnabled = NO;
+    tv.automaticDashSubstitutionEnabled = NO;
+    tv.automaticTextReplacementEnabled = NO;
+    tv.automaticLinkDetectionEnabled = NO;
+    tv.automaticDataDetectionEnabled = NO;
+    tv.smartInsertDeleteEnabled = NO;
+    tv.delegate = ed;
+    tv.wantsLayer = YES;
+    tv.layer.borderWidth = 1;
+    tv.layer.borderColor = [NSColor.controlAccentColor colorWithAlphaComponent:0.7].CGColor;
+    tv.string = ns(hit.text);
+    ed.textView = tv;
+    ed.box = tv;
+
+    if (para) {
+        // the style bar, docked at the foot of the window (over nothing being edited): the document's own font first
         ed.family = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
+        std::string own = hit.fontName;
+        if (own.size() > 7 && own[6] == '+') own = own.substr(7);
+        [ed.family addItemWithTitle:[NSString stringWithFormat:@"As in the document (%s)", own.empty() ? "its font" : own.c_str()]];
         [ed.family addItemsWithTitles:@[ @"Sans-serif", @"Serif", @"Monospaced" ]];
-        [ed.family selectItemAtIndex:static_cast<NSInteger>(hit.style.family)];
+        [ed.family selectItemAtIndex:0];
         ed.size = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-        for (double s : {6.0, 7.0, 8.0, 9.0, 10.0, 10.5, 11.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 36.0})
-            [ed.size addItemWithTitle:[NSString stringWithFormat:@"%g pt", s]];
-        NSString* cur = [NSString stringWithFormat:@"%g pt", hit.style.sizePt];
-        if (![ed.size itemWithTitle:cur]) [ed.size addItemWithTitle:cur];
-        [ed.size selectItemWithTitle:cur];
-        ed.bold = [NSButton checkboxWithTitle:@"Bold" target:nil action:nil];
+        const double exact = hit.sizeExact > 0 ? hit.sizeExact : hit.style.sizePt;
+        NSString* cur = [NSString stringWithFormat:@"%g pt", std::round(exact * 10) / 10];
+        [ed.size addItemWithTitle:cur];
+        for (double sz : {6.0, 7.0, 8.0, 9.0, 10.0, 10.5, 11.0, 12.0, 14.0, 16.0, 18.0, 20.0, 24.0, 28.0, 36.0})
+            if (![ed.size itemWithTitle:[NSString stringWithFormat:@"%g pt", sz]]) [ed.size addItemWithTitle:[NSString stringWithFormat:@"%g pt", sz]];
+        [ed.size selectItemAtIndex:0];
+        ed.bold = [NSButton checkboxWithTitle:@"Bold" target:ed action:@selector(styleChanged:)];
         ed.bold.state = hit.style.bold;
-        ed.italic = [NSButton checkboxWithTitle:@"Italic" target:nil action:nil];
+        ed.italic = [NSButton checkboxWithTitle:@"Italic" target:ed action:@selector(styleChanged:)];
         ed.italic.state = hit.style.italic;
         ed.colour = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
-        [ed.colour addItemsWithTitles:@[ @"As it is", @"Black", @"Red", @"Blue", @"Green" ]];
+        [ed.colour addItemsWithTitles:@[ @"Colour as it is", @"Black", @"Red", @"Blue", @"Green" ]];
         ed.align = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:NO];
         [ed.align addItemsWithTitles:@[ @"Left", @"Centre", @"Right", @"Justify" ]];
         [ed.align selectItemAtIndex:static_cast<NSInteger>(hit.align)];
-        NSButton* apply = [NSButton buttonWithTitle:@"Apply" target:ed action:@selector(applyClicked:)];
-        ed.bar = [NSStackView stackViewWithViews:@[ ed.family, ed.size, ed.bold, ed.italic, ed.colour, ed.align, apply ]];
-        ed.bar.spacing = 6;
+        for (NSPopUpButton* b in @[ ed.family, ed.size, ed.colour, ed.align ]) { b.target = ed; b.action = @selector(styleChanged:); }
+        NSButton* cancel = [NSButton buttonWithTitle:@"Cancel" target:ed action:@selector(cancelClicked:)];
+        NSButton* apply = [NSButton buttonWithTitle:@"Apply (⌘↩)" target:ed action:@selector(applyClicked:)];
+        ed.bar = [NSStackView stackViewWithViews:@[ ed.family, ed.size, ed.bold, ed.italic, ed.colour, ed.align, cancel, apply ]];
+        ed.bar.spacing = 8;
+        ed.bar.edgeInsets = NSEdgeInsetsMake(4, 10, 4, 10);
         ed.bar.wantsLayer = YES;
         ed.bar.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
-        ed.bar.edgeInsets = NSEdgeInsetsMake(3, 6, 3, 6);
-        ed.bar.frame = NSMakeRect(NSMinX(sv.frame), NSMinY(sv.frame) - 32, 560, 30);
-        [v addSubview:ed.bar];
+        ed.bar.layer.borderWidth = 1;
+        ed.bar.layer.borderColor = NSColor.separatorColor.CGColor;
+        NSView* content = self.window.contentView;
+        ed.bar.translatesAutoresizingMaskIntoConstraints = NO;
+        [content addSubview:ed.bar];
+        [NSLayoutConstraint activateConstraints:@[
+            [ed.bar.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+            [ed.bar.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+            [ed.bar.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-24],   // above the status bar
+            [ed.bar.heightAnchor constraintEqualToConstant:34],
+        ]];
     }
-    [v addSubview:ed.box];
-    [v.window makeFirstResponder:para ? (NSView*)ed.textView : (NSView*)ed.field];
     g_editor = ed;
+    [v addSubview:tv];
+    hideParagraph(d, hit);
+    [v invalidatePage:hit.page];
+    [self restyleInlineEditor];
+    [v.window makeFirstResponder:tv];
+    [tv setSelectedRange:NSMakeRange(tv.string.length, 0)];
+    // another zoom: the box would no longer sit on the text, so the edit is applied
+    __weak FPWindowController* weak = self;
+    ed.zoomWatch = [NSNotificationCenter.defaultCenter addObserverForName:FPPageViewChanged object:v queue:nil usingBlock:^(NSNotification*) {
+        FPInlineEditor* cur = g_editor;
+        if (cur && !cur.finished && std::fabs(weak.pageView.zoom - cur.zoom) > 1e-6) [weak endInlineEdit:YES];
+    }];
+}
+
+// The box's font, size, colour, alignment, spacing and place, from the paragraph and the style bar: the first line's
+// baseline sits on the page's, wrapped at the paragraph's width.
+- (void)restyleInlineEditor {
+    FPInlineEditor* ed = g_editor;
+    if (!ed || ed.finished) return;
+    const pageobj::ParagraphHit& hit = g_edit.hit;
+    FPPageView* v = self.pageView;
+    const double zoom = v.zoom;
+    pageobj::TextStyle style = hit.style;
+    bool own = true;
+    double size = hit.sizeExact > 0 ? hit.sizeExact : hit.style.sizePt;
+    pageobj::Align align = hit.align;
+    COLORREF colour = hit.style.color;
+    if (ed.bar) {
+        own = ed.family.indexOfSelectedItem == 0;
+        if (!own) style.family = static_cast<pageobj::Family>(ed.family.indexOfSelectedItem - 1);
+        if (ed.size.indexOfSelectedItem > 0) size = ed.size.titleOfSelectedItem.doubleValue;
+        style.bold = ed.bold.state == NSControlStateValueOn;
+        style.italic = ed.italic.state == NSControlStateValueOn;
+        own = own && style.bold == hit.style.bold && style.italic == hit.style.italic;
+        static const COLORREF cols[] = {0, RGB(0x20, 0x20, 0x20), RGB(0xE5, 0x39, 0x35), RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A)};
+        if (ed.colour.indexOfSelectedItem > 0) colour = cols[ed.colour.indexOfSelectedItem];
+        align = static_cast<pageobj::Align>(ed.align.indexOfSelectedItem);
+    }
+    NSFont* font = pdfFont(hit, style, size * zoom, own);
+    NSMutableParagraphStyle* ps = [[NSMutableParagraphStyle alloc] init];
+    ps.alignment = ed.paragraph ? textAlignment(align) : NSTextAlignmentLeft;
+    ps.firstLineHeadIndent = std::max(0.0, hit.firstIndent) * zoom;
+    ps.headIndent = std::max(0.0, hit.restIndent) * zoom;
+    if (ed.paragraph) {
+        const double step = (hit.lineStep > 0.1 ? hit.lineStep : size * 1.2) * zoom * (size / (hit.sizeExact > 0 ? hit.sizeExact : size));
+        ps.minimumLineHeight = ps.maximumLineHeight = step;
+    }
+    NSTextView* tv = ed.textView;
+    NSColor* ink = shownColour(colour, v.colours);
+    tv.font = font;
+    tv.textColor = ink;
+    tv.insertionPointColor = ink;
+    tv.defaultParagraphStyle = ps;
+    tv.typingAttributes = @{NSFontAttributeName : font, NSForegroundColorAttributeName : ink, NSParagraphStyleAttributeName : ps};
+    [tv.textStorage setAttributes:tv.typingAttributes range:NSMakeRange(0, tv.textStorage.length)];
+    // width: the paragraph's wrap width; a line: as long as the page allows (it stays on one line)
+    const NSRect pageRect = [v viewRectOnPage:hit.page rect:annot::RectD{hit.originX, hit.baseline, hit.originX, hit.baseline}];
+    const NSRect whole = [v viewRectOnPage:hit.page rect:annot::RectD{0, 0, self.pdf ? self.pdf->pageSize(hit.page).w : 600, 1}];
+    const CGFloat x = NSMinX(pageRect);
+    CGFloat width = ed.paragraph ? std::max(40.0, hit.wrapWidth * zoom) : std::max(40.0, NSMaxX(whole) - x - 4);
+    tv.textContainer.containerSize = NSMakeSize(ed.paragraph ? width : 1e7, 1e7);
+    tv.textContainer.widthTracksTextView = NO;
+    tv.horizontallyResizable = NO;
+    tv.verticallyResizable = YES;
+    tv.minSize = NSMakeSize(width, 10);
+    tv.maxSize = NSMakeSize(width, 1e7);
+    [tv setFrameSize:NSMakeSize(width, 10)];
+    [tv.layoutManager ensureLayoutForTextContainer:tv.textContainer];
+    [tv sizeToFit];
+    // the first baseline where the page has it
+    CGFloat baseline = font.ascender;
+    if (tv.textStorage.length) {
+        NSRange g = [tv.layoutManager glyphRangeForCharacterRange:NSMakeRange(0, 1) actualCharacterRange:nullptr];
+        const NSRect frag = [tv.layoutManager lineFragmentRectForGlyphAtIndex:g.location effectiveRange:nullptr];
+        baseline = frag.origin.y + [tv.layoutManager locationForGlyphAtIndex:g.location].y;
+    }
+    const CGFloat pageBaselineY = NSMinY(pageRect);   // the view is flipped: y grows downwards
+    [tv setFrameOrigin:NSMakePoint(x, pageBaselineY - baseline)];
+    [v setNeedsDisplay:YES];
+}
+
+// For the build check: FEATHER_UI_EDIT="x y para|line" opens the editor at that point of the first page (PDF units).
+- (IBAction)uiEditAt:(id)sender {
+    const char* at = getenv("FEATHER_UI_EDIT");
+    Document* d = self.pdf;
+    if (!at || !d) return;
+    double x = 0, y = 0;
+    char kind[8] = "para";
+    if (sscanf(at, "%lf %lf %7s", &x, &y, kind) < 2) return;
+    const bool para = strcmp(kind, "line") != 0;
+    const pageobj::ParagraphHit hit = pageobj::paragraphAt(*d, 0, x, y, !para);
+    FPTrace(@"edit at %.0f,%.0f: found %d lines %d align %d text %s", x, y, hit.found, hit.lines, static_cast<int>(hit.align), platform::utf8(hit.text).c_str());
+    if (!hit.found) return;
+    [self.pageView showPage:0];
+    [self beginInlineEdit:hit paragraph:para];
+    FPTrace(@"editor at %@ hidden %lu", NSStringFromRect(g_editor.textView.frame), (unsigned long)g_hidden.size());
 }
 
 - (void)endInlineEdit:(BOOL)apply {
@@ -319,21 +504,25 @@ static FPInlineEditor* g_editor = nil;
 
 - (void)inlineFinished:(FPInlineEditor*)ed apply:(BOOL)apply {
     Document* d = self.pdf;
-    const std::wstring text = ws(ed.textView ? ed.textView.string : ed.field.stringValue);
+    std::wstring text = ws(ed.textView.string);
+    if (!ed.paragraph) for (auto& c : text) if (c == L'\n' || c == L'\r') c = L' ';
     pageobj::TextStyle style = g_edit.hit.style;
     pageobj::Align align = g_edit.hit.align;
     if (ed.bar) {
-        style.family = static_cast<pageobj::Family>(ed.family.indexOfSelectedItem);
-        style.sizePt = ed.size.titleOfSelectedItem.doubleValue;
+        if (ed.family.indexOfSelectedItem > 0) style.family = static_cast<pageobj::Family>(ed.family.indexOfSelectedItem - 1);
+        if (ed.size.indexOfSelectedItem > 0) style.sizePt = ed.size.titleOfSelectedItem.doubleValue;
         style.bold = ed.bold.state == NSControlStateValueOn;
         style.italic = ed.italic.state == NSControlStateValueOn;
         static const COLORREF cols[] = {0, RGB(0x20, 0x20, 0x20), RGB(0xE5, 0x39, 0x35), RGB(0x25, 0x6F, 0xD1), RGB(0x2E, 0x9E, 0x4A)};
         if (ed.colour.indexOfSelectedItem > 0) style.color = cols[ed.colour.indexOfSelectedItem];
         align = static_cast<pageobj::Align>(ed.align.indexOfSelectedItem);
     }
+    if (ed.zoomWatch) [NSNotificationCenter.defaultCenter removeObserver:ed.zoomWatch];
     [ed.box removeFromSuperview];
     [ed.bar removeFromSuperview];
     if (g_editor == ed) g_editor = nil;
+    showParagraph();   // before any change: the document is as it was
+    [self.pageView invalidatePage:g_edit.hit.page];
     [self.window makeFirstResponder:self.pageView];
     const bool changed = text != g_edit.hit.text || style.family != g_edit.hit.style.family || style.sizePt != g_edit.hit.style.sizePt ||
                          style.bold != g_edit.hit.style.bold || style.italic != g_edit.hit.style.italic || style.color != g_edit.hit.style.color ||

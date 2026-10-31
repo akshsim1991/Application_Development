@@ -410,7 +410,7 @@ int run(std::vector<std::wstring> files) {
         char line[512];
         snprintf(line, sizeof line, "lines=%d align=%d wrap=%.2f step=%.2f origin=%.2f,%.2f result=%s\n", h.lines, static_cast<int>(h.align), h.wrapWidth, h.lineStep,
                  h.originX, h.baseline, ok ? "ok" : "refused");
-        const std::string rep = line + std::string(why.begin(), why.end());
+        const std::string rep = line + std::string(why.begin(), why.end()) + "\ntext=" + platform::utf8(h.text) + "\n";
         Document::writeFile(files[3], std::vector<unsigned char>(rep.begin(), rep.end()));
         if (!ok) return 6;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;

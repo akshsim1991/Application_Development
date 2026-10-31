@@ -844,3 +844,4 @@ Seen in the user's screenshots (a question bank made in Word; numbered, justifie
 
 ## Version 2.14.5 (both apps)
 Editing lines and paragraphs: B-054 to B-057.
+2.14.5 published; both downloads match latest.json.

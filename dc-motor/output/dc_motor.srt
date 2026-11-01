@@ -1,0 +1,139 @@
+1
+00:00:01,500 --> 00:00:10,140
+Electric fans, toy cars, power drills, even the wipers on a car, all spin because of a small and clever machine: the DC motor.
+
+2
+00:00:10,490 --> 00:00:16,293
+In this video, you'll see exactly how it turns electricity into rotation, one step at a time.
+
+3
+00:00:17,293 --> 00:00:18,722
+Let's start with the parts.
+
+4
+00:00:19,072 --> 00:00:27,349
+Two permanent magnets, one north and one south, make up the stator. They stay still, and create a magnetic field in the gap between them.
+
+5
+00:00:27,699 --> 00:00:34,675
+In the middle is a rectangular coil of wire, called the armature. It is mounted on a shaft, so it is free to rotate.
+
+6
+00:00:35,025 --> 00:00:39,249
+At the end of the shaft sits the commutator, a ring split into two halves.
+
+7
+00:00:39,599 --> 00:00:43,973
+Two carbon brushes press against the commutator, and connect it to the battery.
+
+8
+00:00:44,973 --> 00:00:47,511
+Between the magnets there is a magnetic field.
+
+9
+00:00:47,861 --> 00:00:53,557
+By convention, the field lines run from the north pole to the south pole, here from left to right.
+
+10
+00:00:53,907 --> 00:00:56,425
+The stronger the magnets, the stronger the field.
+
+11
+00:00:57,425 --> 00:01:00,817
+Now connect the battery, so that current flows through the coil.
+
+12
+00:01:01,167 --> 00:01:05,348
+On the right-hand side, the current comes out of the screen, drawn as a dot.
+
+13
+00:01:05,698 --> 00:01:12,333
+A current-carrying wire in a magnetic field feels a force, and its direction comes from Fleming's left-hand rule.
+
+14
+00:01:12,683 --> 00:01:18,379
+First finger for the field, second finger for the current, and the thumb gives the force: upward here.
+
+15
+00:01:18,729 --> 00:01:23,763
+On the left, the current goes into the screen, drawn as a cross, so the force is downward.
+
+16
+00:01:24,113 --> 00:01:29,660
+The size of the force is B times I times L: field strength, current, and length of wire.
+
+17
+00:01:30,660 --> 00:01:35,865
+These two forces are equal and opposite, but they act on opposite sides of the axle.
+
+18
+00:01:36,215 --> 00:01:40,845
+Together they create a turning effect called torque, and the coil begins to rotate.
+
+19
+00:01:41,195 --> 00:01:45,845
+More current, a stronger field, or more turns of wire all give a bigger torque.
+
+20
+00:01:46,845 --> 00:01:48,147
+But there is a problem.
+
+21
+00:01:48,497 --> 00:01:56,049
+When the coil reaches the vertical position, the forces now act along the coil, instead of across it, so the torque drops to zero.
+
+22
+00:01:56,399 --> 00:02:01,903
+If the current kept flowing the same way, the coil would overshoot, get pulled back, and simply stop here.
+
+23
+00:02:02,903 --> 00:02:05,057
+That is the job of the commutator.
+
+24
+00:02:05,407 --> 00:02:11,039
+As the coil swings past the vertical, each half of the split ring moves from one brush to the other.
+
+25
+00:02:11,389 --> 00:02:15,272
+This reverses the current in the coil at exactly the right moment.
+
+26
+00:02:15,622 --> 00:02:23,963
+As a result, the side on the right always carries current out of the screen, so it is always pushed upward, and the coil keeps turning the same way.
+
+27
+00:02:24,963 --> 00:02:27,822
+Once the coil spins, something interesting happens.
+
+28
+00:02:28,172 --> 00:02:35,617
+A conductor moving through a magnetic field generates its own voltage, called back EMF, which opposes the battery.
+
+29
+00:02:35,967 --> 00:02:42,517
+As the motor speeds up, the back EMF grows, the current falls, and the speed settles at a steady value.
+
+30
+00:02:42,867 --> 00:02:47,795
+That is why a motor draws a large current when it starts, and much less when it is running.
+
+31
+00:02:48,795 --> 00:02:56,240
+Real motors use many coils, set at different angles, with a commutator of many segments, for smooth and steady torque.
+
+32
+00:02:56,590 --> 00:03:00,089
+To recap: current in a magnetic field produces a force.
+
+33
+00:03:00,439 --> 00:03:02,465
+Two opposite forces produce torque.
+
+34
+00:03:02,815 --> 00:03:05,717
+And the commutator keeps that torque turning the same way.
+
+35
+00:03:06,067 --> 00:03:07,347
+Thanks for watching!

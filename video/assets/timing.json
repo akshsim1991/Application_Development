@@ -1,0 +1,297 @@
+[
+ {
+  "id": "intro",
+  "title": "Flanged Hub in Autodesk Fusion",
+  "start": 0.0,
+  "end": 27.338916666666666,
+  "caps": [
+   [
+    "Hi everyone, and welcome!",
+    0.8,
+    2.151791666666667
+   ],
+   [
+    "In this lesson we will model a flanged hub in Autodesk Fusion, starting from a simple engineering drawing.",
+    2.431791666666667,
+    8.444166666666666
+   ],
+   [
+    "It has a round flange, one hundred and twenty millimetres across, a sixty millimetre hub, a thirty millimetre bore with a key slot, and four bolt holes.",
+    8.724166666666667,
+    17.64425
+   ],
+   [
+    "Along the way you will practise sketches, extrude, cut, the hole tool, and patterns, the core of everyday parametric modelling.",
+    17.92425,
+    25.173583333333333
+   ],
+   [
+    "Let's get started.",
+    25.453583333333334,
+    26.438916666666668
+   ]
+  ]
+ },
+ {
+  "id": "read",
+  "title": "Step 1 \u00b7 Read the drawing",
+  "start": 27.338916666666666,
+  "end": 59.40504166666666,
+  "caps": [
+   [
+    "First, let's read the drawing.",
+    27.338916666666666,
+    28.785999999999998
+   ],
+   [
+    "The flange is one hundred and twenty millimetres in diameter and sixteen millimetres thick.",
+    29.066,
+    33.76358333333333
+   ],
+   [
+    "The hub is sixty in diameter, and the total height is forty, so the hub rises twenty four millimetres above the flange.",
+    34.04358333333333,
+    40.62316666666666
+   ],
+   [
+    "The bore is thirty millimetres, with an eight millimetre wide key slot.",
+    40.903166666666664,
+    44.43629166666666
+   ],
+   [
+    "The thirty three point three dimension runs from the bottom of the bore to the top of the slot, so the slot is three point three millimetres deeper than the bore.",
+    44.71629166666666,
+    52.924749999999996
+   ],
+   [
+    "Finally, four holes of twelve millimetres sit equally spaced on a ninety millimetre pitch circle.",
+    53.20475,
+    58.50504166666666
+   ]
+  ]
+ },
+ {
+  "id": "setup",
+  "title": "Step 2 \u00b7 Set up the design",
+  "start": 59.40504166666666,
+  "end": 74.23179166666667,
+  "caps": [
+   [
+    "Open Fusion and start a new design.",
+    59.40504166666666,
+    61.34808333333333
+   ],
+   [
+    "Check that your units are millimetres, and save the file right away. I will call mine flanged hub.",
+    61.62808333333333,
+    66.69883333333333
+   ],
+   [
+    "In the browser on the left, you can see the origin, with its planes and axes. We will sketch on the X Y plane.",
+    66.97883333333333,
+    73.33179166666666
+   ]
+  ]
+ },
+ {
+  "id": "sketch1",
+  "title": "Step 3 \u00b7 Sketch the base circles",
+  "start": 74.23179166666667,
+  "end": 96.93908333333334,
+  "caps": [
+   [
+    "Choose Create Sketch, and click the X Y plane.",
+    74.23179166666667,
+    76.72825
+   ],
+   [
+    "Pick Center Diameter Circle, or just press C. Click on the origin, and type one hundred and twenty for the diameter.",
+    77.00825,
+    83.768625
+   ],
+   [
+    "Draw a second circle from the same centre, and set it to sixty.",
+    84.048625,
+    87.26291666666667
+   ],
+   [
+    "Press D for the Sketch Dimension tool if you ever need to add or fix a size.",
+    87.54291666666667,
+    91.76291666666667
+   ],
+   [
+    "When both circles turn black, they are fully constrained. Click Finish Sketch.",
+    92.04291666666667,
+    96.03908333333334
+   ]
+  ]
+ },
+ {
+  "id": "extrude",
+  "title": "Step 4 \u00b7 Extrude the flange and hub",
+  "start": 96.93908333333334,
+  "end": 115.50083333333335,
+  "caps": [
+   [
+    "Now press E for Extrude.",
+    96.93908333333334,
+    98.30729166666667
+   ],
+   [
+    "Select the outer ring and the inner disc together, and enter sixteen millimetres. That gives us the flange.",
+    98.58729166666667,
+    104.17245833333334
+   ],
+   [
+    "Extrude again, but this time select only the inner sixty millimetre circle, enter forty millimetres, and set the operation to Join.",
+    104.45245833333334,
+    112.11995833333334
+   ],
+   [
+    "The hub now rises to a total height of forty.",
+    112.39995833333334,
+    114.60083333333334
+   ]
+  ]
+ },
+ {
+  "id": "boresketch",
+  "title": "Step 5 \u00b7 Sketch the bore and key slot",
+  "start": 115.50083333333335,
+  "end": 144.21145833333338,
+  "caps": [
+   [
+    "Next, the bore and the key slot. Start a new sketch on the top face of the hub.",
+    115.50083333333335,
+    119.65716666666668
+   ],
+   [
+    "Draw a thirty millimetre circle from the origin.",
+    119.93716666666668,
+    122.23108333333334
+   ],
+   [
+    "Then add a rectangle for the key slot. It is eight millimetres wide, centred on the Y axis, and it reaches eighteen point three millimetres up from the origin.",
+    122.51108333333335,
+    131.51412500000004
+   ],
+   [
+    "That matches the thirty three point three on the drawing: fifteen for the bore radius, plus three point three.",
+    131.79412500000004,
+    137.3905416666667
+   ],
+   [
+    "Use Trim to remove the lines inside the circle, so you have one closed profile, then finish the sketch.",
+    137.6705416666667,
+    143.31145833333338
+   ]
+  ]
+ },
+ {
+  "id": "cut",
+  "title": "Step 6 \u00b7 Cut the bore",
+  "start": 144.21145833333338,
+  "end": 155.4781666666667,
+  "caps": [
+   [
+    "Press E again and select the bore profile.",
+    144.21145833333338,
+    146.40295833333337
+   ],
+   [
+    "Set the extent to All, and the operation to Cut.",
+    146.68295833333337,
+    149.2667916666667
+   ],
+   [
+    "Fusion removes the material straight through the hub, making the bore and the key slot in one go.",
+    149.5467916666667,
+    154.5781666666667
+   ]
+  ]
+ },
+ {
+  "id": "holesketch",
+  "title": "Step 7 \u00b7 Sketch the bolt hole position",
+  "start": 155.4781666666667,
+  "end": 171.18329166666672,
+  "caps": [
+   [
+    "Now for the bolt holes. Start a sketch on the top face of the flange.",
+    155.4781666666667,
+    159.02670833333337
+   ],
+   [
+    "Draw a circle ninety millimetres in diameter, and press X to turn it into a construction line. This is our pitch circle.",
+    159.30670833333338,
+    165.9000416666667
+   ],
+   [
+    "Place a point at the top of that circle, on the Y axis, and finish the sketch.",
+    166.1800416666667,
+    170.2832916666667
+   ]
+  ]
+ },
+ {
+  "id": "hole",
+  "title": "Step 8 \u00b7 Hole tool and circular pattern",
+  "start": 171.18329166666672,
+  "end": 197.27366666666674,
+  "caps": [
+   [
+    "Press H for the Hole tool. Pick the sketch point, set the diameter to twelve, and the extent to All, so it goes right through.",
+    171.18329166666672,
+    178.07225000000005
+   ],
+   [
+    "Then choose Create, Pattern, Circular Pattern.",
+    178.35225000000005,
+    180.74875000000006
+   ],
+   [
+    "Set the object type to Features, select the hole, choose the hub's cylindrical face as the axis, and enter four for the quantity.",
+    181.02875000000006,
+    188.41900000000007
+   ],
+   [
+    "Fusion spaces the holes evenly around three hundred and sixty degrees. That is the E Q S, equally spaced, note on the drawing.",
+    188.69900000000007,
+    196.37366666666674
+   ]
+  ]
+ },
+ {
+  "id": "finish",
+  "title": "Step 9 \u00b7 Check and finish",
+  "start": 197.27366666666674,
+  "end": 221.96566666666666,
+  "caps": [
+   [
+    "To check your work, use Inspect, Measure, and compare against the drawing: the overall diameter, the height, and the hole positions.",
+    197.27366666666674,
+    204.13170833333342
+   ],
+   [
+    "You can also assign a material such as steel to see the mass.",
+    204.41170833333342,
+    207.5645000000001
+   ],
+   [
+    "And that's it! A complete parametric flange in just a handful of features.",
+    207.8445000000001,
+    211.89391666666677
+   ],
+   [
+    "Save your model, then try changing a dimension in the timeline and watch everything update.",
+    212.17391666666677,
+    217.32191666666677
+   ],
+   [
+    "Thanks for watching, and happy modelling!",
+    217.60191666666677,
+    219.56566666666677
+   ]
+  ]
+ }
+]

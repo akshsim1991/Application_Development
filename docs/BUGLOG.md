@@ -862,3 +862,6 @@ Editing lines and paragraphs: B-054 to B-057.
 ## Version 2.14.6 (both apps)
 Two-sided printing with flip on long or short edge; the tab menu with Open directory having this file.
 2.14.6 published; both downloads match latest.json.
+
+## Version 2.14.7 (both apps)
+About: Courtesy: Vinod Kumar C S, Athith D, Mamatha H R (checked in the Windows About box on a virtual screen).

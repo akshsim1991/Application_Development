@@ -211,7 +211,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
         @"A fast, lightweight PDF reader and editor for macOS. Read, search, print and present documents in tabs; change "
         @"text, add comments, watermarks, page numbers, headers and footers; reorganise pages; compress, password-protect "
         @"and export. Everything happens on your Mac, with no account, cloud service or tracking.\n\n"
-        @"Created by: Akshaya Simha\n\nFree to use and share, always. No subscription, no trial, no licence key.\n"
+        @"Created by: Akshaya Simha\n\nCourtesy:\nVinod Kumar C S\nAthith D\nMamatha H R\n\nFree to use and share, always. No subscription, no trial, no licence key.\n"
         @"PDF rendering by PDFium.\n\nBuilt with care for a faster, simpler document experience.";
     NSMutableParagraphStyle* centred = [[NSMutableParagraphStyle alloc] init];
     centred.alignment = NSTextAlignmentCenter;

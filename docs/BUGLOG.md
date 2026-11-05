@@ -858,3 +858,6 @@ Editing lines and paragraphs: B-054 to B-057.
   path, Close tab, Close other tabs (Mac also: Move Tab to New Window). Windows: checked on a virtual screen with Wine.
   Mac: macOS draws the tabs and its own tab menu cannot be added to, so a right-click on a tab shows this menu instead;
   the build check lists the menu's items. Also File > Open Directory Having This File (⌥⌘R) on the Mac.
+
+## Version 2.14.6 (both apps)
+Two-sided printing with flip on long or short edge; the tab menu with Open directory having this file.

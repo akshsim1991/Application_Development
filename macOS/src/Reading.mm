@@ -18,6 +18,58 @@ using form::ns;
 
 // ---- printing: macOS's print window (preview, copies, pages, pages per sheet, two-sided, black and white) ----
 
+// Print on both sides of paper, as on Windows: flip on the long edge or on the short edge. A panel of its own in the
+// print window (Feather PDF), set on the print job as macOS's own two-sided setting.
+@interface FPDuplexPanel : NSViewController <NSPrintPanelAccessorizing>
+@property(nonatomic, strong) NSButton *both, *longEdge, *shortEdge;
+@end
+
+@implementation FPDuplexPanel
+- (void)loadView {
+    NSView* v = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 360, 92)];
+    self.both = [NSButton checkboxWithTitle:@"Print on both sides of paper" target:self action:@selector(changed:)];
+    self.longEdge = [NSButton radioButtonWithTitle:@"Flip on long edge" target:self action:@selector(changed:)];
+    self.shortEdge = [NSButton radioButtonWithTitle:@"Flip on short edge" target:self action:@selector(changed:)];
+    self.both.frame = NSMakeRect(20, 62, 320, 20);
+    self.longEdge.frame = NSMakeRect(44, 36, 300, 20);
+    self.shortEdge.frame = NSMakeRect(44, 12, 300, 20);
+    for (NSButton* b in @[ self.both, self.longEdge, self.shortEdge ]) [v addSubview:b];
+    const NSInteger last = [NSUserDefaults.standardUserDefaults integerForKey:@"printSides"];   // 0 one side, 1 long, 2 short
+    self.both.state = last ? NSControlStateValueOn : NSControlStateValueOff;
+    (last == 2 ? self.shortEdge : self.longEdge).state = NSControlStateValueOn;
+    self.view = v;
+    [self apply];
+}
+- (void)changed:(NSButton*)sender {
+    if (sender == self.longEdge) self.shortEdge.state = NSControlStateValueOff;   // the two radio buttons are one choice
+    if (sender == self.shortEdge) self.longEdge.state = NSControlStateValueOff;
+    [self apply];
+}
+- (NSInteger)sides { return self.both.state != NSControlStateValueOn ? 0 : self.shortEdge.state == NSControlStateValueOn ? 2 : 1; }
+- (void)apply {
+    const NSInteger sides = [self sides];
+    self.longEdge.enabled = self.shortEdge.enabled = sides != 0;
+    [NSUserDefaults.standardUserDefaults setInteger:sides forKey:@"printSides"];
+    NSPrintInfo* info = self.representedObject;
+    if (![info isKindOfClass:[NSPrintInfo class]]) return;
+    [self willChangeValueForKey:@"localizedSummaryItems"];
+    PMPrintSettings ps = static_cast<PMPrintSettings>(info.PMPrintSettings);
+    // long edge: "no tumble" (the back is upright when the sheet is turned over sideways); short edge: "tumble"
+    PMSetDuplex(ps, sides == 0 ? kPMDuplexNone : sides == 1 ? kPMDuplexNoTumble : kPMDuplexTumble);
+    [info updateFromPMPrintSettings];
+    [self didChangeValueForKey:@"localizedSummaryItems"];
+}
+- (void)setRepresentedObject:(id)o {
+    [super setRepresentedObject:o];
+    if (self.isViewLoaded) [self apply];
+}
+- (NSArray<NSDictionary<NSPrintPanelAccessorySummaryKey, NSString*>*>*)localizedSummaryItems {
+    static NSString* names[] = {@"One side", @"Both sides, flip on long edge", @"Both sides, flip on short edge"};
+    return @[ @{NSPrintPanelAccessorySummaryItemNameKey : @"Sides", NSPrintPanelAccessorySummaryItemDescriptionKey : names[self.isViewLoaded ? [self sides] : 0]} ];
+}
+- (NSSet<NSString*>*)keyPathsForValuesAffectingPreview { return [NSSet set]; }
+@end
+
 @interface FPPrintView : NSView
 @property(nonatomic) Document* doc;
 @end
@@ -84,6 +136,9 @@ static AVSpeechSynthesizer* g_speech = nil;
     op.showsPrintPanel = YES;
     op.showsProgressPanel = YES;
     op.printPanel.options |= NSPrintPanelShowsPreview | NSPrintPanelShowsPageSetupAccessory | NSPrintPanelShowsCopies | NSPrintPanelShowsPageRange;
+    FPDuplexPanel* duplex = [[FPDuplexPanel alloc] init];
+    duplex.title = @"Both Sides";
+    [op.printPanel addAccessoryController:duplex];
     [op runOperationModalForWindow:self.window delegate:self didRunSelector:@selector(printDone:success:contextInfo:) contextInfo:nullptr];
 }
 

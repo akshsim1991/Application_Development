@@ -23,6 +23,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Measure.mm
   src/Signatures.mm
   src/Batch.mm
+  src/TabMenu.mm
   src/Updater.mm
   src/Annotate.mm
   src/Forms.mm

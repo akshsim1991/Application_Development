@@ -845,3 +845,16 @@ Seen in the user's screenshots (a question bank made in Word; numbered, justifie
 ## Version 2.14.5 (both apps)
 Editing lines and paragraphs: B-054 to B-057.
 2.14.5 published; both downloads match latest.json.
+
+## Requested 5 November: two-sided printing and the tab menu (both apps)
+- **Print on both sides of paper**, with Flip on long edge and Flip on short edge. Windows: the print window had a
+  "Sides" list with these choices; it is now a box "Print on both sides of paper" with the two choices under it
+  (greyed until it is ticked), remembered for the next print. Found on the way: for landscape sheets Windows was asked
+  for the other edge (the two-sided setting was swapped for landscape); long edge is now always long edge. Checked on a
+  virtual screen with Wine (the window, ticking the box, choosing the short edge). Mac: a panel "Both Sides" in the
+  print window with the same three controls, set on the print job as macOS's two-sided setting (long edge "no
+  tumble", short edge "tumble"). To be tried on a printer that prints on both sides.
+- **Right-click on a tab: Open directory having this file** (the folder opens with the file selected), Copy the file's
+  path, Close tab, Close other tabs (Mac also: Move Tab to New Window). Windows: checked on a virtual screen with Wine.
+  Mac: macOS draws the tabs and its own tab menu cannot be added to, so a right-click on a tab shows this menu instead;
+  the build check lists the menu's items. Also File > Open Directory Having This File (⌥⌘R) on the Mac.

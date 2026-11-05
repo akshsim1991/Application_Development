@@ -391,6 +391,47 @@ void moveTab(int from, int to) {
     refresh();
 }
 
+void closeTab(int i);
+
+// Right-click on a tab: open the folder with its file (the file selected there), copy its path, close it or the others.
+void showTabMenu(int i, POINT pt) {
+    if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
+    const std::wstring path = app.tabs[i]->path();
+    const bool onDisk = !path.empty() && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
+    enum { T_FOLDER = 1, T_COPYPATH, T_CLOSE, T_OTHERS };
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING | (onDisk ? 0 : MF_GRAYED), T_FOLDER, L"Open directory having this file");
+    AppendMenuW(m, MF_STRING | (path.empty() ? MF_GRAYED : 0), T_COPYPATH, L"Copy the file's path");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_CLOSE, L"Close tab");
+    AppendMenuW(m, MF_STRING | (app.tabs.size() > 1 ? 0 : MF_GRAYED), T_OTHERS, L"Close other tabs");
+    const int cmd = trackMenu(m, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, app.wnd, nullptr);
+    DestroyMenu(m);
+    if (cmd == T_FOLDER) {
+        // Explorer opens the folder with the file selected (an unsaved new document has no folder: the item is greyed)
+        if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(path.c_str())) {
+            if (FAILED(SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0))) {
+                const std::wstring a = L"/select,\"" + path + L"\"";
+                ShellExecuteW(app.wnd, nullptr, L"explorer.exe", a.c_str(), nullptr, SW_SHOWNORMAL);
+            }
+            ILFree(pidl);
+        }
+    } else if (cmd == T_COPYPATH && OpenClipboard(app.wnd)) {
+        EmptyClipboard();
+        if (HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, (path.size() + 1) * sizeof(wchar_t))) {
+            memcpy(GlobalLock(g), path.c_str(), (path.size() + 1) * sizeof(wchar_t));
+            GlobalUnlock(g);
+            if (!SetClipboardData(CF_UNICODETEXT, g)) GlobalFree(g);
+        }
+        CloseClipboard();
+    } else if (cmd == T_CLOSE) closeTab(i);
+    else if (cmd == T_OTHERS) {
+        Document* keep = app.tabs[i].get();
+        for (int k = static_cast<int>(app.tabs.size()) - 1; k >= 0; --k)
+            if (k < static_cast<int>(app.tabs.size()) && app.tabs[k].get() != keep) closeTab(k);   // each asks about unsaved changes
+    }
+}
+
 void closeTab(int i) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     if (!confirmClose(*app.tabs[i])) return;
@@ -6118,6 +6159,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 di->lpszText = const_cast<wchar_t*>(tip.c_str());
                 return 0;
             }
+            break;
+        }
+        case WM_RBUTTONUP: {   // a tab's own menu
+            const int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+            for (size_t i = 0; i < app.tabRects.size() && i < app.tabs.size(); ++i)
+                if (hit(app.tabRects[i], x, y)) {
+                    POINT pt{x, y};
+                    ClientToScreen(h, &pt);
+                    showTabMenu(static_cast<int>(i), pt);
+                    return 0;
+                }
             break;
         }
         case WM_MBUTTONUP: {

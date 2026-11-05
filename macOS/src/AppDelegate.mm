@@ -2,6 +2,8 @@
 #import "WindowController.h"
 #import "StartWindow.h"
 #import "Updater.h"
+
+void FPInstallTabMenu();   // TabMenu.mm
 #import "PageView.h"
 #import "NewPdf.h"
 #import "Palette.h"
@@ -41,6 +43,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 }
 
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
+    FPInstallTabMenu();   // right-click on a tab (TabMenu.mm)
     [NSApp activateIgnoringOtherApps:YES];   // to the front, also when started from Terminal
     // AppKit itself opens the files named on the command line; open here only the ones it has not (so a file is never
     // opened twice, which would ask "already open" at start). After a turn of the run loop, when AppKit's opens are done.
@@ -265,6 +268,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Close", @selector(performClose:), @"w");
+    add(m, @"Open Directory Having This File", @selector(showFileInFolder:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Print\u2026", @selector(printDocument:), @"p");
     add(m, @"Save", @selector(saveDocument:), @"s");
     add(m, @"Save As\u2026", @selector(saveDocumentAs:), @"s", NSEventModifierFlagCommand | NSEventModifierFlagShift);

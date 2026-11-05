@@ -231,7 +231,7 @@ bool savePng(const std::vector<unsigned char>& px, int w, int h, const std::wstr
 namespace {
 
 enum { ID_PRINTER = 201, ID_PROPS, ID_ALL, ID_CURRENT, ID_RANGE, ID_RANGETEXT, ID_COPIES, ID_NUP, ID_SIZE, ID_ORIENT, ID_COLOUR,
-       ID_SIDES, ID_STATUS, ID_PRINT, ID_CANCEL, ID_SHEETS };
+       ID_SIDES, ID_STATUS, ID_PRINT, ID_CANCEL, ID_SHEETS, ID_LONG, ID_SHORT };
 enum { TIMER_REFRESH = 1 };
 constexpr int kPanel = 320;     // width of the settings panel
 constexpr int kGap = 28;        // between sheets in the preview
@@ -269,6 +269,11 @@ std::vector<BYTE> defaultDevmode(const std::wstring& printer) {
 }
 
 int choice(HWND w, int id) { return static_cast<int>(SendDlgItemMessageW(w, id, CB_GETCURSEL, 0, 0)); }
+// Print on both sides of paper: 0 one side, 1 flip on the long edge, 2 flip on the short edge.
+int sidesOf(HWND w) {
+    if (SendDlgItemMessageW(w, ID_SIDES, BM_GETCHECK, 0, 0) != BST_CHECKED) return 0;
+    return SendDlgItemMessageW(w, ID_SHORT, BM_GETCHECK, 0, 0) == BST_CHECKED ? 2 : 1;
+}
 std::wstring textOf(HWND w, int id) {
     wchar_t t[512] = L"";
     GetDlgItemTextW(w, id, t, 512);
@@ -296,8 +301,10 @@ std::vector<BYTE> jobDevmode(State* st, bool& landscape) {
         dev->dmFields |= DM_ORIENTATION | DM_COLOR | DM_DUPLEX;
         dev->dmOrientation = static_cast<short>(landscape ? DMORIENT_LANDSCAPE : DMORIENT_PORTRAIT);
         dev->dmColor = static_cast<short>(st->layout.grey ? DMCOLOR_MONOCHROME : DMCOLOR_COLOR);
-        const int sides = choice(w, ID_SIDES);   // long-edge flipping is "vertical" on portrait sheets, "horizontal" on landscape
-        dev->dmDuplex = static_cast<short>(!sides ? DMDUP_SIMPLEX : ((sides == 1) != landscape ? DMDUP_VERTICAL : DMDUP_HORIZONTAL));
+        // DMDUP_VERTICAL is long-edge binding and DMDUP_HORIZONTAL short-edge binding, in portrait and landscape alike (as
+        // Windows hands them to the printer driver); swapping them for landscape sheets flipped on the wrong edge
+        const int sides = sidesOf(w);
+        dev->dmDuplex = static_cast<short>(!sides ? DMDUP_SIMPLEX : sides == 1 ? DMDUP_VERTICAL : DMDUP_HORIZONTAL);
     }
     return dm;
 }
@@ -519,7 +526,9 @@ void layoutControls(State* st) {
     label(ID_SIZE + 1000); place(ID_SIZE, cx, cw, 300); y += 32;
     label(ID_ORIENT + 1000); place(ID_ORIENT, cx, cw, 300); y += 32;
     label(ID_COLOUR + 1000); place(ID_COLOUR, cx, cw, 300); y += 32;
-    label(ID_SIDES + 1000); place(ID_SIDES, cx, cw, 300); y += 44;
+    place(ID_SIDES, 16, kPanel - 32, 22); y += 26;   // Print on both sides of paper
+    place(ID_LONG, cx, cw, 22); y += 24;
+    place(ID_SHORT, cx, cw, 22); y += 36;
     MoveWindow(GetDlgItem(w, ID_STATUS), 16, y, kPanel - 32, 64, TRUE);
     const int by = rc.bottom - 16 - 32;
     MoveWindow(GetDlgItem(w, ID_PRINT), kPanel - 16 - 96 - 8 - 96, by, 96, 32, TRUE);
@@ -576,8 +585,16 @@ LRESULT CALLBACK printProc(HWND w, UINT msg, WPARAM wp, LPARAM lp) {
                 case ID_PRINTER:
                     if (code == CBN_SELCHANGE) { st->printer = choice(w, ID_PRINTER); refresh(st); }
                     return 0;
-                case ID_NUP: case ID_SIZE: case ID_ORIENT: case ID_COLOUR: case ID_SIDES:
+                case ID_NUP: case ID_SIZE: case ID_ORIENT: case ID_COLOUR:
                     if (code == CBN_SELCHANGE) refresh(st);
+                    return 0;
+                case ID_SIDES: case ID_LONG: case ID_SHORT:   // both sides: the flip choices count only when it is ticked
+                    if (code == BN_CLICKED) {
+                        const bool both = SendDlgItemMessageW(w, ID_SIDES, BM_GETCHECK, 0, 0) == BST_CHECKED;
+                        EnableWindow(GetDlgItem(w, ID_LONG), both);
+                        EnableWindow(GetDlgItem(w, ID_SHORT), both);
+                        refresh(st);
+                    }
                     return 0;
                 case ID_ALL: case ID_CURRENT: case ID_RANGE:
                     if (code == BN_CLICKED) {
@@ -685,7 +702,13 @@ bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage) {
     combo(ID_SIZE, L"Size:", {L"Fit to the paper", L"Actual size"}, 0);
     combo(ID_ORIENT, L"Orientation:", {L"Automatic (as the pages)", L"Portrait", L"Landscape"}, 0);
     combo(ID_COLOUR, L"Colour:", {L"Colour", L"Black and white (shades of grey)"}, lastColour);
-    combo(ID_SIDES, L"Sides:", {L"One-sided", L"Two-sided, flip on the long edge", L"Two-sided, flip on the short edge"}, lastSides);
+    mk(0, L"BUTTON", L"Print on both sides of paper", BS_AUTOCHECKBOX | WS_TABSTOP, ID_SIDES);
+    mk(0, L"BUTTON", L"Flip on long edge", BS_AUTORADIOBUTTON | WS_TABSTOP | WS_GROUP, ID_LONG);
+    mk(0, L"BUTTON", L"Flip on short edge", BS_AUTORADIOBUTTON, ID_SHORT);
+    SendDlgItemMessageW(w, ID_SIDES, BM_SETCHECK, lastSides ? BST_CHECKED : BST_UNCHECKED, 0);
+    SendDlgItemMessageW(w, lastSides == 2 ? ID_SHORT : ID_LONG, BM_SETCHECK, BST_CHECKED, 0);
+    EnableWindow(GetDlgItem(w, ID_LONG), lastSides != 0);
+    EnableWindow(GetDlgItem(w, ID_SHORT), lastSides != 0);
     mk(0, L"STATIC", L"", SS_LEFT | SS_NOPREFIX, ID_STATUS);
     mk(0, L"BUTTON", L"Print", BS_DEFPUSHBUTTON | WS_TABSTOP, ID_PRINT);
     mk(0, L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, ID_CANCEL);
@@ -710,8 +733,8 @@ bool run(HWND parent, HINSTANCE inst, Document& d, int currentPage) {
     }
     KillTimer(w, TIMER_REFRESH);
     if (st.print) refresh(&st);   // a range typed just now
-    lastColour = choice(w, ID_COLOUR); lastSides = choice(w, ID_SIDES);
-    const int sides = choice(w, ID_SIDES);
+    lastColour = choice(w, ID_COLOUR); lastSides = sidesOf(w);
+    const int sides = sidesOf(w);
     const int copies = static_cast<int>(wcstol(textOf(w, ID_COPIES).c_str(), nullptr, 10));
     bool landscape = false;
     std::vector<BYTE> dm = st.print && st.valid ? jobDevmode(&st, landscape) : std::vector<BYTE>{};

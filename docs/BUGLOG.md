@@ -885,3 +885,4 @@ From this version each minor version has a name of its own, shown with the numbe
 - Mac: macOS window tabs; a window opened by New Window or the setting can still be joined to others (Window > Merge
   All Windows). The tab menu's "Move Tab to New Window" is now "Open in New Window", as on Windows.
 - Not across windows: "this PDF is already open" sees only the tabs of its own window.
+2.15.0 "Falcon" published; both downloads match latest.json.

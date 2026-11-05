@@ -54,7 +54,12 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
                                                   defer:NO];
     if ((self = [super initWithWindow:w])) {
         w.delegate = self;
-        w.tabbingMode = NSWindowTabbingModePreferred;   // documents open as tabs of one window
+        // documents open as tabs of one window; or each in its own (the setting, or File > New Window), which can still be
+        // made a tab later (Window > Merge All Windows, or dragged onto a tab bar)
+        extern BOOL FPTakeOwnWindow();
+        const BOOL own = FPTakeOwnWindow();
+        w.tabbingMode = own ? NSWindowTabbingModeDisallowed : NSWindowTabbingModePreferred;
+        if (own) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ w.tabbingMode = NSWindowTabbingModeAutomatic; });
         w.tabbingIdentifier = @"FeatherPDF";
         w.minSize = NSMakeSize(480, 360);
         [w setFrameAutosaveName:@"FeatherPDFDocument"];

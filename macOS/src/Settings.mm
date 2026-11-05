@@ -21,6 +21,7 @@ BOOL FPColourIcons() { return intPref(@"colourIcons", 1) != 0; }
 BOOL FPTabColours() { return intPref(@"tabColours", 0) != 0; }
 BOOL FPTabNumbers() { return intPref(@"tabNumbers", 0) != 0; }
 NSInteger FPDuplicateMode() { return intPref(@"duplicateOpen", 0); }
+BOOL FPOwnWindows() { return intPref(@"ownWindows", 0) == 1; }
 BOOL FPRestorePositions() { return intPref(@"restorePositions", 1) != 0; }
 NSInteger FPPagesKept() { const NSInteger i = intPref(@"pageCache", 1); return i == 0 ? 3 : i == 1 ? 10 : 24; }
 
@@ -134,7 +135,9 @@ static NSButton* button(NSString* title, void (^act)(void)) {
     [_tabs addTabViewItem:[self group:@"Tabs" rows:@[
         row(@"Show tab numbers", @"Number the tabs: \"1. Report.pdf\". The numbers follow when tabs are opened, closed or moved.", toggle(@"tabNumbers", NO, nil)),
         row(@"Opening a PDF that is already open", @"The same file opened again (also through another path or an alias).",
-            choice(@"duplicateOpen", 0, @[ @"Ask first", @"Go to its tab" ], nil)) ]]];
+            choice(@"duplicateOpen", 0, @[ @"Ask first", @"Go to its tab" ], nil)),
+        row(@"Opening files", @"Each file in a window of its own (to see two PDFs at once, or one on each screen), or as a tab of the window already open. For Finder, Open and Open Recent alike.",
+            choice(@"ownWindows", 0, @[ @"As tabs of one window", @"Each in its own window" ], nil)) ]]];
     [_tabs addTabViewItem:[self group:@"PDF Viewing" rows:@[
         row(@"Page colours", @"Dark turns pages dark for reading at night; Dimmed softens bright white.",
             choice(FPPageColoursKey, 0, @[ @"Normal", @"Dark (night mode)", @"Dimmed (softer white)" ], ^{
@@ -162,7 +165,7 @@ static NSButton* button(NSString* title, void (^act)(void)) {
             [a addButtonWithTitle:@"Reset"];
             [a addButtonWithTitle:@"Cancel"];
             if ([a runModal] != NSAlertFirstButtonReturn) return;
-            for (NSString* k in @[ @"theme", @"colourIcons", @"tabColours", @"tabNumbers", @"duplicateOpen", @"restorePositions", FPPageColoursKey, @"readingSpeed",
+            for (NSString* k in @[ @"theme", @"colourIcons", @"tabColours", @"tabNumbers", @"duplicateOpen", @"ownWindows", @"restorePositions", FPPageColoursKey, @"readingSpeed",
                                    @"highlightColour", @"drawingColour", @"lineWidth", @"pageCache", @"recoveryCopy", FPCheckUpdatesKey ])
                 [defaults() removeObjectForKey:k];
             FPApplyTheme();

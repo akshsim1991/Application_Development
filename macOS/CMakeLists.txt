@@ -43,7 +43,7 @@ set_target_properties(FeatherPDFMac PROPERTIES
   MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist.in"
   RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
 target_include_directories(FeatherPDFMac PRIVATE src "${SHARED}" "${PDFIUM_DIR}/include" "${CMAKE_BINARY_DIR}")
-target_compile_definitions(FeatherPDFMac PRIVATE FEATHER_VERSION="${MAC_VERSION}")
+target_compile_definitions(FeatherPDFMac PRIVATE FEATHER_VERSION="${MAC_VERSION}" FEATHER_CODENAME="${FEATHER_CODENAME}")
 # -ffp-contract=off: Apple silicon would otherwise fuse multiply-adds, and positions would differ from the Windows
 # app's in the last digit (a table edge at 645.4 instead of 645.3).
 target_compile_options(FeatherPDFMac PRIVATE $<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc> -ffp-contract=off)

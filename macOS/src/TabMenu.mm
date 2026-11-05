@@ -5,6 +5,9 @@
 #import <Cocoa/Cocoa.h>
 #import "WindowController.h"
 #import "Trace.h"
+#import "Settings.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <algorithm>
 #include "platform.hpp"
 
 // A menu item that runs a block (kept by the item).
@@ -78,6 +81,17 @@ void add(NSMenu* m, NSString* title, BOOL enabled, void (^run)(void)) {
 
 } // namespace
 
+// ---- more windows: File > New Window, the setting "each in its own window", and a tab opened in a new window ----
+
+static NSInteger g_ownPending = 0;   // documents still to open, each in a window of its own (File > New Window)
+void FPOpenNextInOwnWindows(NSInteger count) { g_ownPending = std::max<NSInteger>(0, count); }
+
+// Asked by each new document window: a window of its own (YES) or a tab of the window in front.
+BOOL FPTakeOwnWindow() {
+    if (g_ownPending > 0) { --g_ownPending; return YES; }
+    return FPOwnWindows();
+}
+
 void FPShowFileInFolder(NSDocument* doc) {
     NSURL* url = doc.fileURL;
     if (url && [NSFileManager.defaultManager fileExistsAtPath:url.path]) [NSWorkspace.sharedWorkspace activateFileViewerSelectingURLs:@[ url ]];
@@ -98,11 +112,12 @@ NSMenu* FPTabMenuFor(NSWindow* tab) {
         [NSPasteboard.generalPasteboard setString:weakDoc.fileURL.path ?: @"" forType:NSPasteboardTypeString];
     });
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Open in New Window", tab.tabbedWindows.count > 1, ^{ [weakTab moveTabToNewWindow:nil]; });
+    [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Close Tab", YES, ^{ [weakTab performClose:nil]; });
     add(m, @"Close Other Tabs", tab.tabbedWindows.count > 1, ^{
         for (NSWindow* w in [weakTab.tabbedWindows copy]) if (w != weakTab) [w performClose:nil];   // each asks about unsaved changes
     });
-    add(m, @"Move Tab to New Window", tab.tabbedWindows.count > 1, ^{ [weakTab moveTabToNewWindow:nil]; });
     return m;
 }
 

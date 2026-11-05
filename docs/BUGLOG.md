@@ -866,3 +866,22 @@ Two-sided printing with flip on long or short edge; the tab menu with Open direc
 ## Version 2.14.7 (both apps)
 About: Courtesy: Vinod Kumar C S, Athith D, Mamatha H R (checked in the Windows About box on a virtual screen).
 2.14.7 published; both downloads match latest.json.
+
+## Version 2.15.0 "Falcon" (both apps): separate windows
+Requested: two PDFs at the same time in windows of their own (side by side on one screen, or one on each screen).
+From this version each minor version has a name of its own, shown with the number in About and in the status bar.
+- **Open in new window** (right-click on a tab), **a tab dragged off the tab row** (it opens where the mouse lets go),
+  and **New window** (Windows: Ctrl+N and the "..." menu; Mac: File > New Window, ⇧⌘N).
+- **Settings > Tabs > Opening files: As tabs of one window / Each in its own window.** For File Explorer or Finder,
+  Open and Open Recent alike.
+- Windows: each window is a copy of Feather PDF of its own (its own tabs, toolbar, side by side). A tab moved to a new
+  window takes its unsaved changes with it (handed over in a file the new window reads and deletes). Each window keeps
+  its own recovery copies (session-<process number>); after a crash, the next start offers the documents of every
+  window that did not close normally, in one window. Checked on a virtual screen with Wine: Open in new window (the
+  tab moved; two windows, one document each), Ctrl+N (a third, empty window), all three ended by force and the app
+  started again (it offered both documents and reopened them; the old folders were removed), and a tab dragged off the
+  row (a new window near where it was let go). Found on the way: the new window was not placed beside the old one
+  (it found itself instead of the other window); fixed.
+- Mac: macOS window tabs; a window opened by New Window or the setting can still be joined to others (Window > Merge
+  All Windows). The tab menu's "Move Tab to New Window" is now "Open in New Window", as on Windows.
+- Not across windows: "this PDF is already open" sees only the tabs of its own window.

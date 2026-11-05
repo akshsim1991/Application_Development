@@ -86,7 +86,7 @@ jobs:
           for d in ui-*; do echo "== $d"; cat $d/trace.txt 2>/dev/null || true; done
           grep -q "press: sheet 1 button Show" ui-sbs/trace.txt && grep -q "side by side: 2 views" ui-sbs/trace.txt   # two documents in one window
           grep -q "edit at 200,750: found 1" ui-edpara/trace.txt && grep -q "hidden [1-9]" ui-edpara/trace.txt   # the paragraph editor opens, the page's own text hidden
-          grep -q "tab menu: Open Directory Having This File | Copy the File's Path | Close Tab | Close Other Tabs | Move Tab to New Window" ui-tabmenu/trace.txt
+          grep -q "tab menu: Open Directory Having This File | Copy the File's Path | Open in New Window | Close Tab | Close Other Tabs" ui-tabmenu/trace.txt
           grep -q "thumbnails selected: 6" ui-thumbs/trace.txt   # Select All Pages selects every page
           grep -q "press: sheet 1 button Recognise" ui-ocrrun/trace.txt && grep -q "^documents 1" ui-ocrrun/report.txt && grep -q "ocr words [1-9]" ui-ocrrun/trace.txt   # OCR from its form: words found, no crash
 

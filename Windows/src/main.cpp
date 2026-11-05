@@ -121,6 +121,7 @@ struct App {
     bool tabNumbers = false;  // "1. Document.pdf"
     int dupMode = 0;          // a PDF opened again that is already open: 0 ask, 1 go to its tab
     bool checkUpdates = true; // look for a new version when Feather PDF starts
+    bool ownWindows = false;  // files opened from outside (Explorer, a second launch) each get a window of their own
     std::wstring skipVersion; // a new version the user chose not to be reminded of
     bool restorePositions = true;   // documents open where they were last read
     int cacheIdx = 1;         // pages kept ready in memory: 3, 6, 12
@@ -391,17 +392,22 @@ void moveTab(int from, int to) {
     refresh();
 }
 
-void closeTab(int i);
+std::wstring settingsPath();
+void closeTab(int i, bool ask = true);
+void openInNewWindow(int i, const POINT* at = nullptr);
+bool launchWindow(const std::vector<std::wstring>& args);
 
 // Right-click on a tab: open the folder with its file (the file selected there), copy its path, close it or the others.
 void showTabMenu(int i, POINT pt) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     const std::wstring path = app.tabs[i]->path();
     const bool onDisk = !path.empty() && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES;
-    enum { T_FOLDER = 1, T_COPYPATH, T_CLOSE, T_OTHERS };
+    enum { T_FOLDER = 1, T_COPYPATH, T_CLOSE, T_OTHERS, T_NEWWINDOW };
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING | (onDisk ? 0 : MF_GRAYED), T_FOLDER, L"Open directory having this file");
     AppendMenuW(m, MF_STRING | (path.empty() ? MF_GRAYED : 0), T_COPYPATH, L"Copy the file's path");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, T_NEWWINDOW, L"Open in new window");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, T_CLOSE, L"Close tab");
     AppendMenuW(m, MF_STRING | (app.tabs.size() > 1 ? 0 : MF_GRAYED), T_OTHERS, L"Close other tabs");
@@ -424,7 +430,8 @@ void showTabMenu(int i, POINT pt) {
             if (!SetClipboardData(CF_UNICODETEXT, g)) GlobalFree(g);
         }
         CloseClipboard();
-    } else if (cmd == T_CLOSE) closeTab(i);
+    } else if (cmd == T_NEWWINDOW) openInNewWindow(i);
+    else if (cmd == T_CLOSE) closeTab(i);
     else if (cmd == T_OTHERS) {
         Document* keep = app.tabs[i].get();
         for (int k = static_cast<int>(app.tabs.size()) - 1; k >= 0; --k)
@@ -432,9 +439,67 @@ void showTabMenu(int i, POINT pt) {
     }
 }
 
-void closeTab(int i) {
+// ---- more windows: each window is a copy of Feather PDF of its own (its tabs, toolbar, side by side, recovery copies) ----
+
+// Starts another window of Feather PDF with these arguments ("--newwindow" first: it does not hand them to this one).
+bool launchWindow(const std::vector<std::wstring>& args) {
+    wchar_t exe[MAX_PATH * 2];
+    if (!GetModuleFileNameW(nullptr, exe, MAX_PATH * 2)) return false;
+    std::wstring cmd = L"\"" + std::wstring(exe) + L"\" --newwindow";
+    for (const std::wstring& a : args) {   // quoted; a backslash before a closing quote doubled, as the command line rules want
+        std::wstring q = a;
+        size_t trailing = 0;
+        while (trailing < q.size() && q[q.size() - 1 - trailing] == L'\\') ++trailing;
+        q.append(trailing, L'\\');
+        std::wstring esc;
+        for (wchar_t c : q) { if (c == L'"') esc += L'\\'; esc += c; }
+        cmd += L" \"" + esc + L"\"";
+    }
+    STARTUPINFOW si{sizeof(si)};
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(exe, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false;
+    AllowSetForegroundWindow(pi.dwProcessId);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+std::wstring handoverDir() {
+    std::wstring s = settingsPath();
+    return s.substr(0, s.find_last_of(L'\\')) + L"\\handover";
+}
+
+// The tab moves to a window of its own (where the mouse let go of it, when dragged off the tab row). Unsaved changes go
+// with it: the document as it is now is handed over in a file the new window reads and deletes.
+void openInNewWindow(int i, const POINT* at) {
+    if (i < 0 || i >= static_cast<int>(app.tabs.size()) || !finishInput()) return;
+    Document& d = *app.tabs[i];
+    std::vector<std::wstring> args;
+    if (at) args.insert(args.end(), {L"--at", std::to_wstring(at->x) + L"," + std::to_wstring(at->y)});
+    if (d.dirty() || d.path().empty()) {
+        std::vector<unsigned char> bytes;
+        if (d.isProtected() && d.dirty()) {
+            MessageBoxW(app.wnd, L"Save this password-protected document first, then open it in a new window.", kAppName, MB_OK | MB_ICONINFORMATION);
+            return;
+        }
+        const std::wstring dir = handoverDir();
+        CreateDirectoryW(dir.c_str(), nullptr);
+        const std::wstring file = dir + L"\\" + std::to_wstring(GetCurrentProcessId()) + L"_" + std::to_wstring(GetTickCount64()) + L".pdf";
+        if (!d.serialize(bytes) || Document::writeFile(file, bytes) != SaveResult::Ok) {
+            MessageBoxW(app.wnd, L"The document could not be handed to a new window. Save it, then try again.", kAppName, MB_OK | MB_ICONWARNING);
+            return;
+        }
+        args.insert(args.end(), {L"--handover", file, d.path(), d.title()});
+    } else args.push_back(d.path());
+    if (!launchWindow(args)) { MessageBoxW(app.wnd, L"A new window could not be opened.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    rememberPosition(d);
+    closeTab(i, false);   // it lives on in the new window
+    writeSession();
+}
+
+void closeTab(int i, bool ask) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
-    if (!confirmClose(*app.tabs[i])) return;
+    if (ask && !confirmClose(*app.tabs[i])) return;
     const bool endsSbs = app.sbs && (app.tabs[i].get() == app.sbsDoc || i == app.active);
     Document* survivor = endsSbs ? (app.tabs[i].get() == app.sbsDoc ? activeDoc() : app.sbsDoc) : nullptr;
     if (endsSbs) endSideBySide();   // back to one document
@@ -581,6 +646,7 @@ void loadSettings() {
     app.tabNumbers = num(L"tabNumbers", 0) != 0;
     app.dupMode = std::clamp(num(L"duplicateOpen", 0), 0, 1);
     app.checkUpdates = num(L"checkUpdates", 1) != 0;
+    app.ownWindows = num(L"ownWindows", 0) != 0;
     {
         wchar_t skip[64] = L"";
         GetPrivateProfileStringW(L"view", L"skipVersion", L"", skip, 64, p.c_str());
@@ -637,6 +703,7 @@ void saveSettings() {
     put(L"view", L"tabNumbers", app.tabNumbers);
     put(L"view", L"duplicateOpen", app.dupMode);
     put(L"view", L"checkUpdates", app.checkUpdates);
+    put(L"view", L"ownWindows", app.ownWindows);
     WritePrivateProfileStringW(L"view", L"skipVersion", app.skipVersion.c_str(), p.c_str());
     put(L"view", L"restorePositions", app.restorePositions);
     put(L"view", L"pageCache", app.cacheIdx);
@@ -723,10 +790,18 @@ void offerOpenTab(int i) {
     if (themeui::choiceBox(app.wnd, kAppName, text, {L"Go to Tab " + n, L"Cancel"}, 0, 1, MB_ICONINFORMATION) == 0) switchTab(i);
 }
 
+bool g_restoring = false;   // tabs coming back after a crash stay in this window
+
 void openFile(const std::wstring& pathIn) {
     wchar_t full[MAX_PATH * 2];
     std::wstring path = GetFullPathNameW(pathIn.c_str(), MAX_PATH * 2, full, nullptr) ? full : pathIn;
     const DWORD attr = GetFileAttributesW(path.c_str());
+    // each file in its own window (Settings > Tabs): a window with a document already opens the next file in a new one
+    if (app.ownWindows && !app.tabs.empty() && !g_restoring && !app.testMode && attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        bool here = false;   // unless it is open in this window already (its tab is shown)
+        for (const auto& t : app.tabs) if (_wcsicmp(t->path().c_str(), path.c_str()) == 0) here = true;
+        if (!here && launchWindow({path})) return;
+    }
     if (attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY)) {
         std::wstring name = path;
         while (name.size() > 3 && (name.back() == L'\\' || name.back() == L'/')) name.pop_back();
@@ -3074,7 +3149,7 @@ void onUpdateChecked(const update::Release* r, bool manual) {
 
 void showAbout() {
     std::vector<FormField> f(1);
-    f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L", built ") + buildDate() + L"\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nCourtesy:\nVinod Kumar C S\nAthith D\nMamatha H R\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
+    f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L" \u201C" L"" FEATHER_CODENAME L"\u201D, built ") + buildDate() + L"\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nCourtesy:\nVinod Kumar C S\nAthith D\nMamatha H R\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
     showForm(app.wnd, app.inst, L"About Feather PDF", f, L"!Close");
 }
 
@@ -3121,7 +3196,9 @@ void showSettings(int first) {
     cats[SP_TABS] = {L"Tabs", {
         toggle(L"Show tab numbers", L"Number the tabs: \"1. Report.pdf\". The numbers follow when tabs are opened, closed or dragged to another place.", app.tabNumbers, repaint),
         choice(L"Opening a PDF that is already open", L"The same file opened again (also through another path or a shortcut).",
-               {L"Ask first", L"Go to its tab"}, [] { return app.dupMode; }, [](int i) { app.dupMode = i; })}};
+               {L"Ask first", L"Go to its tab"}, [] { return app.dupMode; }, [](int i) { app.dupMode = i; }),
+        choice(L"Opening files", L"Each file in a window of its own (to see two PDFs at once, or one on each screen), or as a tab of the window already open. For File Explorer, Open and Open recent alike.",
+               {L"As tabs of one window", L"Each in its own window"}, [] { return app.ownWindows ? 1 : 0; }, [](int i) { app.ownWindows = i == 1; })}};
     cats[SP_VIEWING] = {L"PDF Viewing", {
         choice(L"Page colours", L"Dark turns pages dark for reading at night; Dimmed softens bright white.", {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"},
                [] { return static_cast<int>(app.viewer.colours()); },
@@ -3155,7 +3232,7 @@ void showSettings(int first) {
             ShellExecuteW(app.wnd, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); }),
         button(L"Reset settings", L"Puts every setting on this page and the others back as it was when Feather PDF was installed.", L"Reset all\x2026", [] {
             if (MessageBoxW(GetActiveWindow(), L"Put every setting back to its default? Recent files and reading positions are kept.", L"Settings", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
-            app.theme = ThemeSystem; app.colourIcons = true; app.tabColours = false; app.tabNumbers = false; app.dupMode = 0; app.restorePositions = true;
+            app.theme = ThemeSystem; app.colourIcons = true; app.tabColours = false; app.tabNumbers = false; app.dupMode = 0; app.ownWindows = false; app.restorePositions = true;
             app.viewer.setColours(Viewer::Colours::Normal); app.viewer2.setColours(Viewer::Colours::Normal);
             app.readRate = 0; app.hlColour = 0; app.drawColour = 5; app.widthIdx = 1; app.cacheIdx = 1; app.autosaveIdx = 0;
             app.viewer.setCacheLimit(6); app.viewer2.setCacheLimit(6);
@@ -3258,7 +3335,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_RECENT = 100 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3277,6 +3354,7 @@ void showMainMenu(const RECT& anchor) {
         AppendMenuW(np, MF_STRING, MM_NEWTEXT, L"From a text or Markdown file...");
         AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(np), L"New PDF");
     }
+    add(MM_NEWWINDOW, L"New window\tCtrl+N");
     add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
     add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
     add(MM_CLOSE, L"Close tab\tCtrl+W", has);
@@ -3335,6 +3413,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
+        case MM_NEWWINDOW: launchWindow({}); break;
         case MM_NEWTEXT: {
             wchar_t buf[MAX_PATH * 2] = L"";
             OPENFILENAMEW ofn{sizeof(ofn)};
@@ -3373,10 +3452,53 @@ void addDocumentTab(std::unique_ptr<Document> doc) {
 
 
 // ---- session: the open tabs and their unsaved changes are kept in %APPDATA%\FeatherPDF\session while the app runs ----
-std::wstring sessionDir() {
+// Each window keeps its own: session-<process number>. A window that crashed leaves its folder behind for the next start.
+std::wstring sessionBase() {
     std::wstring s = settingsPath();
     size_t p = s.find_last_of(L'\\');
-    return (p == std::wstring::npos ? L"" : s.substr(0, p)) + L"\\session";
+    return p == std::wstring::npos ? L"" : s.substr(0, p);
+}
+std::wstring sessionDir() { return sessionBase() + L"\\session-" + std::to_wstring(GetCurrentProcessId()); }
+
+void clearSessionDir(const std::wstring& dir) {
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) DeleteFileW((dir + L"\\" + fd.cFileName).c_str()); } while (FindNextFileW(h, &fd));
+        FindClose(h);
+    }
+    RemoveDirectoryW(dir.c_str());
+}
+
+// Is process `pid` a Feather PDF window still running? (Its session folder is then not left over from a crash.)
+bool featherRunning(DWORD pid) {
+    if (pid == GetCurrentProcessId()) return true;
+    HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!h) return false;
+    DWORD code = 0;
+    wchar_t name[MAX_PATH * 2];
+    DWORD len = MAX_PATH * 2;
+    bool alive = GetExitCodeProcess(h, &code) && code == STILL_ACTIVE && QueryFullProcessImageNameW(h, 0, name, &len);
+    if (alive) { std::wstring n(name); for (auto& c : n) c = static_cast<wchar_t>(towlower(c)); alive = n.find(L"featherpdf") != std::wstring::npos; }
+    CloseHandle(h);
+    return alive;
+}
+
+// The session folders left by windows that are no longer running (and the one older versions used).
+std::vector<std::wstring> leftoverSessions() {
+    std::vector<std::wstring> out;
+    const std::wstring base = sessionBase();
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((base + L"\\session*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        const std::wstring name = fd.cFileName;
+        if (name == L"session") out.push_back(base + L"\\" + name);
+        else if (name.rfind(L"session-", 0) == 0 && !featherRunning(static_cast<DWORD>(wcstoul(name.c_str() + 8, nullptr, 10)))) out.push_back(base + L"\\" + name);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return out;
 }
 
 void clearSession() {
@@ -3438,12 +3560,16 @@ void writeSession() {
 }
 
 bool restoreSession() {
-    const std::wstring dir = sessionDir(), ini = dir + L"\\session.ini";
-    if (GetFileAttributesW(ini.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
-    const int count = static_cast<int>(GetPrivateProfileIntW(L"meta", L"count", 0, ini.c_str()));
+    // every window that did not close normally (each kept its own folder): their tabs come back in this window
+    const std::vector<std::wstring> dirs = leftoverSessions();
+    auto clearLeft = [&] { for (const auto& dir : dirs) clearSessionDir(dir); };
     struct Entry { std::wstring path, name, rec; double zoom; int scrollY; bool fit; };
     std::vector<Entry> list;
     int withChanges = 0;
+    for (const std::wstring& dir : dirs) {
+    const std::wstring ini = dir + L"\\session.ini";
+    if (GetFileAttributesW(ini.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+    const int count = static_cast<int>(GetPrivateProfileIntW(L"meta", L"count", 0, ini.c_str()));
     for (int i = 0; i < count; ++i) {
         wchar_t sec[32], b1[MAX_PATH * 2], b2[MAX_PATH * 2], b3[64], b4[64];
         swprintf(sec, 32, L"tab%d", i);
@@ -3459,11 +3585,13 @@ bool restoreSession() {
         if (e.rec.empty() && (e.path.empty() || GetFileAttributesW(e.path.c_str()) == INVALID_FILE_ATTRIBUTES)) continue;
         list.push_back(e);
     }
-    if (list.empty()) { clearSession(); return false; }
+    }
+    if (list.empty()) { clearLeft(); return false; }
     std::wstring msg = L"Feather PDF did not close normally last time.\n\nReopen " + std::to_wstring(list.size()) + L" document(s)";
     if (withChanges) msg += L", including " + std::to_wstring(withChanges) + L" with changes that were not saved";
     msg += L"?";
-    if (MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) { clearSession(); return false; }
+    if (MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) { clearLeft(); return false; }
+    g_restoring = true;
     for (const Entry& e : list) {
         if (!e.rec.empty()) {
             std::vector<unsigned char> bytes;
@@ -3488,7 +3616,8 @@ bool restoreSession() {
         }
         if (!e.path.empty()) openFile(e.path);
     }
-    clearSession();
+    g_restoring = false;
+    clearLeft();
     writeSession();
     return true;
 }
@@ -5741,7 +5870,7 @@ void paintStatus(HDC dc, const RECT& client) {
     if (!d) {
         SetTextColor(dc, P.textDim);
         DrawTextW(dc, L"No document open", -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
-        DrawTextW(dc, L"Feather PDF " FEATHER_VERSION, -1, &t, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
+        DrawTextW(dc, L"Feather PDF " FEATHER_VERSION L" " FEATHER_CODENAME, -1, &t, DT_RIGHT | DT_VCENTER | DT_SINGLELINE);
         return;
     }
     const int page = app.viewer.currentPage();
@@ -6024,8 +6153,19 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_LBUTTONUP: {
             if (app.tabDrag >= 0) {
                 const bool moved = app.tabDragging;
+                const int dragged = app.tabDrag;
                 app.tabDrag = -1; app.tabDragging = false;
                 if (GetCapture() == h) ReleaseCapture();
+                // let go well below the tab row (or outside the window): the tab moves to a window of its own there
+                const int ux = GET_X_LPARAM(l), uy = GET_Y_LPARAM(l);
+                RECT rc;
+                GetClientRect(h, &rc);
+                if (moved && app.tabs.size() >= 1 && (uy > headerH() + px(60) || uy < -px(40) || ux < -px(40) || ux > rc.right + px(40))) {
+                    POINT at{ux, uy};
+                    ClientToScreen(h, &at);
+                    openInNewWindow(dragged, &at);
+                    return 0;
+                }
                 if (moved) { InvalidateRect(h, nullptr, FALSE); writeSession(); }
                 return 0;
             }
@@ -6214,6 +6354,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (ctrl) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
+                    case 'N': launchWindow({}); return 0;   // a new window of its own
                     case 'L': rotateView(-1); return 0;
                     case 'R': rotateView(1); return 0;
                     case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
@@ -6376,7 +6517,28 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         app.testMode = true;
         files = {files[2]};
     }
-    HWND existing = menuCheckOut.empty() ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
+    // "--newwindow [--at x,y] [--handover file path name] files": a window of its own (New window, Open in new window, a tab
+    // dragged off the tab row), never handed to the window already open
+    bool newWindow = false;
+    bool hasAt = false;
+    POINT at{};
+    std::wstring handFile, handPath, handName;
+    if (!files.empty() && files[0] == L"--newwindow") {
+        newWindow = true;
+        files.erase(files.begin());
+        while (!files.empty()) {
+            if (files[0] == L"--at" && files.size() >= 2) {
+                hasAt = swscanf(files[1].c_str(), L"%ld,%ld", &at.x, &at.y) == 2;
+                files.erase(files.begin(), files.begin() + 2);
+            } else if (files[0] == L"--handover" && files.size() >= 4) {
+                handFile = files[1]; handPath = files[2]; handName = files[3];
+                files.erase(files.begin(), files.begin() + 4);
+            } else break;
+        }
+    }
+    // the setting "each file in its own window" (read before the window and the other settings exist)
+    const bool ownWindows = GetPrivateProfileIntW(L"view", L"ownWindows", 0, settingsPath().c_str()) != 0;
+    HWND existing = menuCheckOut.empty() && !newWindow && !(ownWindows && !files.empty()) ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
     if (existing) {
         for (auto& f : files) {
             wchar_t full[MAX_PATH * 2];   // a relative name means this launch's folder, not the running copy's
@@ -6413,10 +6575,48 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     app.viewer2.setLayout(app.layout, app.cover);
     applyTheme();
     updateEmptyText();
+    if (hasAt) {   // a dragged-off tab: the new window where the mouse let go, its tab row under the pointer
+        RECT wr;
+        GetWindowRect(w, &wr);
+        HMONITOR mon = MonitorFromPoint(at, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi{sizeof(mi)};
+        GetMonitorInfoW(mon, &mi);
+        const int ww = wr.right - wr.left, wh = wr.bottom - wr.top;
+        const int x = std::clamp(static_cast<int>(at.x) - ww / 4, static_cast<int>(mi.rcWork.left), static_cast<int>(std::max(mi.rcWork.left, mi.rcWork.right - ww)));
+        const int y = std::clamp(static_cast<int>(at.y) - 16, static_cast<int>(mi.rcWork.top), static_cast<int>(std::max(mi.rcWork.top, mi.rcWork.bottom - wh)));
+        SetWindowPos(w, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    } else if (newWindow) {   // a little down and to the right of the window it came from, so both can be seen
+        HWND other = nullptr;   // another Feather PDF window (not this new one)
+        do other = FindWindowExW(nullptr, other, L"FeatherPdfMain", nullptr); while (other == w);
+        if (other) {
+            RECT orc;
+            GetWindowRect(other, &orc);
+            SetWindowPos(w, nullptr, orc.left + 40, orc.top + 40, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        }
+    }
     ShowWindow(w, show);
     UpdateWindow(w);
     relayoutChildren();
-    if (menuCheckOut.empty()) restoreSession();
+    if (menuCheckOut.empty() && !newWindow) restoreSession();
+    if (!handFile.empty()) {   // a tab handed over by another window, with its unsaved changes
+        std::vector<unsigned char> bytes;
+        auto doc = std::make_unique<Document>();
+        if (platform::readFile(handFile, bytes) && doc->load(std::move(bytes), {}) == OpenResult::Ok) {
+            doc->setPath(handPath);
+            if (handPath.empty()) doc->setName(handName);
+            doc->markModified();
+            addDocumentTab(std::move(doc));
+        }
+        DeleteFileW(handFile.c_str());
+    }
+    // each file in its own window: the first here, every other one in another new window
+    if (ownWindows && files.size() > 1 && menuCheckOut.empty()) {
+        for (size_t k = 1; k < files.size(); ++k) {
+            wchar_t full[MAX_PATH * 2];
+            launchWindow({GetFullPathNameW(files[k].c_str(), MAX_PATH * 2, full, nullptr) ? std::wstring(full) : files[k]});
+        }
+        files.resize(1);
+    }
     for (auto& f : files) openFile(f);
     SetFocus(w);
     if (app.checkUpdates && menuCheckOut.empty()) updater::checkInBackground(w, kMsgUpdateChecked, false);   // quietly, unless there is one

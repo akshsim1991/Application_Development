@@ -10,6 +10,7 @@ void FPInstallTabMenu();   // TabMenu.mm
 #import "FolderSearch.h"
 #import "Settings.h"
 #import "Trace.h"
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <algorithm>
 #include "buildinfo.h"
 #include <cstdio>
@@ -153,6 +154,23 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 - (IBAction)showSettings:(id)sender { FPShowSettings(); }
 
+// File > New Window (⇧⌘N): the PDFs chosen open in windows of their own, not as tabs (to see two at once, or one on each
+// screen). A window can still become a tab later (Window > Merge All Windows).
+- (IBAction)newWindow:(id)sender {
+    NSOpenPanel* p = [NSOpenPanel openPanel];
+    p.allowedContentTypes = @[ UTTypePDF ];
+    p.allowsMultipleSelection = YES;
+    p.title = @"Open in a new window";
+    p.prompt = @"Open in New Window";
+    if ([p runModal] != NSModalResponseOK) return;
+    FPOpenNextInOwnWindows(static_cast<NSInteger>(p.URLs.count));
+    for (NSURL* u in p.URLs)
+        [NSDocumentController.sharedDocumentController openDocumentWithContentsOfURL:u display:YES completionHandler:^(NSDocument* doc, BOOL wasOpen, NSError* e) {
+            if (e) [NSApp presentError:e];
+            if (wasOpen) [doc showWindows];
+        }];
+}
+
 // ---- reading colours: one setting, applied to every window at once ----
 
 - (IBAction)setPageColours:(NSMenuItem*)sender {
@@ -217,7 +235,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     centred.alignment = NSTextAlignmentCenter;
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
         NSAboutPanelOptionApplicationName : @"Feather PDF",
-        NSAboutPanelOptionApplicationVersion : [NSString stringWithFormat:@"Version %s, built %@", FEATHER_VERSION, [NSString stringWithUTF8String:FEATHER_BUILD_DATE_LONG]],
+        NSAboutPanelOptionApplicationVersion : [NSString stringWithFormat:@"Version %s \u201C%s\u201D, built %@", FEATHER_VERSION, FEATHER_CODENAME, [NSString stringWithUTF8String:FEATHER_BUILD_DATE_LONG]],
         NSAboutPanelOptionVersion : @"",
         NSAboutPanelOptionCredits : [[NSAttributedString alloc] initWithString:credits attributes:@{
             NSFontAttributeName : [NSFont systemFontOfSize:11], NSForegroundColorAttributeName : NSColor.labelColor,
@@ -267,6 +285,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     recent.submenu = [[NSMenu alloc] initWithTitle:@"Open Recent"];
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"New Window\u2026", @selector(newWindow:), @"n", NSEventModifierFlagCommand | NSEventModifierFlagShift);
     add(m, @"Close", @selector(performClose:), @"w");
     add(m, @"Open Directory Having This File", @selector(showFileInFolder:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Print\u2026", @selector(printDocument:), @"p");

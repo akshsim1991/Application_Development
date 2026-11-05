@@ -11,6 +11,8 @@ BOOL FPColourIcons();
 BOOL FPTabColours();
 BOOL FPTabNumbers();
 NSInteger FPDuplicateMode();  // 0 ask first, 1 go to its tab
+BOOL FPOwnWindows();          // files opened from Finder each get a window of their own (not a tab)
+void FPOpenNextInOwnWindows(NSInteger count);   // File > New Window: the next documents opened get windows of their own
 BOOL FPRestorePositions();
 NSInteger FPPagesKept();      // whole pages kept drawn in memory
 

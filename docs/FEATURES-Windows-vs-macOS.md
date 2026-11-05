@@ -3,7 +3,7 @@
 Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 111 of 111 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
+**macOS: 113 of 113 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -118,3 +118,5 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 109 | Tools | Set as the default PDF app | Yes | Yes | File > Set as Default PDF App |
 | 110 | Tools | Command line (export, compress, protect, redact, forms, PDF/A...) | Yes | Yes | sign, OCR, batch, search not yet |
 | 111 | Tools | Auto-update: Help > Update to new version, check at start, update now or later | Yes | Yes | new on both (Windows: being checked here; Mac: being checked); needs the public releases repository |
+| 112 | Reading | Separate windows: Open in new window (tab menu), a tab dragged off the tab row, New window | Yes | Yes | Mac: macOS window tabs (Window > Merge All Windows joins them again) |
+| 113 | Reading | Setting: each file opened in its own window | Yes | Yes |  |

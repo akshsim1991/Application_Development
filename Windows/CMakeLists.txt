@@ -53,7 +53,7 @@ add_executable(FeatherPDF WIN32
 
 target_include_directories(FeatherPDF PRIVATE src "${SHARED}" "${PDFIUM_DIR}/include" "${CMAKE_BINARY_DIR}")
 target_compile_definitions(FeatherPDF PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN
-  FEATHER_VERSION="${PROJECT_VERSION}" FEATHER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+  FEATHER_VERSION="${PROJECT_VERSION}" FEATHER_CODENAME="${FEATHER_CODENAME}" FEATHER_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
   FEATHER_VERSION_MINOR=${PROJECT_VERSION_MINOR} FEATHER_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 add_dependencies(FeatherPDF buildinfo)
 # The programs stay in the top of the build folder, where the tests and the installer look for them.

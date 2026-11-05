@@ -865,3 +865,4 @@ Two-sided printing with flip on long or short edge; the tab menu with Open direc
 
 ## Version 2.14.7 (both apps)
 About: Courtesy: Vinod Kumar C S, Athith D, Mamatha H R (checked in the Windows About box on a virtual screen).
+2.14.7 published; both downloads match latest.json.

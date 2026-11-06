@@ -72,6 +72,7 @@ final class FileLibrary: ObservableObject {
             return next
         }
         save()
+        NotificationCenter.default.post(name: .init("FileGladePathsMoved"), object: nil, userInfo: ["pairs": pairs])
     }
     func resolve(_ record: LibraryRecord) -> URL {
         if let data = record.bookmark {

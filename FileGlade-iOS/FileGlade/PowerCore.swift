@@ -58,21 +58,81 @@ struct WorkspaceTab: Identifiable {
     var title: String { url.lastPathComponent.isEmpty ? "Macintosh HD" : url.lastPathComponent }
 }
 
-struct RenameOptions: Equatable, Sendable {
+enum RenameCase: String, CaseIterable, Identifiable, Codable, Sendable { case keep = "Keep case", lower = "lowercase", upper = "UPPERCASE", title = "Title Case", sentence = "Sentence case"; var id: String { rawValue } }
+enum RenameSpaces: String, CaseIterable, Identifiable, Codable, Sendable { case keep = "Keep spaces", underscore = "Spaces to _", dash = "Spaces to -", remove = "Remove spaces"; var id: String { rawValue } }
+enum RenameDate: String, CaseIterable, Identifiable, Codable, Sendable { case none = "No date", modified = "Date modified", created = "Date created", today = "Today's date"; var id: String { rawValue } }
+
+struct RenameOptions: Equatable, Sendable, Codable {
     var find = ""
     var replace = ""
+    var useRegex = false
     var prefix = ""
     var suffix = ""
+    var caseMode: RenameCase = .keep
+    var spaces: RenameSpaces = .keep
+    var date: RenameDate = .none
+    var dateAtStart = true
     var numbered = false
     var start = 1
     var digits = 3
+    /// A readable message when the regular expression is invalid.
+    var regexError: String? {
+        guard useRegex, !find.isEmpty else { return nil }
+        do { _ = try NSRegularExpression(pattern: find) ; return nil } catch { return "Invalid regular expression." }
+    }
+    private func dateText(for url: URL) -> String? {
+        guard date != .none else { return nil }
+        let value: Date?
+        switch date {
+        case .modified: value = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        case .created: value = try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+        default: value = Date()
+        }
+        guard let value else { return nil }
+        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "en_US_POSIX"); formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: value)
+    }
     func name(for url: URL, index: Int) -> String {
         let isFolder = PowerFile(url).directory
         let ext = isFolder ? "" : url.pathExtension
         var stem = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
-        if !find.isEmpty { stem = stem.replacingOccurrences(of: find, with: replace) }
+        if !find.isEmpty {
+            if useRegex {
+                if let expression = try? NSRegularExpression(pattern: find) { stem = expression.stringByReplacingMatches(in: stem, range: NSRange(stem.startIndex..., in: stem), withTemplate: replace) }
+            } else { stem = stem.replacingOccurrences(of: find, with: replace) }
+        }
+        switch spaces {
+        case .keep: break
+        case .underscore: stem = stem.replacingOccurrences(of: " ", with: "_")
+        case .dash: stem = stem.replacingOccurrences(of: " ", with: "-")
+        case .remove: stem = stem.replacingOccurrences(of: " ", with: "")
+        }
+        switch caseMode {
+        case .keep: break
+        case .lower: stem = stem.lowercased()
+        case .upper: stem = stem.uppercased()
+        case .title: stem = stem.capitalized
+        case .sentence: stem = stem.prefix(1).uppercased() + stem.dropFirst().lowercased()
+        }
+        var result = prefix + stem + suffix
+        if let day = dateText(for: url) { result = dateAtStart ? day + "_" + result : result + "_" + day }
         let counter = numbered ? "_" + String(format: "%0*d", max(1, min(digits, 8)), start + index) : ""
-        return prefix + stem + suffix + counter + (ext.isEmpty ? "" : "." + ext)
+        return result + counter + (ext.isEmpty ? "" : "." + ext)
+    }
+}
+/// Reusable naming presets, stored locally.
+enum RenamePresets {
+    static func all() -> [String: RenameOptions] {
+        guard let data = UserDefaults.standard.data(forKey: "renamePresets"), let value = try? JSONDecoder().decode([String: RenameOptions].self, from: data) else { return [:] }
+        return value
+    }
+    static func save(_ name: String, _ options: RenameOptions) {
+        var current = all(); current[name] = options
+        if let data = try? JSONEncoder().encode(current) { UserDefaults.standard.set(data, forKey: "renamePresets") }
+    }
+    static func delete(_ name: String) {
+        var current = all(); current[name] = nil
+        if let data = try? JSONEncoder().encode(current) { UserDefaults.standard.set(data, forKey: "renamePresets") }
     }
 }
 struct RenamePair: Identifiable, Hashable, Sendable {

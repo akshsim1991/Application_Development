@@ -68,16 +68,31 @@ func fileCategory(_ url: URL) -> String {
 }
 struct FileGladeAboutView: View {
     @Environment(\.dismiss) private var dismiss
+    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.0" }
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: "folder.fill").font(.system(size: 60)).foregroundStyle(.blue)
-            Text("FileGlade").font(.title.bold())
-            Text("V2.0").font(.headline)
-            Text("All your files. One clear view.").foregroundStyle(.secondary)
-            Text("Designed by: Akshaya Simha")
-            Text("ZIP support: ZIPFoundation · MIT License").font(.caption).foregroundStyle(.secondary)
-            Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
-        }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(spacing: 14) {
+                    Image(systemName: "folder.fill").font(.system(size: 56)).foregroundStyle(.blue).padding(.top, 8)
+                    Text("FileGlade").font(.largeTitle.bold())
+                    Text("Version \(version)").font(.subheadline).foregroundStyle(.secondary)
+                    Text("All your files. One clear view.").font(.headline)
+                    Divider().padding(.vertical, 4)
+                    section("What FileGlade does", "FileGlade is a free file manager for Mac and iPhone. It brings your files, folders, cloud folders and drives into one searchable dashboard, so you can find, organize and manage them without hunting through folders.\n\nBrowse with tabs and two side-by-side panes, search by name, type, date, size and location, and save searches as smart folders. Copy and move with progress, conflict choices and undo. Rename many files at once, compare and sync folders, browse inside archives, search inside documents, preview images, PDFs, audio, video and text, find duplicates, check storage use, combine PDFs, resize images and more.\n\nEverything happens on your own device. FileGlade has no account, no advertising and no tracking, and it contacts the internet only to look for new versions of itself.")
+                    section("Designed and developed by", "Akshaya Simha")
+                    section("Built with", "Apple SwiftUI, AppKit, PDFKit, AVKit, Quick Look and CryptoKit\nSQLite, for the fast local file index\nZIPFoundation, for ZIP archives (MIT License, included with the app)\nlibarchive, through the bsdtar tool included with macOS, for browsing and extracting archives\nGitHub, which hosts FileGlade's updates")
+                    Text("© 2026 Akshaya Simha. Apple, Mac, iPhone and other product names are trademarks of their respective owners.").font(.caption2).foregroundStyle(.secondary).multilineTextAlignment(.center).padding(.top, 4)
+                }.padding(28).frame(maxWidth: .infinity)
+            }
+            Divider()
+            HStack { Spacer(); Button("Done") { dismiss() }.keyboardShortcut(.defaultAction).buttonStyle(.borderedProminent) }.padding(12)
+        }.frame(minWidth: 440, minHeight: 520)
+    }
+    private func section(_ title: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title).font(.headline)
+            Text(text).font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -174,6 +189,8 @@ final class DashboardIndex {
         try execute("CREATE TABLE IF NOT EXISTS items (path TEXT PRIMARY KEY, root_id TEXT NOT NULL, relative_path TEXT NOT NULL, name TEXT NOT NULL, search TEXT NOT NULL, folder INTEGER NOT NULL, size INTEGER NOT NULL, modified REAL NOT NULL, category TEXT NOT NULL, version TEXT NOT NULL)")
         try execute("CREATE INDEX IF NOT EXISTS items_by_root ON items(root_id)")
         try execute("CREATE INDEX IF NOT EXISTS items_by_name ON items(folder DESC, name COLLATE NOCASE)")
+        try execute("CREATE INDEX IF NOT EXISTS items_by_modified ON items(modified DESC)")
+        try execute("CREATE INDEX IF NOT EXISTS items_by_size ON items(size DESC)")
     }
     deinit { sqlite3_close(db) }
     private func error() -> Error { powerError("Dashboard indexing: " + String(cString: sqlite3_errmsg(db))) }
@@ -384,6 +401,8 @@ final class DashboardIndex {
     }
     func clearFilters() { query = ""; kind = .all; filters = DashboardFilters() }
     private var limit = 500
+    private var lastFinished = Date.distantPast
+    private var lastProgressReload = Date.distantPast
     private var worker: Task<Void, Never>?
     private var queryTask: Task<Void, Never>?
     private var queryTicket = UUID()
@@ -397,6 +416,8 @@ final class DashboardIndex {
     func refresh(_ sources: [DashboardRoot], force: Bool = false) {
         let sources = DashboardIndex.uniqueRoots(sources)
         if paused && !force && sources == roots { return }
+        // A full re-scan is expensive. Reuse recent results unless something changed or a refresh was requested.
+        if !force && !scanning && sources == roots && Date().timeIntervalSince(lastFinished) < 300 { return }
         if scanning {
             if sources != roots || force { pendingRoots = sources; worker?.cancel() }
             return
@@ -413,7 +434,11 @@ final class DashboardIndex {
                     try Task.checkCancellation()
                     await self?.setStatus("Indexing \(source.name)…")
                     do {
-                        try index.scan(source, hidden: hidden) { [weak self] message in Task { @MainActor in self?.status = "Indexing " + message; self?.reloadResults() } }
+                        try index.scan(source, hidden: hidden) { [weak self] message in Task { @MainActor in
+                            self?.status = "Indexing " + message
+                            // Refreshing the lists is costly; do it at most every two seconds while scanning.
+                            if let self, Date().timeIntervalSince(self.lastProgressReload) > 2 { self.lastProgressReload = Date(); self.reloadResults() }
+                        } }
                     } catch is CancellationError { throw CancellationError() }
                     catch { index.recordIssue(source, error.localizedDescription) }
                 }
@@ -425,7 +450,7 @@ final class DashboardIndex {
     private func setStatus(_ text: String) { status = text }
     private func setError(_ text: String) { error = text }
     private func finished() {
-        scanning = false; worker = nil; status = paused ? "Indexing paused" : "Up to date"
+        scanning = false; worker = nil; status = paused ? "Indexing paused" : "Up to date"; lastFinished = Date()
         reloadResults()
         if let pendingRoots { self.pendingRoots = nil; refresh(pendingRoots) }
     }
@@ -465,7 +490,7 @@ struct UnifiedDashboardView: View {
     @State private var visible = false
     @State private var showStatus = false
     @State private var showAbout = false
-    private let timer = Timer.publish(every: 30, on: .main, in: .common).autoconnect()
+    private let timer = Timer.publish(every: 120, on: .main, in: .common).autoconnect()
     private var signature: String { roots.map { $0.id + "|" + $0.url.path }.sorted().joined(separator: "\n") }
     var body: some View {
         VStack(spacing: 0) {

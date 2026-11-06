@@ -255,6 +255,7 @@ final class Explorer: ObservableObject {
         if favorites.contains(directory) { favorites.removeAll { $0 == directory } } else { favorites.append(directory) }
         saveFavorites()
     }
+    func replaceFavorite(_ old: URL, with new: URL) { if let i = favorites.firstIndex(of: old) { favorites[i] = new; saveFavorites() } }
     func removeFavorite(_ url: URL) { favorites.removeAll { $0 == url }; saveFavorites() }
     private func saveFavorites() { UserDefaults.standard.set(favorites.map(\.path), forKey: "favorites") }
     func toggleHidden() { showHidden.toggle(); UserDefaults.standard.set(showHidden, forKey: "showHidden"); refresh() }
@@ -372,7 +373,7 @@ final class Explorer: ObservableObject {
         FileLibrary.shared.log("Delete permanently", detail: "\(selected.count - errors.count) items deleted · \(errors.count) failed")
         if !errors.isEmpty { failure = errors.joined(separator: "\n\n") }
     }
-    private func prompt(title: String, message: String, value: String, action: String) -> String? {
+    func prompt(title: String, message: String, value: String, action: String) -> String? {
         let alert = NSAlert(); alert.messageText = title; alert.informativeText = message
         let field = NSTextField(string: value); field.frame = NSRect(x: 0, y: 0, width: 360, height: 24)
         alert.accessoryView = field; alert.addButton(withTitle: action); alert.addButton(withTitle: "Cancel")
@@ -401,8 +402,8 @@ struct FileIcon: View {
 }
 
 enum ExtraSheet: Identifiable {
-    case compare, archive(URL), docs
-    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs" } }
+    case compare, archive(URL), docs, collection(UUID)
+    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString } }
 }
 
 struct ExplorerView: View {
@@ -410,6 +411,7 @@ struct ExplorerView: View {
     var embedded = false
     @ObservedObject private var panes = PaneState.shared
     @ObservedObject private var basket = BasketStore.shared
+    @ObservedObject private var collectionStore = CollectionStore.shared
     @State private var extra: ExtraSheet?
     @State private var showBasket = false
     @ObservedObject private var library = FileLibrary.shared
@@ -473,6 +475,7 @@ struct ExplorerView: View {
             switch item {
             case .compare: CompareView(left: model.directory, right: panes.second.directory) { model.refresh(); panes.second.refresh() }
             case .archive(let url): ArchiveBrowserView(archive: url) { out in acting.refresh(); acting.selection = [out] }
+            case .collection(let id): CollectionView(id: id) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
             case .docs: DocSearchView(folder: acting.directory) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
             }
         }
@@ -482,6 +485,7 @@ struct ExplorerView: View {
             case "docs": extra = .docs
             case "archive": if let url = note.userInfo?["url"] as? URL { extra = .archive(url) }
             case "basket": showBasket.toggle()
+            case "collection": if let id = note.userInfo?["id"] as? UUID { extra = .collection(id) }
             default: break
             }
         }
@@ -606,10 +610,21 @@ struct ExplorerView: View {
                     }.buttonStyle(.plain).help("Smart folder: a saved search. Nothing is moved.")
                     .contextMenu { if !smartStore.isBuiltIn(search) { Button("Remove smart folder") { smartStore.remove(search) } } }
                 }
+                sectionTitle("Collections").padding(.top, 20)
+                if collectionStore.collections.isEmpty { Text("Group files from different folders with Tools ▸ New Collection.").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.vertical, 4) }
+                ForEach(collectionStore.collections) { collection in
+                    Button { extra = .collection(collection.id) } label: {
+                        HStack(spacing: 11) { Image(systemName: "square.stack").font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 18); Text(collection.name).font(.system(size: 12)).lineLimit(1); Spacer(minLength: 0); Text("\(collection.items.count)").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                            .padding(.horizontal, 12).frame(height: 32).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                }
                 sectionTitle("Pinned").padding(.top, 20)
                 if model.favorites.isEmpty { Text("Pin folders from the ★ button\nto keep them close.").font(.system(size: 11)).foregroundStyle(.tertiary).lineSpacing(4).padding(.horizontal, 12).padding(.vertical, 5) }
                 ForEach(model.favorites, id: \.self) { url in
-                    sideItem(url.lastPathComponent, "pin", url).contextMenu { Button("Unpin") { model.removeFavorite(url) } }
+                    sideItem(url.lastPathComponent, FileManager.default.fileExists(atPath: url.path) ? "pin" : "exclamationmark.triangle", url).contextMenu {
+                        if !FileManager.default.fileExists(atPath: url.path) { Button("Locate…") { let panel = NSOpenPanel(); panel.canChooseDirectories = true; panel.canChooseFiles = false; panel.message = "Choose where “\(url.lastPathComponent)” is now."; if panel.runModal() == .OK, let new = panel.url { model.replaceFavorite(url, with: new) } } }
+                        Button("Unpin") { model.removeFavorite(url) }
+                    }
                 }
                 sectionTitle("Locations").padding(.top, 20)
                 sideItem("Applications", "square.stack.3d.up", URL(fileURLWithPath: "/Applications"))
@@ -740,6 +755,11 @@ struct ExplorerView: View {
         Button("Power tools for selection…") { contextSelect(entry); openTools() }
         Button("Copy path") { copyFileText(entry.url.path) }
         Button("Add to Basket") { contextSelect(entry); basket.add(acting.chosen.map(\.url)) }
+        Menu("Add to Collection") {
+            ForEach(collectionStore.collections) { collection in Button(collection.name) { contextSelect(entry); collectionStore.add(acting.chosen.map(\.url), to: collection.id) } }
+            if !collectionStore.collections.isEmpty { Divider() }
+            Button("New Collection…") { contextSelect(entry); if let name = acting.prompt(title: "New collection", message: "Name the collection. Files stay where they are.", value: "New collection", action: "Create"), !name.isEmpty { _ = collectionStore.create(name, with: acting.chosen.map(\.url)) } }
+        }
         if panes.dual { Button("Copy to Other Pane") { contextSelect(entry); panes.transferToOther(move: false) }; Button("Move to Other Pane") { contextSelect(entry); panes.transferToOther(move: true) } }
         if ArchiveTool.isArchive(entry.url) { Button("Browse Archive…") { extra = .archive(entry.url) } }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
@@ -775,6 +795,7 @@ struct ExplorerView: View {
                     detail("MODIFIED", entry.modified.formatted(date: .abbreviated, time: .shortened))
                     detail("EXTENSION", entry.url.pathExtension.isEmpty ? "None" : entry.url.pathExtension.uppercased())
                     if entry.isDirectory { FolderSizeRow(url: entry.url) }
+                    TagsAndNote(url: entry.url)
                     Button { acting.openEntry(entry) } label: { Label(entry.isDirectory ? "Open folder" : "Open file", systemImage: "arrow.up.forward.square").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                     Button("Show in Finder", action: acting.reveal).buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(accent)
                 } else {
@@ -817,6 +838,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NSApp.activate(ignoringOtherApps: true)
         offerFullDiskAccess()
         Updater.shared.checkAutomatically()
+        AutomationStore.shared.start()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, NSApp.keyWindow === self.window, self.textResponder == nil else { return event }
             let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -859,7 +881,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         pane.addItem(item("Add Selection to Basket", #selector(addToBasket), "b")); pane.addItem(item("Show Basket", #selector(showBasket)))
         pane.addItem(.separator()); pane.addItem(item("Browse Archive…", #selector(browseArchive), "b", modifiers: [.command, .option])); pane.addItem(item("Search Inside Documents…", #selector(docSearch), "f", modifiers: [.command, .shift]))
         app.insertItem(item("Keyboard Shortcuts…", #selector(shortcutsWindow), ","), at: 1)
-        for (title, menu) in [("FileGlade", app), ("File", file), ("Edit", edit), ("View", view), ("Go", go), ("Pane", pane)] { let root = NSMenuItem(title: title, action: nil, keyEquivalent: ""); root.submenu = menu; main.addItem(root) }
+        let tools = NSMenu()
+        tools.addItem(item("Automation Rules…", #selector(automationWindow))); tools.addItem(item("Storage Analyzer…", #selector(storageWindow))); tools.addItem(item("Find Similar Photos…", #selector(similarWindow)))
+        tools.addItem(.separator()); tools.addItem(item("New Collection…", #selector(newCollection))); tools.addItem(item("Add Selection to Collection…", #selector(addToCollection)))
+        tools.addItem(.separator()); tools.addItem(item("Back Up Settings…", #selector(backupSettings))); tools.addItem(item("Restore Settings…", #selector(restoreSettings)))
+        for (title, menu) in [("FileGlade", app), ("File", file), ("Edit", edit), ("View", view), ("Go", go), ("Pane", pane), ("Tools", tools)] { let root = NSMenuItem(title: title, action: nil, keyEquivalent: ""); root.submenu = menu; main.addItem(root) }
         ShortcutStore.shared.apply(to: main)
         NSApp.mainMenu = main
     }
@@ -882,6 +908,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         }
     }
     @objc func quickOpen() { NotificationCenter.default.post(name: .init("FileGladeSwitcher"), object: nil) }
+    private var toolWindows: [String: NSWindow] = [:]
+    private func showToolWindow<Content: View>(_ id: String, _ title: String, _ size: NSSize, fresh: Bool = false, _ content: Content) {
+        if let existing = toolWindows[id] { if fresh { existing.close() } else { existing.makeKeyAndOrderFront(nil); return } }
+        let panel = NSWindow(contentViewController: NSHostingController(rootView: content))
+        panel.title = title; panel.styleMask = [.titled, .closable, .resizable, .miniaturizable]; panel.isReleasedWhenClosed = false
+        panel.setContentSize(size); panel.center()
+        toolWindows[id] = panel
+        NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in if self?.toolWindows[id] === panel { self?.toolWindows[id] = nil } }
+        panel.makeKeyAndOrderFront(nil)
+    }
+    @objc func automationWindow() { showToolWindow("automation", "Automation Rules", NSSize(width: 900, height: 640), AutomationView()) }
+    @objc func storageWindow() { let m = model; showToolWindow("storage", "Storage Analyzer", NSSize(width: 800, height: 600), fresh: true, StorageAnalyzerView(folder: m.directory) { url in m.navigate(url.deletingLastPathComponent()); m.selection = [powerURL(url)] }) }
+    @objc func similarWindow() { let m = model; showToolWindow("similar", "Similar Photos", NSSize(width: 820, height: 600), fresh: true, SimilarPhotosView(folder: m.directory) { m.refresh() }) }
+    @objc func newCollection() {
+        guard let name = model.prompt(title: "New collection", message: "Name the collection. Files stay where they are; the selected files are added.", value: "New collection", action: "Create"), !name.isEmpty else { return }
+        let id = CollectionStore.shared.create(name, with: model.chosen.map(\.url))
+        NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "collection", userInfo: ["id": id])
+    }
+    @objc func addToCollection() {
+        let store = CollectionStore.shared
+        guard !store.collections.isEmpty else { newCollection(); return }
+        guard !model.chosen.isEmpty else { model.failure = "Select files first."; return }
+        let alert = NSAlert(); alert.messageText = "Add \(model.chosen.count) item\(model.chosen.count == 1 ? "" : "s") to a collection"
+        let popup = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 260, height: 26)); popup.addItems(withTitles: store.collections.map(\.name)); alert.accessoryView = popup
+        alert.addButton(withTitle: "Add"); alert.addButton(withTitle: "Cancel")
+        if alert.runModal() == .alertFirstButtonReturn { store.add(model.chosen.map(\.url), to: store.collections[popup.indexOfSelectedItem].id) }
+    }
+    @objc func backupSettings() { Backup.saveWithPanel() }
+    @objc func restoreSettings() { Backup.restoreWithPanel() }
     @objc func toggleDual() { PaneState.shared.toggle() }
     @objc func switchPane() { if textResponder == nil { PaneState.shared.switchPane() } }
     @objc func copyToOther() { PaneState.shared.transferToOther(move: false) }
@@ -1026,6 +1081,27 @@ if CommandLine.arguments.contains("--self-test") {
         fputs("Timing: 5,000-file folder opened, filtered and re-sorted in \(String(format: "%.2f", elapsed)) s (\(filteredCount) matched)\n", stderr)
         precondition(elapsed < 3.0 && m.visible.count == 5000, "Large folder is too slow")
         m.navigate(root)
+        // Automation: a rule moves matching old files and is reversible.
+        let inbox = root2(fm, "inbox"), sorted = root2(fm, "sorted")
+        let invoice = inbox.appendingPathComponent("invoice march.pdf"); try Data("pdf".utf8).write(to: invoice)
+        try fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86_400)], ofItemAtPath: invoice.path)
+        var rule = AutomationRule(); rule.name = "Invoices"; rule.folder = inbox.path
+        rule.conditions = [RuleCondition(kind: .nameContains, text: "invoice", number: 0), RuleCondition(kind: .extensionIs, text: "pdf", number: 0)]
+        rule.actions = [RuleAction(kind: .moveTo, text: sorted.path), RuleAction(kind: .addTag, text: "Billing")]
+        let plan = AutomationEngine.preview([rule]); precondition(plan.count == 1, "Rule preview failed")
+        precondition(AutomationEngine.run(plan, title: "test").done == 1 && fm.fileExists(atPath: sorted.appendingPathComponent("invoice march.pdf").path), "Rule run failed")
+        precondition(AutomationEngine.tags(of: sorted.appendingPathComponent("invoice march.pdf")).contains("Billing"), "Tagging failed")
+        precondition(TransferManager.shared.undoLast().isEmpty && fm.fileExists(atPath: invoice.path), "Undo of rule failed")
+        // Backup round trip.
+        let suite = UserDefaults(suiteName: "fileglade.selftest")!; suite.removePersistentDomain(forName: "fileglade.selftest")
+        suite.set("windows", forKey: "shortcutProfile")
+        let restored = UserDefaults(suiteName: "fileglade.selftest2")!; restored.removePersistentDomain(forName: "fileglade.selftest2")
+        let restoredCount = try Backup.restore(Backup.export(from: suite), into: restored)
+        precondition(restoredCount >= 1 && restored.string(forKey: "shortcutProfile") == "windows", "Backup round trip failed")
+        suite.removePersistentDomain(forName: "fileglade.selftest"); restored.removePersistentDomain(forName: "fileglade.selftest2")
+        // Treemap rectangles stay inside the area and add up.
+        let boxes = Treemap.layout([50, 30, 20], in: CGRect(x: 0, y: 0, width: 100, height: 100))
+        precondition(abs(boxes.reduce(0) { $0 + $1.width * $1.height } - 10_000) < 1, "Treemap failed")
         // Keyboard layouts: Mac keeps Return = rename; Windows uses Enter = open and F2 = rename.
         let menu = NSMenu(), sub = NSMenu()
         let renameItem = NSMenuItem(title: "Rename…", action: Selector(("rename")), keyEquivalent: "\r"); renameItem.keyEquivalentModifierMask = []

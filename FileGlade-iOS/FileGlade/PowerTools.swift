@@ -30,7 +30,10 @@ struct FileActivity: Identifiable, Codable {
 }
 final class FileLibrary: ObservableObject {
     static let shared = FileLibrary()
-    @Published private(set) var records: [LibraryRecord] = []
+    @Published private(set) var records: [LibraryRecord] = [] { didSet { index = Dictionary(records.map { ($0.path, $0) }, uniquingKeysWith: { first, _ in first }) } }
+    /// Path lookup, so checking a file's star or label is instant instead of a scan plus a disk call.
+    private var index: [String: LibraryRecord] = [:]
+    private var saveWork: DispatchWorkItem?
     @Published private(set) var activities: [FileActivity] = []
     @Published var lastRename: [RenamePair] = []
     static let labels = ["None", "Red", "Orange", "Green", "Blue", "Purple"]
@@ -40,7 +43,7 @@ final class FileLibrary: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: "FileGlade.activity.v2"), let value = try? JSONDecoder().decode([FileActivity].self, from: data) { activities = value }
     }
     deinit { for url in scopes { url.stopAccessingSecurityScopedResource() } }
-    func record(_ url: URL) -> LibraryRecord? { records.first { $0.path == powerURL(url).path } }
+    func record(_ url: URL) -> LibraryRecord? { index[url.path] }
     func isStarred(_ url: URL) -> Bool { record(url)?.starred ?? false }
     func label(_ url: URL) -> String { record(url)?.label ?? "None" }
     func color(_ url: URL) -> Color? {
@@ -48,10 +51,12 @@ final class FileLibrary: ObservableObject {
     }
     private func update(_ url: URL, edit: (inout LibraryRecord) -> Void) {
         let path = powerURL(url).path
-        let index = records.firstIndex { $0.path == path }
-        var entry = index.map { records[$0] } ?? LibraryRecord(path: path, bookmark: try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil))
+        let position = records.firstIndex { $0.path == path }
+        var entry = position.map { records[$0] } ?? LibraryRecord(path: path, bookmark: nil)
         edit(&entry)
-        if let index { records[index] = entry } else { records.append(entry) }
+        // Bookmarks are only needed for items you starred or labeled; skipping them keeps opening folders fast.
+        if entry.bookmark == nil && (entry.starred || entry.label != "None") { entry.bookmark = try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil) }
+        if let position { records[position] = entry } else { records.append(entry) }
         save()
     }
     func toggleStar(_ url: URL) { update(url) { $0.starred.toggle() } }
@@ -67,6 +72,7 @@ final class FileLibrary: ObservableObject {
             return next
         }
         save()
+        NotificationCenter.default.post(name: .init("FileGladePathsMoved"), object: nil, userInfo: ["pairs": pairs])
     }
     func resolve(_ record: LibraryRecord) -> URL {
         if let data = record.bookmark {
@@ -87,7 +93,12 @@ final class FileLibrary: ObservableObject {
         let pinned = records.filter { $0.starred || $0.label != "None" }
         let recent = records.filter { !$0.starred && $0.label == "None" }.sorted { $0.opened > $1.opened }.prefix(100)
         records = pinned + recent
-        if let data = try? JSONEncoder().encode(records) { UserDefaults.standard.set(data, forKey: "FileGlade.library.v2") }
+        // Writing to disk is batched, so rapid navigation does not stall on it.
+        saveWork?.cancel()
+        let snapshot = records
+        let work = DispatchWorkItem { if let data = try? JSONEncoder().encode(snapshot) { UserDefaults.standard.set(data, forKey: "FileGlade.library.v2") } }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6, execute: work)
     }
 }
 
@@ -188,15 +199,35 @@ struct BatchRenameView: View {
     let urls: [URL]
     let onProduced: ([URL]) -> Void
     @State private var options = RenameOptions()
+    @State private var presets = RenamePresets.all()
+    @State private var presetName = ""
     @StateObject private var job = PowerJob()
     @ObservedObject private var library = FileLibrary.shared
     private var plan: [RenamePair] { urls.enumerated().map { RenamePair(source: $0.element, destination: $0.element.deletingLastPathComponent().appendingPathComponent(options.name(for: $0.element, index: $0.offset))) } }
-    private var validation: String? { do { try PowerFS.validateRename(plan); return nil } catch { return error.localizedDescription } }
+    private var validation: String? { if let regex = options.regexError { return regex }; do { try PowerFS.validateRename(plan); return nil } catch { return error.localizedDescription } }
     var body: some View {
         Form {
+            Section("Presets") {
+                HStack {
+                    Menu("Load preset") {
+                        if presets.isEmpty { Text("No saved presets") }
+                        ForEach(presets.keys.sorted(), id: \.self) { name in Button(name) { options = presets[name] ?? options } }
+                        if !presets.isEmpty { Divider(); Menu("Delete preset") { ForEach(presets.keys.sorted(), id: \.self) { name in Button(name, role: .destructive) { RenamePresets.delete(name); presets = RenamePresets.all() } } } }
+                    }
+                    Spacer()
+                    TextField("Preset name", text: $presetName).frame(maxWidth: 160)
+                    Button("Save preset") { let name = presetName.trimmingCharacters(in: .whitespaces); guard !name.isEmpty else { return }; RenamePresets.save(name, options); presets = RenamePresets.all(); presetName = "" }.disabled(presetName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
             Section("Naming rules · extensions are preserved") {
-                TextField("Find text", text: $options.find); TextField("Replace with", text: $options.replace)
+                TextField(options.useRegex ? "Find (regular expression)" : "Find text", text: $options.find); TextField(options.useRegex ? "Replace with ($1 for groups)" : "Replace with", text: $options.replace)
+                Toggle("Use regular expressions", isOn: $options.useRegex)
+                if let error = options.regexError { Text(error).font(.caption).foregroundStyle(.red) }
                 TextField("Prefix", text: $options.prefix); TextField("Suffix", text: $options.suffix)
+                Picker("Letter case", selection: $options.caseMode) { ForEach(RenameCase.allCases) { Text($0.rawValue).tag($0) } }
+                Picker("Spaces", selection: $options.spaces) { ForEach(RenameSpaces.allCases) { Text($0.rawValue).tag($0) } }
+                Picker("Insert date", selection: $options.date) { ForEach(RenameDate.allCases) { Text($0.rawValue).tag($0) } }
+                if options.date != .none { Picker("Date position", selection: $options.dateAtStart) { Text("Before name").tag(true); Text("After name").tag(false) } }
                 Toggle("Append a number", isOn: $options.numbered)
                 if options.numbered { Stepper("Start: \(options.start)", value: $options.start, in: 0...999999); Stepper("Digits: \(options.digits)", value: $options.digits, in: 1...8) }
             }.disabled(job.running)

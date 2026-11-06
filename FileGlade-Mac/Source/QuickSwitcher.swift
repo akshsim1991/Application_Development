@@ -64,6 +64,7 @@ struct QuickSwitcher: View {
         ]
         for command in commands where q.isEmpty || command.0.lowercased().contains(q) { list.append(SwitcherResult(title: command.0, detail: "Command", icon: command.1, action: command.2)) }
         for tab in model.tabs where !q.isEmpty && tab.title.lowercased().contains(q) { list.append(SwitcherResult(title: tab.title, detail: "Open tab", icon: "square.on.square", action: { model.activateTab(tab.id) })) }
+        if q.count >= 2 { for url in NotesStore.shared.search(q).prefix(5) { list.append(SwitcherResult(title: url.lastPathComponent, detail: "Note: " + NotesStore.shared.note(for: url).prefix(60), icon: "note.text", action: { model.navigate(url.deletingLastPathComponent()); model.selection = [url] })) } }
         for item in indexed {
             list.append(SwitcherResult(title: item.name, detail: item.url.deletingLastPathComponent().path, icon: item.folder ? "folder" : "doc", action: {
                 if item.folder { model.navigate(item.url) } else { model.navigate(item.url.deletingLastPathComponent()); model.selection = [item.url]; NSWorkspace.shared.open(item.url) }

@@ -7,7 +7,7 @@ trap 'rm -rf "$STAGING"' EXIT
 APP="$STAGING/FileGlade.app"
 CACHE="${TMPDIR:-/tmp}/FileGlade-swift-cache"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources" "$CACHE"
-xcrun swiftc -swift-version 5 -O -module-cache-path "$CACHE" -target "$(uname -m)-apple-macosx13.0" Source/main.swift Source/PowerCore.swift Source/PowerTools.swift Source/Dashboard.swift Source/FileOps.swift Source/Preview.swift Source/QuickSwitcher.swift Source/Updater.swift Source/Panes.swift Source/Compare.swift Source/Archives.swift Source/DocSearch.swift Source/Shortcuts.swift Source/ZIPFoundation/*.swift -o "$APP/Contents/MacOS/FileGlade" -framework AppKit -framework SwiftUI -framework UniformTypeIdentifiers -framework CryptoKit -framework PDFKit -framework ImageIO -framework AVKit -framework AVFoundation -framework QuickLookThumbnailing -lcompression -lsqlite3
+xcrun swiftc -swift-version 5 -O -module-cache-path "$CACHE" -target "$(uname -m)-apple-macosx13.0" Source/main.swift Source/PowerCore.swift Source/PowerTools.swift Source/Dashboard.swift Source/FileOps.swift Source/Preview.swift Source/QuickSwitcher.swift Source/Updater.swift Source/Panes.swift Source/Compare.swift Source/Archives.swift Source/DocSearch.swift Source/Shortcuts.swift Source/Automation.swift Source/Collections.swift Source/Storage.swift Source/Backup.swift Source/ZIPFoundation/*.swift -o "$APP/Contents/MacOS/FileGlade" -framework AppKit -framework SwiftUI -framework UniformTypeIdentifiers -framework CryptoKit -framework PDFKit -framework ImageIO -framework AVKit -framework AVFoundation -framework QuickLookThumbnailing -framework Vision -lcompression -lsqlite3
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -15,8 +15,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>FileGlade</string>
 <key>CFBundleDisplayName</key><string>FileGlade</string>
 <key>CFBundleIdentifier</key><string>local.fileglade.explorer</string>
-<key>CFBundleVersion</key><string>6</string>
-<key>CFBundleShortVersionString</key><string>3.0</string>
+<key>CFBundleVersion</key><string>7</string>
+<key>CFBundleShortVersionString</key><string>3.1</string>
 <key>CFBundleExecutable</key><string>FileGlade</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>

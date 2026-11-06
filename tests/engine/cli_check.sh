@@ -166,6 +166,22 @@ assert [str(f.TU) for f in p.Root.AcroForm.Fields]==['full name'] and p.pages[0]
 run --access "$W/tagged.pdf" "$W/acc2.txt"
 check "a tagged document: tags pass, a picture without a description fails" "grep -q '^tagged|passed' '$W/acc2.txt' && grep -q '^title|passed|.*Quarterly Report' '$W/acc2.txt' && grep -q '^alt|failed|1 picture has no alternate text' '$W/acc2.txt'"
 
+echo "comment threads and review"
+run --review "$W/search.pdf" "$W/rev.txt" "$W/rev.pdf"
+check "two comments found, all changes made" "grep -q '^threads=2$' '$W/rev.txt' && grep -q '^done=1111 ' '$W/rev.txt'"
+check "the summary: replies in order, statuses" "grep -q 'Accepted:\*\* 1 .*Rejected:\*\* 1 .*Open:\*\* 0' '$W/rev.txt' && grep -A3 'Accepted (Asha)' '$W/rev.txt' | grep -q 'cat photo' && grep -q 'Asha.*: Agreed, please change it.' '$W/rev.txt' && grep -q 'Ravi.*: Done in version 2.' '$W/rev.txt' && grep -q 'Rejected (Ravi)' '$W/rev.txt'"
+check "stored as the PDF standard has it (pikepdf)" "python3 -c \"
+import pikepdf;p=pikepdf.open('$W/rev.pdf')
+a=[x for pg in p.pages for x in pg.get('/Annots',[])]
+top=[x for x in a if '/IRT' not in x]
+rep=[x for x in a if '/IRT' in x and '/State' not in x]
+st=[x for x in a if '/State' in x]
+assert len(top)==2 and len(rep)==2 and len(st)==2
+assert all(r.IRT.objgen==top[0].objgen and r.RT=='/R' for r in rep)
+assert sorted(str(x.State) for x in st)==['Accepted','Rejected'] and all(str(x.StateModel)=='Review' for x in st)\""
+run --review "$W/rev.pdf" "$W/rev2.txt"
+check "read back from the saved file" "grep -q 'Comments:\*\* 2 (2 replies)' '$W/rev2.txt'"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

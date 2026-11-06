@@ -47,6 +47,7 @@
 #include "attach.hpp"
 #include "webview.hpp"
 #include "access.hpp"
+#include "review.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -179,7 +180,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
+std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void reviewDialog(Document& d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -537,7 +538,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, P_INTERLEAVE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, N_REVIEW, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -934,24 +935,100 @@ bool saveDocument(Document& d, const std::wstring& path) {
     return false;
 }
 
+// ---- comment threads and review ----
+
+std::wstring reviewerName() {
+    static std::wstring name;
+    if (name.empty()) {
+        wchar_t b[256];
+        DWORD n = 256;
+        name = GetUserNameW(b, &n) ? std::wstring(b) : L"Reviewer";
+    }
+    return name;
+}
+
+void reviewDialog(Document& d) {
+    const auto all = review::threads(d);
+    if (all.empty()) { MessageBoxW(app.wnd, L"This document has no comments yet. Add one with Comment, or highlight some text.", L"Comments and review", MB_OK | MB_ICONINFORMATION); return; }
+    std::wstring list;
+    std::vector<std::wstring> labels;
+    for (size_t i = 0; i < all.size(); ++i) {
+        const auto& t = all[i];
+        std::wstring line = std::to_wstring(i + 1) + L". Page " + std::to_wstring(t.page + 1) + L" \u00B7 " + t.kind + (t.author.empty() ? L"" : L" by " + t.author) +
+                            L" \u00B7 " + (t.state == review::State::None ? L"Open" : review::stateName(t.state));
+        std::wstring body = !t.text.empty() ? t.text : t.quoted;
+        list += line + L"\n    " + (body.size() > 120 ? body.substr(0, 120) + L"\u2026" : body) + L"\n";
+        for (const auto& r : t.replies) list += L"      reply by " + r.author + L": " + (r.text.size() > 100 ? r.text.substr(0, 100) + L"\u2026" : r.text) + L"\n";
+        list += L"\n";
+        labels.push_back(std::to_wstring(i + 1) + L". Page " + std::to_wstring(t.page + 1) + L": " + (body.size() > 40 ? body.substr(0, 40) + L"\u2026" : body));
+    }
+    std::vector<FormField> f(5);
+    f[0] = {FormField::Note, L"", {}, list};
+    f[1] = {FormField::Choice, L"Comment:", labels, L"", 0};
+    f[2] = {FormField::Choice, L"Do:", {L"Reply", L"Mark it Accepted", L"Mark it Rejected", L"Mark it Completed", L"Mark it Cancelled", L"Clear its status",
+                                       L"Open the review summary (all comments)", L"Save the review summary as a file..."}, L"", 0};
+    f[3] = {FormField::Text, L"Reply:", {}, L""};
+    f[4] = {FormField::Text, L"Your name:", {}, reviewerName()};
+    if (!showForm(app.wnd, app.inst, L"Comments and review", f, L"OK", [](const std::vector<FormField>& v) -> std::wstring {
+            return v[2].choice == 0 && v[3].text.empty() ? L"Type the reply." : L""; })) return;
+    const review::Thread& t = all[static_cast<size_t>(std::clamp(f[1].choice, 0, static_cast<int>(all.size()) - 1))];
+    const std::wstring who = f[4].text.empty() ? reviewerName() : f[4].text;
+    const int what = f[2].choice;
+    if (what >= 6) {
+        const std::wstring md = review::summary(d);
+        if (what == 6) {
+            std::vector<unsigned char> pdf;
+            auto doc = std::make_unique<Document>();
+            if (textpdf::build(md, true, pdf).ok && doc->load(std::move(pdf), {}) == OpenResult::Ok) {
+                doc->setName(L"Review summary - " + d.title());
+                addDocumentTab(std::move(doc));
+            }
+            return;
+        }
+        wchar_t buf[MAX_PATH * 2];
+        std::wstring base = d.title();
+        if (base.find_last_of(L'.') != std::wstring::npos) base.resize(base.find_last_of(L'.'));
+        wcsncpy_s(buf, (base + L" (review).md").c_str(), _TRUNCATE);
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner = app.wnd;
+        ofn.lpstrTitle = L"Save the review summary as";
+        ofn.lpstrFilter = L"Markdown files (*.md)\0*.md\0Text files (*.txt)\0*.txt\0";
+        ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2; ofn.lpstrDefExt = L"md";
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+        if (!GetSaveFileNameW(&ofn)) return;
+        const std::string u = platform::utf8(md);
+        std::vector<unsigned char> bytes{0xEF, 0xBB, 0xBF};
+        bytes.insert(bytes.end(), u.begin(), u.end());
+        if (Document::writeFile(buf, bytes) != SaveResult::Ok) MessageBoxW(app.wnd, L"The summary could not be saved there.", kAppName, MB_OK | MB_ICONWARNING);
+        else notice(L"Review summary saved.");
+        return;
+    }
+    static const review::State states[] = {review::State::None, review::State::Accepted, review::State::Rejected, review::State::Completed, review::State::Cancelled, review::State::None};
+    const bool ok = what == 0 ? review::reply(d, t.object, who, f[3].text) : review::setState(d, t.object, states[what], who);
+    if (!ok) { MessageBoxW(app.wnd, L"That could not be saved in this document.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    afterDocReplaced();
+    app.viewer.goToPage(t.page);
+    notice(what == 0 ? L"Reply added. Save the document to keep it." : std::wstring(L"Marked ") + review::stateName(states[what]) + L". Save the document to keep it.");
+}
+
 // ---- accessibility: check, and fix what needs no person ----
 
 void accessibilityCheck(Document& d) {
     HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    const auto items = access::check(d);
+    const auto items = a11y::check(d);
     SetCursor(old);
     int failed = 0, person = 0, fixable = 0;
     std::wstring summary, title;
     for (const auto& i : items) {
-        if (i.id == "title" && i.result == access::Result::Passed && i.detail.size() > 2) title = i.detail.substr(1, i.detail.size() - 2);
-        if (i.result == access::Result::Passed) continue;
-        (i.result == access::Result::Failed ? failed : person)++;
+        if (i.id == "title" && i.result == a11y::Result::Passed && i.detail.size() > 2) title = i.detail.substr(1, i.detail.size() - 2);
+        if (i.result == a11y::Result::Passed) continue;
+        (i.result == a11y::Result::Failed ? failed : person)++;
         fixable += i.fixable;
-        summary += (i.result == access::Result::Failed ? L"NOT MET:  " : L"CHECK:  ") + i.rule + L"\n      " + i.detail + (i.fixable ? L"  (Fix puts this right.)" : L"") + L"\n\n";
+        summary += (i.result == a11y::Result::Failed ? L"NOT MET:  " : L"CHECK:  ") + i.rule + L"\n      " + i.detail + (i.fixable ? L"  (Fix puts this right.)" : L"") + L"\n\n";
     }
     summary = std::to_wstring(items.size() - static_cast<size_t>(failed + person)) + L" of " + std::to_wstring(items.size()) + L" checks passed; " +
               std::to_wstring(failed) + L" not met, " + std::to_wstring(person) + L" for a person to check.\n\n" + summary;
-    if (title.empty()) title = access::suggestedTitle(d);
+    if (title.empty()) title = a11y::suggestedTitle(d);
     static const std::vector<std::pair<std::wstring, std::wstring>> langs = {
         {L"English (United States)", L"en-US"}, {L"English (United Kingdom)", L"en-GB"}, {L"English (India)", L"en-IN"}, {L"Hindi", L"hi-IN"},
         {L"Kannada", L"kn-IN"}, {L"Tamil", L"ta-IN"}, {L"Telugu", L"te-IN"}, {L"Malayalam", L"ml-IN"}, {L"Marathi", L"mr-IN"}, {L"Bengali", L"bn-IN"},
@@ -975,10 +1052,10 @@ void accessibilityCheck(Document& d) {
     if (!showForm(app.wnd, app.inst, L"Accessibility check", f, L"OK")) return;
     std::wstring msg;
     if (f[3].checked) {
-        access::FixOptions o;
+        a11y::FixOptions o;
         o.titleText = f[1].text;
         o.language = langs[static_cast<size_t>(std::clamp(f[2].choice, 0, static_cast<int>(langs.size()) - 1))].second;
-        const auto done = access::fix(d, o);
+        const auto done = a11y::fix(d, o);
         if (!done.empty()) {
             afterDocReplaced();
             for (const auto& line : done) msg += L"\u2022 " + line + L"\n";
@@ -987,7 +1064,7 @@ void accessibilityCheck(Document& d) {
     if (f[4].checked) {
         std::vector<unsigned char> pdf;
         auto rep = std::make_unique<Document>();
-        if (textpdf::build(access::report(access::check(d), d.title()), true, pdf).ok && rep->load(std::move(pdf), {}) == OpenResult::Ok) {
+        if (textpdf::build(a11y::report(a11y::check(d), d.title()), true, pdf).ok && rep->load(std::move(pdf), {}) == OpenResult::Ok) {
             rep->setName(L"Accessibility report - " + d.title());
             addDocumentTab(std::move(rep));
         }
@@ -3192,6 +3269,7 @@ void toolsDispatch(int cmd) {
         case N_PDFA: pdfaDialog(); break;
         case N_FONTS: showFonts(*d); break;
         case N_ACCESS: accessibilityCheck(*d); break;
+        case N_REVIEW: reviewDialog(*d); break;
         case F_EXPORT: formExport(); break;
         case F_FILL: formFillFromCsv(); break;
         case F_TEXT: startFormField(Viewer::Tool::FormText); break;
@@ -3230,6 +3308,7 @@ void showToolsMenu(const RECT& anchor) {
     add(T_ADD_TEXT, L"Add a text box", true, app.tool == Viewer::Tool::AddText);
     add(T_TEXT_STYLE, L"Style of new text...");
     add(T_NOTES, L"Notes summary (highlights and comments)...");
+    add(N_REVIEW, L"Comments and review: reply, accept, reject, summary...");
     add(N_BOOKMARK, L"Add a bookmark for this page...");
     sep();
     add(T_OCR, L"Recognise text (OCR)...");
@@ -5768,6 +5847,7 @@ void commandPalette() {
         add(L"Copy page as image", [] { if (activeDoc()) pageobj::copyPageToClipboard(*activeDoc(), app.viewer.currentPage(), app.wnd); });
         add(L"Copy area as image", [] { startCopyArea(); });
         add(L"Notes summary", [] { toolsDispatch(T_NOTES); });
+        add(L"Comments and review: reply to a comment, accept or reject it, review summary", [] { if (Document* d = activeDoc()) reviewDialog(*d); });
         add(L"Recognise text (OCR)", [] { toolsDispatch(T_OCR); });
         add(L"Watermark", [] { toolsDispatch(T_WATERMARK); });
         add(L"Page numbers", [] { toolsDispatch(T_NUMBERS); });

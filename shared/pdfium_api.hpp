@@ -35,6 +35,7 @@
     X(FPDFPageObj_SetLineCap) \
     X(FPDFPageObj_SetLineJoin) \
     X(FPDFAnnot_GetFlags) \
+    X(FPDFAnnot_HasKey) \
     X(FPDFDoc_DeleteAttachment) \
     X(FPDFDoc_GetAttachmentCount) \
     X(FPDFDoc_AddAttachment) \

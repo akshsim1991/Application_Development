@@ -168,6 +168,7 @@ std::vector<Info> list(Document& d, int page) {
         FS_RECTF r{};
         if (p.FPDFAnnot_GetRect(a, &r)) inf.rect = {r.left, r.bottom, r.right, r.top};
         inf.callout = inf.subtype == FPDF_ANNOT_STAMP && p.FPDFAnnot_GetStringValue(a, kCalloutKey, nullptr, 0) >= 4;
+        inf.reply = p.FPDFAnnot_HasKey(a, "IRT") || (p.FPDFAnnot_GetFlags(a) & (FPDF_ANNOT_FLAG_HIDDEN | FPDF_ANNOT_FLAG_NOVIEW)) != 0;
         unsigned long bytes = p.FPDFAnnot_GetStringValue(a, "Contents", nullptr, 0);
         if (bytes >= 4) {
             std::vector<unsigned short> buf(bytes / 2 + 1);
@@ -183,7 +184,7 @@ std::vector<Info> list(Document& d, int page) {
 int hitTest(Document& d, int page, PointD pt) {
     auto all = list(d, page);
     for (auto it = all.rbegin(); it != all.rend(); ++it) {
-        if (it->subtype == FPDF_ANNOT_LINK || it->subtype == FPDF_ANNOT_POPUP || it->subtype == FPDF_ANNOT_WIDGET) continue;
+        if (it->subtype == FPDF_ANNOT_LINK || it->subtype == FPDF_ANNOT_POPUP || it->subtype == FPDF_ANNOT_WIDGET || it->reply) continue;
         const RectD& r = it->rect;
         if (pt.x >= r.left - 2 && pt.x <= r.right + 2 && pt.y >= r.bottom - 2 && pt.y <= r.top + 2) return it->index;
     }
@@ -242,7 +243,7 @@ std::wstring notesSummary(Document& d) {
         FPDF_TEXTPAGE tp = d.text(p);
         for (const Info& a : list(d, p)) {
             const bool markup = a.subtype == FPDF_ANNOT_HIGHLIGHT || a.subtype == FPDF_ANNOT_UNDERLINE || a.subtype == FPDF_ANNOT_STRIKEOUT || a.subtype == FPDF_ANNOT_SQUIGGLY;
-            if (!markup && a.subtype != FPDF_ANNOT_TEXT) continue;
+            if ((!markup && a.subtype != FPDF_ANNOT_TEXT) || a.reply) continue;   // replies are in the review summary
             std::wstring marked;
             if (markup && tp) {   // the words under the markup
                 std::vector<unsigned short> buf(2048);

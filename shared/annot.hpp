@@ -20,6 +20,7 @@ struct Info {
     RectD rect{};
     std::wstring contents;
     bool callout = false;                             // a callout made here: its text can be changed (setCalloutText)
+    bool reply = false;                               // a reply to another comment, or its review status (not on the page)
 };
 
 // Highlight / underline / strikethrough / squiggly over text rectangles (page coordinates).

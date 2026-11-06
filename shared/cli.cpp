@@ -33,6 +33,7 @@
 #include "attach.hpp"
 #include "webview.hpp"
 #include "access.hpp"
+#include "review.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -176,6 +177,31 @@ int run(std::vector<std::wstring> files) {
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
     }
+    if (!files.empty() && files[0] == L"--review") {
+        // --review in.pdf out.txt [out.pdf] : replies to the first comment, accepts it, rejects the second; then the summary
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        auto all = review::threads(doc);
+        std::wstring rep = L"threads=" + std::to_wstring(all.size()) + L"\n";
+        if (files.size() > 3 && all.size() >= 2) {
+            const int first = all[0].object, second = all[1].object;
+            const bool a = review::reply(doc, first, L"Asha", L"Agreed, please change it.");
+            all = review::threads(doc);   // object numbers stay; read again after each change
+            const bool b = review::reply(doc, all[0].object, L"Ravi", L"Done in version 2.");
+            all = review::threads(doc);
+            const bool c = review::setState(doc, all[0].object, review::State::Accepted, L"Asha");
+            all = review::threads(doc);
+            const bool e = review::setState(doc, all[1].object, review::State::Rejected, L"Ravi");
+            rep += L"done=" + std::to_wstring(a) + std::to_wstring(b) + std::to_wstring(c) + std::to_wstring(e) + L" first=" + std::to_wstring(first) +
+                   L" second=" + std::to_wstring(second) + L"\n";
+            std::vector<unsigned char> bytes;
+            if (!doc.serialize(bytes) || Document::writeFile(files[3], bytes) != SaveResult::Ok) return 4;
+        }
+        rep += review::summary(doc);
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
     if (!files.empty() && files[0] == L"--access") {
         // --access in.pdf out.txt [fixed.pdf] : id|passed/failed/person|fixable per check; with fixed.pdf, fixes then checks again
         if (files.size() < 3) return 2;
@@ -183,17 +209,17 @@ int run(std::vector<std::wstring> files) {
         if (doc.open(files[1]) != OpenResult::Ok) return 3;
         auto list = [&doc]() {
             std::wstring t;
-            for (const auto& i : access::check(doc))
-                t += platform::wide(i.id) + L"|" + (i.result == access::Result::Passed ? L"passed" : i.result == access::Result::Failed ? L"failed" : L"person") +
+            for (const auto& i : a11y::check(doc))
+                t += platform::wide(i.id) + L"|" + (i.result == a11y::Result::Passed ? L"passed" : i.result == a11y::Result::Failed ? L"failed" : L"person") +
                      (i.fixable ? L"|fixable" : L"") + L"|" + i.detail + L"\n";
             return t;
         };
         std::wstring rep = list();
         if (files.size() > 3) {
-            access::FixOptions o;
+            a11y::FixOptions o;
             o.language = L"en-GB";
             rep += L"--- fixed:\n";
-            for (const auto& line : access::fix(doc, o)) rep += line + L"\n";
+            for (const auto& line : a11y::fix(doc, o)) rep += line + L"\n";
             rep += L"--- after:\n" + list();
             std::vector<unsigned char> bytes;
             if (!doc.serialize(bytes) || Document::writeFile(files[3], bytes) != SaveResult::Ok) return 4;

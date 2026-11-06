@@ -19,6 +19,7 @@ set(ENGINE_SOURCES
   ${SHARED}/attach.cpp
   ${SHARED}/webview.cpp
   ${SHARED}/access.cpp
+  ${SHARED}/review.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

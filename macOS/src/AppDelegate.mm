@@ -366,6 +366,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Edit Comment\u2026", @selector(editSelectedComment:), nil);
     add(m, @"Delete Selected Comment", @selector(deleteSelectedAnnotation:), nil);
     add(m, @"Notes Summary (highlights and comments)\u2026", @selector(notesSummary:), nil);
+    add(m, @"Comments and Review: Reply, Accept, Reject, Summary\u2026", @selector(reviewComments:), nil);
     add(m, @"Flatten: Make Comments and Fields Part of the Page\u2026", @selector(flattenComments:), nil);
 
     m = submenu(bar, @"Edit Text");

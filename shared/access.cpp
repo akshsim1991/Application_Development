@@ -6,7 +6,7 @@
 #include <cwctype>
 #include <map>
 
-namespace access {
+namespace a11y {
 using namespace pdfedit;
 
 namespace {
@@ -337,4 +337,4 @@ std::wstring report(const std::vector<Item>& items, const std::wstring& name) {
     return s;
 }
 
-} // namespace access
+} // namespace a11y

@@ -80,6 +80,7 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-web" FEATHER_UI_ACTION=saveForWeb: FEATHER_UI_WEB_TO="$PWD/ui-samples/web.pdf" FEATHER_UI_WAIT=6 "$app" "$PWD/ui-samples/book.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-history" FEATHER_UI_ACTION=showUndoHistory: FEATHER_UI_HISTORY=1 FEATHER_UI_WAIT=6 "$app" "$PWD/ui-samples/book.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-access" FEATHER_UI_ACTION=accessibilityCheck: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/access.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-review" FEATHER_UI_ACTION=reviewComments: FEATHER_UI_REVIEW="0|Looks right to me." FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/search.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-find" FEATHER_UI_ACTION=uiFind: FEATHER_UI_FIND="cat*|word wild comments" "$app" "$PWD/ui-samples/search.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-sensitive" FEATHER_UI_ACTION=findSensitiveInformation: FEATHER_UI_PRESS=2 FEATHER_UI_WAIT=11 "$app" "$PWD/ui-samples/sensitive.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
@@ -88,7 +89,7 @@ jobs:
           grep -q "tabs 2" ui/report.txt
           grep -q "Page 1 of 1" ui-dark/report.txt
           [ -f ui-props/sheet.png ] && [ -f ui-fonts/sheet.png ]
-          for d in ui-start ui ui-dark ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-print ui-sensitive ui-find ui-interleave ui-merge ui-split ui-compare ui-layers ui-attach ui-repair ui-web ui-history ui-access; do
+          for d in ui-start ui ui-dark ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-print ui-sensitive ui-find ui-interleave ui-merge ui-split ui-compare ui-layers ui-attach ui-repair ui-web ui-history ui-access ui-review; do
             for f in window sheet; do
               [ -f $d/$f.png ] || continue
               sips -s format jpeg -s formatOptions 50 $d/$f.png --out $d/$f.jpg >/dev/null
@@ -107,6 +108,7 @@ jobs:
           grep -q "web copy:" ui-web/trace.txt && python3 -c "import pikepdf;p=pikepdf.open('ui-samples/web.pdf');assert p.is_linearized and p.check_linearization() and not p.get_warnings()"   # Fast Web View, checked by qpdf
           grep -q "history: Rotate pages; Insert a blank page; Reverse the page order;" ui-history/trace.txt && grep -q "history: went 3 step(s) back, ok 1, now 0 steps done, 3 undone, 9 pages" ui-history/trace.txt && grep -q "history: went 1 step(s) forward, ok 1, now 1 steps done, 2 undone, 9 pages" ui-history/trace.txt   # named steps, back and forward
           grep -q "access: 13 checks, 8 failed, 3 for a person, 6 fixable" ui-access/trace.txt && grep -q "access: fixed 6, still failed 2" ui-access/trace.txt   # accessibility checked and fixed
+          grep -q "review: 2 comments" ui-review/trace.txt && grep -q "review: reply ok 1, first comment has 1 replies" ui-review/trace.txt   # a reply added to a comment
           grep -q "interleave: 6 pages, page 2 says Back 1" ui-interleave/trace.txt   # two-sided scan put in order
           grep -q "merge: 1 file(s), 11 pages, 4 bookmarks" ui-merge/trace.txt   # merged keeping every bookmark
           grep -q "split: 3 file(s)" ui-split/trace.txt && [ -f "ui-samples/part-2 Chapter Two.pdf" ] && python3 tests/outline_dump.py "ui-samples/part-2 Chapter Two.pdf" | grep -q "^3 Chapter Two->1;   Section 5.1->2$"   # at the chapters, bookmarks kept

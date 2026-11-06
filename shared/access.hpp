@@ -6,7 +6,7 @@
 #include <vector>
 #include "document.hpp"
 
-namespace access {
+namespace a11y {
 
 enum class Result { Passed, Failed, NeedsPerson };   // NeedsPerson: only a person can judge or do it (colour contrast, reading order)
 
@@ -36,4 +36,4 @@ std::wstring suggestedTitle(Document& d);
 // A report in Markdown, for textpdf::build (Passed / Failed / Needs a person, with the details).
 std::wstring report(const std::vector<Item>& items, const std::wstring& name);
 
-} // namespace access
+} // namespace a11y

@@ -70,6 +70,9 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-print" FEATHER_UI_ACTION=printDocument: FEATHER_UI_WAIT=8 "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-sbs" FEATHER_UI_ACTION=sideBySideWithTab: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-ocrrun" FEATHER_UI_ACTION=recogniseText: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=40 "$app" "$PWD/ui-samples/scan.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-interleave" FEATHER_UI_ACTION=interleaveScan: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/duplex.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-merge" FEATHER_UI_ACTION=mergeFiles: FEATHER_UI_MERGE="$PWD/ui-samples/appendix.pdf" FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/book.pdf"
+          run env FEATHER_UI_CHECK="$PWD/ui-split" FEATHER_UI_ACTION=splitDocument: FEATHER_UI_SPLIT=3 FEATHER_UI_SPLIT_TO="$PWD/ui-samples/part" FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/book.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-find" FEATHER_UI_ACTION=uiFind: FEATHER_UI_FIND="cat*|word wild comments" "$app" "$PWD/ui-samples/search.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-sensitive" FEATHER_UI_ACTION=findSensitiveInformation: FEATHER_UI_PRESS=2 FEATHER_UI_WAIT=11 "$app" "$PWD/ui-samples/sensitive.pdf"
           cat ui-start/report.txt; echo; cat ui/report.txt ui/trace.txt; echo; cat ui-dark/report.txt ui-dark/trace.txt
@@ -78,7 +81,7 @@ jobs:
           grep -q "tabs 2" ui/report.txt
           grep -q "Page 1 of 1" ui-dark/report.txt
           [ -f ui-props/sheet.png ] && [ -f ui-fonts/sheet.png ]
-          for d in ui-start ui ui-dark ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-print ui-sensitive ui-find; do
+          for d in ui-start ui ui-dark ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-print ui-sensitive ui-find ui-interleave ui-merge ui-split; do
             for f in window sheet; do
               [ -f $d/$f.png ] || continue
               sips -s format jpeg -s formatOptions 50 $d/$f.png --out $d/$f.jpg >/dev/null
@@ -90,6 +93,9 @@ jobs:
           grep -q "edit at 200,750: found 1" ui-edpara/trace.txt && grep -q "hidden [1-9]" ui-edpara/trace.txt   # the paragraph editor opens, the page's own text hidden
           grep -q "tab menu: Open Directory Having This File | Copy the File's Path | Open in New Window | Close Tab | Close Other Tabs" ui-tabmenu/trace.txt
           grep -q "thumbnails selected: 6" ui-thumbs/trace.txt   # Select All Pages selects every page
+          grep -q "interleave: 6 pages, page 2 says Back 1" ui-interleave/trace.txt   # two-sided scan put in order
+          grep -q "merge: 1 file(s), 11 pages, 4 bookmarks" ui-merge/trace.txt   # merged keeping every bookmark
+          grep -q "split: 3 file(s)" ui-split/trace.txt && [ -f "ui-samples/part-2 Chapter Two.pdf" ] && python3 tests/outline_dump.py "ui-samples/part-2 Chapter Two.pdf" | grep -q "^3 Chapter Two->1;   Section 5.1->2$"   # at the chapters, bookmarks kept
           grep -q "find cat\*: 7" ui-find/trace.txt && grep -q "find: at 4 in a comment 1" ui-find/trace.txt   # whole words, wildcards, comments
           grep -q "sensitive: found 10" ui-sensitive/trace.txt && grep -q "sensitive: marked 10 items" ui-sensitive/trace.txt   # both forms, every item marked
           grep -q "press: sheet 1 button Recognise" ui-ocrrun/trace.txt && grep -q "^documents 1" ui-ocrrun/report.txt && grep -q "ocr words [1-9]" ui-ocrrun/trace.txt   # OCR from its form: words found, no crash

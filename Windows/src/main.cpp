@@ -42,6 +42,7 @@
 #include "redact.hpp"
 #include "sensitive.hpp"
 #include "search.hpp"
+#include "splitmerge.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -530,7 +531,7 @@ struct PwState { std::wstring prompt, text; bool ok = false; };
 enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M_RECT, M_ELLIPSE, M_LINE, M_ARROW, M_PEN,
               M_DELETE, M_EDIT_COMMENT, M_COPY, M_EDIT_CALLOUT,
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
-              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
+              P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, P_INTERLEAVE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
 enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
@@ -1783,6 +1784,33 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
         case P_NEWPDF: newPdfFromPictures(); break;
         case P_CROPBOX: cropByBox(); break;
         case P_REVERSE: if (d->reversePages()) afterPagesChanged(); break;
+        case P_INTERLEAVE: {
+            // a stack scanned on one side, turned over and scanned again: fronts 1, 2, 3 then backs 3, 2, 1
+            std::vector<FormField> f(3);
+            f[0] = {FormField::Note, L"", {}, L"For a two-sided paper scanned on a one-sided scanner: first all the fronts, then all the backs. The pages are put in order: front 1, back 1, front 2, back 2 ..."};
+            f[1] = {FormField::Choice, L"The back pages are:", {L"In the second half of this document", L"In another PDF file (choose it next)"}, L"", 0};
+            f[2] = {FormField::Check, L"The backs are in reverse order (the stack was turned over)"};
+            f[2].checked = true;
+            if (!showForm(app.wnd, app.inst, L"Two-sided scan", f, L"Put in order")) break;
+            std::unique_ptr<Document> backs;
+            if (f[1].choice == 1) {
+                std::vector<std::wstring> files;
+                pickPdf(false, files, L"Choose the PDF with the back pages");
+                if (files.empty()) break;
+                backs = openForImport(files[0]);
+                if (!backs) break;
+            } else if (d->pageCount() < 2) break;
+            std::vector<unsigned char> bytes;
+            if (!splitmerge::interleave(*d, backs.get(), f[2].checked, bytes)) {
+                MessageBoxW(app.wnd, L"The pages could not be put in order.", kAppName, MB_OK | MB_ICONWARNING);
+                break;
+            }
+            d->beginChange();
+            if (d->reload(std::move(bytes)) != OpenResult::Ok) { d->rollbackChange(); break; }
+            afterPagesChanged();
+            notice(L"The pages are in order: front 1, back 1, front 2, back 2 ... Undo (Ctrl+Z) puts them back.");
+            break;
+        }
         case P_BLANKS: {
             HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
             std::vector<int> blank = pageobj::blankPages(*d);
@@ -1950,6 +1978,31 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
             pickPdf(true, files, L"Choose the PDFs to add (they are added in the order shown)");
             if (files.empty()) break;
             std::sort(files.begin(), files.end());
+            std::vector<FormField> bm(1);
+            bm[0] = {FormField::Choice, L"Bookmarks:", {L"Keep the bookmarks of every file", L"A bookmark for each file, its own bookmarks inside", L"Add the pages only"}, L"", 0};
+            if (!showForm(app.wnd, app.inst, L"Merge PDFs", bm, L"Merge")) break;
+            if (bm[0].choice < 2) {   // one new file with every bookmark: one undo step
+                std::vector<std::unique_ptr<Document>> docs;
+                std::vector<splitmerge::Source> src{{d, d->title()}};
+                for (const auto& f : files) {
+                    auto one = openForImport(f);
+                    if (!one) continue;
+                    src.push_back({one.get(), one->title()});
+                    docs.push_back(std::move(one));
+                }
+                for (auto& s2 : src) { size_t dot = s2.name.find_last_of(L'.'); if (dot != std::wstring::npos) s2.name.resize(dot); }
+                std::vector<unsigned char> bytes;
+                HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+                const bool ok = src.size() > 1 && splitmerge::merge(src, bm[0].choice == 0 ? splitmerge::Marks::Keep : splitmerge::Marks::UnderFileNames, bytes);
+                SetCursor(old);
+                if (!ok) { if (src.size() > 1) MessageBoxW(app.wnd, L"The files could not be merged.", kAppName, MB_OK | MB_ICONWARNING); break; }
+                const int before = d->pageCount();
+                d->beginChange();
+                if (d->reload(std::move(bytes)) != OpenResult::Ok) { d->rollbackChange(); break; }
+                afterPagesChanged();
+                app.viewer.goToPage(before);
+                break;
+            }
             int added = 0;
             for (const auto& f : files) {
                 auto src = openForImport(f);
@@ -2931,7 +2984,7 @@ void toolsDispatch(int cmd) {
             if (cmd >= PX_ROT_R && cmd <= PX_PASTE) { pictureAction(cmd); break; }
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
             if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK || cmd == N_RED_SENSITIVE) { redactionMenuAction(*d, cmd); break; }
-            if (cmd >= P_DELETE && cmd <= P_HFDELETE) { pagesMenuAction(cmd, {}); break; }
+            if (cmd >= P_DELETE && cmd <= P_INTERLEAVE) { pagesMenuAction(cmd, {}); break; }
             break;
     }
 }
@@ -3017,6 +3070,7 @@ void showToolsMenu(const RECT& anchor) {
     padd(P_ROT_ALL, L"Rotate all pages right");
     padd(P_MOVE, L"Move pages...", d->pageCount() > 1);
     padd(P_REVERSE, L"Reverse the page order", d->pageCount() > 1);
+    padd(P_INTERLEAVE, L"Two-sided scan: put fronts and backs in order...");
     padd(P_BLANKS, L"Remove blank pages...", d->pageCount() > 1);
     padd(P_DUPES, L"Find duplicate pages...", d->pageCount() > 1);
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
@@ -4530,10 +4584,11 @@ void newPdfFromPictures() {
 void splitPdf() {
     Document* d = activeDoc();
     if (!d || d->pageCount() < 2) return;
-    std::vector<FormField> f(3);
-    f[0] = {FormField::Choice, L"Split:", {L"Into single pages", L"Every N pages", L"By page ranges"}, L"", 1};
+    std::vector<FormField> f(4);
+    f[0] = {FormField::Choice, L"Split:", {L"Into single pages", L"Every N pages", L"By page ranges", L"At the bookmarks (chapters)", L"Into files no larger than"}, L"", 1};
     f[1] = {FormField::Text, L"N pages per file:", {}, L"10"};
     f[2] = {FormField::Text, L"Ranges (use ; between):", {}, L"1-5; 6-"};
+    f[3] = {FormField::Text, L"Largest file (MB):", {}, L"10"};
     g_formDoc = d;
     bool ok = showForm(app.wnd, app.inst, L"Split into several files", f, L"Name...", [](const std::vector<FormField>& v) -> std::wstring {
         if (v[0].choice == 1) { wchar_t* e = nullptr; long n = wcstol(v[1].text.c_str(), &e, 10); if (e == v[1].text.c_str() || *e || n < 1) return L"Type how many pages each file should have."; }
@@ -4550,12 +4605,20 @@ void splitPdf() {
             }
             if (!any) return L"Type at least one range.";
         }
+        if (v[0].choice == 3 && g_formDoc && g_formDoc->bookmarks().empty()) return L"This document has no bookmarks. Choose another way to split it.";
+        if (v[0].choice == 4) { wchar_t* e = nullptr; double mb = wcstod(v[3].text.c_str(), &e); if (e == v[3].text.c_str() || *e || mb <= 0.01) return L"Type the largest size in megabytes, for example 10 or 2.5."; }
         return L""; });
     g_formDoc = nullptr;
     if (!ok) return;
     std::vector<std::vector<int>> groups;
+    std::vector<std::wstring> names;   // bookmark titles, for the file names
     const int n = d->pageCount();
-    if (f[0].choice == 0) for (int i = 0; i < n; ++i) groups.push_back({i});
+    if (f[0].choice >= 3) {
+        HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+        const auto parts = f[0].choice == 3 ? splitmerge::byBookmarks(*d, 1) : splitmerge::bySize(*d, wcstod(f[3].text.c_str(), nullptr) * 1024 * 1024);
+        SetCursor(old);
+        for (const auto& p : parts) { groups.push_back(p.pages); names.push_back(splitmerge::fileSafe(p.name)); }
+    } else if (f[0].choice == 0) for (int i = 0; i < n; ++i) groups.push_back({i});
     else if (f[0].choice == 1) {
         int per = static_cast<int>(wcstol(f[1].text.c_str(), nullptr, 10));
         for (int i = 0; i < n; i += per) { std::vector<int> g; for (int k = i; k < std::min(n, i + per); ++k) g.push_back(k); groups.push_back(g); }
@@ -4587,10 +4650,13 @@ void splitPdf() {
     int saved = 0;
     for (size_t i = 0; i < groups.size(); ++i) {
         if (groups[i].empty()) continue;
-        if (d->extractPages(groups[i], stem + L"-" + std::to_wstring(i + 1) + L".pdf") == SaveResult::Ok) ++saved;
+        std::wstring file = stem + L"-" + std::to_wstring(i + 1);
+        if (i < names.size() && !names[i].empty()) file += L" " + names[i];
+        std::vector<unsigned char> bytes;   // with the bookmarks that point into the part
+        if (splitmerge::partBytes(*d, groups[i], bytes) && Document::writeFile(file + L".pdf", bytes) == SaveResult::Ok) ++saved;
     }
     wchar_t msg[160];
-    swprintf(msg, 160, L"%d file(s) were saved next to \"%ls-1.pdf\".", saved, stem.substr(stem.find_last_of(L'\\') + 1).c_str());
+    swprintf(msg, 160, L"%d file(s) were saved, numbered from \"%ls-1\".", saved, stem.substr(stem.find_last_of(L'\\') + 1).c_str());
     MessageBoxW(app.wnd, msg, kAppName, saved ? MB_OK | MB_ICONINFORMATION : MB_OK | MB_ICONWARNING);
 }
 
@@ -5416,6 +5482,7 @@ void commandPalette() {
         add(L"Cloud", [] { setTool(Viewer::Tool::Cloud); });
         add(L"Callout", [] { setTool(Viewer::Tool::Callout); });
         add(L"Reverse the page order", [] { pagesMenuAction(P_REVERSE, {}); });
+        add(L"Two-sided scan: interleave fronts and backs (odd and even pages)", [] { pagesMenuAction(P_INTERLEAVE, {}); });
         add(L"Remove blank pages", [] { pagesMenuAction(P_BLANKS, {}); });
         add(L"Find duplicate pages", [] { pagesMenuAction(P_DUPES, {}); });
         add(L"Add headers and footers", [] { pagesMenuAction(P_HEADER, {}); });
@@ -5508,7 +5575,8 @@ void commandPalette() {
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
         add(L"Compare with another open tab", [] { compareDocs(); });
-        add(L"Split into several files", [] { splitPdf(); });
+        add(L"Split into several files (every N pages, at bookmarks, by size)", [] { splitPdf(); });
+        add(L"Merge PDFs into this document (keeping their bookmarks)", [] { pagesMenuAction(P_MERGE, {}); });
         add(L"Crop by drawing a box", [] { cropByBox(); });
         add(L"Check that redacted text is gone", [] { toolsDispatch(N_RED_CHECK); });
         add(L"Find sensitive information to redact (e-mail, phone, Aadhaar, PAN, bank)", [] { toolsDispatch(N_RED_SENSITIVE); });

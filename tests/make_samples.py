@@ -53,6 +53,35 @@ c.drawString(60, 800, "Second page: one more cat and a catalogue.")
 c.textAnnotation("Reviewer: the catalogue needs a colour index", Rect=(60, 700, 80, 720))
 c.save()
 
+# split, merge and two-sided scans: a book with chapters and sections (bookmarks), a short appendix, fronts and backs
+c = canvas.Canvas(f"{out}/book.pdf", pagesize=A4)
+chapters = {1: "Chapter One", 4: "Chapter Two", 7: "Chapter Three"}
+for pg in range(1, 10):
+    c.setFont("Helvetica", 28); c.drawString(72, 760, f"Book page {pg}")
+    c.setFont("Helvetica", 10); c.drawString(72, 700, "x" * 40 * pg)
+    c.bookmarkPage(f"p{pg}")
+    if pg in chapters: c.addOutlineEntry(chapters[pg], f"p{pg}", level=0)
+    if pg in (2, 5): c.addOutlineEntry(f"Section {pg}.1", f"p{pg}", level=1)
+    c.showPage()
+c.save()
+c = canvas.Canvas(f"{out}/appendix.pdf", pagesize=A4)
+for pg in (1, 2):
+    c.drawString(72, 760, f"Appendix page {pg}"); c.bookmarkPage(f"a{pg}")
+    if pg == 1: c.addOutlineEntry("Appendix A", "a1", level=0)
+    c.showPage()
+c.save()
+for name, labels in (("fronts", ["Front 1", "Front 2", "Front 3"]), ("backs", ["Back 3", "Back 2", "Back 1"]),
+                     ("duplex", ["Front 1", "Front 2", "Front 3", "Back 3", "Back 2", "Back 1"])):
+    c = canvas.Canvas(f"{out}/{name}.pdf", pagesize=A4)
+    for t in labels: c.setFont("Helvetica", 30); c.drawString(72, 760, t); c.showPage()
+    c.save()
+# a large picture per page (split by size)
+c = canvas.Canvas(f"{out}/heavy.pdf", pagesize=A4)
+for pg in range(6):
+    Image.effect_noise((600, 600), 60 + pg).convert("RGB").save(f"{out}/noise{pg}.png")
+    c.drawImage(f"{out}/noise{pg}.png", 50, 200, 450, 450); c.drawString(72, 780, f"Heavy page {pg + 1}"); c.showPage()
+c.save()
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

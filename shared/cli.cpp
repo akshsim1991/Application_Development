@@ -3,6 +3,7 @@
 // Windows-only use parts of the engine that have no Mac version yet (macOS/PORTING.md).
 #include "cli.hpp"
 #include <algorithm>
+#include <memory>
 #include <cstdio>
 #include <cstring>
 #include <cwchar>
@@ -27,6 +28,7 @@
 #include "redact.hpp"
 #include "sensitive.hpp"
 #include "search.hpp"
+#include "splitmerge.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -169,6 +171,55 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--split") {
+        // --split in.pdf outstem every N | size MB | bookmarks LEVEL : outstem-1.pdf ... and outstem.txt (file|pages|names)
+        if (files.size() < 5) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<splitmerge::Part> parts;
+        const double v = wcstod(files[4].c_str(), nullptr);
+        if (files[3] == L"every") parts = splitmerge::everyN(doc.pageCount(), static_cast<int>(v));
+        else if (files[3] == L"size") parts = splitmerge::bySize(doc, v * 1024 * 1024);
+        else if (files[3] == L"bookmarks") parts = splitmerge::byBookmarks(doc, std::max(1, static_cast<int>(v)));
+        if (parts.empty()) return 5;
+        std::wstring rep;
+        for (size_t i = 0; i < parts.size(); ++i) {
+            std::vector<unsigned char> b;
+            const std::wstring file = files[2] + L"-" + std::to_wstring(i + 1) + L".pdf";
+            if (!splitmerge::partBytes(doc, parts[i].pages, b) || Document::writeFile(file, b) != SaveResult::Ok) return 4;
+            rep += std::to_wstring(i + 1) + L"|" + std::to_wstring(parts[i].pages.front() + 1) + L"-" + std::to_wstring(parts[i].pages.back() + 1) +
+                   L"|" + parts[i].name + L"\n";
+        }
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--merge") {
+        // --merge out.pdf keep|files|none in1.pdf in2.pdf ...
+        if (files.size() < 5) return 2;
+        std::vector<std::unique_ptr<Document>> docs;
+        std::vector<splitmerge::Source> src;
+        for (size_t i = 3; i < files.size(); ++i) {
+            docs.push_back(std::make_unique<Document>());
+            if (docs.back()->open(files[i]) != OpenResult::Ok) return 3;
+            std::wstring name = files[i].substr(files[i].find_last_of(L"/\\") + 1);
+            if (name.size() > 4) name.resize(name.size() - 4);
+            src.push_back({docs.back().get(), name});
+        }
+        const splitmerge::Marks m = files[2] == L"files" ? splitmerge::Marks::UnderFileNames : files[2] == L"none" ? splitmerge::Marks::None : splitmerge::Marks::Keep;
+        std::vector<unsigned char> out;
+        if (!splitmerge::merge(src, m, out)) return 4;
+        return Document::writeFile(files[1], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--interleave") {
+        // --interleave in.pdf out.pdf reversed|same [backs.pdf]
+        if (files.size() < 4) return 2;
+        Document doc, backs;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        if (files.size() > 4 && backs.open(files[4]) != OpenResult::Ok) return 3;
+        std::vector<unsigned char> out;
+        if (!splitmerge::interleave(doc, files.size() > 4 ? &backs : nullptr, files[3] == L"reversed", out)) return 4;
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--find") {
         // --find in.pdf out.txt query [case] [word] [wild] [comments] : page|matched text|"comment" or "page"

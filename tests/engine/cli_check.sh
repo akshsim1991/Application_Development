@@ -66,6 +66,28 @@ check "* at the end: the whole word" "f 'cat*' wild word comments | grep -q 'cou
 check "\\* is a real star"           "[ \"\$(f '5\\*3' wild)\" = 'count=1 1|5*3|page ' ]"
 check "a star alone finds nothing"   "f '*' wild | grep -q '^count=0 '"
 
+echo "split, merge, two-sided scans"
+ol() { python3 "$root/tests/outline_dump.py" "$1" 2>/dev/null; }
+run --split "$W/book.pdf" "$W/sp" every 4
+check "every 4 pages: 3 files"       "[ \"\$(cat '$W/sp.txt' | tr '\n' ' ')\" = '1|1-4| 2|5-8| 3|9-9| ' ] && [ \$(pages '$W/sp-3.pdf') -eq 1 ]"
+run --split "$W/book.pdf" "$W/sb" bookmarks 1
+check "at the chapters, named"       "[ \"\$(cat '$W/sb.txt' | tr '\n' ' ')\" = '1|1-3|Chapter One 2|4-6|Chapter Two 3|7-9|Chapter Three ' ]"
+check "each part keeps its bookmarks" "[ \"\$(ol '$W/sb-2.pdf')\" = '3 Chapter Two->1;   Section 5.1->2' ]"
+check "the part's own pages"         "text '$W/sb-2.pdf' | grep -q 'Book page 4' && ! text '$W/sb-2.pdf' | grep -q 'Book page 3'"
+run --split "$W/heavy.pdf" "$W/ss" size 2
+check "no part over 2 MB, none empty" "[ -f '$W/ss-2.pdf' ] && for f in '$W'/ss-*.pdf; do [ \$(wc -c < \"\$f\") -le 2097152 ] || exit 1; done"
+check "all pages in the parts"       "[ \$(( \$(for f in '$W'/ss-*.pdf; do pages \"\$f\"; done | paste -sd+) )) -eq 6 ]"
+run --merge "$W/mk.pdf" keep "$W/book.pdf" "$W/appendix.pdf"
+check "merge keeps the bookmarks"    "[ \"\$(ol '$W/mk.pdf')\" = '11 Chapter One->1;   Section 2.1->2; Chapter Two->4;   Section 5.1->5; Chapter Three->7; Appendix A->10' ]"
+run --merge "$W/mf.pdf" files "$W/book.pdf" "$W/appendix.pdf"
+check "merge: a bookmark per file"   "ol '$W/mf.pdf' | grep -q '^11 book->1;   Chapter One->1; .*appendix->10;   Appendix A->10\$'"
+run --merge "$W/mn.pdf" none "$W/book.pdf" "$W/appendix.pdf"
+check "merge without bookmarks"      "[ \"\$(ol '$W/mn.pdf')\" = '11 ' ]"
+run --interleave "$W/duplex.pdf" "$W/il1.pdf" reversed
+check "one file: fronts, then backs reversed" "[ \"\$(text '$W/il1.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd,)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
+run --interleave "$W/fronts.pdf" "$W/il2.pdf" reversed "$W/backs.pdf"
+check "two files: fronts and backs"  "[ \"\$(text '$W/il2.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd,)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

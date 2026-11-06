@@ -429,11 +429,12 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Crop Pages\u2026", @selector(cropPages:), nil);
     add(m, @"Crop by Drawing a Box", @selector(cropByBox:), nil);
     [m addItem:[NSMenuItem separatorItem]];
-    add(m, @"Merge: Add Files at the End\u2026", @selector(mergeFiles:), nil);
-    add(m, @"Split into Several Files\u2026", @selector(splitDocument:), nil);
+    add(m, @"Merge: Add Files at the End (Keeping Bookmarks)\u2026", @selector(mergeFiles:), nil);
+    add(m, @"Split into Several Files (Pages, Bookmarks, Size)\u2026", @selector(splitDocument:), nil);
     add(m, @"Copy Page as Picture", @selector(copyPageAsPicture:), @"c", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Reverse the Order", @selector(reversePages:), nil);
+    add(m, @"Two-Sided Scan: Put Fronts and Backs in Order\u2026", @selector(interleaveScan:), nil);
     add(m, @"Remove Blank Pages\u2026", @selector(removeBlankPages:), nil);
     add(m, @"Remove Duplicate Pages\u2026", @selector(removeDuplicatePages:), nil);
 

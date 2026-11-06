@@ -54,6 +54,18 @@ echo "redaction"
 run --redact "$W/rich.pdf" "$W/red.pdf" "Quarterly"; rc=$?
 check "redaction verified (exit code)" "[ $rc -eq 0 ]"
 
+echo "search options"
+f() { run --find "$W/search.pdf" "$W/find.txt" "$@"; tr '\n' ' ' < "$W/find.txt"; }
+check "plain: inside words too"      "[ \"\$(f cat)\" = 'count=6 1|cat|page 1|cat|page 1|cat|page 1|Cat|page 2|cat|page 2|cat|page ' ]"
+check "whole word"                   "[ \"\$(f cat word)\" = 'count=2 1|cat|page 2|cat|page ' ]"
+check "match case"                   "f cat case | grep -q '^count=5 '"
+check "whole word, in comments too"  "[ \"\$(f cat word comments)\" = 'count=3 1|cat|page 1|cat|comment 2|cat|page ' ]"
+check "? is one letter"              "[ \"\$(f 'colo?r' wild)\" = 'count=3 1|Colour|page 1|colour|page 1|colour|page ' ]"
+check "* any letters, whole words"   "[ \"\$(f 'colo*r' wild word)\" = 'count=4 1|Colour|page 1|color|page 1|colour|page 1|color|page ' ]"
+check "* at the end: the whole word" "f 'cat*' wild word comments | grep -q 'count=7 .*1|category|page 1|Cats|page .*2|catalogue|comment'"
+check "\\* is a real star"           "[ \"\$(f '5\\*3' wild)\" = 'count=1 1|5*3|page ' ]"
+check "a star alone finds nothing"   "f '*' wild | grep -q '^count=0 '"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"
@@ -64,7 +76,7 @@ for want in "E-mail address|priya.sharma@example.co.in" "E-mail address|p_s+bill
 aad="$(cat "$W/sensitive-aadhaar.txt")"
 check "finds the Aadhaar number (check digit valid)" "grep -qF 'Aadhaar number|${aad:0:4} ${aad:4:4} ${aad:8:4}' '$W/sens.txt'"
 check "second page searched too"    "grep -qF '2|E-mail address|accounts@example.org' '$W/sens.txt'"
-check "look-alikes left alone (dates, amounts, ISBN, wrong check digit, bad PAN)" "! grep -qE '2026-11|1,234|978-3|ABCDE1234F|localhost|[|]4521|[|]12345\$''$W/sens.txt' && [ \$(grep -c 'Aadhaar' '$W/sens.txt') -eq 1 ]"
+check "look-alikes left alone (dates, amounts, ISBN, wrong check digit, bad PAN)" "! grep -qE '2026-11|1,234|978-3|ABCDE1234F|localhost|[|]4521|[|]12345\$' '$W/sens.txt' && [ \$(grep -c 'Aadhaar' '$W/sens.txt') -eq 1 ]"
 run --sensitive "$W/sensitive.pdf" "$W/sens2.txt" "$W/sens-red.pdf"; rc=$?
 check "all redacted, none left in the file" "[ $rc -eq 0 ] && grep -q 'left=0' '$W/sens2.txt'"
 check "redacted text gone (pdfminer)" "! text '$W/sens-red.pdf' | grep -qE 'priya|ABCPE|98450'"

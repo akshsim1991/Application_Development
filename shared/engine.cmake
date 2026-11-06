@@ -13,6 +13,7 @@ set(ENGINE_SOURCES
   ${SHARED}/outline.cpp
   ${SHARED}/redact.cpp
   ${SHARED}/sensitive.cpp
+  ${SHARED}/search.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

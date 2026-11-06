@@ -6,7 +6,9 @@
 #import "Sidebar.h"
 #import "Settings.h"
 #import "Trace.h"
+#include <algorithm>
 #include <cmath>
+#include "search.hpp"
 #include "platform.hpp"
 
 NSString* const FPPageColoursKey = @"pageColours";
@@ -181,6 +183,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
         _find.sendsWholeSearchString = YES;
         _find.target = self;
         _find.action = @selector(findEntered:);
+        [self buildFindMenu];
         [_find.widthAnchor constraintEqualToConstant:200].active = YES;
         item.view = _find;
         item.label = @"Find";
@@ -407,6 +410,39 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 // ---- find: every match tinted, Return / ⌘G for the next, ⇧⌘G for the previous ----
 
+// The search options, in the magnifying glass's menu: match case, whole words, wildcards, comments too.
+static NSString* const kFindOptions[] = {@"findMatchCase", @"findWholeWord", @"findWildcards", @"findComments"};
+
+- (void)buildFindMenu {
+    NSMenu* m = [[NSMenu alloc] initWithTitle:@"Find options"];
+    NSArray* titles = @[ @"Match Case", @"Whole Words Only", @"Wildcards (* any letters, ? one letter)", @"Search in Comments Too" ];
+    for (NSUInteger i = 0; i < titles.count; ++i) {
+        NSMenuItem* it = [m addItemWithTitle:titles[i] action:@selector(toggleFindOption:) keyEquivalent:@""];
+        it.target = self;
+        it.tag = static_cast<NSInteger>(i);
+        it.state = [NSUserDefaults.standardUserDefaults boolForKey:kFindOptions[i]] ? NSControlStateValueOn : NSControlStateValueOff;
+    }
+    _find.searchMenuTemplate = m;
+}
+
+- (IBAction)toggleFindOption:(NSMenuItem*)sender {
+    NSString* key = kFindOptions[std::clamp<NSInteger>(sender.tag, 0, 3)];
+    [NSUserDefaults.standardUserDefaults setBool:![NSUserDefaults.standardUserDefaults boolForKey:key] forKey:key];
+    [self buildFindMenu];
+    _searched.clear();   // the same words again, with the new options
+    if (_find.stringValue.length) [self findEntered:_find];
+}
+
+- (search::Options)findOptions {
+    NSUserDefaults* u = NSUserDefaults.standardUserDefaults;
+    search::Options o;
+    o.matchCase = [u boolForKey:kFindOptions[0]];
+    o.wholeWord = [u boolForKey:kFindOptions[1]];
+    o.wildcards = [u boolForKey:kFindOptions[2]];
+    o.comments = [u boolForKey:kFindOptions[3]];
+    return o;
+}
+
 - (void)findEntered:(NSSearchField*)f {
     Document* d = self.pdf;
     if (!d) return;
@@ -414,7 +450,8 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (q.empty()) { _hits.clear(); _searched.clear(); [_view setMatches:std::vector<TextHit>() current:-1]; [self viewChanged:nil]; return; }
     if (q != _searched) {   // a new search: the first match from the page shown
         _searched = q;
-        _hits = d->find(q, false);
+        _hits = search::find(*d, q, [self findOptions]);
+        FPTrace(@"find %@: %d", f.stringValue, static_cast<int>(_hits.size()));
         _hit = -1;
         const int page = [_view currentPage];
         for (size_t i = 0; i < _hits.size(); ++i) if (_hits[i].page >= page) { _hit = static_cast<int>(i) - 1; break; }
@@ -424,6 +461,22 @@ static NSImage* symbol(NSString* name, NSString* description) {
     _hit = (back ? _hit - 1 + static_cast<int>(_hits.size()) : _hit + 1) % static_cast<int>(_hits.size());
     [_view setMatches:_hits current:_hit];
     [self viewChanged:nil];
+}
+
+// The build check: FEATHER_UI_FIND="words|options" (options: case word wild comments) searched as if typed.
+- (IBAction)uiFind:(id)sender {
+    NSString* spec = NSProcessInfo.processInfo.environment[@"FEATHER_UI_FIND"] ?: @"";
+    NSArray* parts = [spec componentsSeparatedByString:@"|"];
+    NSString* opts = parts.count > 1 ? parts[1] : @"";
+    NSUserDefaults* u = NSUserDefaults.standardUserDefaults;
+    NSArray* names = @[ @"case", @"word", @"wild", @"comments" ];
+    for (NSUInteger i = 0; i < names.count; ++i) [u setBool:[opts containsString:names[i]] forKey:kFindOptions[i]];
+    [self buildFindMenu];
+    _find.stringValue = parts.firstObject ?: @"";
+    _searched.clear();
+    [self findEntered:_find];
+    for (int i = 0; i < 3 && !_hits.empty(); ++i) [self findEntered:_find];   // on to the fourth match
+    if (_hit >= 0 && _hit < static_cast<int>(_hits.size())) FPTrace(@"find: at %d in a comment %d", _hit + 1, _hits[static_cast<size_t>(_hit)].annot >= 0);
 }
 
 - (IBAction)performFindPanelAction:(id)sender { [self.window makeFirstResponder:_find]; }

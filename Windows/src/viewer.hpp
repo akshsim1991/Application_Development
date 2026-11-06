@@ -110,6 +110,9 @@ public:
 
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
 
+    // the current search hit is in a comment's text (not the page's)
+    bool currentMatchInComment() const { return currentMatch_ >= 0 && currentMatch_ < static_cast<int>(matches_.size()) && matches_[static_cast<size_t>(currentMatch_)].annot >= 0; }
+
 private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
     LRESULT handle(UINT, WPARAM, LPARAM);
@@ -125,6 +128,7 @@ private:
     double pxPerPt() const { return doc_ ? doc_->zoom * 96.0 / 72.0 : 1.0; }
     // Screen rectangles (client coordinates) covering `count` characters from `start` on a page.
     std::vector<RECT> rectsFor(int page, int start, int count) const;
+    std::vector<RECT> hitRects(const TextHit& h) const;   // a search hit: its letters, or the comment it was found in
     bool charAt(int cx, int cy, int& page, int& ch, bool nearest) const;
     void extendSelection(int cx, int cy);
     void selectWordAt(int cx, int cy);

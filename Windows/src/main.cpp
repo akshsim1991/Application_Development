@@ -41,6 +41,7 @@
 #include "speech.hpp"
 #include "redact.hpp"
 #include "sensitive.hpp"
+#include "search.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -68,7 +69,7 @@
 
 namespace {
 
-enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
+enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, ID_FIND_WORD, ID_FIND_WILD, ID_FIND_NOTES, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 constexpr UINT kMsgOpenHandedOver = WM_APP + 1;   // opens the files a second launch handed over
 constexpr UINT kMsgUpdateChecked = WM_APP + 7;    // the version file was read (updater::checkInBackground)
@@ -86,7 +87,7 @@ struct App {
     inlineedit::Editor inlineEd;                      // text being edited in place on the page
     Sidebar sidebar;
     bool sidebarVisible = false, findVisible = false;
-    HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr;
+    HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr, findWord = nullptr, findWild = nullptr, findNotes = nullptr;
     int curMatch = -1, matchTotal = 0;
     WNDPROC editProc = nullptr;
     int hlColour = 0, drawColour = 5, widthIdx = 1, readRate = 0;
@@ -271,7 +272,10 @@ void relayoutChildren() {
         MoveWindow(app.findEdit, x, y, px(260), hgt, TRUE); x += px(268);
         MoveWindow(app.findPrev, x, y, px(60), hgt, TRUE); x += px(64);
         MoveWindow(app.findNext, x, y, px(60), hgt, TRUE); x += px(68);
-        MoveWindow(app.findCase, x, y, px(104), hgt, TRUE); x += px(112);
+        MoveWindow(app.findCase, x, y, px(96), hgt, TRUE); x += px(100);
+        MoveWindow(app.findWord, x, y, px(100), hgt, TRUE); x += px(104);
+        MoveWindow(app.findWild, x, y, px(126), hgt, TRUE); x += px(130);
+        MoveWindow(app.findNotes, x, y, px(104), hgt, TRUE); x += px(112);
         MoveWindow(app.findCount, x, y + px(5), px(170), px(20), TRUE); x += px(174);
         MoveWindow(app.findClose, std::max(x, static_cast<int>(rc.right) - px(70)), y, px(60), hgt, TRUE);
         top += findH();
@@ -310,7 +314,7 @@ void relayoutChildren() {
 
 void showControls() {
     const int f = app.findVisible ? SW_SHOW : SW_HIDE;
-    for (HWND h : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose}) ShowWindow(h, f);
+    for (HWND h : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose}) ShowWindow(h, f);
     ShowWindow(app.sidebar.hwnd(), app.sidebarVisible ? SW_SHOW : SW_HIDE);
     relayoutChildren();
     InvalidateRect(app.wnd, nullptr, FALSE);
@@ -2800,7 +2804,7 @@ void setFullscreen(bool on, bool presentation) {
         SetWindowPos(app.wnd, HWND_TOP, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right - mi.rcMonitor.left,
                      mi.rcMonitor.bottom - mi.rcMonitor.top, SWP_FRAMECHANGED | SWP_NOOWNERZORDER);
         ShowWindow(app.sidebar.hwnd(), SW_HIDE);
-        for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose}) ShowWindow(c, SW_HIDE);
+        for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose}) ShowWindow(c, SW_HIDE);
     } else {
         app.fullscreen = false;
         SetWindowLong(app.wnd, GWL_STYLE, app.savedStyle);
@@ -3043,7 +3047,10 @@ void updateFindCount() {
     wchar_t t[64] = L"";
     if (GetWindowTextLengthW(app.findEdit) > 0) {
         if (app.matchTotal == 0) wcscpy_s(t, L"No results");
-        else swprintf(t, 64, L"%d of %d", app.curMatch + 1, app.matchTotal);
+        else {
+            swprintf(t, 64, L"%d of %d", app.curMatch + 1, app.matchTotal);
+            if (app.viewer.currentMatchInComment()) wcscat_s(t, L"  (in a comment)");
+        }
     }
     SetWindowTextW(app.findCount, t);
 }
@@ -3059,7 +3066,13 @@ void runSearch(bool keepPosition) {
         return;
     }
     HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    std::vector<TextHit> hits = d->find(q, SendMessageW(app.findCase, BM_GETCHECK, 0, 0) == BST_CHECKED);
+    auto on = [](HWND b) { return SendMessageW(b, BM_GETCHECK, 0, 0) == BST_CHECKED; };
+    search::Options o;
+    o.matchCase = on(app.findCase);
+    o.wholeWord = on(app.findWord);
+    o.wildcards = on(app.findWild);
+    o.comments = on(app.findNotes);
+    std::vector<TextHit> hits = search::find(*d, q, o);
     SetCursor(old);
     app.matchTotal = static_cast<int>(hits.size());
     int first = 0;   // first match on or after the page being read
@@ -3156,7 +3169,7 @@ void applyTheme() {
     BOOL on = dark;
     DwmSetWindowAttribute(app.wnd, 20 /* DWMWA_USE_IMMERSIVE_DARK_MODE */, &on, sizeof(on));
     const wchar_t* cls = dark ? L"DarkMode_Explorer" : L"Explorer";
-    for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findClose, app.findCase}) if (c) SetWindowTheme(c, cls, nullptr);
+    for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findClose, app.findCase, app.findWord, app.findWild, app.findNotes}) if (c) SetWindowTheme(c, cls, nullptr);
     app.sidebar.applyTheme();
     if (app.startPage) startpage::themeChanged(app.startPage);
     RedrawWindow(app.wnd, nullptr, nullptr, RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_ERASE | RDW_FRAME);
@@ -6220,9 +6233,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.findPrev = CreateWindowExW(0, L"BUTTON", L"Prev", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_PREV), app.inst, nullptr);
             app.findNext = CreateWindowExW(0, L"BUTTON", L"Next", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NEXT), app.inst, nullptr);
             app.findCase = CreateWindowExW(0, L"BUTTON", L"Match case", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_CASE), app.inst, nullptr);
+            app.findWord = CreateWindowExW(0, L"BUTTON", L"Whole word", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_WORD), app.inst, nullptr);
+            app.findWild = CreateWindowExW(0, L"BUTTON", L"Wildcards * ?", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_WILD), app.inst, nullptr);
+            app.findNotes = CreateWindowExW(0, L"BUTTON", L"In comments", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NOTES), app.inst, nullptr);
             app.findCount = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_COUNT), app.inst, nullptr);
             app.findClose = CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_CLOSE), app.inst, nullptr);
-            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose})
+            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose})
                 SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
             app.editProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(app.findEdit, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(findEditProc)));
             // the page number and zoom in the toolbar can be typed into
@@ -6254,7 +6270,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     break;
                 case ID_FIND_PREV: stepMatch(-1); break;
                 case ID_FIND_NEXT: stepMatch(1); break;
-                case ID_FIND_CASE: runSearch(false); break;
+                case ID_FIND_CASE: case ID_FIND_WORD: case ID_FIND_WILD: case ID_FIND_NOTES: runSearch(false); break;
                 case ID_FIND_CLOSE: toggleFind(false); break;
             }
             return 0;
@@ -6460,7 +6476,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_DPICHANGED: {   // moved to a screen with other scaling: fonts and sizes follow
             app.dpi = LOWORD(w) >= 48 ? LOWORD(w) : 96;
             makeUiFonts();
-            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findCount, app.findClose, app.pageBox, app.zoomBox})
+            for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose, app.pageBox, app.zoomBox})
                 if (c) SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
             startpage::setDpi(app.startPage, app.dpi);
             app.tipKey.clear();

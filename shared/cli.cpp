@@ -26,6 +26,7 @@
 #include "protect.hpp"
 #include "redact.hpp"
 #include "sensitive.hpp"
+#include "search.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -168,6 +169,28 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--find") {
+        // --find in.pdf out.txt query [case] [word] [wild] [comments] : page|matched text|"comment" or "page"
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        search::Options o;
+        for (size_t i = 4; i < files.size(); ++i) {
+            o.matchCase = o.matchCase || files[i] == L"case";
+            o.wholeWord = o.wholeWord || files[i] == L"word";
+            o.wildcards = o.wildcards || files[i] == L"wild";
+            o.comments = o.comments || files[i] == L"comments";
+        }
+        const std::vector<TextHit> hits = search::find(doc, files[3], o);
+        std::wstring rep = L"count=" + std::to_wstring(hits.size()) + L"\n";
+        for (const auto& h : hits) {
+            const std::wstring src = h.annot >= 0 ? search::commentText(doc, h) : doc.textRange(h.page, h.start, h.count);
+            const std::wstring txt = h.annot >= 0 ? src.substr(static_cast<size_t>(h.start), static_cast<size_t>(h.count)) : src;
+            rep += std::to_wstring(h.page + 1) + L"|" + txt + L"|" + (h.annot >= 0 ? L"comment" : L"page") + L"\n";
+        }
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--sensitive") {
         // --sensitive in.pdf report.txt [out.pdf] : lists e-mail, phone, Aadhaar, PAN and bank details (page|kind|text);

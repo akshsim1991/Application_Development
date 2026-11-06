@@ -15,6 +15,7 @@ add_executable(FeatherPDF WIN32
   src/speech.cpp
   ${SHARED}/redact.cpp
   ${SHARED}/sensitive.cpp
+  ${SHARED}/search.cpp
   ${SHARED}/compress.cpp
   ${SHARED}/protect.cpp
   ${SHARED}/ocr.cpp

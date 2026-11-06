@@ -12,7 +12,13 @@ struct PageSize { float w = 612, h = 792; };   // in points
 // An area marked for redaction, in page coordinates (points, origin bottom-left). Not part of the file until applied.
 struct RedactMark { int page; double left, bottom, right, top; };
 
-struct TextHit { int page = 0, start = 0, count = 0; };   // a run of characters on one page
+// A run of characters on one page; or, with annot >= 0, a run in the text of that comment (annotation index on the
+// page), shown as the comment's rectangle (page coordinates, points from the bottom left).
+struct TextHit {
+    int page = 0, start = 0, count = 0;
+    int annot = -1;
+    double left = 0, bottom = 0, right = 0, top = 0;
+};
 
 struct Bookmark {
     std::wstring title;

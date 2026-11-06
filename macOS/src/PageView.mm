@@ -614,6 +614,15 @@ constexpr size_t kCachedPages = 10;
         NSColor* c = static_cast<int>(m) == _currentMatch ? [NSColor colorWithRed:1 green:0.55 blue:0 alpha:0.45]
                                                           : [NSColor colorWithRed:1 green:0.9 blue:0 alpha:0.38];
         [c setFill];
+        if (h.annot >= 0) {   // found in a comment's text: the comment framed
+            const NSRect r = NSInsetRect([self viewRectOnPage:page rect:{h.left, h.bottom, h.right, h.top}], -4, -4);
+            NSRectFillUsingOperation(r, NSCompositingOperationMultiply);
+            [[c colorWithAlphaComponent:1] setStroke];
+            NSBezierPath* frame = [NSBezierPath bezierPathWithRect:r];
+            frame.lineWidth = static_cast<int>(m) == _currentMatch ? 3 : 2;
+            [frame stroke];
+            continue;
+        }
         for (const NSRect& r : [self rectsOnPage:page start:h.start count:h.count])
             NSRectFillUsingOperation(NSInsetRect(r, -1, -1), NSCompositingOperationMultiply);
     }
@@ -632,7 +641,8 @@ constexpr size_t kCachedPages = 10;
     if (current >= 0 && current < static_cast<int>(_matches.size())) {
         const TextHit& h = _matches[static_cast<size_t>(current)];
         if (_layout == 0 && h.page != _shown) [self showPage:h.page];
-        const auto rs = [self rectsOnPage:h.page start:h.start count:h.count];
+        const auto rs = h.annot >= 0 ? std::vector<NSRect>{[self viewRectOnPage:h.page rect:{h.left, h.bottom, h.right, h.top}]}
+                                     : [self rectsOnPage:h.page start:h.start count:h.count];
         if (!rs.empty()) [self scrollRectToVisible:NSInsetRect(rs[0], -60, -80)];
     }
     [self setNeedsDisplay:YES];

@@ -484,6 +484,14 @@ std::vector<RECT> Viewer::rectsFor(int page, int start, int count) const {
     return out;
 }
 
+std::vector<RECT> Viewer::hitRects(const TextHit& h) const {
+    if (h.annot < 0) return rectsFor(h.page, h.start, h.count);
+    if (!doc_ || h.page < 0 || h.page >= static_cast<int>(tops_.size())) return {};
+    RECT r = annotScreenRect(h.page, {h.left, h.bottom, h.right, h.top});
+    InflateRect(&r, 4, 4);
+    return {r};
+}
+
 void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip) {
     // the tables found on the page, while a table tool is chosen: a dashed frame and a light tint, so it is clear what can
     // be clicked
@@ -528,7 +536,16 @@ void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip
                                    [](const TextHit& h, int p) { return h.page < p; });
         for (auto it = lo; it != matches_.end() && it->page == page; ++it) {
             bool cur = static_cast<int>(it - matches_.begin()) == currentMatch_;
-            paintRange(it->start, it->count, cur ? RGB(0xFF, 0x8C, 0x00) : RGB(0xFF, 0xE0, 0x00), cur ? 150 : 110);
+            if (it->annot < 0) { paintRange(it->start, it->count, cur ? RGB(0xFF, 0x8C, 0x00) : RGB(0xFF, 0xE0, 0x00), cur ? 150 : 110); continue; }
+            // found in a comment's text: the comment framed
+            for (const RECT& r : hitRects(*it)) {
+                RECT v;
+                if (IntersectRect(&v, &r, &clip)) fillAlpha(dc, v, cur ? RGB(0xFF, 0x8C, 0x00) : RGB(0xFF, 0xE0, 0x00), cur ? 90 : 60);
+                HPEN pen = CreatePen(PS_SOLID, cur ? 3 : 2, cur ? RGB(0xFF, 0x8C, 0x00) : RGB(0xE0, 0xB0, 0x00));
+                HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+                Rectangle(dc, r.left, r.top, r.right, r.bottom);
+                SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(pen);
+            }
         }
     }
     if (sel_.active) {
@@ -623,7 +640,7 @@ void Viewer::setCurrentMatch(int current) {
                     static_cast<int>(matches_.size());
     const TextHit& h = matches_[currentMatch_];
     if (layout_ == 0 && h.page != currentPage()) showPage(h.page, false);
-    auto rects = rectsFor(h.page, h.start, h.count);   // client coordinates at the current scroll
+    auto rects = hitRects(h);   // client coordinates at the current scroll
     if (!rects.empty()) {
         RECT rc; GetClientRect(hwnd_, &rc);
         const RECT& r = rects.front();

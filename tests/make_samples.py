@@ -39,6 +39,20 @@ c.drawString(60, 800, "Second page: write to accounts@example.org")
 c.save()
 open(f"{out}/sensitive-aadhaar.txt", "w").write(aad)
 
+# search options: whole words, wildcards, comments
+c = canvas.Canvas(f"{out}/search.pdf", pagesize=A4)
+y = 800
+for line in ["The cat sat. A category of concatenated Cats.",
+             "Invoice INV-2041 and invoice inv-2042; the invoices were paid.",
+             "Colour or color? Both spellings: colour, color, colours.",
+             "A price of 5*3 dollars."]:
+    c.drawString(60, y, line); y -= 22
+c.textAnnotation("Please check the cat photo and the invoice total", Rect=(60, 600, 80, 620))
+c.showPage()
+c.drawString(60, 800, "Second page: one more cat and a catalogue.")
+c.textAnnotation("Reviewer: the catalogue needs a colour index", Rect=(60, 700, 80, 720))
+c.save()
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

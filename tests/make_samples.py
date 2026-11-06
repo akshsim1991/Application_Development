@@ -82,6 +82,22 @@ for pg in range(6):
     c.drawImage(f"{out}/noise{pg}.png", 50, 200, 450, 450); c.drawString(72, 780, f"Heavy page {pg + 1}"); c.showPage()
 c.save()
 
+# two versions of a document for the text comparison: a word replaced, a sentence added, one removed, and a line that
+# moved to the previous page (not a change)
+for name, pages in (("version1", [["Alpha beta gamma delta.", "The quick brown fox jumps over the lazy dog.", "Payment is due within thirty days."],
+                                  ["Second page starts here with some words.", "Terms and conditions apply to every order."],
+                                  ["Final page. Signed by the manager."]]),
+                    ("version2", [["Alpha beta gamma delta.", "The quick red fox jumps over the lazy dog.", "Payment is due within thirty days.",
+                                   "Second page starts here with some words."],
+                                  ["Terms and conditions apply to every order.", "Late payments incur a fee of two percent."],
+                                  ["Final page."]])):
+    c = canvas.Canvas(f"{out}/{name}.pdf", pagesize=A4)
+    for lines in pages:
+        y = 780
+        for line in lines: c.setFont("Helvetica", 14); c.drawString(72, y, line); y -= 24
+        c.showPage()
+    c.save()
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

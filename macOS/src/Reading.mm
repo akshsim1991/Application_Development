@@ -6,14 +6,19 @@
 #import "PageView.h"
 #import "Render.h"
 #import "Palette.h"
+#import "Trace.h"
 #import <AVFoundation/AVFoundation.h>
 #import <objc/runtime.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <algorithm>
 #include <cmath>
 #include "platform.hpp"
+#include "textdiff.hpp"
+#include "textpdf.hpp"
 #include "visualdiff.hpp"
 
+using form::Field;
+using form::Fields;
 using form::ns;
 
 // ---- printing: macOS's print window (preview, copies, pages, pages per sheet, two-sided, black and white) ----
@@ -193,35 +198,83 @@ static AVSpeechSynthesizer* g_speech = nil;
 - (IBAction)compareDocuments:(id)sender {
     Document* d = self.pdf;
     if (!d) return;
-    NSOpenPanel* p = [NSOpenPanel openPanel];
-    p.allowedContentTypes = @[ UTTypePDF ];
-    p.title = @"Compare this document with";
+    Fields f(3);
+    f[0] = {Field::Choice, L"Compare:", {L"The words (a report and a marked copy)", L"How this page looks (overlay)"}, L"", 0};
+    f[1] = {Field::Check, L"Words: ignore capital letters"};
+    f[2] = {Field::Check, L"Words: ignore punctuation"};
+    __weak FPWindowController* weak = self;
+    form::show(self.window, L"Compare with another document", f, L"Choose the File\u2026", nullptr, [weak](const Fields& v) {
+        const bool words = v[0].choice == 0;   // read now: the answers go with the form
+        textdiff::Options o;
+        o.ignoreCase = v[1].checked;
+        o.ignorePunctuation = v[2].checked;
+        dispatch_async(dispatch_get_main_queue(), ^{
+            FPWindowController* me = weak;
+            if (!me) return;
+            if (NSString* path = NSProcessInfo.processInfo.environment[@"FEATHER_UI_COMPARE"]) {   // the build check
+                [me compareWith:[NSURL fileURLWithPath:path] words:words options:o];
+                return;
+            }
+            NSOpenPanel* p = [NSOpenPanel openPanel];
+            p.allowedContentTypes = @[ UTTypePDF ];
+            p.title = @"Compare this document with";
+            [p beginSheetModalForWindow:me.window completionHandler:^(NSModalResponse r) {
+                if (r == NSModalResponseOK) [weak compareWith:p.URL words:words options:o];
+            }];
+        });
+    });
+}
+
+- (void)compareWith:(NSURL*)url words:(bool)words options:(textdiff::Options)o {
+    Document* d = self.pdf;
+    if (!d) return;
+    Document other;
+    const std::wstring path = platform::wide(url.fileSystemRepresentation);
+    const OpenResult res = other.open(path);
+    if (res != OpenResult::Ok) { [self tellUser:Document::describe(res, path)]; return; }
+    if (words) {
+        // word by word across the whole documents: a copy of this one with each change marked, and the report
+        std::vector<unsigned char> bytes;
+        Document copy;
+        if (!d->serialize(bytes) || copy.load(std::move(bytes), "") != OpenResult::Ok) { [self tellUser:L"The comparison copy could not be made."]; return; }
+        const textdiff::Result r = textdiff::compare(*d, other, o);
+        int replaced = 0, inserted = 0, removed = 0;
+        for (const auto& c : r.changes) (c.kind == textdiff::Change::Replaced ? replaced : c.kind == textdiff::Change::Inserted ? inserted : removed)++;
+        FPTrace(@"compare: %d changes, %d replaced, %d inserted, %d removed, %d same", static_cast<int>(r.changes.size()), replaced, inserted, removed, r.same);
+        if (r.changes.empty()) {
+            [self tellUser:L"The words of the two documents are the same (" + std::to_wstring(r.same) + L" words). This compares the text, not how the pages look."];
+            return;
+        }
+        textdiff::mark(copy, r);
+        std::vector<unsigned char> marked, report;
+        if (copy.serialize(marked)) [FPDocument openNewWithBytes:std::move(marked) name:ns(L"Changes marked - " + d->title())];
+        if (textpdf::build(textdiff::report(r, d->title(), other.title()), true, report).ok)
+            [FPDocument openNewWithBytes:std::move(report) name:ns(L"Comparison report - " + d->title())];
+        [self tellUser:std::to_wstring(r.changes.size()) + L" change(s): " + std::to_wstring(replaced) + L" replaced, " + std::to_wstring(inserted) +
+                       L" inserted, " + std::to_wstring(removed) + L" removed; " + std::to_wstring(r.same) + L" words unchanged." +
+                       (r.rough ? L" The documents differ a lot, so they were compared page by page." : L"") +
+                       L"\n\nTwo new documents: this one with each change marked (the comment of a mark says what it became), and the report."];
+        return;
+    }
     const int page = [self.pageView currentPage];
-    [p beginSheetModalForWindow:self.window completionHandler:^(NSModalResponse r) {
-        if (r != NSModalResponseOK) return;
-        Document other;
-        const std::wstring path = platform::wide(p.URL.fileSystemRepresentation);
-        const OpenResult o = other.open(path);
-        if (o != OpenResult::Ok) { [self tellUser:Document::describe(o, path)]; return; }
-        NSString* png = [NSTemporaryDirectory() stringByAppendingPathComponent:@"Feather PDF compare.png"];
-        const visualdiff::PageResult res = visualdiff::overlay(*d, page, other, std::min(page, other.pageCount() - 1), 110, platform::wide(png.UTF8String));
-        if (!res.ok) { [self tellUser:L"The pages could not be compared."]; return; }
-        NSImage* img = [[NSImage alloc] initWithContentsOfFile:png];
-        NSPanel* w = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 760, 900) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
-                                                  backing:NSBackingStoreBuffered defer:NO];
-        w.title = [NSString stringWithFormat:@"Compare: page %d — %.2f %% of the page differs (red: only here, green: only in the other file)", page + 1, res.percent];
-        NSScrollView* sv = [[NSScrollView alloc] initWithFrame:w.contentView.bounds];
-        sv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-        sv.hasVerticalScroller = sv.hasHorizontalScroller = YES;
-        NSImageView* iv = [NSImageView imageViewWithImage:img];
-        iv.frame = NSMakeRect(0, 0, img.size.width, img.size.height);
-        sv.documentView = iv;
-        w.contentView = sv;
-        w.releasedWhenClosed = NO;
-        [w center];
-        [w makeKeyAndOrderFront:nil];
-        objc_setAssociatedObject(self, "comparePanel", w, OBJC_ASSOCIATION_RETAIN);
-    }];
+    NSString* png = [NSTemporaryDirectory() stringByAppendingPathComponent:@"Feather PDF compare.png"];
+    const visualdiff::PageResult vr = visualdiff::overlay(*d, page, other, std::min(page, other.pageCount() - 1), 110, platform::wide(png.UTF8String));
+    if (!vr.ok) { [self tellUser:L"The pages could not be compared."]; return; }
+    NSImage* img = [[NSImage alloc] initWithContentsOfFile:png];
+    NSPanel* w = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 760, 900) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskResizable
+                                              backing:NSBackingStoreBuffered defer:NO];
+    w.title = [NSString stringWithFormat:@"Compare: page %d — %.2f %% of the page differs (red: only here, green: only in the other file)", page + 1, vr.percent];
+    NSScrollView* sv = [[NSScrollView alloc] initWithFrame:w.contentView.bounds];
+    sv.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    sv.hasVerticalScroller = sv.hasHorizontalScroller = YES;
+    NSImageView* iv = [NSImageView imageViewWithImage:img];
+    iv.frame = NSMakeRect(0, 0, img.size.width, img.size.height);
+    sv.documentView = iv;
+    w.contentView = sv;
+    w.releasedWhenClosed = NO;
+    [w center];
+    [w makeKeyAndOrderFront:nil];
+    objc_setAssociatedObject(self, "comparePanel", w, OBJC_ASSOCIATION_RETAIN);
 }
 
 @end

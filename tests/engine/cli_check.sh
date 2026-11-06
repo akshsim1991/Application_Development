@@ -76,7 +76,7 @@ check "each part keeps its bookmarks" "[ \"\$(ol '$W/sb-2.pdf')\" = '3 Chapter T
 check "the part's own pages"         "text '$W/sb-2.pdf' | grep -q 'Book page 4' && ! text '$W/sb-2.pdf' | grep -q 'Book page 3'"
 run --split "$W/heavy.pdf" "$W/ss" size 2
 check "no part over 2 MB, none empty" "[ -f '$W/ss-2.pdf' ] && for f in '$W'/ss-*.pdf; do [ \$(wc -c < \"\$f\") -le 2097152 ] || exit 1; done"
-check "all pages in the parts"       "[ \$(( \$(for f in '$W'/ss-*.pdf; do pages \"\$f\"; done | paste -sd+) )) -eq 6 ]"
+check "all pages in the parts"       "[ \$(( \$(for f in '$W'/ss-*.pdf; do pages \"\$f\"; done | paste -sd+ -) )) -eq 6 ]"
 run --merge "$W/mk.pdf" keep "$W/book.pdf" "$W/appendix.pdf"
 check "merge keeps the bookmarks"    "[ \"\$(ol '$W/mk.pdf')\" = '11 Chapter One->1;   Section 2.1->2; Chapter Two->4;   Section 5.1->5; Chapter Three->7; Appendix A->10' ]"
 run --merge "$W/mf.pdf" files "$W/book.pdf" "$W/appendix.pdf"
@@ -84,9 +84,23 @@ check "merge: a bookmark per file"   "ol '$W/mf.pdf' | grep -q '^11 book->1;   C
 run --merge "$W/mn.pdf" none "$W/book.pdf" "$W/appendix.pdf"
 check "merge without bookmarks"      "[ \"\$(ol '$W/mn.pdf')\" = '11 ' ]"
 run --interleave "$W/duplex.pdf" "$W/il1.pdf" reversed
-check "one file: fronts, then backs reversed" "[ \"\$(text '$W/il1.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd,)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
+check "one file: fronts, then backs reversed" "[ \"\$(text '$W/il1.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd, -)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
 run --interleave "$W/fronts.pdf" "$W/il2.pdf" reversed "$W/backs.pdf"
-check "two files: fronts and backs"  "[ \"\$(text '$W/il2.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd,)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
+check "two files: fronts and backs"  "[ \"\$(text '$W/il2.pdf' | tr -d '\\f' | grep -E 'Front|Back' | paste -sd, -)\" = 'Front 1,Back 1,Front 2,Back 2,Front 3,Back 3' ]"
+
+echo "text comparison, word by word"
+run --textdiff "$W/version1.pdf" "$W/version2.pdf" "$W/td.txt" "$W/td-marked.pdf" "$W/td-report.pdf"
+check "three changes, the moved line not one" "head -1 '$W/td.txt' | grep -q '^changes=3 replaced=1 inserted=1 removed=1 same=34 rough=0$'"
+check "replaced: brown -> red"       "grep -A3 'Replaced\*\*' '$W/td.txt' | grep -q 'Was: .*brown' && grep -A3 'Replaced\*\*' '$W/td.txt' | grep -q 'Now: .*red'"
+check "inserted after page 2's last words" "grep -q 'Inserted\*\* .* page 2 of the first, page 2 of the second' '$W/td.txt'"
+check "removed on page 3"            "grep -A2 'Removed\*\*' '$W/td.txt' | grep -q 'Was: .*Signed by the manager'"
+check "marked copy: highlight, note, strike-out" "python3 -c \"
+import pikepdf;p=pikepdf.open('$W/td-marked.pdf')
+got=[(i+1,str(a.Subtype),str(a.get('/Contents',''))) for i,pg in enumerate(p.pages) for a in pg.get('/Annots',[])]
+assert got==[(1,'/Highlight','Now: red'),(2,'/Text','Inserted: Late payments incur a fee of two percent.'),(3,'/StrikeOut','Removed')],got\""
+check "the report as a PDF"          "text '$W/td-report.pdf' | grep -q 'Changes: 3 (1 replaced, 1 inserted, 1 removed)'"
+run --textdiff "$W/version1.pdf" "$W/version1.pdf" "$W/td0.txt"
+check "the same document: no changes" "head -1 '$W/td0.txt' | grep -q '^changes=0 .* same=39 '"
 
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?

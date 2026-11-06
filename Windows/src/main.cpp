@@ -43,6 +43,7 @@
 #include "sensitive.hpp"
 #include "search.hpp"
 #include "splitmerge.hpp"
+#include "textdiff.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -4716,70 +4717,35 @@ void progressClose(ProgressWin& p) {
 }
 
 // ---- compare two documents (by text) ----
-struct Word { int start, count; std::wstring text; };
-std::vector<Word> wordsOf(Document& d, int page) {
-    std::vector<Word> out;
-    const int n = d.charCount(page);
-    if (n <= 0) return out;
-    std::wstring t = d.textRange(page, 0, n);
-    size_t i = 0;
-    while (i < t.size()) {
-        while (i < t.size() && iswspace(t[i])) ++i;
-        size_t s = i;
-        while (i < t.size() && !iswspace(t[i])) ++i;
-        if (i > s) out.push_back({static_cast<int>(s), static_cast<int>(i - s), t.substr(s, i - s)});
-    }
-    return out;
-}
-
-void compareTextDocs(Document* a, Document* b) {
+// Word by word across the whole documents (shared/textdiff): a copy of the first with each change marked (the comment
+// says what it became), and a report listing every change with its pages, each in a tab of its own.
+void compareTextDocs(Document* a, Document* b, const textdiff::Options& o) {
     std::vector<unsigned char> bytes;
-    if (!a->serialize(bytes)) { MessageBoxW(app.wnd, L"The document could not be prepared for comparing.", kAppName, MB_OK | MB_ICONWARNING); return; }
     auto copy = std::make_unique<Document>();
-    if (copy->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The comparison copy could not be opened. (Password-protected documents cannot be compared.)", kAppName, MB_OK | MB_ICONWARNING); return; }
-    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
-    int pagesDiff = 0, onlyA = 0, onlyB = 0, skipped = 0;
-    const int pages = std::max(a->pageCount(), b->pageCount());
-    for (int p = 0; p < pages; ++p) {
-        std::vector<Word> wa = p < a->pageCount() ? wordsOf(*a, p) : std::vector<Word>{};
-        std::vector<Word> wb = p < b->pageCount() ? wordsOf(*b, p) : std::vector<Word>{};
-        const size_t n = wa.size(), m = wb.size();
-        if (n * m > 9000000) { ++skipped; continue; }
-        std::vector<char> keepA(n, 0);
-        {   // longest common subsequence of the words
-            std::vector<std::vector<unsigned short>> L(n + 1, std::vector<unsigned short>(m + 1, 0));
-            for (size_t i = n; i-- > 0;)
-                for (size_t j = m; j-- > 0;) L[i][j] = wa[i].text == wb[j].text ? static_cast<unsigned short>(L[i + 1][j + 1] + 1) : std::max(L[i + 1][j], L[i][j + 1]);
-            size_t i = 0, j = 0;
-            while (i < n && j < m) {
-                if (wa[i].text == wb[j].text) { keepA[i] = 1; ++i; ++j; }
-                else if (L[i + 1][j] >= L[i][j + 1]) ++i; else ++j;
-            }
-            onlyB += static_cast<int>(m - L[0][0]);
-        }
-        std::vector<annot::RectD> rects;
-        FPDF_TEXTPAGE tp = p < copy->pageCount() ? copy->text(p) : nullptr;
-        for (size_t i = 0; i < n; ++i) {
-            if (keepA[i]) continue;
-            ++onlyA;
-            if (!tp) continue;
-            const int cnt = pdfium::api().FPDFText_CountRects(tp, wa[i].start, wa[i].count);
-            for (int k = 0; k < cnt; ++k) {
-                double l, t, r, bt;
-                if (pdfium::api().FPDFText_GetRect(tp, k, &l, &t, &r, &bt)) rects.push_back({l, bt, r, t});
-            }
-        }
-        const bool differs = !rects.empty() || wa.size() != wb.size() || std::any_of(keepA.begin(), keepA.end(), [](char c) { return !c; });
-        if (differs) ++pagesDiff;
-        if (!rects.empty() && p < copy->pageCount()) annot::addMarkup(*copy, p, annot::Markup::Highlight, rects, RGB(0xFF, 0x8C, 0x00));
+    if (!a->serialize(bytes) || copy->load(std::move(bytes), {}) != OpenResult::Ok) {
+        MessageBoxW(app.wnd, L"The comparison copy could not be opened. (Password-protected documents cannot be compared.)", kAppName, MB_OK | MB_ICONWARNING);
+        return;
     }
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const textdiff::Result r = textdiff::compare(*a, *b, o);
+    textdiff::mark(*copy, r);
+    const std::wstring md = textdiff::report(r, a->title(), b->title());
+    std::vector<unsigned char> pdf;
+    auto rep = std::make_unique<Document>();
+    const bool haveReport = textpdf::build(md, true, pdf).ok && rep->load(std::move(pdf), {}) == OpenResult::Ok;
     SetCursor(old);
-    wchar_t msg[400];
-    swprintf(msg, 400, L"Pages with differences: %d of %d.\nWords only in \"%ls\" (highlighted in the new tab): %d.\nWords only in \"%ls\": %d.%ls\n\nThis compares the text, not how the pages look.",
-             pagesDiff, pages, a->title().c_str(), onlyA, b->title().c_str(), onlyB, skipped ? L"\nSome very large pages were skipped." : L"");
-    copy->setName(L"Comparison - " + a->title());
-    addDocumentTab(std::move(copy));
-    MessageBoxW(app.wnd, msg, kAppName, MB_OK | MB_ICONINFORMATION);
+    int replaced = 0, inserted = 0, removed = 0;
+    for (const auto& c : r.changes) (c.kind == textdiff::Change::Replaced ? replaced : c.kind == textdiff::Change::Inserted ? inserted : removed)++;
+    if (!r.changes.empty()) { copy->setName(L"Changes marked - " + a->title()); addDocumentTab(std::move(copy)); }
+    if (haveReport) { rep->setName(L"Comparison report - " + a->title()); addDocumentTab(std::move(rep)); }
+    wchar_t msg[600];
+    if (r.changes.empty())
+        swprintf(msg, 600, L"The words of \"%ls\" and \"%ls\" are the same (%d words).\n\nThis compares the text, not how the pages look.", a->title().c_str(), b->title().c_str(), r.same);
+    else
+        swprintf(msg, 600, L"%d change(s): %d replaced, %d inserted, %d removed. %d words are unchanged.%ls\n\n"
+                           L"Two new tabs: the first document with each change marked (point at a mark to see what it became), and the report.",
+                 static_cast<int>(r.changes.size()), replaced, inserted, removed, r.same, r.rough ? L"\nThe documents differ a lot, so they were compared page by page." : L"");
+    MessageBoxW(app.wnd, msg, L"Compare the text", MB_OK | MB_ICONINFORMATION);
 }
 
 
@@ -4825,10 +4791,15 @@ void compareDocs() {
     std::vector<FormField> f(3);
     f[0] = {FormField::Note, L"", {}, L"Compare \"" + a->title() + L"\" with another open document."};
     f[1] = {FormField::Choice, L"Compare with:", names, L"", 0};
-    f[2] = {FormField::Choice, L"How:", {L"The words (text differences)", L"How the pages look (overlay)", L"Both"}, L"", 0};
+    f[2] = {FormField::Choice, L"How:", {L"The words (a report and a marked copy)", L"How the pages look (overlay)", L"Both"}, L"", 0};
+    f.push_back({FormField::Check, L"Words: ignore capital letters"});
+    f.push_back({FormField::Check, L"Words: ignore punctuation"});
     if (!showForm(app.wnd, app.inst, L"Compare documents", f, L"Compare")) return;
     Document* b = others[f[1].choice];
-    if (f[2].choice != 1) compareTextDocs(a, b);
+    textdiff::Options o;
+    o.ignoreCase = f[3].checked;
+    o.ignorePunctuation = f[4].checked;
+    if (f[2].choice != 1) compareTextDocs(a, b, o);
     if (f[2].choice != 0) compareVisual(a, b);
 }
 

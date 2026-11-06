@@ -29,6 +29,7 @@
 #include "sensitive.hpp"
 #include "search.hpp"
 #include "splitmerge.hpp"
+#include "textdiff.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -171,6 +172,31 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--textdiff") {
+        // --textdiff a.pdf b.pdf report.txt [marked.pdf] [report.pdf] : summary line, then the report (Markdown)
+        if (files.size() < 4) return 2;
+        Document a, b;
+        if (a.open(files[1]) != OpenResult::Ok || b.open(files[2]) != OpenResult::Ok) return 3;
+        const textdiff::Result r = textdiff::compare(a, b);
+        int rep = 0, ins = 0, rem = 0;
+        for (const auto& c : r.changes) (c.kind == textdiff::Change::Replaced ? rep : c.kind == textdiff::Change::Inserted ? ins : rem)++;
+        const std::wstring md = textdiff::report(r, a.title(), b.title());
+        std::wstring out = L"changes=" + std::to_wstring(r.changes.size()) + L" replaced=" + std::to_wstring(rep) + L" inserted=" + std::to_wstring(ins) +
+                           L" removed=" + std::to_wstring(rem) + L" same=" + std::to_wstring(r.same) + L" rough=" + std::to_wstring(r.rough) + L"\n" + md;
+        if (files.size() > 4) {
+            std::vector<unsigned char> bytes;
+            Document copy;
+            if (!a.serialize(bytes) || copy.load(std::move(bytes), "") != OpenResult::Ok) return 4;
+            out += L"marks=" + std::to_wstring(textdiff::mark(copy, r)) + L"\n";
+            if (!copy.serialize(bytes) || Document::writeFile(files[4], bytes) != SaveResult::Ok) return 4;
+        }
+        if (files.size() > 5) {
+            std::vector<unsigned char> pdf;
+            if (!textpdf::build(md, true, pdf).ok || Document::writeFile(files[5], pdf) != SaveResult::Ok) return 4;
+        }
+        const std::string u = platform::utf8(out);
+        return Document::writeFile(files[3], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--split") {
         // --split in.pdf outstem every N | size MB | bookmarks LEVEL : outstem-1.pdf ... and outstem.txt (file|pages|names)

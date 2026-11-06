@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.14.2"
+VERSION = "2.16.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -449,6 +449,23 @@ story += bullets([
     "<b>Batch</b> runs OCR, watermark, compression, password or signing on a whole folder, with saved presets.",
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
+
+story += [P("New in 2.16 \u201cMustang\u201d", "h2")]
+story += bullets([
+    "<b>Find sensitive information</b> (Edit PDF > Redact): e-mail addresses, phone numbers, Aadhaar, PAN and bank details. Untick what should stay; the rest is marked for redaction.",
+    "<b>Search options</b> in the find bar: Whole word, Wildcards (* any letters, ? one letter) and In comments.",
+    "<b>Split</b> at the bookmarks or by file size; <b>Merge</b> keeping bookmarks; <b>Two-sided scan</b> puts fronts and backs in order (Edit pages).",
+    "<b>Comments and review</b>: reply to a comment, mark it Accepted, Rejected, Completed or Cancelled, and make a review summary.",
+    "<b>Attached files</b> and <b>Layers</b> (… menu): open, save, add or remove attachments; show or hide layers.",
+    "<b>Undo history</b>: the History tab of the side panel lists every change; click one to go back (or forward) to it.",
+    "<b>Calculations and checks</b> for forms (Fillable form): totals and averages; fields that accept only numbers, a range, a date, an e-mail address or a phone number.",
+    "<b>Accessibility: check and fix</b>: what screen readers need, with fixes for the title, language, tab order, links and field tooltips.",
+    "<b>Compare the words</b> of two documents: a report of every change and a marked copy.",
+    "<b>Repair a damaged PDF</b> and <b>Save a copy for the web</b> (Fast Web View) in the … menu.",
+    "<b>Pen</b>: with a pen that senses pressure, lines are thin or thick as pressed; a hand resting on the screen does not draw.",
+    "<b>Read aloud</b> (Ctrl+Shift+U) highlights the word being read; the bar below the pages goes back or forward a sentence, pauses, and changes the speed.",
+    "<b>Workspaces</b> (… menu): save the open tabs under a name and open them all again later.",
+])
 story += [PageBreak()]
 
 # ---------- 5 feature list ----------
@@ -540,6 +557,17 @@ cmds = [
     ("--pages in.pdf out.pdf reverse|noblanks|nodupes|header|background", "Page tools"),
     ("--pdfa in.pdf out.pdf [pictures]", "PDF/A-2b copy (report in out.pdf.txt)"),
     ("--fonts in.pdf report.txt", "Fonts report, and pages without text"),
+    ("--sensitive in.pdf report.txt [out.pdf]", "Find e-mail, phone, Aadhaar, PAN, bank details; redact them all"),
+    ("--find in.pdf out.txt text [case] [word] [wild] [comments]", "Search with options"),
+    ("--split in.pdf stem every N|size MB|bookmarks LEVEL", "Split, keeping bookmarks"),
+    ("--merge out.pdf keep|files|none in1.pdf in2.pdf ...", "Merge, keeping bookmarks"),
+    ("--interleave in.pdf out.pdf reversed|same [backs.pdf]", "Put a two-sided scan in order"),
+    ("--textdiff a.pdf b.pdf report.txt [marked.pdf] [report.pdf]", "Compare the words"),
+    ("--attach in.pdf list|add|get|remove ...", "Attached files"),
+    ("--layers in.pdf out.txt [out.pdf name=on|off ...]", "List, show or hide layers"),
+    ("--repair in.pdf out.pdf", "Repair a damaged file (report in out.pdf.txt)"),
+    ("--linearize in.pdf out.pdf", "Fast Web View copy"),
+    ("--access in.pdf report.txt [fixed.pdf]", "Accessibility check (and fixes)"),
 ]
 rows = [["Command", "What it does"]] + [[Paragraph(c.replace("|", "|​"), S["mono"]), d] for c, d in cmds]
 story += [table(rows, [104, 66], pad=2)]

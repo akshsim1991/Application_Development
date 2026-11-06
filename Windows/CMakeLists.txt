@@ -20,6 +20,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/textdiff.cpp
   ${SHARED}/attach.cpp
   ${SHARED}/webview.cpp
+  ${SHARED}/access.cpp
   ${SHARED}/compress.cpp
   ${SHARED}/protect.cpp
   ${SHARED}/ocr.cpp

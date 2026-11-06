@@ -46,6 +46,7 @@
 #include "textdiff.hpp"
 #include "attach.hpp"
 #include "webview.hpp"
+#include "access.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -178,7 +179,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
+std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -536,7 +537,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, P_INTERLEAVE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -931,6 +932,67 @@ bool saveDocument(Document& d, const std::wstring& path) {
     }
     MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
     return false;
+}
+
+// ---- accessibility: check, and fix what needs no person ----
+
+void accessibilityCheck(Document& d) {
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const auto items = access::check(d);
+    SetCursor(old);
+    int failed = 0, person = 0, fixable = 0;
+    std::wstring summary, title;
+    for (const auto& i : items) {
+        if (i.id == "title" && i.result == access::Result::Passed && i.detail.size() > 2) title = i.detail.substr(1, i.detail.size() - 2);
+        if (i.result == access::Result::Passed) continue;
+        (i.result == access::Result::Failed ? failed : person)++;
+        fixable += i.fixable;
+        summary += (i.result == access::Result::Failed ? L"NOT MET:  " : L"CHECK:  ") + i.rule + L"\n      " + i.detail + (i.fixable ? L"  (Fix puts this right.)" : L"") + L"\n\n";
+    }
+    summary = std::to_wstring(items.size() - static_cast<size_t>(failed + person)) + L" of " + std::to_wstring(items.size()) + L" checks passed; " +
+              std::to_wstring(failed) + L" not met, " + std::to_wstring(person) + L" for a person to check.\n\n" + summary;
+    if (title.empty()) title = access::suggestedTitle(d);
+    static const std::vector<std::pair<std::wstring, std::wstring>> langs = {
+        {L"English (United States)", L"en-US"}, {L"English (United Kingdom)", L"en-GB"}, {L"English (India)", L"en-IN"}, {L"Hindi", L"hi-IN"},
+        {L"Kannada", L"kn-IN"}, {L"Tamil", L"ta-IN"}, {L"Telugu", L"te-IN"}, {L"Malayalam", L"ml-IN"}, {L"Marathi", L"mr-IN"}, {L"Bengali", L"bn-IN"},
+        {L"Gujarati", L"gu-IN"}, {L"French", L"fr-FR"}, {L"German", L"de-DE"}, {L"Spanish", L"es-ES"}, {L"Portuguese", L"pt-BR"}, {L"Chinese", L"zh-CN"},
+        {L"Japanese", L"ja-JP"}, {L"Arabic", L"ar"}};
+    std::vector<std::wstring> langNames;
+    int langChoice = 0;
+    wchar_t loc[LOCALE_NAME_MAX_LENGTH] = L"";
+    GetUserDefaultLocaleName(loc, LOCALE_NAME_MAX_LENGTH);
+    for (size_t i = 0; i < langs.size(); ++i) {
+        langNames.push_back(langs[i].first);
+        if (_wcsicmp(langs[i].second.c_str(), loc) == 0) langChoice = static_cast<int>(i);
+    }
+    std::vector<FormField> f(5);
+    f[0] = {FormField::Note, L"", {}, summary};
+    f[1] = {FormField::Text, L"Title:", {}, title};
+    f[2] = {FormField::Choice, L"Language of the text:", langNames, L"", langChoice};
+    f[3] = {FormField::Check, L"Fix what can be fixed now (title, language, tab order, links, field tooltips)"};
+    f[3].checked = fixable > 0;
+    f[4] = {FormField::Check, L"Open the full report in a new tab"};
+    if (!showForm(app.wnd, app.inst, L"Accessibility check", f, L"OK")) return;
+    std::wstring msg;
+    if (f[3].checked) {
+        access::FixOptions o;
+        o.titleText = f[1].text;
+        o.language = langs[static_cast<size_t>(std::clamp(f[2].choice, 0, static_cast<int>(langs.size()) - 1))].second;
+        const auto done = access::fix(d, o);
+        if (!done.empty()) {
+            afterDocReplaced();
+            for (const auto& line : done) msg += L"\u2022 " + line + L"\n";
+        }
+    }
+    if (f[4].checked) {
+        std::vector<unsigned char> pdf;
+        auto rep = std::make_unique<Document>();
+        if (textpdf::build(access::report(access::check(d), d.title()), true, pdf).ok && rep->load(std::move(pdf), {}) == OpenResult::Ok) {
+            rep->setName(L"Accessibility report - " + d.title());
+            addDocumentTab(std::move(rep));
+        }
+    }
+    if (!msg.empty()) MessageBoxW(app.wnd, (L"Fixed:\n" + msg + L"\nSave the document to keep the changes; Undo (Ctrl+Z) takes them back.").c_str(), L"Accessibility", MB_OK | MB_ICONINFORMATION);
 }
 
 // ---- repair, and Fast Web View ----
@@ -3129,6 +3191,7 @@ void toolsDispatch(int cmd) {
         case N_SANITIZE: sanitizeDialog(); break;
         case N_PDFA: pdfaDialog(); break;
         case N_FONTS: showFonts(*d); break;
+        case N_ACCESS: accessibilityCheck(*d); break;
         case F_EXPORT: formExport(); break;
         case F_FILL: formFillFromCsv(); break;
         case F_TEXT: startFormField(Viewer::Tool::FormText); break;
@@ -3171,6 +3234,7 @@ void showToolsMenu(const RECT& anchor) {
     sep();
     add(T_OCR, L"Recognise text (OCR)...");
     add(N_FONTS, L"Fonts used in this PDF...");
+    add(N_ACCESS, L"Accessibility: check and fix...");
     add(T_WATERMARK, L"Watermark...");
     add(T_NUMBERS, L"Page numbers...");
     add(P_HEADER, L"Add headers and footers...");
@@ -5639,6 +5703,7 @@ void commandPalette() {
         add(L"Document properties", [] { showProperties(); });
         add(L"Attached files: open, save, add or remove", [] { attachmentsDialog(); });
         add(L"Repair a damaged PDF", [] { repairPdf(); });
+        add(L"Accessibility: check for screen readers and fix (title, language, tab order...)", [] { if (Document* d = activeDoc()) accessibilityCheck(*d); });
         add(L"Save a copy for the web (Fast Web View, linearized)", [] { if (Document* d = activeDoc()) saveForWeb(*d); });
         add(L"Layers: show or hide", [] { layersDialog(); });
         add(L"Find", [] { runCommand(C_FIND); });

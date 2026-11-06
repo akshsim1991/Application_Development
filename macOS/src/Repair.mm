@@ -23,9 +23,10 @@ void repairFile(NSURL* url) {
     const std::wstring name = path.substr(path.find_last_of(L'/') + 1);
     if (bytes.empty()) { form::message(nil, L"\"" + name + L"\" could not be repaired.\n\n" + msg, true); return; }
     const size_t dot = name.find_last_of(L'.');
-    [FPDocument openNewWithBytes:std::move(bytes) name:ns((dot == std::wstring::npos ? name : name.substr(0, dot)) + L" (repaired)")];
-    if (!r.fixed) form::message(nil, L"Nothing was wrong with \"" + name + L"\" (" + std::to_wstring(r.pages) + L" pages). A fresh copy is open.");
-    else form::message(nil, L"\"" + name + L"\" was repaired: " + std::to_wstring(r.pages) + L" page(s) could be read.\n\nWhat was wrong:\n" + msg +
+    FPDocument* doc = [FPDocument openNewWithBytes:std::move(bytes) name:ns((dot == std::wstring::npos ? name : name.substr(0, dot)) + L" (repaired)")];
+    NSWindow* w = doc.windowControllers.firstObject.window;   // the message on the repaired copy's window (a sheet, not a modal alert)
+    if (!r.fixed) form::message(w, L"Nothing was wrong with \"" + name + L"\" (" + std::to_wstring(r.pages) + L" pages). A fresh copy is open.");
+    else form::message(w, L"\"" + name + L"\" was repaired: " + std::to_wstring(r.pages) + L" page(s) could be read.\n\nWhat was wrong:\n" + msg +
                            L"\nThe repaired copy is open. Look it over, then save it under a new name.");
 }
 

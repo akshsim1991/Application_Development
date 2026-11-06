@@ -313,6 +313,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Repair a Damaged PDF\u2026", @selector(repairDocument:), nil);
     add(m, @"Layers (Show or Hide)\u2026", @selector(showLayers:), nil);
     add(m, @"Fonts Used\u2026", @selector(showFonts:), nil);
+    add(m, @"Accessibility: Check and Fix\u2026", @selector(accessibilityCheck:), nil);
 
     m = submenu(bar, @"Edit");
     add(m, @"Undo", @selector(featherUndo:), @"z");

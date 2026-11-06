@@ -151,6 +151,21 @@ check "each step named"              "grep -q '^steps: Rotate pages; Insert a bl
 check "back to the start at once"    "grep -q '^back=1 pages=9 undo=0 redo=3 next=Rotate pages$' '$W/hist.txt'"
 check "forward one step"             "grep -q '^forward=1 pages=9 undo=1 redo=2$' '$W/hist.txt'"
 
+echo "accessibility check and fixes"
+run --access "$W/access.pdf" "$W/acc.txt" "$W/acc-fixed.pdf"
+before() { sed -n '1,/^--- fixed:/p' "$W/acc.txt"; }
+after() { sed -n '/^--- after:/,$p' "$W/acc.txt"; }
+check "finds the problems"           "before | grep -q '^title|failed|fixable|Only a placeholder' && before | grep -q '^lang|failed|fixable' && before | grep -q '^showtitle|failed|fixable' && before | grep -q '^links|failed|fixable' && before | grep -q '^fields|failed|fixable' && before | grep -q '^tabs|failed|fixable' && before | grep -q '^tagged|failed|' && before | grep -q '^text|failed|1 page is only a picture (page 2)'"
+check "fixes what can be fixed"      "after | grep -q '^title|passed|.*Annual Safety Report' && after | grep -q '^lang|passed|Language: en-GB' && after | grep -q '^showtitle|passed' && after | grep -q '^links|passed' && after | grep -q '^fields|passed' && after | grep -q '^tabs|passed'"
+check "and leaves the rest to a person" "after | grep -q '^tagged|failed|' && after | grep -q '^contrast|person|'"
+check "written into the file (pikepdf)" "python3 -c \"
+import pikepdf;p=pikepdf.open('$W/acc-fixed.pdf')
+assert str(p.docinfo.Title)=='Annual Safety Report' and str(p.Root.Lang)=='en-GB' and p.Root.ViewerPreferences.DisplayDocTitle
+assert [str(a.Contents) for pg in p.pages for a in pg.get('/Annots',[]) if a.Subtype=='/Link']==['Link to https://example.org/safety']
+assert [str(f.TU) for f in p.Root.AcroForm.Fields]==['full name'] and p.pages[0].Tabs=='/S'\""
+run --access "$W/tagged.pdf" "$W/acc2.txt"
+check "a tagged document: tags pass, a picture without a description fails" "grep -q '^tagged|passed' '$W/acc2.txt' && grep -q '^title|passed|.*Quarterly Report' '$W/acc2.txt' && grep -q '^alt|failed|1 picture has no alternate text' '$W/acc2.txt'"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

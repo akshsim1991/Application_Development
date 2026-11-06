@@ -129,6 +129,19 @@ try:
 except Exception:
     pass
 
+# accessibility: no title or language, a web link, a form field, and a page that is only a picture
+c = canvas.Canvas(f"{out}/access.pdf", pagesize=A4)
+c.setFont("Helvetica-Bold", 24); c.drawString(72, 760, "Annual Safety Report")
+c.setFont("Helvetica", 12); c.drawString(72, 720, "See our website for details.")
+c.linkURL("https://example.org/safety", (72, 715, 260, 732))
+c.drawString(72, 680, "Your name:")
+c.acroForm.textfield(name="full_name", x=150, y=670, width=200, height=20)
+c.showPage()
+Image.new("RGB", (400, 300), "white").save(f"{out}/blank-scan.png")
+c.drawImage(f"{out}/blank-scan.png", 72, 400, 400, 300)
+c.showPage()
+c.save()
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),
@@ -465,3 +478,18 @@ try:
         subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", out, f"{out}/qp.docx"], capture_output=True, timeout=180)
 except Exception:
     pass
+
+# a tagged document with a title and language, and one picture (a Figure) without alternate text
+try:
+    import pikepdf
+    with pikepdf.open(f"{out}/rich.pdf") as tg:
+        tg.docinfo["/Title"] = "Quarterly Report"
+        tg.Root.Lang = pikepdf.String("en-US")
+        tg.Root.MarkInfo = pikepdf.Dictionary(Marked=True)
+        fig = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure))
+        par = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P))
+        tg.Root.StructTreeRoot = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot, K=[par, fig]))
+        tg.save(f"{out}/tagged.pdf")
+except Exception:
+    pass
+

@@ -17,7 +17,7 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 | 5 | Attachments (view, add, extract, save) and layers (show / hide) | [x] | [x] | [x] |
 | 10 | Repair; Fast Web View (linearize) | [x] | [x] | [ ] |
 | 6 | Undo history panel | [x] | [x] | [ ] |
-| 8 | Accessibility checker and fixes | [ ] | [ ] | [ ] |
+| 8 | Accessibility checker and fixes | [x] | [x] | [ ] |
 | 4 | Comment threads (replies), Accepted / Rejected, review summary | [ ] | [ ] | [ ] |
 | 12 | Read aloud with word highlighting, playback controls | — | [ ] | [ ] |
 | 7 | Forms: calculated fields, input validation | [ ] | [ ] | [ ] |
@@ -37,3 +37,4 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 - 5 Attachments and layers: cli_check (list, save byte for byte, add, remove; layers listed, switched, and drawn as set); Windows on the virtual screen (layers switched, attachment opened in Notepad).
 - 10 Repair: index moved or missing repaired (9 pages, poppler reads it without errors, bookmarks kept), an intact file reported as fine. Fast Web View: our own linearizer (hint tables, outline table); qpdf's check passes on 45 test files with the pages looking the same; Windows on the virtual screen (repair report; the saved copy passes qpdf).
 - 6 Undo history: every step named (engine and app), with its time; back or forward several steps at once (cli_check). Windows: a History tab in the side panel, tried on the virtual screen (three changes, back to the start, redo shown).
+- 8 Accessibility: 13 checks (title incl. placeholder titles, title shown, language, tags, text on every page, Unicode, alternate text, links, field tooltips, tab order, bookmarks, contrast and order for a person); fixes for six, written and read back by pikepdf (cli_check); Windows dialog and report on the virtual screen.

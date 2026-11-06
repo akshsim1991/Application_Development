@@ -32,6 +32,7 @@
 #include "textdiff.hpp"
 #include "attach.hpp"
 #include "webview.hpp"
+#include "access.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -174,6 +175,31 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--access") {
+        // --access in.pdf out.txt [fixed.pdf] : id|passed/failed/person|fixable per check; with fixed.pdf, fixes then checks again
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        auto list = [&doc]() {
+            std::wstring t;
+            for (const auto& i : access::check(doc))
+                t += platform::wide(i.id) + L"|" + (i.result == access::Result::Passed ? L"passed" : i.result == access::Result::Failed ? L"failed" : L"person") +
+                     (i.fixable ? L"|fixable" : L"") + L"|" + i.detail + L"\n";
+            return t;
+        };
+        std::wstring rep = list();
+        if (files.size() > 3) {
+            access::FixOptions o;
+            o.language = L"en-GB";
+            rep += L"--- fixed:\n";
+            for (const auto& line : access::fix(doc, o)) rep += line + L"\n";
+            rep += L"--- after:\n" + list();
+            std::vector<unsigned char> bytes;
+            if (!doc.serialize(bytes) || Document::writeFile(files[3], bytes) != SaveResult::Ok) return 4;
+        }
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--history") {
         // --history in.pdf out.txt : three named changes, back to the start, forward one (the undo history's steps)

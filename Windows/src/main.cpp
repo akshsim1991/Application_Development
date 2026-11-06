@@ -45,6 +45,7 @@
 #include "splitmerge.hpp"
 #include "textdiff.hpp"
 #include "attach.hpp"
+#include "webview.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -177,7 +178,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-void afterPagesChanged(); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
+std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -930,6 +931,64 @@ bool saveDocument(Document& d, const std::wstring& path) {
     }
     MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
     return false;
+}
+
+// ---- repair, and Fast Web View ----
+
+void repairPdf() {
+    std::vector<std::wstring> files;
+    pickPdf(false, files, L"Choose the damaged PDF");
+    if (files.empty()) return;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    std::vector<unsigned char> bytes;
+    const repair::Report r = repair::run(files[0], bytes);
+    SetCursor(old);
+    std::wstring msg;
+    for (const auto& p : r.problems) msg += L"\u2022 " + p + L"\n";
+    std::wstring name = files[0].substr(files[0].find_last_of(L"\\/") + 1);
+    if (bytes.empty()) {
+        MessageBoxW(app.wnd, (L"\"" + name + L"\" could not be repaired.\n\n" + msg).c_str(), L"Repair", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    auto doc = std::make_unique<Document>();
+    if (doc->load(std::move(bytes), {}) != OpenResult::Ok) { MessageBoxW(app.wnd, L"The repaired copy could not be opened.", L"Repair", MB_OK | MB_ICONWARNING); return; }
+    const size_t dot = name.find_last_of(L'.');
+    doc->setName((dot == std::wstring::npos ? name : name.substr(0, dot)) + L" (repaired).pdf");
+    doc->markModified();
+    addDocumentTab(std::move(doc));
+    if (!r.fixed)
+        MessageBoxW(app.wnd, (L"Nothing was wrong with \"" + name + L"\" (" + std::to_wstring(r.pages) + L" pages). A fresh copy is open in a new tab.").c_str(), L"Repair", MB_OK | MB_ICONINFORMATION);
+    else
+        MessageBoxW(app.wnd, (L"\"" + name + L"\" was repaired: " + std::to_wstring(r.pages) + L" page(s) could be read.\n\nWhat was wrong:\n" + msg +
+                              L"\nThe repaired copy is open in a new tab. Look it over, then save it (Ctrl+S) under a new name.").c_str(),
+                    L"Repair", MB_OK | MB_ICONINFORMATION);
+}
+
+void saveForWeb(Document& d) {
+    wchar_t buf[MAX_PATH * 2];
+    std::wstring base = d.title();
+    const size_t dot = base.find_last_of(L'.');
+    if (dot != std::wstring::npos) base.resize(dot);
+    wcsncpy_s(buf, (base + L" (web).pdf").c_str(), _TRUNCATE);
+    OPENFILENAMEW ofn{sizeof(ofn)};
+    ofn.hwndOwner = app.wnd;
+    ofn.lpstrTitle = L"Save a copy for the web (Fast Web View)";
+    ofn.lpstrFilter = L"PDF documents (*.pdf)\0*.pdf\0";
+    ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2; ofn.lpstrDefExt = L"pdf";
+    ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+    if (!GetSaveFileNameW(&ofn)) return;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    std::vector<unsigned char> out;
+    std::wstring why;
+    const bool ok = !d.isProtected() && webview::linearize(d, out, &why);
+    SetCursor(old);
+    if (!ok) {
+        if (d.isProtected()) why = L"A password-protected document cannot be made fast for the web. Remove the password first.";
+        MessageBoxW(app.wnd, (L"The copy could not be made. " + why).c_str(), kAppName, MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (Document::writeFile(buf, out) != SaveResult::Ok) { MessageBoxW(app.wnd, L"The copy could not be written there.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    notice(L"Saved for the web: the first page shows while the rest is still downloading.");
 }
 
 // ---- files attached to the document, and its layers ----
@@ -3670,7 +3729,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_RECENT = 100, MM_WORKSPACE = 400 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_REPAIR, MM_WEBVIEW, MM_RECENT = 100, MM_WORKSPACE = 400 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3703,6 +3762,8 @@ void showMainMenu(const RECT& anchor) {
     }
     add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
     add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
+    add(MM_WEBVIEW, L"Save a copy for the web (Fast Web View)...", has);
+    add(MM_REPAIR, L"Repair a damaged PDF...");
     add(MM_CLOSE, L"Close tab\tCtrl+W", has);
     sep();
     add(MM_PRINT, L"Print...\tCtrl+P", has);
@@ -3750,6 +3811,8 @@ void showMainMenu(const RECT& anchor) {
         case MM_OPEN: runCommand(C_OPEN); break;
         case MM_SAVEAS: if (d) saveAsDialog(*d); break;
         case MM_EXPORT: if (d) doExport(*d); break;
+        case MM_WEBVIEW: if (d) saveForWeb(*d); break;
+        case MM_REPAIR: repairPdf(); break;
         case MM_CLOSE: closeTab(app.active); break;
         case MM_PRINT: printDocument(); break;
         case MM_GUIDE: openUserGuide(); break;
@@ -5573,6 +5636,8 @@ void commandPalette() {
         add(L"User guide (how to use Feather PDF)", [] { openUserGuide(); });
         add(L"Document properties", [] { showProperties(); });
         add(L"Attached files: open, save, add or remove", [] { attachmentsDialog(); });
+        add(L"Repair a damaged PDF", [] { repairPdf(); });
+        add(L"Save a copy for the web (Fast Web View, linearized)", [] { if (Document* d = activeDoc()) saveForWeb(*d); });
         add(L"Layers: show or hide", [] { layersDialog(); });
         add(L"Find", [] { runCommand(C_FIND); });
         add(L"Find and replace text", [] { doFindReplace(); });

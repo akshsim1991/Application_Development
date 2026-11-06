@@ -17,6 +17,7 @@ set(ENGINE_SOURCES
   ${SHARED}/splitmerge.cpp
   ${SHARED}/textdiff.cpp
   ${SHARED}/attach.cpp
+  ${SHARED}/webview.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

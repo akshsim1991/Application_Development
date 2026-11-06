@@ -31,6 +31,7 @@
 #include "splitmerge.hpp"
 #include "textdiff.hpp"
 #include "attach.hpp"
+#include "webview.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -173,6 +174,29 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--repair") {
+        // --repair in.pdf out.pdf : the report next to it (out.pdf.txt)
+        if (files.size() < 3) return 2;
+        std::vector<unsigned char> out;
+        const repair::Report r = repair::run(files[1], out);
+        std::wstring rep = L"opened=" + std::to_wstring(r.opened) + L" fixed=" + std::to_wstring(r.fixed) + L" pages=" + std::to_wstring(r.pages) +
+                           L" bad=" + std::to_wstring(r.badPages) + L"\n";
+        for (const auto& p : r.problems) rep += p + L"\n";
+        const std::string u = platform::utf8(rep);
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end()));
+        if (out.empty()) return 5;
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--linearize") {
+        // --linearize in.pdf out.pdf
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<unsigned char> out;
+        std::wstring why;
+        if (!webview::linearize(doc, out, &why)) { const std::string u = platform::utf8(why); Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(u.begin(), u.end())); return 5; }
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--attach") {
         // --attach in.pdf list out.txt | add file out.pdf | get N outfile | remove N out.pdf

@@ -123,6 +123,26 @@ def at(f,x,y):
 assert at('$W/ly1-1.png',400,700)==(0,0,255) and at('$W/ly1-1.png',150,400)==(255,255,255)
 assert at('$W/ly2-1.png',400,700)==(255,255,255) and at('$W/ly2-1.png',150,400)==(255,0,0)\""
 
+echo "repair and Fast Web View"
+for f in shifted noindex; do
+  run --repair "$W/damaged-$f.pdf" "$W/rep-$f.pdf"; rc=$?
+  check "repairs: $f (9 pages, clean to poppler)" "[ $rc -eq 0 ] && grep -q '^opened=1 fixed=1 pages=9 bad=0' '$W/rep-$f.pdf.txt' && [ \$(pdftotext '$W/rep-$f.pdf' - 2>&1 | grep -c 'Book page') -eq 9 ] && ! pdftotext '$W/rep-$f.pdf' - 2>&1 | grep -qi error"
+done
+check "says what was wrong"          "grep -q 'cut short' '$W/rep-noindex.pdf.txt' && grep -q 'index of the file' '$W/rep-shifted.pdf.txt'"
+check "keeps the bookmarks"          "python3 '$root/tests/outline_dump.py' '$W/rep-noindex.pdf' | grep -q '^9 Chapter One->1'"
+run --repair "$W/book.pdf" "$W/rep-ok.pdf"
+check "an intact file: nothing wrong" "grep -q '^opened=1 fixed=0 pages=9' '$W/rep-ok.pdf.txt'"
+run --merge "$W/inc.pdf" keep "$W/book.pdf" "$W/appendix.pdf"
+for f in book book-outlines rich search heavy inc; do
+  run --linearize "$W/$f.pdf" "$W/web-$f.pdf"
+  check "fast web view: $f (qpdf's check, looks the same)" "python3 -c \"
+import sys,pikepdf,subprocess,hashlib
+p=pikepdf.open('$W/web-$f.pdf');assert p.is_linearized and p.check_linearization() and not p.get_warnings(),p.get_warnings()
+img=lambda f: hashlib.md5(subprocess.run(['pdftoppm','-r','30','-gray',f],capture_output=True).stdout).hexdigest()
+assert len(p.pages)==len(pikepdf.open('$W/$f.pdf').pages) and img('$W/$f.pdf')==img('$W/web-$f.pdf')\""
+done
+check "bookmarks kept"               "[ \"\$(python3 '$root/tests/outline_dump.py' '$W/web-inc.pdf')\" = \"\$(python3 '$root/tests/outline_dump.py' '$W/inc.pdf')\" ]"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

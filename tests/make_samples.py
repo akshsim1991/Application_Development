@@ -115,6 +115,20 @@ try:
 except Exception:
     pass
 
+# damaged files (repair): junk that moves every object away from where the index says, and a file cut off before its
+# index; and the book with its bookmarks shown on opening (Fast Web View puts them with the first page)
+b = open(f"{out}/book.pdf", "rb").read()
+i = b.index(b"\n", 10) + 1
+open(f"{out}/damaged-shifted.pdf", "wb").write(b[:i] + b"% junk inserted by a broken tool\n" * 3 + b[i:])
+open(f"{out}/damaged-noindex.pdf", "wb").write(b[:b.rindex(b"xref")])
+try:
+    import pikepdf
+    with pikepdf.open(f"{out}/book.pdf") as bk:
+        bk.Root.PageMode = pikepdf.Name.UseOutlines
+        bk.save(f"{out}/book-outlines.pdf")
+except Exception:
+    pass
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

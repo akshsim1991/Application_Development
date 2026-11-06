@@ -309,6 +309,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Properties\u2026", @selector(showProperties:), @"i", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Attached Files\u2026", @selector(showAttachments:), nil);
+    add(m, @"Save a Copy for the Web (Fast Web View)\u2026", @selector(saveForWeb:), nil);
+    add(m, @"Repair a Damaged PDF\u2026", @selector(repairDocument:), nil);
     add(m, @"Layers (Show or Hide)\u2026", @selector(showLayers:), nil);
     add(m, @"Fonts Used\u2026", @selector(showFonts:), nil);
 

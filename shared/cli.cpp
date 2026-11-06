@@ -34,6 +34,7 @@
 #include "webview.hpp"
 #include "access.hpp"
 #include "review.hpp"
+#include "readaloud.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -176,6 +177,25 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--readaloud") {
+        // --readaloud in.pdf out.txt : the script, each word's place on its page, and sentence steps
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const readaloud::Script s = readaloud::build(doc, 0);
+        std::wstring rep = L"chars=" + std::to_wstring(s.text.size()) + L"\n";
+        for (const wchar_t* w : {L"Payment", L"Second", L"Final"}) {
+            const size_t at = s.text.find(w);
+            int page = -1, start = 0, count = 0;
+            if (at != std::wstring::npos) readaloud::span(s, at, readaloud::wordLength(s, at), page, start, count);
+            rep += std::wstring(w) + L"=" + std::to_wstring(page + 1) + L":" + (page >= 0 ? doc.textRange(page, start, count) : L"") + L"\n";
+        }
+        const size_t pay = s.text.find(L"Payment");
+        rep += L"back=" + s.text.substr(readaloud::sentence(s, pay, -1), 9) + L"|here=" + s.text.substr(readaloud::sentence(s, pay + 3, 0), 9) +
+               L"|next=" + s.text.substr(readaloud::sentence(s, pay, 1), 9) + L"\n";
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--review") {
         // --review in.pdf out.txt [out.pdf] : replies to the first comment, accepts it, rejects the second; then the summary

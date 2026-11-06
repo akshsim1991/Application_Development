@@ -53,6 +53,10 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 
 // Search: every match is tinted, the current one more strongly and scrolled into view.
 - (void)setMatches:(std::vector<TextHit>)hits current:(int)current;
+// The word being read aloud (page < 0: none): tinted green and kept in view.
+- (void)setSpokenPage:(int)page start:(int)start count:(int)count;
+// Where the selected text starts (page, character), or NO.
+- (BOOL)selectionStartPage:(int*)page char:(int*)ch;
 
 // The selected text (dragging over the text of a page), and Select All of the page shown.
 - (NSString*)selectedText;

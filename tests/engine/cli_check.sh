@@ -182,6 +182,11 @@ assert sorted(str(x.State) for x in st)==['Accepted','Rejected'] and all(str(x.S
 run --review "$W/rev.pdf" "$W/rev2.txt"
 check "read back from the saved file" "grep -q 'Comments:\*\* 2 (2 replies)' '$W/rev2.txt'"
 
+echo "read aloud: words on the page, sentences"
+run --readaloud "$W/version1.pdf" "$W/ra.txt"
+check "each word found on its page"  "grep -q '^Payment=1:Payment$' '$W/ra.txt' && grep -q '^Second=2:Second$' '$W/ra.txt' && grep -q '^Final=3:Final$' '$W/ra.txt'"
+check "back, here, next sentence"     "grep -q '^back=The quick|here=Payment i|next=Second pa$' '$W/ra.txt'"
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

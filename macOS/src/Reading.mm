@@ -16,6 +16,8 @@
 #include "textdiff.hpp"
 #include "textpdf.hpp"
 #include "visualdiff.hpp"
+#include "readaloud.hpp"
+#include <cwctype>
 
 using form::Field;
 using form::Fields;
@@ -168,28 +170,168 @@ static AVSpeechSynthesizer* g_speech = nil;
     self.pageView.fitWidth = YES;
 }
 
-// ---- read aloud (the Mac's voices): from the selected text, else from the page shown to the end ----
+// ---- read aloud (the Mac's voices): from the selected text, else from the page shown on; the word being spoken is tinted,
+// and a small panel goes back or forward a sentence, pauses, changes the speed, or stops ----
+
+namespace {
+struct ReadState {
+    readaloud::Script script;
+    size_t base = 0, at = 0;
+    bool paused = false;
+    int words = 0;
+} g_read;
+__weak FPWindowController* g_reader = nil;
+NSPanel* g_readPanel = nil;
+NSTextField* g_readLabel = nil;
+NSButton* g_pauseButton = nil;
+NSTimer* g_fakeTimer = nil;   // the build check's stand-in voice (FEATHER_FAKE_VOICE)
+const float kRates[] = {0.38f, 0.5f, 0.56f, 0.62f};
+int speedIndex() { NSNumber* r = [NSUserDefaults.standardUserDefaults objectForKey:@"readingSpeed"]; return static_cast<int>(std::clamp<NSInteger>(r ? r.integerValue : 1, 0, 3)); }
+}
+
+- (void)readingWordAt:(size_t)pos length:(size_t)len {
+    g_read.at = g_read.base + pos;
+    int page = -1, start = 0, count = 0;
+    if (readaloud::span(g_read.script, g_read.at, len ? len : readaloud::wordLength(g_read.script, g_read.at), page, start, count)) {
+        [self.pageView setSpokenPage:page start:start count:count];
+        if (++g_read.words <= 3) FPTrace(@"reading: '%s' on page %d", platform::utf8(self.pdf->textRange(page, start, count)).c_str(), page + 1);
+    }
+    [self updateReadingPanel];
+}
+
+- (void)updateReadingPanel {
+    int page = -1, start = 0, count = 0;
+    readaloud::span(g_read.script, g_read.at, 1, page, start, count);
+    static NSString* speeds[] = {@"slow", @"normal", @"fast", @"very fast"};
+    g_readLabel.stringValue = [NSString stringWithFormat:@"%@ page %d · %@", g_read.paused ? @"Paused on" : @"Reading", page + 1, speeds[speedIndex()]];
+    g_pauseButton.title = g_read.paused ? @"Resume" : @"Pause";
+}
+
+- (void)showReadingPanel {
+    if (!g_readPanel) {
+        g_readPanel = [[NSPanel alloc] initWithContentRect:NSMakeRect(0, 0, 560, 64) styleMask:NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskUtilityWindow
+                                                   backing:NSBackingStoreBuffered defer:NO];
+        g_readPanel.title = @"Read Aloud";
+        g_readPanel.floatingPanel = YES;
+        g_readPanel.hidesOnDeactivate = YES;
+        g_readPanel.releasedWhenClosed = NO;
+        g_readLabel = [NSTextField labelWithString:@""];
+        g_readLabel.frame = NSMakeRect(12, 38, 536, 18);
+        [g_readPanel.contentView addSubview:g_readLabel];
+        NSArray* titles = @[ @"◀◀ Back", @"Pause", @"Forward ▶▶", @"Slower", @"Faster", @"Stop" ];
+        CGFloat x = 8;
+        for (NSUInteger i = 0; i < titles.count; ++i) {
+            NSButton* b = [NSButton buttonWithTitle:titles[i] target:nil action:@selector(readingButton:)];
+            b.tag = static_cast<NSInteger>(i);
+            b.frame = NSMakeRect(x, 6, i == 5 ? 70 : 88, 28);
+            x += (i == 5 ? 70 : 88) + 4;
+            [g_readPanel.contentView addSubview:b];
+            if (i == 1) g_pauseButton = b;
+        }
+        NSRect vf = NSScreen.mainScreen.visibleFrame;
+        [g_readPanel setFrameOrigin:NSMakePoint(NSMidX(vf) - 280, NSMinY(vf) + 40)];
+    }
+    for (NSView* v in g_readPanel.contentView.subviews) if ([v isKindOfClass:[NSButton class]]) ((NSButton*)v).target = self;
+    [g_readPanel orderFront:nil];
+}
+
+- (void)endReading {
+    [g_fakeTimer invalidate];
+    g_fakeTimer = nil;
+    if (g_speech.speaking) [g_speech stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+    g_read = ReadState();
+    [g_reader.pageView setSpokenPage:-1 start:0 count:0];
+    g_reader = nil;
+    [g_readPanel orderOut:nil];
+}
+
+- (BOOL)readFrom:(size_t)offset {
+    if (offset >= g_read.script.text.size()) { [self endReading]; return NO; }
+    [g_fakeTimer invalidate];
+    g_fakeTimer = nil;
+    if (g_speech.speaking) [g_speech stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
+    g_read.base = g_read.at = offset;
+    g_read.paused = false;
+    g_reader = self;
+    NSString* text = ns(g_read.script.text.substr(offset));
+    if (getenv("FEATHER_FAKE_VOICE")) {   // no sound: the words go by every 120 ms
+        __block size_t i = 0;
+        const std::wstring t = g_read.script.text.substr(offset);
+        __weak FPWindowController* weak = self;
+        g_fakeTimer = [NSTimer scheduledTimerWithTimeInterval:0.12 repeats:YES block:^(NSTimer* timer) {
+            if (g_read.paused) return;
+            while (i < t.size() && std::iswspace(static_cast<wint_t>(t[i]))) ++i;
+            if (i >= t.size()) { [weak endReading]; return; }
+            size_t j = i;
+            while (j < t.size() && !std::iswspace(static_cast<wint_t>(t[j]))) ++j;
+            [weak readingWordAt:i length:j - i];
+            i = j;
+        }];
+    } else {
+        if (!g_speech) g_speech = [[AVSpeechSynthesizer alloc] init];
+        g_speech.delegate = self;
+        AVSpeechUtterance* u = [AVSpeechUtterance speechUtteranceWithString:text];
+        u.rate = kRates[speedIndex()];
+        [g_speech speakUtterance:u];
+    }
+    [self showReadingPanel];
+    [self updateReadingPanel];
+    return YES;
+}
+
+- (void)speechSynthesizer:(AVSpeechSynthesizer*)s willSpeakRangeOfSpeechString:(NSRange)r utterance:(AVSpeechUtterance*)u {
+    if (g_reader == self) [self readingWordAt:r.location length:r.length];   // UTF-16 offsets: the same as the script's for all but rare characters outside the basic plane
+}
+
+- (void)speechSynthesizer:(AVSpeechSynthesizer*)s didFinishSpeechUtterance:(AVSpeechUtterance*)u {
+    if (g_reader == self && !g_read.paused) [self endReading];
+}
+
+- (IBAction)readingButton:(NSButton*)sender {
+    switch (sender.tag) {
+        case 0: [self readFrom:readaloud::sentence(g_read.script, g_read.at, -1)]; break;
+        case 2: [self readFrom:readaloud::sentence(g_read.script, g_read.at, 1)]; break;
+        case 1:
+            g_read.paused = !g_read.paused;
+            if (!g_fakeTimer) { if (g_read.paused) [g_speech pauseSpeakingAtBoundary:AVSpeechBoundaryWord]; else [g_speech continueSpeaking]; }
+            [self updateReadingPanel];
+            break;
+        case 3: case 4:
+            [NSUserDefaults.standardUserDefaults setInteger:std::clamp(speedIndex() + (sender.tag == 4 ? 1 : -1), 0, 3) forKey:@"readingSpeed"];
+            [self readFrom:readaloud::sentence(g_read.script, g_read.at, 0)];
+            break;
+        default: [self endReading]; break;
+    }
+}
 
 - (IBAction)readAloud:(id)sender {
     Document* d = self.pdf;
     if (!d) return;
-    if (!g_speech) g_speech = [[AVSpeechSynthesizer alloc] init];
-    if (g_speech.speaking) [g_speech stopSpeakingAtBoundary:AVSpeechBoundaryImmediate];
-    NSString* text = self.pageView.hasSelection ? self.pageView.selectedText : nil;
-    if (!text.length) {
-        std::wstring all;
-        for (int p = [self.pageView currentPage]; p < d->pageCount() && all.size() < 200000; ++p) all += d->textRange(p, 0, d->charCount(p)) + L"\n";
-        text = ns(all);
+    if (g_reader) { [g_reader endReading]; return; }
+    int fromPage = [self.pageView currentPage], fromChar = 0;
+    size_t limit = 200000;
+    if (self.pageView.hasSelection) {
+        int sp, sc;
+        if ([self.pageView selectionStartPage:&sp char:&sc]) { fromPage = sp; fromChar = sc; }
+        limit = self.pageView.selectedText.length + 1;
     }
-    if (!text.length) { [self tellUser:L"There is no text to read here. Scanned pages are pictures: recognise their text first."]; return; }
-    AVSpeechUtterance* u = [AVSpeechUtterance speechUtteranceWithString:text];
-    static const float rates[] = {0.38f, 0.5f, 0.56f, 0.62f};
-    NSNumber* r = [NSUserDefaults.standardUserDefaults objectForKey:@"readingSpeed"];
-    u.rate = rates[std::clamp<NSInteger>(r ? r.integerValue : 1, 0, 3)];
-    [g_speech speakUtterance:u];
+    g_read = ReadState();
+    g_read.script = readaloud::build(*d, fromPage, fromChar, limit);
+    if (g_read.script.text.find_first_not_of(L" \t\r\n") == std::wstring::npos) {
+        [self tellUser:L"There is no text to read here. Scanned pages are pictures: recognise their text first."];
+        return;
+    }
+    FPTrace(@"reading: %d characters from page %d", static_cast<int>(g_read.script.text.size()), fromPage + 1);
+    [self readFrom:0];
+    if (getenv("FEATHER_UI_READ_FORWARD"))   // the build check: a sentence on after half a second
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 500 * NSEC_PER_MSEC), dispatch_get_main_queue(), ^{
+            const size_t to = readaloud::sentence(g_read.script, g_read.at, 1);
+            FPTrace(@"reading: forward to '%s'", platform::utf8(g_read.script.text.substr(to, 9)).c_str());
+            [self readFrom:to];
+        });
 }
 
-- (IBAction)stopReading:(id)sender { if (g_speech.speaking) [g_speech stopSpeakingAtBoundary:AVSpeechBoundaryImmediate]; }
+- (IBAction)stopReading:(id)sender { if (g_reader) [g_reader endReading]; }
 
 - (IBAction)setReadingSpeed:(NSMenuItem*)sender { [NSUserDefaults.standardUserDefaults setInteger:sender.tag forKey:@"readingSpeed"]; }
 

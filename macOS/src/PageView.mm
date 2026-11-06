@@ -27,6 +27,7 @@ constexpr size_t kCachedPages = 10;
     int _shown;                                   // the page shown in the one-page layout
     std::vector<TextHit> _matches;
     int _currentMatch;
+    int _spokenPage, _spokenStart, _spokenCount;  // the word being read aloud
     int _selPage, _selAnchor, _selFocus;          // selected characters: [min, max] of anchor and focus on _selPage
     NSPoint _downAt;
     BOOL _dragged;
@@ -219,6 +220,7 @@ constexpr size_t kCachedPages = 10;
         _shown = 0;
         _currentMatch = -1;
         _selPage = -1;
+        _spokenPage = -1;
         _annotPage = _annotIndex = -1;
         _objPage = -1;
         _lineWidthPt = 2;
@@ -626,6 +628,10 @@ constexpr size_t kCachedPages = 10;
         for (const NSRect& r : [self rectsOnPage:page start:h.start count:h.count])
             NSRectFillUsingOperation(NSInsetRect(r, -1, -1), NSCompositingOperationMultiply);
     }
+    if (_spokenPage == page && _spokenCount > 0) {
+        [[NSColor colorWithRed:0.19 green:0.75 blue:0.38 alpha:0.45] setFill];
+        for (const NSRect& r : [self rectsOnPage:page start:_spokenStart count:_spokenCount]) NSRectFillUsingOperation(NSInsetRect(r, -1, -1), NSCompositingOperationMultiply);
+    }
     if (_selPage == page && _selAnchor >= 0) {
         [[NSColor.selectedTextBackgroundColor colorWithAlphaComponent:0.55] setFill];
         const int a = std::min(_selAnchor, _selFocus), b = std::max(_selAnchor, _selFocus);
@@ -634,6 +640,25 @@ constexpr size_t kCachedPages = 10;
 }
 
 // ---- search ----
+
+- (void)setSpokenPage:(int)page start:(int)start count:(int)count {
+    _spokenPage = page;
+    _spokenStart = start;
+    _spokenCount = count;
+    if (page >= 0 && _doc && page < _doc->pageCount()) {
+        if (_layout == 0 && page != _shown) [self showPage:page];
+        const auto rs = [self rectsOnPage:page start:start count:count];
+        if (!rs.empty()) [self scrollRectToVisible:NSInsetRect(rs[0], -40, -120)];
+    }
+    [self setNeedsDisplay:YES];
+}
+
+- (BOOL)selectionStartPage:(int*)page char:(int*)ch {
+    if (_selPage < 0 || _selAnchor < 0) return NO;
+    *page = _selPage;
+    *ch = std::min(_selAnchor, _selFocus);
+    return YES;
+}
 
 - (void)setMatches:(std::vector<TextHit>)hits current:(int)current {
     _matches = std::move(hits);

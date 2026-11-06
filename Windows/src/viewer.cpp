@@ -548,6 +548,7 @@ void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip
             }
         }
     }
+    if (spoken_.page == page) paintRange(spoken_.start, spoken_.count, RGB(0x30, 0xC0, 0x60), 120);   // the word being read aloud
     if (sel_.active) {
         int p1 = sel_.p1, c1 = sel_.c1, p2 = sel_.p2, c2 = sel_.c2;
         if (p1 > p2 || (p1 == p2 && c1 > c2)) { std::swap(p1, p2); std::swap(c1, c2); }
@@ -655,6 +656,26 @@ void Viewer::setCurrentMatch(int current) {
     }
     InvalidateRect(hwnd_, nullptr, FALSE);
     notify();
+}
+
+void Viewer::setSpoken(int page, int start, int count) {
+    spoken_ = {page, start, count};
+    if (page >= 0 && doc_ && page < static_cast<int>(tops_.size())) {
+        if (layout_ == 0 && page != currentPage()) showPage(page, false);
+        auto rects = rectsFor(page, start, count);
+        if (!rects.empty()) {
+            RECT rc;
+            GetClientRect(hwnd_, &rc);
+            const RECT& r = rects.front();
+            if (r.top < 40 || r.bottom > rc.bottom - 40) {   // the reading goes on below (or above) the screen: follow it
+                doc_->scrollY += r.top - rc.bottom / 3;
+                clampScroll();
+                updateScrollBars();
+                notify();
+            }
+        }
+    }
+    InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
 // ---- text selection ----

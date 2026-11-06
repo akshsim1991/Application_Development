@@ -29,9 +29,19 @@ public:
     // Search highlights: all matches in yellow, the current one in orange.
     void setMatches(std::vector<TextHit> hits, int current);
     void setCurrentMatch(int current);   // scrolls it into view
+    // The word being read aloud (page < 0: none): tinted, and kept in view.
+    void setSpoken(int page, int start, int count);
 
     // Text selection.
     bool hasSelection() const { return sel_.active; }
+    // Where the selected text starts (page, character), in reading order.
+    bool selectionStart(int& page, int& ch) const {
+        if (!sel_.active) return false;
+        const bool fwd = sel_.p1 < sel_.p2 || (sel_.p1 == sel_.p2 && sel_.c1 <= sel_.c2);
+        page = fwd ? sel_.p1 : sel_.p2;
+        ch = fwd ? sel_.c1 : sel_.c2;
+        return true;
+    }
     void selectAll();
     void clearSelection();
     std::wstring selectedText();
@@ -171,6 +181,7 @@ private:
     std::vector<TextHit> matches_;
     int currentMatch_ = -1;
     Selection sel_;
+    struct Spoken { int page = -1, start = 0, count = 0; } spoken_;
     bool dragging_ = false;
     Tool tool_ = Tool::None;
     int cacheLimit_ = 6;

@@ -48,6 +48,7 @@
 #include "webview.hpp"
 #include "access.hpp"
 #include "review.hpp"
+#include "readaloud.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -75,10 +76,11 @@
 
 namespace {
 
-enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, ID_FIND_WORD, ID_FIND_WILD, ID_FIND_NOTES, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
+enum { ID_FIND_EDIT = 201, ID_FIND_PREV, ID_FIND_NEXT, ID_FIND_CASE, ID_FIND_COUNT, ID_FIND_CLOSE, ID_FIND_WORD, ID_FIND_WILD, ID_FIND_NOTES, ID_READ_LABEL = 230, ID_READ_BACK, ID_READ_PAUSE, ID_READ_FWD, ID_READ_SLOWER, ID_READ_FASTER, ID_READ_STOP, TIMER_FIND = 1, TIMER_AUTOSAVE = 2 };
 constexpr const wchar_t* kAppName = L"Feather PDF";
 constexpr UINT kMsgOpenHandedOver = WM_APP + 1;   // opens the files a second launch handed over
 constexpr UINT kMsgUpdateChecked = WM_APP + 7;    // the version file was read (updater::checkInBackground)
+constexpr UINT kMsgSpeech = WM_APP + 8;           // the voice reading aloud has news (a word started, or it finished)
 
 // kind: a toolbar button, or one of the window buttons (minimise, maximise, close) drawn in the tab row
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
@@ -92,7 +94,8 @@ struct App {
     Viewer viewer;
     inlineedit::Editor inlineEd;                      // text being edited in place on the page
     Sidebar sidebar;
-    bool sidebarVisible = false, findVisible = false;
+    bool sidebarVisible = false, findVisible = false, readVisible = false;
+    HWND readLabel = nullptr, readBack = nullptr, readPause = nullptr, readFwd = nullptr, readSlower = nullptr, readFaster = nullptr, readStop = nullptr;
     HWND findEdit = nullptr, findPrev = nullptr, findNext = nullptr, findCase = nullptr, findCount = nullptr, findClose = nullptr, findWord = nullptr, findWild = nullptr, findNotes = nullptr;
     int curMatch = -1, matchTotal = 0;
     WNDPROC editProc = nullptr;
@@ -286,7 +289,17 @@ void relayoutChildren() {
         MoveWindow(app.findClose, std::max(x, static_cast<int>(rc.right) - px(70)), y, px(60), hgt, TRUE);
         top += findH();
     }
-    const int bottom = std::max<int>(top, rc.bottom - statusH());   // the status bar
+    int bottom = std::max<int>(top, rc.bottom - statusH());   // the status bar
+    if (app.readVisible) {   // the reading controls, above the status bar
+        bottom = std::max(top, bottom - findH());
+        const int y = bottom + px(7), hgt = px(28);
+        int x = px(10);
+        MoveWindow(app.readLabel, x, y + px(5), px(250), px(20), TRUE); x += px(256);
+        for (HWND b : {app.readBack, app.readPause, app.readFwd}) { MoveWindow(b, x, y, px(96), hgt, TRUE); x += px(100); }
+        x += px(10);
+        for (HWND b : {app.readSlower, app.readFaster}) { MoveWindow(b, x, y, px(70), hgt, TRUE); x += px(74); }
+        MoveWindow(app.readStop, std::max(x + px(10), static_cast<int>(rc.right) - px(90)), y, px(80), hgt, TRUE);
+    }
     int left = 0;
     if (app.sidebarVisible) {
         MoveWindow(app.sidebar.hwnd(), 0, top, sideW(), bottom - top, TRUE);
@@ -321,6 +334,7 @@ void relayoutChildren() {
 void showControls() {
     const int f = app.findVisible ? SW_SHOW : SW_HIDE;
     for (HWND h : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose}) ShowWindow(h, f);
+    for (HWND h : {app.readLabel, app.readBack, app.readPause, app.readFwd, app.readSlower, app.readFaster, app.readStop}) ShowWindow(h, app.readVisible && !app.fullscreen ? SW_SHOW : SW_HIDE);
     ShowWindow(app.sidebar.hwnd(), app.sidebarVisible ? SW_SHOW : SW_HIDE);
     relayoutChildren();
     InvalidateRect(app.wnd, nullptr, FALSE);
@@ -2465,25 +2479,98 @@ void doExport(Document& d) {
 
 // ---- read aloud, print, properties ----
 
-void stopReading() { speech::stop(); }
+// Read aloud: the text from the selection or the page shown on; the word being spoken is tinted on the page, and the
+// controls below the pages go back or forward a sentence, pause, change the speed, or stop.
+struct Reading {
+    readaloud::Script script;
+    size_t base = 0, at = 0;   // where the voice started in the script; the word it is on
+    bool paused = false;
+} g_reading;
+
+void updateReadingBar() {
+    SetWindowTextW(app.readPause, g_reading.paused ? L"Resume" : L"Pause");
+    int page = -1, start = 0, count = 0;
+    readaloud::span(g_reading.script, g_reading.at, 1, page, start, count);
+    static const wchar_t* speeds[] = {L"slow", L"normal", L"fast", L"very fast"};
+    const int sp = app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3;
+    SetWindowTextW(app.readLabel, ((g_reading.paused ? L"Paused on page " : L"Reading page ") + std::to_wstring(page + 1) + L"  \u00B7  " + speeds[sp]).c_str());
+}
+
+void endReading() {
+    speech::stop();
+    g_reading = Reading();
+    app.viewer.setSpoken(-1, 0, 0);
+    if (app.readVisible) { app.readVisible = false; showControls(); }
+}
+
+void stopReading() { endReading(); }
+
+bool readFrom(size_t offset) {
+    offset = std::min(offset, g_reading.script.text.size());
+    if (offset >= g_reading.script.text.size()) { endReading(); return false; }
+    g_reading.base = g_reading.at = offset;
+    g_reading.paused = false;
+    std::wstring err;
+    if (!speech::start(g_reading.script.text.substr(offset), app.readRate, err, app.wnd, kMsgSpeech)) {
+        endReading();
+        MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+        return false;
+    }
+    if (!app.readVisible) { app.readVisible = true; showControls(); }
+    updateReadingBar();
+    return true;
+}
+
+void readingNews() {
+    speech::events([](int kind, size_t pos, size_t len) {
+        if (kind == 1) { endReading(); return; }
+        g_reading.at = g_reading.base + pos;
+        int page, start = 0, count = 0;
+        if (readaloud::span(g_reading.script, g_reading.at, len ? len : readaloud::wordLength(g_reading.script, g_reading.at), page, start, count))
+            app.viewer.setSpoken(page, start, count);
+        updateReadingBar();
+    });
+}
+
+void readingControl(int id) {
+    if (!app.readVisible) return;
+    switch (id) {
+        case ID_READ_BACK: readFrom(readaloud::sentence(g_reading.script, g_reading.at, -1)); break;
+        case ID_READ_FWD: readFrom(readaloud::sentence(g_reading.script, g_reading.at, 1)); break;
+        case ID_READ_PAUSE: speech::pauseResume(); g_reading.paused = speech::paused(); updateReadingBar(); break;
+        case ID_READ_SLOWER: case ID_READ_FASTER: {
+            static const int rates[] = {-4, 0, 3, 6};
+            int i = app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3;
+            i = std::clamp(i + (id == ID_READ_FASTER ? 1 : -1), 0, 3);
+            app.readRate = rates[i];
+            readFrom(readaloud::sentence(g_reading.script, g_reading.at, 0));   // the sentence again, at the new speed
+            break;
+        }
+        case ID_READ_STOP: endReading(); break;
+    }
+}
 
 void readAloud() {
     Document* d = activeDoc();
     if (!d) return;
-    if (speech::speaking()) { stopReading(); return; }
-    std::wstring text = app.viewer.selectedText();
-    if (text.empty()) {   // from the page being read to the end of the document
-        for (int p = app.viewer.currentPage(); p < d->pageCount() && text.size() < 200000; ++p) {
-            std::wstring t = d->textRange(p, 0, d->charCount(p));
-            if (!t.empty()) text += t + L"\r\n";
-        }
+    if (app.readVisible || speech::speaking()) { endReading(); return; }
+    int fromPage = app.viewer.currentPage(), fromChar = 0;
+    size_t limit = 200000;
+    if (app.viewer.hasSelection()) {   // the selection only
+        const std::wstring sel = app.viewer.selectedText();
+        const auto rects = app.viewer.selectionRects();
+        if (!rects.empty()) fromPage = rects.front().page;
+        int sp = -1, sc = 0;
+        if (app.viewer.selectionStart(sp, sc)) { fromPage = sp; fromChar = sc; }
+        limit = sel.size() + 1;
     }
-    if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) {
+    g_reading = Reading();
+    g_reading.script = readaloud::build(*d, fromPage, fromChar, limit);
+    if (g_reading.script.text.find_first_not_of(L" \t\r\n") == std::wstring::npos) {
         MessageBoxW(app.wnd, L"There is no text to read here. Scanned pages are pictures; they need text recognition (OCR) first.", kAppName, MB_OK | MB_ICONINFORMATION);
         return;
     }
-    std::wstring err;
-    if (!speech::start(text, app.readRate, err)) MessageBoxW(app.wnd, err.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+    readFrom(0);
 }
 
 void printDocument();
@@ -3396,7 +3483,7 @@ void showToolsMenu(const RECT& anchor) {
     ClientToScreen(app.wnd, &pt);
     int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
-    if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = kRates[cmd - T_RATE]; if (speech::speaking()) { stopReading(); readAloud(); } return; }
+    if (cmd >= T_RATE && cmd < T_RATE + 4) { app.readRate = kRates[cmd - T_RATE]; if (app.readVisible) readFrom(readaloud::sentence(g_reading.script, g_reading.at, 0)); return; }
     if (cmd) toolsDispatch(cmd);
 }
 
@@ -6285,6 +6372,12 @@ void paintHeader(HDC dc, const RECT& client) {
         FillRect(dc, &fr, toolBg);
         hline(dc, 0, client.right, headerH() + findH() - 1, P.line);
     }
+    if (app.readVisible && !app.fullscreen) {   // the reading controls sit above the status bar
+        const int b = client.bottom - statusH();
+        RECT rr{0, b - findH(), client.right, b};
+        FillRect(dc, &rr, toolBg);
+        hline(dc, 0, client.right, b - findH(), P.line);
+    }
     DeleteObject(tabBg); DeleteObject(toolBg);
     SetBkMode(dc, TRANSPARENT);
     SelectObject(dc, app.font);
@@ -6605,6 +6698,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.findWord = CreateWindowExW(0, L"BUTTON", L"Whole word", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_WORD), app.inst, nullptr);
             app.findWild = CreateWindowExW(0, L"BUTTON", L"Wildcards * ?", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_WILD), app.inst, nullptr);
             app.findNotes = CreateWindowExW(0, L"BUTTON", L"In comments", WS_CHILD | BS_AUTOCHECKBOX, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NOTES), app.inst, nullptr);
+            app.readLabel = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT | SS_ENDELLIPSIS, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_READ_LABEL), app.inst, nullptr);
+            {
+                const std::pair<HWND*, std::pair<int, const wchar_t*>> rb[] = {{&app.readBack, {ID_READ_BACK, L"<< Back"}}, {&app.readPause, {ID_READ_PAUSE, L"Pause"}},
+                    {&app.readFwd, {ID_READ_FWD, L"Forward >>"}}, {&app.readSlower, {ID_READ_SLOWER, L"Slower"}}, {&app.readFaster, {ID_READ_FASTER, L"Faster"}},
+                    {&app.readStop, {ID_READ_STOP, L"Stop"}}};
+                for (const auto& b : rb) {
+                    *b.first = CreateWindowExW(0, L"BUTTON", b.second.second, WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(static_cast<INT_PTR>(b.second.first)), app.inst, nullptr);
+                    SendMessageW(*b.first, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+                }
+                SendMessageW(app.readLabel, WM_SETFONT, reinterpret_cast<WPARAM>(app.font), TRUE);
+            }
             app.findCount = CreateWindowExW(0, L"STATIC", L"", WS_CHILD | SS_LEFT, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_COUNT), app.inst, nullptr);
             app.findClose = CreateWindowExW(0, L"BUTTON", L"Close", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_CLOSE), app.inst, nullptr);
             for (HWND c : {app.findEdit, app.findPrev, app.findNext, app.findCase, app.findWord, app.findWild, app.findNotes, app.findCount, app.findClose})
@@ -6640,9 +6744,12 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case ID_FIND_PREV: stepMatch(-1); break;
                 case ID_FIND_NEXT: stepMatch(1); break;
                 case ID_FIND_CASE: case ID_FIND_WORD: case ID_FIND_WILD: case ID_FIND_NOTES: runSearch(false); break;
+                case ID_READ_BACK: case ID_READ_PAUSE: case ID_READ_FWD: case ID_READ_SLOWER: case ID_READ_FASTER: case ID_READ_STOP:
+                    readingControl(LOWORD(w)); SetFocus(app.viewer.hwnd()); break;
                 case ID_FIND_CLOSE: toggleFind(false); break;
             }
             return 0;
+        case kMsgSpeech: readingNews(); return 0;
         case WM_TIMER:
             if (w == TIMER_FIND) { KillTimer(h, TIMER_FIND); runSearch(false); }
             else if (w == TIMER_AUTOSAVE) writeSession();

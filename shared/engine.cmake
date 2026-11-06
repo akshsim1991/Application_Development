@@ -20,6 +20,7 @@ set(ENGINE_SOURCES
   ${SHARED}/webview.cpp
   ${SHARED}/access.cpp
   ${SHARED}/review.cpp
+  ${SHARED}/readaloud.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

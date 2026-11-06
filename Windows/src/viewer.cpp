@@ -462,6 +462,22 @@ void cursorNote(HDC dc, POINT at, const wchar_t* text, COLORREF col) {
 }
 } // namespace
 
+namespace {
+// Pen and touch input (Windows 8 and later), looked up when first needed so older systems still start.
+using GetPointerTypeFn = BOOL(WINAPI*)(UINT32, POINTER_INPUT_TYPE*);
+using GetPointerPenInfoFn = BOOL(WINAPI*)(UINT32, POINTER_PEN_INFO*);
+GetPointerTypeFn pointerType() {
+    static GetPointerTypeFn f = reinterpret_cast<GetPointerTypeFn>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetPointerType")));
+    return f;
+}
+GetPointerPenInfoFn penInfo() {
+    static GetPointerPenInfoFn f = reinterpret_cast<GetPointerPenInfoFn>(reinterpret_cast<void*>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetPointerPenInfo")));
+    return f;
+}
+// A mouse message Windows made from a touch (not a real mouse or pen): its extra information carries this signature.
+bool fromTouch() { return (GetMessageExtraInfo() & 0xFFFFFF80) == 0xFF515780; }
+} // namespace
+
 std::vector<RECT> Viewer::rectsFor(int page, int start, int count) const {
     std::vector<RECT> out;
     if (!doc_ || count <= 0 || page < 0 || page >= static_cast<int>(tops_.size())) return out;
@@ -1103,6 +1119,8 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             if (onPress && onPress(m, w, l)) return 0;
             break;
         case WM_LBUTTONDOWN: {
+            // palm rejection (systems that send touches as mouse clicks): no drawing with the hand while the pen is in use
+            if (fromTouch() && (tool_ == Tool::Pen || GetTickCount() - lastPen_ < 1500)) return 0;
             if (onPress && onPress(m, w, l)) return 0;
             SetFocus(hwnd_);
             if (!doc_) return 0;
@@ -1154,6 +1172,8 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     drawing_ = true; drawPage_ = page;
                     drawStart_ = drawNow_ = {cx, cy};
                     drawPts_.assign(1, pt);
+                    penStroke_ = GetTickCount() - lastPen_ < 200 && penPressure_ >= 0;
+                    drawPressure_.assign(1, penStroke_ ? penPressure_ : 0.5);
                     SetCapture(hwnd_);
                 }
                 return 0;
@@ -1257,6 +1277,20 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             onEvent(e);
             return 0;
         }
+        case WM_POINTERDOWN: case WM_POINTERUPDATE: case WM_POINTERUP: {
+            const UINT32 id = GET_POINTERID_WPARAM(w);
+            POINTER_INPUT_TYPE type = PT_POINTER;
+            if (!pointerType() || !pointerType()(id, &type)) break;
+            if (type == PT_PEN) {
+                lastPen_ = GetTickCount();
+                POINTER_PEN_INFO pi{};
+                penPressure_ = penInfo() && penInfo()(id, &pi) && (pi.penMask & PEN_MASK_PRESSURE) ? pi.pressure / 1024.0 : -1;
+                break;   // Windows turns it into mouse messages, which draw
+            }
+            // palm rejection: a hand resting on the screen while the pen draws (or the pen tool is on) does nothing
+            if (type == PT_TOUCH && (tool_ == Tool::Pen || GetTickCount() - lastPen_ < 1500)) return 0;
+            break;
+        }
         case WM_MOUSEMOVE:
             if ((tool_ == Tool::Polygon && polyPage_ >= 0) || tool_ == Tool::Protractor) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
             if (objDrag_ != ObjDrag::None && doc_) {
@@ -1313,7 +1347,12 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
                 drawNow_ = {cx, cy};
                 annot::PointD pt;
-                if (tool_ == Tool::Pen && toPage(cx, cy, drawPage_, pt)) drawPts_.push_back(pt);
+                if (tool_ == Tool::Pen && toPage(cx, cy, drawPage_, pt)) {
+                    drawPts_.push_back(pt);
+                    const bool pen = GetTickCount() - lastPen_ < 200 && penPressure_ >= 0;
+                    penStroke_ = penStroke_ && pen;
+                    drawPressure_.push_back(pen ? penPressure_ : 0.5);
+                }
                 InvalidateRect(hwnd_, nullptr, FALSE);
             } else if (dragging_) {
                 int cx = GET_X_LPARAM(l), cy = GET_Y_LPARAM(l);
@@ -1360,6 +1399,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     else if (moved) {
                         e.kind = Event::Draw;
                         e.pts = tool_ == Tool::Pen ? drawPts_ : std::vector<annot::PointD>{drawPts_.front(), end};
+                        if (tool_ == Tool::Pen && penStroke_ && drawPressure_.size() == drawPts_.size()) e.pressure = drawPressure_;
                         onEvent(e);
                     }
                 }

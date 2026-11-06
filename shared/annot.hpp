@@ -29,6 +29,11 @@ bool addMarkup(Document& d, int page, Markup kind, const std::vector<RectD>& rec
 bool addShape(Document& d, int page, Shape kind, const RectD& r, COLORREF color, double width);
 // Lines, arrows and freehand drawing are ink annotations: one stroke per entry.
 bool addInk(Document& d, int page, const std::vector<std::vector<PointD>>& strokes, COLORREF color, double width);
+// One stroke of a pen with pressure (0..1 for each point): thinner where it pressed lightly, up to `width` where it
+// pressed hard. The stroke itself is kept for other readers; its look follows the pressure.
+bool addPressureInk(Document& d, int page, const std::vector<PointD>& points, const std::vector<double>& pressure, COLORREF color, double width);
+// The width drawn for a pressure (0..1) with a pen of `width`.
+double pressureWidth(double pressure, double width);
 bool addNote(Document& d, int page, PointD at, const std::wstring& text, COLORREF color);
 // A closed shape through the points (drawn as one ink stroke, so every viewer shows it).
 bool addPolygon(Document& d, int page, const std::vector<PointD>& pts, COLORREF color, double width);

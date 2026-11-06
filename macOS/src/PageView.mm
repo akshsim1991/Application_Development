@@ -28,6 +28,8 @@ constexpr size_t kCachedPages = 10;
     std::vector<TextHit> _matches;
     int _currentMatch;
     int _spokenPage, _spokenStart, _spokenCount;  // the word being read aloud
+    std::vector<double> _toolPressure;            // a tablet pen's pressure at each point of the stroke
+    BOOL _penStroke, _penNear;                    // the stroke is a tablet pen's; a pen is near the tablet (palm rejection)
     int _selPage, _selAnchor, _selFocus;          // selected characters: [min, max] of anchor and focus on _selPage
     NSPoint _downAt;
     BOOL _dragged;
@@ -707,6 +709,7 @@ constexpr size_t kCachedPages = 10;
     ev.page = _toolPage;
     ev.pts = _toolPts;
     ev.annot = _annotIndex;
+    if (_tool == FPToolPen && _penStroke && _toolPressure.size() == _toolPts.size()) ev.pressure = _toolPressure;
     self.onToolEvent(ev);
 }
 
@@ -749,6 +752,8 @@ constexpr size_t kCachedPages = 10;
     _toolDown = YES;
     _toolPage = page;
     _toolPts = {{x, y}};
+    _penStroke = e.subtype == NSEventSubtypeTabletPoint;
+    _toolPressure = {_penStroke ? e.pressure : 0.5};
     _toolStartView = _toolNowView = p;
     _toolPathView = {p};
 }
@@ -764,6 +769,10 @@ constexpr size_t kCachedPages = 10;
         if ([self pageAt:NSMakePoint(std::min(p.x, NSMaxX(r) - 0.5), std::min(p.y, NSMaxY(r) - 0.5)) page:&page x:&x y:&y]) {
             _toolPts.push_back({x, y});
             _toolPathView.push_back(p);
+            NSEvent* ev = NSApp.currentEvent;
+            const bool pen = ev.subtype == NSEventSubtypeTabletPoint;
+            _penStroke = _penStroke && pen;
+            _toolPressure.push_back(pen ? ev.pressure : 0.5);
         }
     }
     [self setNeedsDisplay:YES];
@@ -942,7 +951,12 @@ constexpr size_t kCachedPages = 10;
     return self.onContextMenu(page, {x, y}, annot::hitTest(*_doc, page, {x, y}));
 }
 
+// A tablet pen came near or went away: while it is near, touches that are not the pen (a hand resting on a pen display,
+// or the trackpad) do not draw with the Pen tool.
+- (void)tabletProximity:(NSEvent*)e { _penNear = e.isEnteringProximity; }
+
 - (void)mouseDown:(NSEvent*)e {
+    if (_tool == FPToolPen && _penNear && e.subtype != NSEventSubtypeTabletPoint) return;   // palm rejection
     [self.window makeFirstResponder:self];
     const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
     if (_presenting) {   // a click: the next page (with Shift: the one before)

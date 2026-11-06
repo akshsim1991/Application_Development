@@ -29,6 +29,7 @@ struct FPToolEvent {
     std::vector<annot::PointD> pts;   // page coordinates
     int annot = -1;                   // the annotation clicked or selected, if any
     enum Drag { None, Move, Resize } drag = None;   // the selected object (Select tool) was moved or resized: pts = from, to
+    std::vector<double> pressure;     // a pen stroke drawn with a tablet pen: its pressure (0..1) at each point; else empty
 };
 
 extern NSNotificationName const FPPageViewChanged;   // the page shown or the zoom changed (the toolbar follows)

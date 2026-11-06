@@ -144,6 +144,41 @@ bool addInk(Document& d, int page, const std::vector<std::vector<PointD>>& strok
     });
 }
 
+double pressureWidth(double pressure, double width) { return width * (0.3 + 0.9 * std::clamp(pressure, 0.0, 1.0)); }
+
+bool addPressureInk(Document& d, int page, const std::vector<PointD>& points, const std::vector<double>& pressure, COLORREF color, double width) {
+    if (points.size() < 2 || pressure.size() != points.size()) return false;
+    return create(d, page, FPDF_ANNOT_INK, [&](FPDF_ANNOTATION a) {
+        RectD box{1e9, 1e9, -1e9, -1e9};
+        std::vector<FS_POINTF> pts;
+        for (const PointD& p : points) {
+            pts.push_back({static_cast<float>(p.x), static_cast<float>(p.y)});
+            box = {std::min(box.left, p.x), std::min(box.bottom, p.y), std::max(box.right, p.x), std::max(box.top, p.y)};
+        }
+        if (api().FPDFAnnot_AddInkStroke(a, pts.data(), pts.size()) < 0) return false;
+        const double pad = width * 1.3 + 1;
+        setRect(a, {box.left - pad, box.bottom - pad, box.right + pad, box.top + pad});
+        setColor(a, FPDFANNOT_COLORTYPE_Color, color);
+        double sum = 0;
+        for (double pr : pressure) sum += pressureWidth(pr, width);
+        api().FPDFAnnot_SetBorder(a, 0, 0, static_cast<float>(sum / static_cast<double>(pressure.size())));
+        // the look: short pieces, each as wide as the pen pressed there (round ends join them smoothly)
+        for (size_t i = 0; i + 1 < points.size(); ++i) {
+            FPDF_PAGEOBJECT path = api().FPDFPageObj_CreateNewPath(static_cast<float>(points[i].x), static_cast<float>(points[i].y));
+            if (!path) return false;
+            api().FPDFPath_LineTo(path, static_cast<float>(points[i + 1].x), static_cast<float>(points[i + 1].y));
+            api().FPDFPageObj_SetStrokeColor(path, GetRValue(color), GetGValue(color), GetBValue(color), 255);
+            api().FPDFPageObj_SetStrokeWidth(path, static_cast<float>(pressureWidth((pressure[i] + pressure[i + 1]) / 2, width)));
+            api().FPDFPageObj_SetLineCap(path, FPDF_LINECAP_ROUND);
+            api().FPDFPageObj_SetLineJoin(path, FPDF_LINEJOIN_ROUND);
+            api().FPDFPath_SetDrawMode(path, FPDF_FILLMODE_NONE, 1);
+            if (!api().FPDFAnnot_AppendObject(a, path)) { api().FPDFPageObj_Destroy(path); return false; }
+        }
+        stamp(a, L"");
+        return true;
+    });
+}
+
 bool addNote(Document& d, int page, PointD at, const std::wstring& text, COLORREF color) {
     return create(d, page, FPDF_ANNOT_TEXT, [&](FPDF_ANNOTATION a) {
         setRect(a, {at.x, at.y - 20, at.x + 20, at.y});   // the icon hangs below-right of the click

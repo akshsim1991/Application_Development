@@ -179,6 +179,18 @@ int run(std::vector<std::wstring> files) {
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
     }
+    if (!files.empty() && files[0] == L"--pressureink") {
+        // --pressureink in.pdf out.pdf : a stroke from light (left) to hard (right) across page 1
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::vector<annot::PointD> pts;
+        std::vector<double> pr;
+        for (int i = 0; i <= 40; ++i) { pts.push_back({100.0 + i * 10.0, 400.0}); pr.push_back(i / 40.0); }
+        if (!annot::addPressureInk(doc, 0, pts, pr, RGB(0, 0, 0), 12)) return 5;
+        std::vector<unsigned char> bytes;
+        return doc.serialize(bytes) && Document::writeFile(files[2], bytes) == SaveResult::Ok ? 0 : 4;
+    }
     if (!files.empty() && files[0] == L"--formcalc") {
         // --formcalc in.pdf out.txt out.pdf : a total, checks on four fields, values typed, worked out and checked
         if (files.size() < 4) return 2;

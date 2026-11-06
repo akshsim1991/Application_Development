@@ -21,7 +21,7 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 | 4 | Comment threads (replies), Accepted / Rejected, review summary | [x] | [x] | [ ] |
 | 12 | Read aloud with word highlighting, playback controls | [x] | [x] | [ ] |
 | 7 | Forms: calculated fields, input validation | [x] | [x] | [ ] |
-| 11 | Pen and tablet: pressure, palm rejection | — | [ ] | [ ] |
+| 11 | Pen and tablet: pressure, palm rejection | [x] | [x] | [ ] |
 | — | About: development history, AI contributions, credits, contact | — | [x] | [ ] |
 | — | Version 2.16.0 "Mustang" everywhere; changelog; release | — | [ ] | [ ] |
 
@@ -41,3 +41,5 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 - 4 Comment threads: replies (/IRT, /RT /R) and review states (/State, /StateModel Review) as the PDF standard has them, read back by pikepdf (cli_check); Windows dialog on the virtual screen (reply added and listed).
 - 12 Read aloud: the script maps each spoken word to its page (cli_check); Windows: SAPI word events tint the word, the view follows it, controls below the pages (back/forward a sentence, pause, slower/faster, stop) tried on the virtual screen with the stand-in voice (Wine has no voice; real SAPI not tried here).
 - 7 Forms: calculations (sum, product, average, smallest, largest) and checks (number, range, date, e-mail, phone) written as Acrobat's scripts and read back by pikepdf (cli_check); Windows on the virtual screen: a total recalculated as a price was typed, a quantity out of range refused and put back.
+- 11 Pen: pressure strokes (the stroke kept for other readers, its look as wide as pressed; widths measured from the page picture in cli_check). Windows: WM_POINTER pen pressure, touch ignored while the pen tool is on or the pen was just used; mouse drawing checked on the virtual screen (no pen there). Mac: tablet pressure, non-pen input ignored while a pen is near. A real pen not tried here.
+- Command palette: exact and word-start matches first ("pen" found Open before Pen).

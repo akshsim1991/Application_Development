@@ -54,6 +54,7 @@ public:
         Tool tool = Tool::None;
         int page = 0;
         std::vector<annot::PointD> pts;   // page coordinates; a drag has its start and end, a pen stroke has many
+        std::vector<double> pressure;     // a stroke drawn with a pen that reports pressure: 0..1 for each point (else empty)
         int annot = -1;                   // annotation under the pointer, if any
         POINT screen{};                   // for ContextMenu
     };
@@ -182,6 +183,11 @@ private:
     int currentMatch_ = -1;
     Selection sel_;
     struct Spoken { int page = -1, start = 0, count = 0; } spoken_;
+    // pen input (WM_POINTER): its pressure for the stroke being drawn, and when the pen was last seen (palm rejection)
+    std::vector<double> drawPressure_;
+    double penPressure_ = -1;   // 0..1, or -1 when the pen gives none
+    DWORD lastPen_ = 0;
+    bool penStroke_ = true;     // every point of this stroke came with a pressure
     bool dragging_ = false;
     Tool tool_ = Tool::None;
     int cacheLimit_ = 6;

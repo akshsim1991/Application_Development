@@ -3,6 +3,7 @@
 // with the reason, and the totals are worked out again.
 #import <Cocoa/Cocoa.h>
 #import "WindowController.h"
+#import "PageView.h"
 #import "Form.h"
 #import "Trace.h"
 #include <algorithm>

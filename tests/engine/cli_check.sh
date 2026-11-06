@@ -198,6 +198,16 @@ assert str(f['total'].AA.C.JS)=='AFSimple_Calculate(\\\"SUM\\\", new Array(\\\"p
 assert str(f['qty'].AA.V.JS)=='AFRange_Validate(true, 1, true, 100);' and 'AFNumber_Keystroke(0' in str(f['qty'].AA.K.JS)
 assert [str(x.T) for x in p.Root.AcroForm.CO]==['total']\""
 
+echo "pen pressure"
+run --pressureink "$W/order.pdf" "$W/pen.pdf"; run --export png "$W/pen.pdf" "$W/pen.png" 72
+check "thin where light, thick where hard" "python3 -c \"
+from PIL import Image
+im=Image.open('$W/pen-1.png').convert('L');w,h=im.size
+t=lambda x: sum(1 for yy in range(int(412/842*h),int(472/842*h)) if im.getpixel((int(x/595*w),yy))<128)
+a,b,c=t(110),t(300),t(490);assert 2<=a<b<c and c>=12,(a,b,c)\""
+check "the stroke kept for other readers (pikepdf)" "python3 -c \"
+import pikepdf;p=pikepdf.open('$W/pen.pdf');a=[x for x in p.pages[0].Annots if x.Subtype=='/Ink'][0];assert len(a.InkList[0])==82 and '/AP' in a\""
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

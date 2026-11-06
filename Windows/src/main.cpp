@@ -1753,8 +1753,10 @@ void onViewerEvent(const Viewer::Event& e) {
                 }
                 case Viewer::Tool::Line: addArrowOrLine(*d, e, false); break;
                 case Viewer::Tool::Arrow: addArrowOrLine(*d, e, true); break;
-                case Viewer::Tool::Pen:
-                    if (annot::addInk(*d, e.page, {e.pts}, drawColor(), lineWidth())) afterChange(e.page);
+                case Viewer::Tool::Pen:   // a pen that reports pressure draws thin and thick, as pressed
+                    if (!e.pressure.empty() ? annot::addPressureInk(*d, e.page, e.pts, e.pressure, drawColor(), std::max(2.0, lineWidth() * 2))
+                                            : annot::addInk(*d, e.page, {e.pts}, drawColor(), lineWidth()))
+                        afterChange(e.page);
                     break;
                 default: break;
             }
@@ -5901,16 +5903,30 @@ LRESULT CALLBACK paletteProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 for (auto& c : lq) c = static_cast<wchar_t>(towlower(c));
                 SendMessageW(st->list, LB_RESETCONTENT, 0, 0);
                 st->shown.clear();
+                // every typed word must appear; the best first: the whole name, then names starting with it, then words
+                // starting with it, then anywhere (so "pen" finds Pen before "Open a file")
+                std::vector<std::pair<int, int>> ranked;   // rank, index
                 for (size_t i = 0; i < st->all.size(); ++i) {
                     std::wstring ln = st->all[i].name;
                     for (auto& c : ln) c = static_cast<wchar_t>(towlower(c));
                     bool ok = true;
-                    size_t pos = 0;
+                    int rank = 3;
                     std::wstringstream ss(lq);
                     std::wstring word;
-                    while (ss >> word) { if (ln.find(word) == std::wstring::npos) { ok = false; break; } (void)pos; }
-                    if (ok) { st->shown.push_back(static_cast<int>(i)); SendMessageW(st->list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(st->all[i].name.c_str())); }
+                    bool first = true;
+                    while (ss >> word) {
+                        const size_t at = ln.find(word);
+                        if (at == std::wstring::npos) { ok = false; break; }
+                        size_t wordStart = std::wstring::npos;   // the word typed begins a word of the name somewhere
+                        for (size_t p2 = at; p2 != std::wstring::npos; p2 = ln.find(word, p2 + 1)) if (p2 == 0 || !iswalnum(ln[p2 - 1])) { wordStart = p2; break; }
+                        if (first) rank = ln == lq ? 0 : at == 0 ? 1 : wordStart != std::wstring::npos ? 2 : 3;
+                        else if (wordStart == std::wstring::npos) rank = std::max(rank, 3);
+                        first = false;
+                    }
+                    if (ok) ranked.push_back({rank, static_cast<int>(i)});
                 }
+                std::stable_sort(ranked.begin(), ranked.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+                for (const auto& r : ranked) { st->shown.push_back(r.second); SendMessageW(st->list, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(st->all[static_cast<size_t>(r.second)].name.c_str())); }
                 if (!st->shown.empty()) SendMessageW(st->list, LB_SETCURSEL, 0, 0);
             } else if (HIWORD(w) == LBN_DBLCLK && reinterpret_cast<HWND>(l) == st->list) {
                 int sel = static_cast<int>(SendMessageW(st->list, LB_GETCURSEL, 0, 0));

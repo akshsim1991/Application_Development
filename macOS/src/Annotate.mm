@@ -193,7 +193,9 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
             break;
         }
         case FPToolPen:
-            if (e.pts.size() >= 2 && annot::addInk(*d, e.page, {e.pts}, drawColor(), lineWidth())) [self afterChange];
+            if (e.pts.size() >= 2 && (!e.pressure.empty() ? annot::addPressureInk(*d, e.page, e.pts, e.pressure, drawColor(), std::max(2.0, lineWidth() * 2))
+                                                         : annot::addInk(*d, e.page, {e.pts}, drawColor(), lineWidth())))
+                [self afterChange];   // a tablet pen draws thin and thick, as pressed
             break;
         case FPToolPolygon:
             if (e.kind == FPToolEvent::Draw && annot::addPolygon(*d, e.page, e.pts, drawColor(), lineWidth())) [self afterChange];

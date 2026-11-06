@@ -110,7 +110,7 @@ Result runWith(Document& d, const std::vector<int>& pages, bool skipTextPages, c
         words.erase(std::remove_if(words.begin(), words.end(), [](const Word& x) { return x.text.empty() || x.x1 <= x.x0 || x.y1 <= x.y0; }),
                     words.end());
         if (words.empty()) { ++res.pagesDone; continue; }
-        if (!changed) { d.beginChange(); changed = true; }
+        if (!changed) { d.beginChange(L"Recognise text (OCR)"); changed = true; }
         res.words += placeWords(d, p, words, dpi);
         ++res.pagesDone;
     }

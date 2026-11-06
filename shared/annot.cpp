@@ -69,7 +69,12 @@ template <typename Fn>
 bool create(Document& d, int page, FPDF_ANNOTATION_SUBTYPE subtype, Fn fn) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) return false;
-    d.beginChange();
+    const wchar_t* what = subtype == FPDF_ANNOT_HIGHLIGHT ? L"Highlight" : subtype == FPDF_ANNOT_UNDERLINE ? L"Underline"
+                        : subtype == FPDF_ANNOT_STRIKEOUT ? L"Strike out" : subtype == FPDF_ANNOT_SQUIGGLY ? L"Squiggly underline"
+                        : subtype == FPDF_ANNOT_TEXT ? L"Add a note" : subtype == FPDF_ANNOT_INK ? L"Draw"
+                        : subtype == FPDF_ANNOT_SQUARE ? L"Draw a rectangle" : subtype == FPDF_ANNOT_CIRCLE ? L"Draw an ellipse"
+                        : subtype == FPDF_ANNOT_STAMP ? L"Add a stamp or callout" : subtype == FPDF_ANNOT_LINK ? L"Add a link" : L"Add a comment";
+    d.beginChange(what);
     pg = d.page(page);   // beginChange() does not reload, but keep the handle fresh anyway
     FPDF_ANNOTATION a = api().FPDFPage_CreateAnnot(pg, subtype);
     if (!a) { d.cancelChange(); return false; }
@@ -188,7 +193,7 @@ int hitTest(Document& d, int page, PointD pt) {
 bool remove(Document& d, int page, int index) {
     FPDF_PAGE pg = d.page(page);
     if (!pg || index < 0 || index >= api().FPDFPage_GetAnnotCount(pg)) return false;
-    d.beginChange();
+    d.beginChange(L"Delete a comment");
     pg = d.page(page);
     if (!api().FPDFPage_RemoveAnnot(pg, index)) { d.cancelChange(); return false; }
     return true;
@@ -199,7 +204,7 @@ bool setContents(Document& d, int page, int index, const std::wstring& text) {
     if (!pg) return false;
     FPDF_ANNOTATION a = api().FPDFPage_GetAnnot(pg, index);
     if (!a) return false;
-    d.beginChange();
+    d.beginChange(L"Change a comment");
     auto w = wide(text);
     bool ok = api().FPDFAnnot_SetStringValue(a, "Contents", w.data()) != 0;
     api().FPDFPage_CloseAnnot(a);

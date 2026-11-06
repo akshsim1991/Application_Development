@@ -1,4 +1,5 @@
 #include "document.hpp"
+#include <ctime>
 #include "pdfedit.hpp"
 #include "platform.hpp"
 #ifndef _WIN32
@@ -153,7 +154,7 @@ void Document::formBeforeInput() {
 void Document::formCommitted() {
     if (formSnapValid_) {
         undoBytes_ += formSnap_.size();
-        undo_.push_back({std::move(formSnap_), protMode_, protOpt_});
+        undo_.push_back({std::move(formSnap_), protMode_, protOpt_, L"Fill in a form field", static_cast<long long>(std::time(nullptr))});
         formSnap_.clear();
         formSnapValid_ = false;
         trimUndo();
@@ -545,12 +546,12 @@ void Document::trimUndo() {
     }
 }
 
-void Document::beginChange() {
+void Document::beginChange(const std::wstring& what) {
     formSnapValid_ = false;   // an ordinary change replaces any pending field snapshot
     std::vector<unsigned char> snap;
     if (serialize(snap)) {
         undoBytes_ += snap.size();
-        undo_.push_back({std::move(snap), protMode_, protOpt_});
+        undo_.push_back({std::move(snap), protMode_, protOpt_, what, static_cast<long long>(std::time(nullptr))});
         trimUndo();
     }
     redo_.clear();
@@ -588,7 +589,7 @@ bool Document::undo() {
     Snapshot snap = std::move(undo_.back());
     undo_.pop_back();
     undoBytes_ -= snap.bytes.size();
-    const Snapshot now{std::move(cur), protMode_, protOpt_};
+    const Snapshot now{std::move(cur), protMode_, protOpt_, snap.what, snap.when};   // to redo that step
     if (!restoreFrom(snap)) { undoBytes_ += snap.bytes.size(); undo_.push_back(std::move(snap)); return false; }
     redo_.push_back(now);
     dirty_ = true;
@@ -601,11 +602,29 @@ bool Document::redo() {
     if (!serialize(cur)) return false;
     Snapshot snap = std::move(redo_.back());
     redo_.pop_back();
-    const Snapshot now{std::move(cur), protMode_, protOpt_};
+    const Snapshot now{std::move(cur), protMode_, protOpt_, snap.what, snap.when};
     if (!restoreFrom(snap)) { redo_.push_back(std::move(snap)); return false; }
     undoBytes_ += now.bytes.size();
     undo_.push_back(now);
     dirty_ = true;
+    return true;
+}
+
+std::vector<Document::Step> Document::undoSteps() const {
+    std::vector<Step> v;
+    for (const auto& s2 : undo_) v.push_back({s2.what, s2.when});
+    return v;
+}
+
+std::vector<Document::Step> Document::redoSteps() const {
+    std::vector<Step> v;
+    for (auto it = redo_.rbegin(); it != redo_.rend(); ++it) v.push_back({it->what, it->when});
+    return v;
+}
+
+bool Document::stepBack(int n) {
+    for (; n > 0; --n) if (!undo()) return false;
+    for (; n < 0; ++n) if (!redo()) return false;
     return true;
 }
 
@@ -629,7 +648,7 @@ bool Document::deletePages(std::vector<int> pages) {
     pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
     if (pages.empty() || static_cast<int>(pages.size()) >= pageCount()) return false;
     if (pages.front() < 0 || pages.back() >= pageCount()) return false;
-    beginChange();
+    beginChange(L"Delete pages");
     closePages();
     for (auto it = pages.rbegin(); it != pages.rend(); ++it) pdfium::api().FPDFPage_Delete(doc_, *it);
     rebuildPages();
@@ -639,7 +658,7 @@ bool Document::deletePages(std::vector<int> pages) {
 bool Document::insertBlankPage(int after, int templatePage) {
     if (after < -1 || after >= pageCount()) return false;
     PageSize ps = pageSize(std::clamp(templatePage, 0, pageCount() - 1));
-    beginChange();
+    beginChange(L"Insert a blank page");
     closePages();
     FPDF_PAGE p = pdfium::api().FPDFPage_New(doc_, after + 1, ps.w, ps.h);
     if (!p) { rebuildPages(); cancelChange(); return false; }
@@ -650,7 +669,7 @@ bool Document::insertBlankPage(int after, int templatePage) {
 
 bool Document::rotatePages(const std::vector<int>& pages, int turns) {
     if (pages.empty()) return false;
-    beginChange();
+    beginChange(L"Rotate pages");
     closePages();
     const auto& api = pdfium::api();
     for (int i : pages) {
@@ -670,7 +689,7 @@ bool Document::movePages(std::vector<int> pages, int destination) {
     pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
     if (pages.empty() || pages.front() < 0 || pages.back() >= pageCount()) return false;
     destination = std::clamp(destination, 0, pageCount());
-    beginChange();
+    beginChange(L"Move pages");
     closePages();
     // FPDF_MovePages places the moved pages so that the first one ends at index `dest` of the result.
     int before = 0;
@@ -785,7 +804,7 @@ int Document::flattenAll() {
     std::vector<unsigned char> before;
     std::map<int, std::vector<std::string>> links;
     if (serialize(before)) links = linksOf(before, pageCount());
-    beginChange();
+    beginChange(L"Flatten");
     int changed = 0;
     for (int i = 0; i < pageCount(); ++i) {
         FPDF_PAGE p = page(i);
@@ -801,7 +820,7 @@ bool Document::reversePages() {
     if (n < 2) return false;
     std::vector<int> order(n);
     for (int i = 0; i < n; ++i) order[i] = n - 1 - i;
-    beginChange();
+    beginChange(L"Reverse the page order");
     closePages();
     bool ok = pdfium::api().FPDF_MovePages(doc_, order.data(), static_cast<unsigned long>(n), 0) != 0;
     rebuildPages();
@@ -811,7 +830,7 @@ bool Document::reversePages() {
 
 bool Document::cropPages(const std::vector<int>& pages, double l, double b, double r, double t) {
     if (pages.empty()) return false;
-    beginChange();
+    beginChange(L"Crop pages");
     closePages();
     const auto& api = pdfium::api();
     bool any = false;
@@ -833,7 +852,7 @@ bool Document::cropPages(const std::vector<int>& pages, double l, double b, doub
 
 bool Document::importPages(Document& src, const std::vector<int>& srcPages, int at) {
     if (srcPages.empty() || !src.handle() || at < 0 || at > pageCount()) return false;
-    beginChange();
+    beginChange(L"Insert pages");
     closePages();
     bool ok = pdfium::api().FPDF_ImportPagesByIndex(doc_, src.handle(), srcPages.data(),
                                                     static_cast<unsigned long>(srcPages.size()), at) != 0;
@@ -902,7 +921,7 @@ std::vector<int> Document::parseRange(const std::wstring& text) const {
 
 bool Document::setProtection(const protect::Options& opt) {
     if (!doc_) return false;
-    beginChange();
+    beginChange(L"Set a password");
     protMode_ = Protection::Set;
     protOpt_ = opt;
     return true;
@@ -910,7 +929,7 @@ bool Document::setProtection(const protect::Options& opt) {
 
 bool Document::removeProtection() {
     if (!doc_ || !isProtected()) return false;
-    beginChange();
+    beginChange(L"Remove the password");
     protMode_ = Protection::Remove;
     return true;
 }

@@ -558,6 +558,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Minimize", @selector(performMiniaturize:), @"m");
     add(m, @"Zoom", @selector(performZoom:), nil);
     [m addItem:[NSMenuItem separatorItem]];
+    add(m, @"Undo History", @selector(showUndoHistory:), @"y", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Bring All to Front", @selector(arrangeInFront:), nil);
     add(m, @"Start Page", @selector(showStartPage:), @"1", NSEventModifierFlagCommand | NSEventModifierFlagShift).target = self;
     NSApp.windowsMenu = m;

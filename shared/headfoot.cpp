@@ -751,7 +751,7 @@ bool applyPage(Document& d, int index, const PagePlan& pp) {
 
 bool apply(Document& d, const Plan& p, std::wstring* why) {
     if (p.pages.empty()) { if (why) *why = L"Nothing is chosen to delete on these pages."; return false; }
-    d.beginChange();
+    d.beginChange(L"Delete header and footer");
     for (const PagePlan& pp : p.pages) {
         if (!applyPage(d, pp.page, pp)) {
             d.rollbackChange();

@@ -111,7 +111,7 @@ public:
     // A change that turns out to be a no-op can be dropped with cancelChange().
     bool dirty() const { return dirty_; }
     void markModified() { dirty_ = true; ++revision_; }   // for documents restored with changes that were never saved
-    void beginChange();
+    void beginChange(const std::wstring& what = L"Change");   // `what`: the step's name in the undo history
     void cancelChange();
     // Puts the document back as it was at the last beginChange() and forgets that step (for a change that failed half-way).
     bool rollbackChange();
@@ -119,6 +119,12 @@ public:
     bool canRedo() const { return !redo_.empty(); }
     bool undo();
     bool redo();
+    // The undo history: what each step did and when, oldest first; then the steps that can be redone, next first.
+    struct Step { std::wstring what; long long when = 0; };   // when: seconds since 1970
+    std::vector<Step> undoSteps() const;
+    std::vector<Step> redoSteps() const;
+    // Undoes (n > 0) or redoes (n < 0) |n| steps at once. False if one of them failed (the ones before stay done).
+    bool stepBack(int n);
     int revision() const { return revision_; }
 
     // ---- page operations (each one is a single undo step; page numbers are 0-based) ----
@@ -164,7 +170,7 @@ private:
     std::vector<sign::Status> signatures_;
     bool dirty_ = false;
     int revision_ = 0;
-    struct Snapshot { std::vector<unsigned char> bytes; Protection mode; protect::Options opt; };
+    struct Snapshot { std::vector<unsigned char> bytes; Protection mode; protect::Options opt; std::wstring what; long long when = 0; };
     Protection protMode_ = Protection::Keep;
     protect::Options protOpt_;
     std::vector<Snapshot> undo_, redo_;

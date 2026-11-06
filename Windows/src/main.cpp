@@ -1965,7 +1965,7 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
                 MessageBoxW(app.wnd, L"The pages could not be put in order.", kAppName, MB_OK | MB_ICONWARNING);
                 break;
             }
-            d->beginChange();
+            d->beginChange(L"Two-sided scan: pages in order");
             if (d->reload(std::move(bytes)) != OpenResult::Ok) { d->rollbackChange(); break; }
             afterPagesChanged();
             notice(L"The pages are in order: front 1, back 1, front 2, back 2 ... Undo (Ctrl+Z) puts them back.");
@@ -2157,7 +2157,7 @@ void pagesMenuAction(int cmd, const std::vector<int>& sel) {
                 SetCursor(old);
                 if (!ok) { if (src.size() > 1) MessageBoxW(app.wnd, L"The files could not be merged.", kAppName, MB_OK | MB_ICONWARNING); break; }
                 const int before = d->pageCount();
-                d->beginChange();
+                d->beginChange(L"Merge PDFs");
                 if (d->reload(std::move(bytes)) != OpenResult::Ok) { d->rollbackChange(); break; }
                 afterPagesChanged();
                 app.viewer.goToPage(before);
@@ -3729,7 +3729,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_REPAIR, MM_WEBVIEW, MM_RECENT = 100, MM_WORKSPACE = 400 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_REPAIR, MM_WEBVIEW, MM_HISTORY, MM_RECENT = 100, MM_WORKSPACE = 400 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3774,6 +3774,7 @@ void showMainMenu(const RECT& anchor) {
     sep();
     add(MM_BM, L"Bookmarks panel\tCtrl+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Bookmarks);
     add(MM_THUMBS, L"Thumbnails panel\tCtrl+Shift+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Pages);
+    add(MM_HISTORY, L"Undo history panel", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::History);
     {
         HMENU lay = CreatePopupMenu();
         AppendMenuW(lay, MF_STRING | (app.layout == 0 ? MF_CHECKED : 0), MM_LAYOUT + 0, L"Single page");
@@ -3823,6 +3824,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_LAST: if (d) app.viewer.goToPage(d->pageCount() - 1); break;
         case MM_BM: showSidebar(Sidebar::Mode::Bookmarks); break;
         case MM_THUMBS: showSidebar(Sidebar::Mode::Pages); break;
+        case MM_HISTORY: showSidebar(Sidebar::Mode::History); break;
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
@@ -4671,7 +4673,7 @@ void addBookmarkHere() {
         MessageBoxW(app.wnd, L"The bookmark could not be added to this document (its structure is not supported).", kAppName, MB_OK | MB_ICONWARNING);
         return;
     }
-    d->beginChange();
+    d->beginChange(L"Add a bookmark");
     if (d->reload(std::move(out)) != OpenResult::Ok) {
         d->cancelChange();
         MessageBoxW(app.wnd, L"The bookmark could not be added to this document.", kAppName, MB_OK | MB_ICONWARNING);
@@ -5344,7 +5346,7 @@ bool addFieldSpecs(Document& d, const std::vector<formcreate::Spec>& specs) {
         MessageBoxW(app.wnd, (L"The fields could not be added. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING);
         return false;
     }
-    d.beginChange();
+    d.beginChange(L"Add form fields");
     if (d.reload(std::move(out)) != OpenResult::Ok) {
         d.cancelChange();
         MessageBoxW(app.wnd, L"The fields could not be added to this document.", kAppName, MB_OK | MB_ICONWARNING);
@@ -5412,7 +5414,7 @@ void formReset() {
     if (!d) return;
     if (formdata::list(*d).empty()) { MessageBoxW(app.wnd, L"This document has no form fields.", kAppName, MB_OK | MB_ICONINFORMATION); return; }
     if (MessageBoxW(app.wnd, L"Clear every answer in this form?", L"Reset the form", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
-    d->beginChange();
+    d->beginChange(L"Reset the form");
     formdata::resetAll(*d);
     std::vector<unsigned char> bytes, out;
     if (d->serialize(bytes) && formcreate::clearRadios(bytes, out)) d->reload(std::move(out));
@@ -5513,7 +5515,7 @@ void sanitizeDialog() {
     bool ok = d->serialize(bytes) && sanitize::run(bytes, o, out, rep, err);
     SetCursor(old);
     if (!ok) { MessageBoxW(app.wnd, (L"The document could not be cleaned. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
-    d->beginChange();
+    d->beginChange(L"Remove hidden data");
     if (d->reload(std::move(out)) != OpenResult::Ok) { d->undo(); MessageBoxW(app.wnd, L"The cleaned document could not be opened, so nothing was changed.", kAppName, MB_OK | MB_ICONWARNING); return; }
     afterPagesChanged();
     std::wstring msg = rep.removed.empty() ? L"Nothing of the chosen kinds was found. The document was already clean." : L"Removed:\n";
@@ -5662,6 +5664,7 @@ void commandPalette() {
         add(L"Presentation", [] { setFullscreen(true, true); });
         add(L"Bookmarks panel", [] { showSidebar(Sidebar::Mode::Bookmarks); });
         add(L"Thumbnails panel", [] { showSidebar(Sidebar::Mode::Pages); });
+        add(L"Undo history panel: go back to any earlier step", [] { showSidebar(Sidebar::Mode::History); });
         add(L"Edit text (one line)", [] { toolsDispatch(T_EDIT_TEXT); });
         add(L"Edit paragraph", [] { toolsDispatch(N_EDITPARA); });
         add(L"Move or resize pictures, paragraphs and tables", [] { toolsDispatch(N_SELECTOBJ); });
@@ -6439,6 +6442,17 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.sidebar.setOnNavigate(onSidebarNavigate, nullptr);
             app.sidebar.onContext = showThumbMenu;
             app.sidebar.onReorder = onThumbReorder;
+            app.sidebar.onHistory = [](int n) {   // back (or forward) to the clicked step of the undo history
+                Document* d = activeDoc();
+                if (!d || n == 0) return;
+                HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+                if (app.inlineEd.active()) app.inlineEd.cancel();
+                const bool ok = d->stepBack(n);
+                SetCursor(old);
+                app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr);
+                afterDocReplaced();
+                if (!ok) MessageBoxW(app.wnd, L"Some of the steps could not be taken back.", kAppName, MB_OK | MB_ICONWARNING);
+            };
             app.findEdit = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | ES_AUTOHSCROLL | WS_TABSTOP, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_EDIT), app.inst, nullptr);
             app.findPrev = CreateWindowExW(0, L"BUTTON", L"Prev", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_PREV), app.inst, nullptr);
             app.findNext = CreateWindowExW(0, L"BUTTON", L"Next", WS_CHILD | BS_PUSHBUTTON, 0, 0, 0, 0, h, reinterpret_cast<HMENU>(ID_FIND_NEXT), app.inst, nullptr);

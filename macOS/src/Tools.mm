@@ -477,7 +477,7 @@ std::wstring baseName(Document& d) {
         sanitize::Report rep;
         std::wstring err;
         if (!d->serialize(bytes) || !sanitize::run(bytes, o, out, rep, err)) { [self warn:L"The document could not be cleaned. " + err]; return; }
-        d->beginChange();
+        d->beginChange(L"Remove hidden data");
         if (d->reload(std::move(out)) != OpenResult::Ok) { d->undo(); [self warn:L"The cleaned document could not be opened, so nothing was changed."]; return; }
         [self afterChange];
         std::wstring msg = rep.removed.empty() ? L"Nothing of the chosen kinds was found. The document was already clean." : L"Removed:\n";

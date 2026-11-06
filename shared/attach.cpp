@@ -45,7 +45,7 @@ bool get(Document& d, int index, std::vector<unsigned char>& out) {
 bool add(Document& d, const std::wstring& name, const std::vector<unsigned char>& data) {
     const auto& api = pdfium::api();
     if (!d.handle() || name.empty()) return false;
-    d.beginChange();
+    d.beginChange(L"Attach a file");
     std::vector<unsigned short> wname(name.begin(), name.end());
     wname.push_back(0);
     FPDF_ATTACHMENT a = api.FPDFDoc_AddAttachment(d.handle(), wname.data());
@@ -60,7 +60,7 @@ bool add(Document& d, const std::wstring& name, const std::vector<unsigned char>
 bool remove(Document& d, int index) {
     const auto& api = pdfium::api();
     if (!d.handle() || index < 0 || index >= api.FPDFDoc_GetAttachmentCount(d.handle())) return false;
-    d.beginChange();
+    d.beginChange(L"Remove an attached file");
     if (!api.FPDFDoc_DeleteAttachment(d.handle(), index)) { d.cancelChange(); return false; }
     return true;
 }
@@ -231,7 +231,7 @@ std::vector<Layer> list(Document& d) {
 bool setVisible(Document& d, const std::vector<std::pair<int, bool>>& changes) {
     std::vector<unsigned char> bytes, out;
     if (!d.serialize(bytes) || !setVisible(bytes, changes, out)) return false;
-    d.beginChange();
+    d.beginChange(L"Show or hide layers");
     if (d.reload(std::move(out)) != OpenResult::Ok) { d.rollbackChange(); return false; }
     return true;
 }

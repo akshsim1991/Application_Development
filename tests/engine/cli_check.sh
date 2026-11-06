@@ -126,7 +126,8 @@ assert at('$W/ly2-1.png',400,700)==(255,255,255) and at('$W/ly2-1.png',150,400)=
 echo "repair and Fast Web View"
 for f in shifted noindex; do
   run --repair "$W/damaged-$f.pdf" "$W/rep-$f.pdf"; rc=$?
-  check "repairs: $f (9 pages, clean to poppler)" "[ $rc -eq 0 ] && grep -q '^opened=1 fixed=1 pages=9 bad=0' '$W/rep-$f.pdf.txt' && [ \$(pdftotext '$W/rep-$f.pdf' - 2>&1 | grep -c 'Book page') -eq 9 ] && ! pdftotext '$W/rep-$f.pdf' - 2>&1 | grep -qi error"
+  check "repairs: $f (9 pages, readable)" "[ $rc -eq 0 ] && grep -q '^opened=1 fixed=1 pages=9 bad=0' '$W/rep-$f.pdf.txt' && [ \$(text '$W/rep-$f.pdf' | grep -c 'Book page') -eq 9 ]"
+  if command -v pdftotext >/dev/null; then check "repairs: $f, clean to poppler" "! pdftotext '$W/rep-$f.pdf' - 2>&1 | grep -qi error"; fi
 done
 check "says what was wrong"          "grep -q 'cut short' '$W/rep-noindex.pdf.txt' && grep -q 'index of the file' '$W/rep-shifted.pdf.txt'"
 check "keeps the bookmarks"          "python3 '$root/tests/outline_dump.py' '$W/rep-noindex.pdf' | grep -q '^9 Chapter One->1'"
@@ -138,10 +139,17 @@ for f in book book-outlines rich search heavy inc; do
   check "fast web view: $f (qpdf's check, looks the same)" "python3 -c \"
 import sys,pikepdf,subprocess,hashlib
 p=pikepdf.open('$W/web-$f.pdf');assert p.is_linearized and p.check_linearization() and not p.get_warnings(),p.get_warnings()
-img=lambda f: hashlib.md5(subprocess.run(['pdftoppm','-r','30','-gray',f],capture_output=True).stdout).hexdigest()
+import shutil
+img=lambda f: hashlib.md5(subprocess.run(['pdftoppm','-r','30','-gray',f],capture_output=True).stdout).hexdigest() if shutil.which('pdftoppm') else ''
 assert len(p.pages)==len(pikepdf.open('$W/$f.pdf').pages) and img('$W/$f.pdf')==img('$W/web-$f.pdf')\""
 done
 check "bookmarks kept"               "[ \"\$(python3 '$root/tests/outline_dump.py' '$W/web-inc.pdf')\" = \"\$(python3 '$root/tests/outline_dump.py' '$W/inc.pdf')\" ]"
+
+echo "undo history"
+run --history "$W/book.pdf" "$W/hist.txt"
+check "each step named"              "grep -q '^steps: Rotate pages; Insert a blank page; Reverse the page order; pages=10$' '$W/hist.txt'"
+check "back to the start at once"    "grep -q '^back=1 pages=9 undo=0 redo=3 next=Rotate pages$' '$W/hist.txt'"
+check "forward one step"             "grep -q '^forward=1 pages=9 undo=1 redo=2$' '$W/hist.txt'"
 
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?

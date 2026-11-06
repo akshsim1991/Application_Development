@@ -140,7 +140,7 @@ using form::ns;
         for (auto& one : docs) src.push_back({one.get(), stem(one->title())});
         std::vector<unsigned char> bytes;
         if (splitmerge::merge(src, choice == 0 ? splitmerge::Marks::Keep : splitmerge::Marks::UnderFileNames, bytes)) {
-            d->beginChange();
+            d->beginChange(L"Merge PDFs");
             if (d->reload(std::move(bytes)) == OpenResult::Ok) added = static_cast<int>(docs.size());
             else d->rollbackChange();
         }
@@ -190,7 +190,7 @@ using form::ns;
     }
     std::vector<unsigned char> bytes;
     if (!splitmerge::interleave(*d, url ? &backs : nullptr, reversed, bytes)) { [self say:L"The pages could not be put in order."]; return; }
-    d->beginChange();
+    d->beginChange(L"Two-sided scan: pages in order");
     if (d->reload(std::move(bytes)) != OpenResult::Ok) { d->rollbackChange(); return; }
     [self afterChange];
     FPTrace(@"interleave: %d pages, page 2 says %s", d->pageCount(), platform::utf8(d->textRange(1, 0, std::min(6, d->charCount(1)))).c_str());

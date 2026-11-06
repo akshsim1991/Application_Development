@@ -5,6 +5,7 @@
 #include <uxtheme.h>
 #include <algorithm>
 #include <cmath>
+#include <ctime>
 
 bool Sidebar::registerClasses(HINSTANCE inst) {
     WNDCLASSEXW wc{sizeof(wc)};
@@ -25,6 +26,8 @@ HWND Sidebar::create(HWND parent, HINSTANCE inst) {
                             TVS_LINESATROOT | TVS_SHOWSELALWAYS | TVS_FULLROWSELECT, 0, 0, 0, 0, hwnd_,
                             reinterpret_cast<HMENU>(1), inst, nullptr);
     thumbs_ = CreateWindowExW(0, kThumbClass, L"", WS_CHILD | WS_VSCROLL, 0, 0, 0, 0, hwnd_, nullptr, inst, this);
+    history_ = CreateWindowExW(0, L"LISTBOX", L"", WS_CHILD | WS_VSCROLL | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | LBS_OWNERDRAWFIXED | LBS_HASSTRINGS,
+                               0, 0, 0, 0, hwnd_, reinterpret_cast<HMENU>(2), inst, nullptr);
     themeui::flatScroll(thumbs_);
     LOGFONTW lf{};
     {   // the screen's dots per inch (the DC is given back)
@@ -35,6 +38,9 @@ HWND Sidebar::create(HWND parent, HINSTANCE inst) {
     wcscpy_s(lf.lfFaceName, L"Segoe UI");
     font_ = CreateFontIndirectW(&lf);
     SendMessageW(tree_, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
+    SendMessageW(history_, WM_SETFONT, reinterpret_cast<WPARAM>(font_), TRUE);
+    SendMessageW(history_, LB_SETITEMHEIGHT, 0, -lf.lfHeight * 2 + 16);
+    SetTimer(hwnd_, 7, 700, nullptr);   // the history follows the document's changes
     return hwnd_;
 }
 
@@ -66,6 +72,7 @@ void Sidebar::layout() {
     RECT rc; GetClientRect(hwnd_, &rc);
     MoveWindow(tree_, 0, kHeaderH, rc.right, std::max<LONG>(0, rc.bottom - kHeaderH), TRUE);
     MoveWindow(thumbs_, 0, kHeaderH, rc.right, std::max<LONG>(0, rc.bottom - kHeaderH), TRUE);
+    MoveWindow(history_, 0, kHeaderH, rc.right, std::max<LONG>(0, rc.bottom - kHeaderH), TRUE);
     thumbLayout();
 }
 
@@ -73,6 +80,8 @@ void Sidebar::setMode(Mode m) {
     mode_ = m;
     ShowWindow(tree_, m == Mode::Bookmarks && hasBookmarks_ > 0 ? SW_SHOW : SW_HIDE);   // else the hint behind it shows
     ShowWindow(thumbs_, m == Mode::Pages ? SW_SHOW : SW_HIDE);
+    ShowWindow(history_, m == Mode::History ? SW_SHOW : SW_HIDE);
+    if (m == Mode::History) { historyRev_ = -1; fillHistory(); }
     InvalidateRect(hwnd_, nullptr, FALSE);
 }
 
@@ -115,6 +124,8 @@ void Sidebar::clearThumbs() {
 
 void Sidebar::setDocument(Document* d) {
     doc_ = d;
+    historyRev_ = -1;
+    if (mode_ == Mode::History) fillHistory();
     clearThumbs();
     scroll_ = 0;
     current_ = 0;
@@ -125,6 +136,8 @@ void Sidebar::setDocument(Document* d) {
 }
 
 void Sidebar::refresh() {
+    historyRev_ = -1;
+    if (mode_ == Mode::History) fillHistory();
     clearThumbs();
     fillTree();
     thumbLayout();
@@ -161,10 +174,10 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
             DeleteObject(bg);
             SetBkMode(dc, TRANSPARENT);
             SelectObject(dc, font_);
-            const wchar_t* names[2] = {L"Bookmarks", L"Pages"};
-            for (int i = 0; i < 2; ++i) {
-                RECT r{i * rc.right / 2, 0, (i + 1) * rc.right / 2, kHeaderH};
-                bool act = (i == 0) == (mode_ == Mode::Bookmarks);
+            const wchar_t* names[3] = {L"Bookmarks", L"Pages", L"History"};
+            for (int i = 0; i < 3; ++i) {
+                RECT r{i * rc.right / 3, 0, (i + 1) * rc.right / 3, kHeaderH};
+                bool act = i == static_cast<int>(mode_);
                 SetTextColor(dc, act ? pal().text : pal().textDim);
                 DrawTextW(dc, names[i], -1, &r, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                 if (act) {
@@ -187,7 +200,8 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_LBUTTONDOWN: {
             if (GET_Y_LPARAM(l) < kHeaderH) {
                 RECT rc; GetClientRect(hwnd_, &rc);
-                setMode(GET_X_LPARAM(l) < rc.right / 2 ? Mode::Bookmarks : Mode::Pages);
+                const int third = std::clamp(static_cast<int>(GET_X_LPARAM(l) * 3 / std::max<LONG>(1, rc.right)), 0, 2);
+                setMode(static_cast<Mode>(third));
             }
             return 0;
         }
@@ -199,9 +213,80 @@ LRESULT Sidebar::handle(UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         }
+        case WM_TIMER:
+            if (w == 7 && mode_ == Mode::History && IsWindowVisible(hwnd_)) fillHistory();
+            return 0;
+        case WM_COMMAND:
+            if (reinterpret_cast<HWND>(l) == history_ && HIWORD(w) == LBN_SELCHANGE) {
+                const int k = static_cast<int>(SendMessageW(history_, LB_GETCURSEL, 0, 0));
+                if (k >= 0 && k != historyNow_ && onHistory) onHistory(historyNow_ - k);
+            }
+            return 0;
+        case WM_MEASUREITEM: return TRUE;
+        case WM_DRAWITEM: {
+            auto* di = reinterpret_cast<DRAWITEMSTRUCT*>(l);
+            if (di->hwndItem != history_ || di->itemID == static_cast<UINT>(-1)) return TRUE;
+            wchar_t text[300] = L"";
+            SendMessageW(history_, LB_GETTEXT, di->itemID, reinterpret_cast<LPARAM>(text));
+            const int k = static_cast<int>(di->itemID);
+            const bool now = k == historyNow_, undone = k > historyNow_;
+            HBRUSH b = CreateSolidBrush(now ? (pal().dark ? RGB(0x24, 0x40, 0x70) : RGB(0xD6, 0xE6, 0xFF)) : pal().panel);
+            FillRect(di->hDC, &di->rcItem, b);
+            DeleteObject(b);
+            SetBkMode(di->hDC, TRANSPARENT);
+            SetTextColor(di->hDC, undone ? pal().textDim : pal().text);
+            RECT r = di->rcItem;
+            r.left += 12; r.right -= 6;
+            std::wstring t = text;
+            const size_t tab = t.find(L'\t');
+            const std::wstring when = tab == std::wstring::npos ? L"" : t.substr(0, tab), what = tab == std::wstring::npos ? t : t.substr(tab + 1);
+            RECT top = r; top.bottom = (r.top + r.bottom) / 2 + 2;
+            RECT bottom = r; bottom.top = (r.top + r.bottom) / 2 - 1;
+            DrawTextW(di->hDC, what.c_str(), -1, &top, DT_SINGLELINE | DT_BOTTOM | DT_END_ELLIPSIS | DT_NOPREFIX);
+            SetTextColor(di->hDC, pal().textDim);
+            const std::wstring sep = when.empty() ? L"" : L"  \u00B7 ";
+            DrawTextW(di->hDC, (when + (undone ? sep + L"undone: click to redo" : now ? sep + L"now" : L"")).c_str(), -1, &bottom, DT_SINGLELINE | DT_TOP | DT_END_ELLIPSIS | DT_NOPREFIX);
+            return TRUE;
+        }
+        case WM_CTLCOLORLISTBOX: {
+            if (panelBrush_) DeleteObject(panelBrush_);
+            panelBrush_ = CreateSolidBrush(pal().panel);
+            return reinterpret_cast<LRESULT>(panelBrush_);
+        }
         case WM_KEYDOWN: case WM_SYSKEYDOWN: return SendMessageW(GetParent(hwnd_), m, w, l);
     }
     return DefWindowProcW(hwnd_, m, w, l);
+}
+
+// ---- the undo history: the start, each change (oldest first), then the changes that were undone ----
+
+void Sidebar::fillHistory() {
+    if (!history_) return;
+    const int rev = doc_ ? doc_->revision() : -2;
+    if (rev == historyRev_) return;
+    historyRev_ = rev;
+    SendMessageW(history_, WM_SETREDRAW, FALSE, 0);
+    SendMessageW(history_, LB_RESETCONTENT, 0, 0);
+    historyNow_ = 0;
+    if (doc_) {
+        auto clock = [](long long t) {
+            if (t <= 0) return std::wstring();
+            const time_t tt = static_cast<time_t>(t);
+            tm lt{};
+            localtime_s(&lt, &tt);
+            wchar_t b[16];
+            swprintf(b, 16, L"%02d:%02d:%02d", lt.tm_hour, lt.tm_min, lt.tm_sec);
+            return std::wstring(b);
+        };
+        const auto done = doc_->undoSteps(), undone = doc_->redoSteps();
+        SendMessageW(history_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>(done.size() >= 30 ? L"\tEarlier changes (no longer kept)" : L"\tAs opened"));
+        for (const auto& st : done) SendMessageW(history_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>((clock(st.when) + L"\t" + st.what).c_str()));
+        historyNow_ = static_cast<int>(done.size());
+        for (const auto& st : undone) SendMessageW(history_, LB_ADDSTRING, 0, reinterpret_cast<LPARAM>((clock(st.when) + L"\t" + st.what).c_str()));
+        SendMessageW(history_, LB_SETCURSEL, static_cast<WPARAM>(historyNow_), 0);
+    }
+    SendMessageW(history_, WM_SETREDRAW, TRUE, 0);
+    InvalidateRect(history_, nullptr, TRUE);
 }
 
 // ---- thumbnails ----

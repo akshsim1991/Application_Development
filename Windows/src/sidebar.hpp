@@ -6,10 +6,10 @@
 #include <set>
 #include "document.hpp"
 
-// Left-hand panel with two views of the open document: bookmarks (outline) and page thumbnails.
+// Left-hand panel with three views of the open document: bookmarks (outline), page thumbnails, and the undo history.
 class Sidebar {
 public:
-    enum class Mode { Bookmarks, Pages };
+    enum class Mode { Bookmarks, Pages, History };
     static constexpr const wchar_t* kClass = L"FeatherSidebar";
     static constexpr const wchar_t* kThumbClass = L"FeatherThumbs";
     static constexpr int kHeaderH = 30;
@@ -32,6 +32,9 @@ public:
     std::function<void(int page, POINT screen)> onContext;                     // right-click on a thumbnail
     std::function<void(const std::vector<int>& pages, int before)> onReorder; // dropped: move `pages` before page index `before`                       // highlights it in the thumbnails
     void setOnNavigate(void (*cb)(void*, int), void* ctx) { onNav_ = cb; onNavCtx_ = ctx; }
+    // History: a step was clicked; n > 0 undoes n steps, n < 0 redoes -n steps.
+    std::function<void(int n)> onHistory;
+    void fillHistory();
 
 private:
     static LRESULT CALLBACK proc(HWND, UINT, WPARAM, LPARAM);
@@ -46,7 +49,9 @@ private:
     void clearThumbs();
     void navigate(int page) { if (onNav_ && page >= 0) onNav_(onNavCtx_, page); }
 
-    HWND hwnd_ = nullptr, tree_ = nullptr, thumbs_ = nullptr;
+    HWND hwnd_ = nullptr, tree_ = nullptr, thumbs_ = nullptr, history_ = nullptr;
+    int historyRev_ = -1, historyNow_ = 0;
+    HBRUSH panelBrush_ = nullptr;
     Document* doc_ = nullptr;
     Mode mode_ = Mode::Bookmarks;
     int hasBookmarks_ = 0;

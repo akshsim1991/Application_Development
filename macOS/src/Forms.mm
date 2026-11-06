@@ -30,7 +30,7 @@ using form::ns;
     std::vector<unsigned char> bytes, out;
     std::wstring err;
     if (!d->serialize(bytes) || !formcreate::add(bytes, specs, out, err)) { [self formNote:L"The fields could not be added. " + err]; return NO; }
-    d->beginChange();
+    d->beginChange(L"Add form fields");
     if (d->reload(std::move(out)) != OpenResult::Ok) { d->cancelChange(); [self formNote:L"The fields could not be added to this document."]; return NO; }
     formdata::drawRadioLabels(*d, specs);
     [self afterChange];
@@ -102,7 +102,7 @@ using form::ns;
     form::ask(self.window, L"Clear every answer in this form?", L"Clear", [self, d](bool yes) {
         if (!yes) return;
         [self.pageView endFormInput];
-        d->beginChange();
+        d->beginChange(L"Reset the form");
         formdata::resetAll(*d);
         std::vector<unsigned char> bytes, out;
         if (d->serialize(bytes) && formcreate::clearRadios(bytes, out)) d->reload(std::move(out));

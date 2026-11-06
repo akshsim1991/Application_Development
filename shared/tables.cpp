@@ -1381,7 +1381,7 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
             keptObjs.insert(x.objs.begin(), x.objs.end());
         }
 
-    d.beginChange();
+    d.beginChange(L"Edit a table");
     pg = d.page(t0.page);
     std::vector<FPDF_PAGEOBJECT> text, graphics;
     struct Laid { int r, c; std::vector<std::wstring> lines; std::unique_ptr<pageobj::TextSetter> ts; double lineStep, size; };
@@ -1611,7 +1611,7 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
 bool remove(Document& d, const Table& t) {
     FPDF_PAGE pg = d.page(t.page);
     if (!pg) return false;
-    d.beginChange();
+    d.beginChange(L"Delete a table");
     pg = d.page(t.page);
     std::vector<int> objs = t.objects;
     std::sort(objs.rbegin(), objs.rend());

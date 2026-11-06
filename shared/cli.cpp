@@ -175,6 +175,26 @@ int run(std::vector<std::wstring> files) {
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
     }
+    if (!files.empty() && files[0] == L"--history") {
+        // --history in.pdf out.txt : three named changes, back to the start, forward one (the undo history's steps)
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        doc.rotatePages({0}, 1);
+        doc.insertBlankPage(0, 0);
+        doc.reversePages();
+        std::wstring rep = L"steps:";
+        for (const auto& st : doc.undoSteps()) rep += L" " + st.what + L";";
+        rep += L" pages=" + std::to_wstring(doc.pageCount()) + L"\n";
+        const bool back = doc.stepBack(3);
+        rep += L"back=" + std::to_wstring(back) + L" pages=" + std::to_wstring(doc.pageCount()) + L" undo=" + std::to_wstring(doc.undoSteps().size()) +
+               L" redo=" + std::to_wstring(doc.redoSteps().size()) + L" next=" + (doc.redoSteps().empty() ? L"" : doc.redoSteps().front().what) + L"\n";
+        const bool fwd = doc.stepBack(-1);
+        rep += L"forward=" + std::to_wstring(fwd) + L" pages=" + std::to_wstring(doc.pageCount()) + L" undo=" + std::to_wstring(doc.undoSteps().size()) +
+               L" redo=" + std::to_wstring(doc.redoSteps().size()) + L"\n";
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+    }
     if (!files.empty() && files[0] == L"--repair") {
         // --repair in.pdf out.pdf : the report next to it (out.pdf.txt)
         if (files.size() < 3) return 2;

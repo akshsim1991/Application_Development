@@ -126,7 +126,7 @@ bool addWatermark(Document& d, const std::vector<int>& pages, const std::wstring
     const char* font = "Helvetica-Bold";
     const double w100 = textWidth(d, font, text);
     if (w100 <= 1) return false;
-    d.beginChange();
+    d.beginChange(L"Add a watermark");
     bool any = false;
     for (int i : pages) {
         FPDF_PAGE pg = d.page(i);
@@ -151,7 +151,7 @@ bool addWatermark(Document& d, const std::vector<int>& pages, const std::wstring
 bool addPageNumbers(Document& d, const std::vector<int>& pages, const NumberStyle& st) {
     if (pages.empty()) return false;
     const auto& api = pdfium::api();
-    d.beginChange();
+    d.beginChange(L"Add page numbers");
     bool any = false;
     int n = st.startAt;
     for (int i : pages) {
@@ -226,7 +226,7 @@ bool addTextBox(Document& d, int page, double atX, double atY, const std::wstrin
     api.FPDF_PageToDevice(pg, 0, 0, static_cast<int>(vw * S), static_cast<int>(vh * S), 0, atX, atY, &dx, &dy);
     const double vx = dx / S, vy = dy / S;
     const char* font = standardFont(st.family, st.bold, st.italic);
-    d.beginChange();
+    d.beginChange(L"Add text");
     bool any = false;
     double lineTop = vy;
     for (const std::wstring& line : splitLines(text)) {
@@ -311,7 +311,7 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool 
     FPDF_TEXTPAGE tp = d.text(page);
     if (!tp) return false;
 
-    if (track) d.beginChange();
+    if (track) d.beginChange(L"Edit text");
     o = api.FPDFPage_GetObject(pg, idx);
     if (text.empty()) {
         if (!api.FPDFPage_RemoveObject(pg, o)) { if (track) d.cancelChange(); return false; }
@@ -379,7 +379,7 @@ bool addStamp(Document& d, int page, double cx, double cy, const std::wstring& t
     int dx = 0, dy = 0;
     api.FPDF_PageToDevice(pg, 0, 0, static_cast<int>(vw * S), static_cast<int>(vh * S), 0, cx, cy, &dx, &dy);
     const double vx = dx / S, vy = dy / S;
-    d.beginChange();
+    d.beginChange(L"Add a stamp");
     FPDF_PAGEOBJECT t = makeText(d, "Helvetica-Bold", 24, text, color, 100);
     if (!t) { d.cancelChange(); return false; }
     float l, b, r, tp;
@@ -413,7 +413,7 @@ int replaceAll(Document& d, const std::wstring& find, const std::wstring& with, 
     const auto& api = pdfium::api();
     auto lower = [](std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; };
     const std::wstring needle = matchCase ? find : lower(find);
-    d.beginChange();
+    d.beginChange(L"Find and replace");
     int total = 0;
     for (int p = 0; p < d.pageCount(); ++p) {
         FPDF_PAGE pg = d.page(p);
@@ -534,7 +534,7 @@ bool addTable(Document& d, int page, double atX, double atY, const TableSpec& sp
         tag(o);
         api.FPDFPage_InsertObject(pg, o);
     };
-    if (track) d.beginChange();
+    if (track) d.beginChange(L"Insert a table");
     if (spec.header) rect(vx, vy, vx + W, vy + spec.rowHeight, 0xE6, 0xE6, 0xE6);
     const double line = 0.75;
     for (int r = 0; r <= spec.rows; ++r) rect(vx, vy + r * spec.rowHeight - line / 2, vx + W, vy + r * spec.rowHeight + line / 2, 0x30, 0x30, 0x30);
@@ -594,7 +594,7 @@ bool removeTable(Document& d, int page, const std::string& id, bool track) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) return false;
     const auto& api = pdfium::api();
-    if (track) d.beginChange();
+    if (track) d.beginChange(L"Delete a table");
     bool any = false;
     for (int i = api.FPDFPage_CountObjects(pg) - 1; i >= 0; --i) {
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
@@ -1332,7 +1332,7 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     if (!fontsFor(d, hit, st, f)) return false;
     const double k = std::fabs(st.sizePt - hit.style.sizePt) < 0.05 || hit.sizeExact <= 0 ? 1.0 : st.sizePt / hit.sizeExact;
     // The change starts here: setting the text may embed a font. Anything that fails from now on puts the document back.
-    d.beginChange();
+    d.beginChange(L"Edit a paragraph");
     f.mayLoad = true;
     auto fail = [&](const wchar_t* reason) {
         if (why && reason) *why = reason;
@@ -1547,7 +1547,7 @@ bool transformGroup(Document& d, int page, const std::vector<int>& objects, doub
     const double sx = (tr - tl) / (fr - fl), sy = (tt - tb) / (ft - fb);
     if (sx < 0.02 || sy < 0.02) return false;
     const auto& api = pdfium::api();
-    d.beginChange();
+    d.beginChange(L"Move or resize");
     pg = d.page(page);
     const double e = tl - fl * sx, f = tb - fb * sy;
     for (int i : objects) {
@@ -1563,7 +1563,7 @@ bool deleteGroup(Document& d, int page, std::vector<int> objects) {
     FPDF_PAGE pg = d.page(page);
     if (!pg || objects.empty()) return false;
     const auto& api = pdfium::api();
-    d.beginChange();
+    d.beginChange(L"Delete");
     pg = d.page(page);
     std::sort(objects.begin(), objects.end(), std::greater<int>());
     bool any = false;
@@ -1665,7 +1665,7 @@ bool addHeaderFooter(Document& d, const std::vector<int>& pages, const HeaderFoo
         const unsigned long n = api.FPDF_GetMetaText(d.handle(), "Title", nullptr, 0);
         if (n > 2) { std::vector<unsigned short> buf(n / 2 + 1); api.FPDF_GetMetaText(d.handle(), "Title", buf.data(), n); title.assign(buf.begin(), buf.begin() + (n / 2 - 1)); }
     }
-    d.beginChange();
+    d.beginChange(L"Add header and footer");
     bool any = false;
     int num = hf.firstNumber;
     const int total = hf.firstNumber + static_cast<int>(pages.size()) - 1;
@@ -1704,7 +1704,7 @@ bool addHeaderFooter(Document& d, const std::vector<int>& pages, const HeaderFoo
 bool addBackground(Document& d, const std::vector<int>& pages, COLORREF color) {
     if (pages.empty()) return false;
     const auto& api = pdfium::api();
-    d.beginChange();
+    d.beginChange(L"Background colour");
     bool any = false;
     for (int i : pages) {
         FPDF_PAGE pg = d.page(i);

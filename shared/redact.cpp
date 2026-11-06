@@ -12,7 +12,7 @@ int apply(Document& d, int dpi) {
     std::set<int> pages;
     for (const auto& m : d.redactions) pages.insert(m.page);
     const auto& api = pdfium::api();
-    d.beginChange();
+    d.beginChange(L"Apply redactions");
     int done = 0;
     for (int p : pages) {
         FPDF_PAGE pg = d.page(p);

@@ -103,7 +103,7 @@ bool transformAboutCentre(Document& d, int page, const std::vector<int>& objs, d
     double l, bo, r, t;
     if (!pg || !boundsOf(pg, objs, os, l, bo, r, t)) return false;
     const double cx = (l + r) / 2, cy = (bo + t) / 2;
-    d.beginChange();
+    d.beginChange(L"Rotate or flip a picture");
     pg = d.page(page);
     os.clear();
     if (!boundsOf(pg, objs, os, l, bo, r, t)) { d.cancelChange(); return false; }
@@ -134,7 +134,7 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
             for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
             const bool jpeg = ext == L".jpg" || ext == L".jpeg";
 
-            d.beginChange();
+            d.beginChange(L"Add a picture");
             pg = d.page(page);
             FPDF_PAGEOBJECT img = api.FPDFPageObj_NewImageObj(d.handle());
             bool loaded = false;
@@ -205,7 +205,7 @@ bool restackGroup(Document& d, int page, std::vector<int>& objs, bool toFront) {
     std::sort(sorted.begin(), sorted.end());
     const int n = api.FPDFPage_CountObjects(pg);
     if (sorted.front() < 0 || sorted.back() >= n) return false;
-    d.beginChange();
+    d.beginChange(L"Bring to front or send to back");
     pg = d.page(page);
     std::vector<FPDF_PAGEOBJECT> os;
     for (int i : sorted) os.push_back(api.FPDFPage_GetObject(pg, i));
@@ -228,7 +228,7 @@ namespace {
 // Renders the picture, lets `change` edit the pixels and the kept page box, and puts the result back. One undo step.
 template <class F> bool repaintPicture(Document& d, int page, int obj, F change) {
     if (!pictureObject(d, page, obj)) return false;
-    d.beginChange();
+    d.beginChange(L"Adjust a picture");
     FPDF_PAGE pg = d.page(page);
     FPDF_PAGEOBJECT o = pictureObject(d, page, obj);
     double k;
@@ -292,7 +292,7 @@ bool replacePicture(Document& d, int page, int obj, const std::wstring& path, st
     const double nl = l + (bw - nw) / 2, nb = b + (bh - nh) / 2;
     std::wstring ext = path.substr(path.find_last_of(L'.') == std::wstring::npos ? path.size() : path.find_last_of(L'.'));
     for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
-    d.beginChange();
+    d.beginChange(L"Replace a picture");
     FPDF_PAGE pg = d.page(page);
     o = pictureObject(d, page, obj);
     bool loaded = false;

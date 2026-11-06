@@ -104,7 +104,7 @@ Result run(Document& d, const Options& o) {
     std::vector<unsigned char> original;
     if (!d.serialize(original)) return res;
     res.before = original.size();
-    d.beginChange();   // the undo step for everything below
+    d.beginChange(L"Compress");   // the undo step for everything below
 
     struct Step { int dpi, q; };
     std::vector<Step> steps;

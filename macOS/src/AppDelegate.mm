@@ -308,6 +308,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Save a PDF/A Copy\u2026", @selector(savePdfA:), nil);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Properties\u2026", @selector(showProperties:), @"i", NSEventModifierFlagCommand | NSEventModifierFlagOption);
+    add(m, @"Attached Files\u2026", @selector(showAttachments:), nil);
+    add(m, @"Layers (Show or Hide)\u2026", @selector(showLayers:), nil);
     add(m, @"Fonts Used\u2026", @selector(showFonts:), nil);
 
     m = submenu(bar, @"Edit");

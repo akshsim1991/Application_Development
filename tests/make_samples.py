@@ -98,6 +98,23 @@ for name, pages in (("version1", [["Alpha beta gamma delta.", "The quick brown f
         c.showPage()
     c.save()
 
+# attachments and layers (optional content): a black box in "Plan A" (shown), a black box in "Plan B" (hidden)
+try:
+    import pikepdf
+    pk = pikepdf.new()
+    pk.add_blank_page(page_size=(595, 842))
+    l1 = pk.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.OCG, Name=pikepdf.String("Plan A")))
+    l2 = pk.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.OCG, Name=pikepdf.String("Plan B")))
+    pk.Root.OCProperties = pikepdf.Dictionary(OCGs=[l1, l2], D=pikepdf.Dictionary(ON=[l1], OFF=[l2], Order=[l1, l2]))
+    pg = pk.pages[0]
+    pg.obj.Resources = pikepdf.Dictionary(Properties=pikepdf.Dictionary(L1=l1, L2=l2))
+    pg.obj.Contents = pk.make_stream(b"0 0 0 rg 50 600 200 200 re f /OC /L1 BDC 0 0 1 rg 300 600 200 200 re f EMC /OC /L2 BDC 1 0 0 rg 50 300 200 200 re f EMC")
+    pk.attachments["notes.txt"] = pikepdf.AttachedFileSpec(pk, b"Attached notes: 42")
+    pk.save(f"{out}/layers.pdf")
+    open(f"{out}/extra.csv", "w").write("a,b\n1,2\n")
+except Exception:
+    pass
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

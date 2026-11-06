@@ -102,6 +102,27 @@ check "the report as a PDF"          "text '$W/td-report.pdf' | grep -q 'Changes
 run --textdiff "$W/version1.pdf" "$W/version1.pdf" "$W/td0.txt"
 check "the same document: no changes" "head -1 '$W/td0.txt' | grep -q '^changes=0 .* same=39 '"
 
+echo "attachments and layers"
+run --attach "$W/layers.pdf" list "$W/at.txt"
+check "lists the attachment"         "[ \"\$(cat '$W/at.txt')\" = 'notes.txt|18' ]"
+run --attach "$W/layers.pdf" get 0 "$W/at-got.txt"
+check "saves it, byte for byte"      "[ \"\$(cat '$W/at-got.txt')\" = 'Attached notes: 42' ]"
+run --attach "$W/layers.pdf" add "$W/extra.csv" "$W/at-add.pdf"
+check "adds a file (pikepdf reads it)" "python3 -c \"import pikepdf;p=pikepdf.open('$W/at-add.pdf');a=p.attachments;d=a['extra.csv'].get_file().read_bytes();assert sorted(a)==['extra.csv','notes.txt'] and d.startswith(b'a,b') and len(d)==8\""
+run --attach "$W/at-add.pdf" remove 0 "$W/at-rem.pdf"
+check "removes one"                  "python3 -c \"import pikepdf;p=pikepdf.open('$W/at-rem.pdf');assert list(p.attachments)==['notes.txt']\""
+run --layers "$W/layers.pdf" "$W/ly.txt"
+check "lists the layers, shown or hidden" "[ \"\$(paste -sd, - < '$W/ly.txt')\" = 'Plan A|on,Plan B|off' ]"
+run --layers "$W/layers.pdf" "$W/ly2.txt" "$W/ly-flip.pdf" "Plan A=off" "Plan B=on"
+check "hides one, shows the other"   "[ \"\$(paste -sd, - < '$W/ly2.txt')\" = 'Plan A|off,Plan B|on' ]"
+run --export png "$W/layers.pdf" "$W/ly1.png" 36; run --export png "$W/ly-flip.pdf" "$W/ly2.png" 36
+check "drawn as set (before and after)" "python3 -c \"
+from PIL import Image
+def at(f,x,y):
+    im=Image.open(f).convert('RGB');w,h=im.size;return im.getpixel((int(x/595*w),int((842-y)/842*h)))
+assert at('$W/ly1-1.png',400,700)==(0,0,255) and at('$W/ly1-1.png',150,400)==(255,255,255)
+assert at('$W/ly2-1.png',400,700)==(255,255,255) and at('$W/ly2-1.png',150,400)==(255,0,0)\""
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

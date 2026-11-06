@@ -18,6 +18,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/search.cpp
   ${SHARED}/splitmerge.cpp
   ${SHARED}/textdiff.cpp
+  ${SHARED}/attach.cpp
   ${SHARED}/compress.cpp
   ${SHARED}/protect.cpp
   ${SHARED}/ocr.cpp

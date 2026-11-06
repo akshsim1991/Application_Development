@@ -37,6 +37,11 @@
     X(FPDFAnnot_GetFlags) \
     X(FPDFDoc_DeleteAttachment) \
     X(FPDFDoc_GetAttachmentCount) \
+    X(FPDFDoc_AddAttachment) \
+    X(FPDFDoc_GetAttachment) \
+    X(FPDFAttachment_GetName) \
+    X(FPDFAttachment_GetFile) \
+    X(FPDFAttachment_SetFile) \
     X(FPDFImageObj_GetImagePixelSize) \
     X(FPDFImageObj_GetRenderedBitmap) \
     X(FPDFPage_Flatten) \

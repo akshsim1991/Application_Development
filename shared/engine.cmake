@@ -16,6 +16,7 @@ set(ENGINE_SOURCES
   ${SHARED}/search.cpp
   ${SHARED}/splitmerge.cpp
   ${SHARED}/textdiff.cpp
+  ${SHARED}/attach.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

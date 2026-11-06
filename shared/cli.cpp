@@ -30,6 +30,7 @@
 #include "search.hpp"
 #include "splitmerge.hpp"
 #include "textdiff.hpp"
+#include "attach.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -172,6 +173,56 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--attach") {
+        // --attach in.pdf list out.txt | add file out.pdf | get N outfile | remove N out.pdf
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        if (files[2] == L"list") {
+            std::wstring rep;
+            for (const auto& f : attach::list(doc)) rep += f.name + L"|" + std::to_wstring(f.size) + L"\n";
+            const std::string u = platform::utf8(rep);
+            return Document::writeFile(files[3], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
+        }
+        if (files[2] == L"get" && files.size() > 4) {
+            std::vector<unsigned char> b;
+            return attach::get(doc, static_cast<int>(wcstol(files[3].c_str(), nullptr, 10)), b) && Document::writeFile(files[4], b) == SaveResult::Ok ? 0 : 4;
+        }
+        bool ok = false;
+        std::wstring out;
+        if (files[2] == L"add" && files.size() > 4) {
+            std::vector<unsigned char> data;
+            if (!platform::readFile(files[3], data)) return 3;
+            ok = attach::add(doc, files[3].substr(files[3].find_last_of(L"/\\") + 1), data);
+            out = files[4];
+        } else if (files[2] == L"remove" && files.size() > 4) {
+            ok = attach::remove(doc, static_cast<int>(wcstol(files[3].c_str(), nullptr, 10)));
+            out = files[4];
+        }
+        std::vector<unsigned char> bytes;
+        return ok && doc.serialize(bytes) && Document::writeFile(out, bytes) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--layers") {
+        // --layers in.pdf out.txt [out.pdf name=on|off ...] : name|on or off per layer (after the changes)
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        if (files.size() > 4) {
+            std::vector<std::pair<int, bool>> ch;
+            for (size_t i = 4; i < files.size(); ++i) {
+                const size_t eq = files[i].rfind(L'=');
+                if (eq == std::wstring::npos) return 2;
+                for (const auto& l : layers::list(doc)) if (l.name == files[i].substr(0, eq)) ch.push_back({l.object, files[i].substr(eq + 1) == L"on"});
+            }
+            if (ch.empty() || !layers::setVisible(doc, ch)) return 5;
+            std::vector<unsigned char> bytes;
+            if (!doc.serialize(bytes) || Document::writeFile(files[3], bytes) != SaveResult::Ok) return 4;
+        }
+        std::wstring rep;
+        for (const auto& l : layers::list(doc)) rep += l.name + L"|" + (l.visible ? L"on" : L"off") + L"\n";
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--textdiff") {
         // --textdiff a.pdf b.pdf report.txt [marked.pdf] [report.pdf] : summary line, then the report (Markdown)

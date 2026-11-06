@@ -12,9 +12,9 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 | 13 | Saved workspaces | — | [x] | [ ] |
 | 1 | Find and redact sensitive information (email, phone, Aadhaar, PAN, bank account) | [x] | [x] | [x] |
 | 2 | Search: whole word, wildcards, in comments | [x] | [x] | [x] |
-| 3 | Split by bookmarks / size / every N pages; merge keeping bookmarks; interleave odd and even scans | [x] | [x] | [ ] |
-| 9 | Text compare, word by word, with a report | [ ] | [ ] | [ ] |
-| 5 | Attachments (view, add, extract, save) and layers (show / hide) | [ ] | [ ] | [ ] |
+| 3 | Split by bookmarks / size / every N pages; merge keeping bookmarks; interleave odd and even scans | [x] | [x] | [x] |
+| 9 | Text compare, word by word, with a report | [x] | [x] | [ ] |
+| 5 | Attachments (view, add, extract, save) and layers (show / hide) | [x] | [x] | [ ] |
 | 10 | Repair; Fast Web View (linearize) | [ ] | [ ] | [ ] |
 | 6 | Undo history panel | [ ] | [ ] | [ ] |
 | 8 | Accessibility checker and fixes | [ ] | [ ] | [ ] |
@@ -32,3 +32,6 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 - 1 Sensitive information: 10 real-shaped values found, 8 look-alikes left alone, redaction verified (cli_check); Windows on the virtual screen; Mac in CI (both forms, 10 marked).
 - 2 Search: whole word, wildcards, comments (cli_check, 9 checks); Windows find bar on the virtual screen; Mac in CI (7 hits, 4th in a comment).
 - 3 Split/merge/interleave: cli_check (13 checks with bookmark trees read back by pikepdf); Windows interleave and merge on the virtual screen.
+- 3 Mac: interleave, merge (11 pages, 4 bookmarks) and split at chapters (bookmarks read back) in CI.
+- 9 Text compare: cli_check (3 changes; a line moved to another page is not one; marked copy and report checked); Windows on the virtual screen; Mac traces right in CI.
+- 5 Attachments and layers: cli_check (list, save byte for byte, add, remove; layers listed, switched, and drawn as set); Windows on the virtual screen (layers switched, attachment opened in Notepad).

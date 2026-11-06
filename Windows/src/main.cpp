@@ -44,6 +44,7 @@
 #include "search.hpp"
 #include "splitmerge.hpp"
 #include "textdiff.hpp"
+#include "attach.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -176,7 +177,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
+void afterPagesChanged(); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -929,6 +930,105 @@ bool saveDocument(Document& d, const std::wstring& path) {
     }
     MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
     return false;
+}
+
+// ---- files attached to the document, and its layers ----
+
+void attachmentsDialog() {
+    Document* d = activeDoc();
+    if (!d) return;
+    const auto files = attach::list(*d);
+    std::vector<std::wstring> names;
+    std::wstring listText;
+    for (const auto& f : files) {
+        names.push_back(f.name);
+        listText += L"\n  " + f.name + L"  (" + (f.size >= 10240 ? std::to_wstring(f.size / 1024) + L" KB" : std::to_wstring(f.size) + L" bytes") + L")";
+    }
+    std::vector<FormField> f;
+    f.push_back({FormField::Note, L"", {}, files.empty() ? L"No files are attached to this document." : std::to_wstring(files.size()) + L" file(s) attached:" + listText});
+    if (!files.empty()) {
+        f.push_back({FormField::Choice, L"File:", names, L"", 0});
+        f.push_back({FormField::Choice, L"Do:", {L"Open it", L"Save a copy...", L"Remove it from the document", L"Attach another file..."}, L"", 0});
+    }
+    if (!showForm(app.wnd, app.inst, L"Attached files", f, files.empty() ? L"Attach a file..." : L"OK")) return;
+    const int which = files.empty() ? 0 : f[1].choice;
+    const int what = files.empty() ? 3 : f[2].choice;
+    if (what == 3) {   // attach a file
+        wchar_t buf[MAX_PATH * 2] = L"";
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner = app.wnd;
+        ofn.lpstrTitle = L"Choose the file to attach";
+        ofn.lpstrFilter = L"All files (*.*)\0*.*\0";
+        ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2;
+        ofn.Flags = OFN_FILEMUSTEXIST | OFN_HIDEREADONLY;
+        if (!GetOpenFileNameW(&ofn)) return;
+        std::vector<unsigned char> data;
+        const std::wstring path = buf;
+        if (!platform::readFile(path, data)) { MessageBoxW(app.wnd, L"The file could not be read.", kAppName, MB_OK | MB_ICONWARNING); return; }
+        if (!attach::add(*d, path.substr(path.find_last_of(L"\\/") + 1), data)) { MessageBoxW(app.wnd, L"The file could not be attached.", kAppName, MB_OK | MB_ICONWARNING); return; }
+        afterPagesChanged();
+        notice(L"Attached. Save the document to keep it.");
+        return;
+    }
+    if (what == 2) {
+        if (MessageBoxW(app.wnd, (L"Remove \"" + names[static_cast<size_t>(which)] + L"\" from the document? Undo (Ctrl+Z) brings it back until you save.").c_str(),
+                        L"Attached files", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+        if (attach::remove(*d, which)) { afterPagesChanged(); notice(L"Removed."); }
+        return;
+    }
+    std::vector<unsigned char> data;
+    if (!attach::get(*d, which, data)) { MessageBoxW(app.wnd, L"The attached file could not be read.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    std::wstring name = names[static_cast<size_t>(which)];
+    for (auto& c : name) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+    std::wstring target;
+    if (what == 1) {
+        wchar_t buf[MAX_PATH * 2];
+        wcsncpy_s(buf, name.c_str(), _TRUNCATE);
+        OPENFILENAMEW ofn{sizeof(ofn)};
+        ofn.hwndOwner = app.wnd;
+        ofn.lpstrTitle = L"Save the attached file as";
+        ofn.lpstrFilter = L"All files (*.*)\0*.*\0";
+        ofn.lpstrFile = buf; ofn.nMaxFile = MAX_PATH * 2;
+        ofn.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY;
+        if (!GetSaveFileNameW(&ofn)) return;
+        target = buf;
+    } else {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        target = std::wstring(tmp) + L"Feather PDF attachments";
+        CreateDirectoryW(target.c_str(), nullptr);
+        target += L"\\" + name;
+    }
+    if (Document::writeFile(target, data) != SaveResult::Ok) { MessageBoxW(app.wnd, L"The file could not be written.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    if (what == 1) { notice(L"Saved: " + target); return; }
+    // opening a file that can run something is the user's choice, as in other PDF readers
+    const std::wstring ext = name.find_last_of(L'.') == std::wstring::npos ? L"" : name.substr(name.find_last_of(L'.'));
+    static const wchar_t* risky[] = {L".exe", L".bat", L".cmd", L".com", L".js", L".vbs", L".ps1", L".msi", L".scr", L".lnk", L".hta", L".jar"};
+    for (const wchar_t* r : risky)
+        if (_wcsicmp(ext.c_str(), r) == 0 &&
+            MessageBoxW(app.wnd, (L"\"" + name + L"\" is a program or script. Open it only if you trust where the document came from. Open it?").c_str(),
+                        L"Attached files", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) return;
+    ShellExecuteW(app.wnd, L"open", target.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+void layersDialog() {
+    Document* d = activeDoc();
+    if (!d) return;
+    const auto all = layers::list(*d);
+    if (all.empty()) { MessageBoxW(app.wnd, L"This document has no layers.", L"Layers", MB_OK | MB_ICONINFORMATION); return; }
+    std::vector<FormField> f;
+    f.push_back({FormField::Note, L"", {}, L"Ticked layers are shown and printed; the others are hidden. Saving keeps the choice."});
+    for (const auto& l : all) {
+        FormField c{FormField::Check, l.name};
+        c.checked = l.visible;
+        f.push_back(c);
+    }
+    if (!showForm(app.wnd, app.inst, L"Layers", f, L"Apply")) return;
+    std::vector<std::pair<int, bool>> changes;
+    for (size_t i = 0; i < all.size(); ++i) if (f[i + 1].checked != all[i].visible) changes.push_back({all[i].object, f[i + 1].checked});
+    if (changes.empty()) return;
+    if (!layers::setVisible(*d, changes)) { MessageBoxW(app.wnd, L"The layers could not be changed in this document.", L"Layers", MB_OK | MB_ICONWARNING); return; }
+    afterPagesChanged();
 }
 
 bool saveAsDialog(Document& d) {
@@ -3570,7 +3670,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_RECENT = 100, MM_WORKSPACE = 400 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_RECENT = 100, MM_WORKSPACE = 400 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3607,6 +3707,8 @@ void showMainMenu(const RECT& anchor) {
     sep();
     add(MM_PRINT, L"Print...\tCtrl+P", has);
     add(MM_PROPS, L"Document properties...\tCtrl+D", has);
+    add(MM_ATTACH, L"Attached files...", has);
+    add(MM_LAYERS, L"Layers (show or hide)...", has);
     add(MM_RELOAD, L"Reload from disk", has && !d->path().empty());
     sep();
     add(MM_BM, L"Bookmarks panel\tCtrl+B", has, app.sidebarVisible && app.sidebar.mode() == Sidebar::Mode::Bookmarks);
@@ -3652,6 +3754,8 @@ void showMainMenu(const RECT& anchor) {
         case MM_PRINT: printDocument(); break;
         case MM_GUIDE: openUserGuide(); break;
         case MM_PROPS: showProperties(); break;
+        case MM_ATTACH: attachmentsDialog(); break;
+        case MM_LAYERS: layersDialog(); break;
         case MM_FIRST: app.viewer.goToPage(0); break;
         case MM_LAST: if (d) app.viewer.goToPage(d->pageCount() - 1); break;
         case MM_BM: showSidebar(Sidebar::Mode::Bookmarks); break;
@@ -5468,6 +5572,8 @@ void commandPalette() {
         add(L"Print (with preview)", [] { printDocument(); });
         add(L"User guide (how to use Feather PDF)", [] { openUserGuide(); });
         add(L"Document properties", [] { showProperties(); });
+        add(L"Attached files: open, save, add or remove", [] { attachmentsDialog(); });
+        add(L"Layers: show or hide", [] { layersDialog(); });
         add(L"Find", [] { runCommand(C_FIND); });
         add(L"Find and replace text", [] { doFindReplace(); });
         add(L"Go to page", [] { runCommand(C_GOTO); });

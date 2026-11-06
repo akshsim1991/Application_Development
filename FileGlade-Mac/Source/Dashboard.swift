@@ -57,15 +57,7 @@ func fileSections<Item>(_ items: [Item], key: (Item) -> String) -> [FileSection<
     let groups = Dictionary(grouping: items, by: key)
     return groups.keys.sorted { $0.localizedStandardCompare($1) == .orderedAscending }.map { FileSection(id: $0, items: groups[$0]!) }
 }
-func fileCategory(_ url: URL) -> String {
-    guard let type = UTType(filenameExtension: url.pathExtension) else { return "other" }
-    if type.conforms(to: .image) { return "images" }
-    if type.conforms(to: .movie) { return "video" }
-    if type.conforms(to: .audio) { return "audio" }
-    if type.conforms(to: .archive) { return "archives" }
-    if PowerFilter.documents.accepts(PowerFile(url)) { return "documents" }
-    return "other"
-}
+func fileCategory(_ url: URL) -> String { ExtensionTypes.category(url.pathExtension) }
 struct FileGladeAboutView: View {
     @Environment(\.dismiss) private var dismiss
     private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.0" }
@@ -228,16 +220,7 @@ final class DashboardIndex {
             try execute("COMMIT")
         } catch { try? execute("ROLLBACK"); throw error }
     }
-    private func category(_ url: URL, directory: Bool) -> String {
-        if directory { return "folders" }
-        guard let type = UTType(filenameExtension: url.pathExtension) else { return "other" }
-        if type.conforms(to: .image) { return "images" }
-        if type.conforms(to: .movie) { return "video" }
-        if type.conforms(to: .audio) { return "audio" }
-        if type.conforms(to: .archive) { return "archives" }
-        if PowerFilter.documents.accepts(PowerFile(url)) { return "documents" }
-        return "other"
-    }
+    private func category(_ url: URL, directory: Bool) -> String { directory ? "folders" : ExtensionTypes.category(url.pathExtension) }
     func scan(_ root: DashboardRoot, hidden: Bool, progress: @Sendable (String) -> Void) throws {
         let fm = FileManager.default
         let base = powerURL(root.url)

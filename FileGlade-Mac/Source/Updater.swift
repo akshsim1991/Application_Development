@@ -200,6 +200,6 @@ struct UpdateBanner: View {
         }
     }
     private func row<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        VStack(spacing: 0) { HStack(spacing: 10) { content() }.font(.system(size: 11)).padding(.horizontal, 14).frame(height: 28); Divider() }.background(.regularMaterial)
+        VStack(spacing: 0) { HStack(spacing: 10) { content() }.font(.system(size: 11)).padding(.horizontal, 14).frame(height: 28); Divider() }.background(Theme.shared.panel)
     }
 }

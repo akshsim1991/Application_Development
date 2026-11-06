@@ -406,7 +406,7 @@ struct TransferBar: View {
                         }
                     }.padding(.horizontal, 20).padding(.vertical, 8)
                 }
-            }.background(.regularMaterial)
+            }.background(Theme.shared.panel)
         }
     }
 }

@@ -49,11 +49,21 @@ struct PDFPreview: NSViewRepresentable {
         let view = PDFView()
         view.autoScales = true
         view.displayMode = .singlePageContinuous
-        view.document = PDFDocument(url: url)
+        load(into: view, context: context)
         return view
     }
-    func updateNSView(_ view: PDFView, context: Context) {
-        if view.document?.documentURL != url { view.document = PDFDocument(url: url) }
+    func updateNSView(_ view: PDFView, context: Context) { if context.coordinator.url != url { load(into: view, context: context) } }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    final class Coordinator { var url: URL? }
+    /// Opening a PDF can take a while, so it happens off the main thread and selection stays instant.
+    private func load(into view: PDFView, context: Context) {
+        let target = url
+        context.coordinator.url = target
+        view.document = nil
+        DispatchQueue.global(qos: .userInitiated).async {
+            let document = PDFDocument(url: target)
+            DispatchQueue.main.async { if context.coordinator.url == target { view.document = document } }
+        }
     }
 }
 

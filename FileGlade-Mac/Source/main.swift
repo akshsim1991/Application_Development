@@ -45,7 +45,10 @@ final class Explorer: ObservableObject {
     @Published var directory = FileManager.default.homeDirectoryForCurrentUser
     @Published var entries: [FileEntry] = [] { didSet { recomputeVisible() } }
     @Published private(set) var visible: [FileEntry] = []
+    /// Grouped rows, built once per change instead of on every redraw.
+    @Published private(set) var sections: [FileSection<FileEntry>] = []
     @Published var loading = false
+    @Published private(set) var freeSpace = ""
     let isSecondary: Bool
     private var refreshGeneration = 0
     private(set) var dashboardRoots: [DashboardRoot] = []
@@ -54,7 +57,7 @@ final class Explorer: ObservableObject {
     @Published var showHidden = UserDefaults.standard.bool(forKey: "showHidden")
     @Published var order: Order = Order(rawValue: UserDefaults.standard.string(forKey: "order") ?? "") ?? .name { didSet { Prefs.set(order.rawValue, "order"); recomputeVisible() } }
     @Published var ascending = UserDefaults.standard.object(forKey: "ascending") as? Bool ?? true { didSet { Prefs.set(ascending, "ascending"); recomputeVisible() } }
-    @Published var grouping: FileGrouping = FileGrouping(rawValue: UserDefaults.standard.string(forKey: "grouping") ?? "") ?? .none { didSet { Prefs.set(grouping.rawValue, "grouping") } }
+    @Published var grouping: FileGrouping = FileGrouping(rawValue: UserDefaults.standard.string(forKey: "grouping") ?? "") ?? .none { didSet { Prefs.set(grouping.rawValue, "grouping"); recomputeSections() } }
     @Published var layout: Layout = UserDefaults.standard.string(forKey: "layout") == "details" ? .details : .icons
     @Published var inspector = UserDefaults.standard.object(forKey: "inspector") as? Bool ?? true { didSet { Prefs.set(inspector, "inspector") } }
     @Published var failure: String?
@@ -113,7 +116,7 @@ final class Explorer: ObservableObject {
         let useFilter = filter != .all
         let needle = query
         let filtered = entries.filter { entry in
-            (needle.isEmpty || entry.name.localizedStandardContains(needle)) && (!useFilter || filter.accepts(PowerFile(entry.url), starred: FileLibrary.shared.isStarred(entry.url)))
+            (needle.isEmpty || entry.name.localizedStandardContains(needle)) && (!useFilter || filter.accepts(directory: entry.isDirectory, size: entry.size, modified: entry.modified, ext: entry.url.pathExtension, starred: filter == .starred && FileLibrary.shared.isStarred(entry.url)))
         }
         let order = self.order, ascending = self.ascending
         visible = filtered.sorted { a, b in
@@ -128,6 +131,12 @@ final class Explorer: ObservableObject {
             if result == .orderedSame { result = a.name.localizedStandardCompare(b.name) }
             return ascending ? result == .orderedAscending : result == .orderedDescending
         }
+        recomputeSections()
+    }
+    func recomputeSections() {
+        guard grouping != .none else { sections = [FileSection(id: "", items: visible)]; return }
+        let mode = grouping
+        sections = fileSections(visible) { entry in mode.key(name: entry.name, folder: entry.isDirectory, size: entry.size, modified: entry.modified, category: mode == .kind ? fileCategory(entry.url) : "", location: mode == .location ? entry.url.deletingLastPathComponent().path : "") }
     }
     var breadcrumbs: [URL] {
         var result = [directory]
@@ -199,7 +208,9 @@ final class Explorer: ObservableObject {
             guard let self, generation == self.refreshGeneration else { return }
             self.loading = false
             switch result {
-            case .success(let list): self.entries = list; self.selection.formIntersection(Set(list.map(\.url)))
+            case .success(let list):
+                self.entries = list; self.selection.formIntersection(Set(list.map(\.url)))
+                if let bytes = try? folder.resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity { self.freeSpace = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) + " available" }
             case .failure(let error): self.entries = []; self.failure = "Could not read \(folder.path).\n\n\(error.localizedDescription)\n\nYou may need to allow access in System Settings → Privacy & Security → Files and Folders."
             }
         }
@@ -285,7 +296,7 @@ final class Explorer: ObservableObject {
         objectWillChange.send()
     }
     var canPaste: Bool { NSPasteboard.general.canReadObject(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) }
-    func isCut(_ url: URL) -> Bool { cutChangeCount == NSPasteboard.general.changeCount && cutURLs.contains(url) }
+    func isCut(_ url: URL) -> Bool { !cutURLs.isEmpty && cutChangeCount == NSPasteboard.general.changeCount && cutURLs.contains(url) }
     func paste() {
         let urls = (NSPasteboard.general.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
         guard !urls.isEmpty else { return }
@@ -410,6 +421,8 @@ struct ExplorerView: View {
     @ObservedObject var model: Explorer
     var embedded = false
     @ObservedObject private var panes = PaneState.shared
+    @ObservedObject private var layout = PaneLayout.shared
+    @ObservedObject private var theme = Theme.shared
     @ObservedObject private var basket = BasketStore.shared
     @ObservedObject private var collectionStore = CollectionStore.shared
     @State private var extra: ExtraSheet?
@@ -453,19 +466,22 @@ struct ExplorerView: View {
             UpdateBanner()
             if !model.showDashboard { if model.tabs.count > 1 { workspaceBar; Divider() }; commandbar; Divider() }
             HStack(spacing: 0) {
-                sidebar.frame(width: 208)
-                Divider()
+                sidebar.frame(width: layout.sidebar)
+                ResizeHandle(width: $layout.sidebar, range: 140...400, resetTo: 208)
                 if model.showDashboard {
                     UnifiedDashboardView(roots: model.dashboardRoots, onOpen: { model.openEntry(FileEntry($0)) }, onReveal: { url in model.filter = .all; model.navigate(PowerFile(url).directory ? url : url.deletingLastPathComponent()); if !PowerFile(url).directory { model.selection = [powerURL(url)] } })
                 } else {
                 paneColumn
-                if panes.dual { Divider(); ExplorerView(model: panes.second, embedded: true) }
-                if model.inspector { Divider(); inspector.frame(width: 280) }
+                if panes.dual { ResizeHandle(width: $layout.second, range: 260...1200, growsLeft: true, resetTo: 460); ExplorerView(model: panes.second, embedded: true).frame(width: layout.second) }
+                if model.inspector { ResizeHandle(width: $layout.inspector, range: 200...560, growsLeft: true, resetTo: 280); inspector.frame(width: layout.inspector) }
                 }
             }
         }
-        .frame(minWidth: 850, minHeight: 540)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .padding(.top, theme.glass ? 26 : 0)
+        .frame(minWidth: 760, minHeight: 500)
+        .background(theme.window)
+        .background { if theme.glass { GlassBackdrop() } }
+        .preferredColorScheme(theme.colorScheme)
         .tint(accent)
         .sheet(item: $toolContext, onDismiss: { model.refresh() }) { context in
             PowerToolsView(folder: context.folder, selection: context.selection, onProduced: { urls in model.refresh(); model.selection = Set(urls) }, onReveal: { url in model.filter = .all; model.navigate(PowerFile(url).directory ? url : url.deletingLastPathComponent()); if !PowerFile(url).directory { model.selection = [powerURL(url)] } })
@@ -535,7 +551,7 @@ struct ExplorerView: View {
     }
     private var commandbar: some View {
         HStack(spacing: 5) {
-            Button(action: acting.newFolder) { Label("New folder", systemImage: "folder.badge.plus").font(.system(size: 12, weight: .medium)) }.buttonStyle(.bordered).help("New folder (⇧⌘N)")
+            Button(action: acting.newFolder) { Label { Text("New folder") } icon: { ColorSymbol(name: "folder.badge.plus", size: 13) }.font(.system(size: 12, weight: .medium)) }.buttonStyle(.bordered).help("New folder (⇧⌘N)")
             Divider().frame(height: 20).padding(.horizontal, 9)
             tool("scissors", "Cut (⌘X)", disabled: acting.selection.isEmpty) { acting.copy(cut: true) }
             tool("doc.on.doc", "Copy (⌘C)", disabled: acting.selection.isEmpty) { acting.copy() }
@@ -549,8 +565,8 @@ struct ExplorerView: View {
                 Picker("Sort by", selection: bind(\.order)) { ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
                 Divider()
                 Toggle("Ascending", isOn: bind(\.ascending))
-            } label: { Label("Sort", systemImage: "arrow.up.arrow.down").font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
-            Menu { Picker("Group by", selection: bind(\.grouping)) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } } label: { Label("Group by", systemImage: "square.grid.3x1.below.line.grid.1x2").font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
+            } label: { Label { Text("Sort") } icon: { ColorSymbol(name: "arrow.up.arrow.down", size: 12) }.font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
+            Menu { Picker("Group by", selection: bind(\.grouping)) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } } label: { Label { Text("Group by") } icon: { ColorSymbol(name: "square.grid.3x1.below.line.grid.1x2", size: 12) }.font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
             Spacer()
             Picker("Filter", selection: bind(\.filter)) { ForEach(PowerFilter.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).labelsHidden().fixedSize().help("Filter files")
             tool(library.isStarred(acting.directory) ? "star.fill" : "star", "Star current folder") { library.toggleStar(acting.directory) }
@@ -561,7 +577,7 @@ struct ExplorerView: View {
                 tool("arrow.right.circle.fill", "Move to other pane (⌥⌘M)", disabled: acting.selection.isEmpty) { panes.transferToOther(move: true) }
                 tool("arrow.triangle.2.circlepath", "Compare and sync panes") { extra = .compare }
             }
-            Button { showBasket.toggle() } label: { Image(systemName: basket.items.isEmpty ? "tray" : "tray.full").font(.system(size: 14)).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(Color.primary.opacity(0.75)).help("Selection basket (⌘B adds the selection)")
+            Button { showBasket.toggle() } label: { ColorSymbol(name: basket.items.isEmpty ? "tray" : "tray.full", size: 14).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).help("Selection basket (⌘B adds the selection)")
                 .popover(isPresented: $showBasket) { BasketView(target: acting) }
             HStack(spacing: 2) {
                 viewButton("square.grid.2x2", layout: .icons)
@@ -579,20 +595,20 @@ struct ExplorerView: View {
                 Button(acting.favorites.contains(acting.directory) ? "Unpin current folder" : "Pin current folder", action: acting.toggleFavorite)
                 Button(acting.showHidden ? "Hide hidden files" : "Show hidden files", action: acting.toggleHidden)
                 Button("Refresh", action: acting.refresh)
-            } label: { Image(systemName: "ellipsis").frame(width: 26) }.menuStyle(.borderlessButton).fixedSize()
-        }.padding(.horizontal, 12).frame(height: 38)
+            } label: { ColorSymbol(name: "ellipsis", size: 14).frame(width: 26) }.menuStyle(.borderlessButton).fixedSize()
+        }.padding(.horizontal, 12).frame(height: 38).background(theme.panel)
     }
     private func tool(_ icon: String, _ help: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
-        Button(action: action) { Image(systemName: icon).font(.system(size: 14)).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).foregroundStyle(disabled ? Color.secondary.opacity(0.4) : Color.primary.opacity(0.75)).disabled(disabled).help(help).accessibilityLabel(help)
+        Button(action: action) { ColorSymbol(name: icon, size: 14).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).opacity(disabled ? 0.3 : 1).disabled(disabled).help(help).accessibilityLabel(help)
     }
     private func viewButton(_ icon: String, layout: Layout) -> some View {
-        Button { acting.setLayout(layout) } label: { Image(systemName: icon).font(.system(size: 13)).frame(width: 28, height: 24).background(acting.layout == layout ? Color(nsColor: .controlBackgroundColor) : .clear, in: RoundedRectangle(cornerRadius: 5)) }.buttonStyle(.plain).help(layout == .icons ? "Icon view (⌘1)" : "Details view (⌘2)")
+        Button { acting.setLayout(layout) } label: { ColorSymbol(name: icon, size: 13).frame(width: 28, height: 24).background(acting.layout == layout ? theme.control : .clear, in: RoundedRectangle(cornerRadius: 5)) }.buttonStyle(.plain).help(layout == .icons ? "Icon view (⌘1)" : "Details view (⌘2)")
     }
     private var sidebar: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 5) {
                 Button { model.showDashboard = true } label: {
-                    Label("All files", systemImage: "square.grid.2x2.fill").font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(12).background(model.showDashboard ? accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
+                    Label { Text("All files") } icon: { ColorSymbol(name: "square.grid.2x2.fill", size: 14) }.font(.system(size: 13, weight: .semibold)).frame(maxWidth: .infinity, alignment: .leading).padding(12).background(model.showDashboard ? accent.opacity(0.12) : .clear, in: RoundedRectangle(cornerRadius: 7))
                 }.buttonStyle(.plain).foregroundStyle(accent).padding(.bottom, 14)
                 sectionTitle("Favorites")
                 sideItem("Home", "house", home)
@@ -605,7 +621,7 @@ struct ExplorerView: View {
                 sectionTitle("Smart folders").padding(.top, 20)
                 ForEach(smartStore.smartFolders) { search in
                     Button { smartStore.pending = search; model.showDashboard = true } label: {
-                        HStack(spacing: 11) { Image(systemName: "folder.badge.gearshape").font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 18); Text(search.name).font(.system(size: 12)).lineLimit(1); Spacer(minLength: 0) }
+                        HStack(spacing: 11) { ColorSymbol(name: "folder.badge.gearshape", size: 14).frame(width: 18); Text(search.name).font(.system(size: 12)).lineLimit(1); Spacer(minLength: 0) }
                             .padding(.horizontal, 12).frame(height: 32).contentShape(Rectangle())
                     }.buttonStyle(.plain).help("Smart folder: a saved search. Nothing is moved.")
                     .contextMenu { if !smartStore.isBuiltIn(search) { Button("Remove smart folder") { smartStore.remove(search) } } }
@@ -614,7 +630,7 @@ struct ExplorerView: View {
                 if collectionStore.collections.isEmpty { Text("Group files from different folders with Tools ▸ New Collection.").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.vertical, 4) }
                 ForEach(collectionStore.collections) { collection in
                     Button { extra = .collection(collection.id) } label: {
-                        HStack(spacing: 11) { Image(systemName: "square.stack").font(.system(size: 14)).foregroundStyle(.secondary).frame(width: 18); Text(collection.name).font(.system(size: 12)).lineLimit(1); Spacer(minLength: 0); Text("\(collection.items.count)").font(.system(size: 10)).foregroundStyle(.tertiary) }
+                        HStack(spacing: 11) { ColorSymbol(name: "square.stack", size: 14).frame(width: 18); Text(collection.name).font(.system(size: 12)).lineLimit(1); Spacer(minLength: 0); Text("\(collection.items.count)").font(.system(size: 10)).foregroundStyle(.tertiary) }
                             .padding(.horizontal, 12).frame(height: 32).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                 }
@@ -632,13 +648,13 @@ struct ExplorerView: View {
                 Spacer(minLength: 30)
                 Button(action: model.chooseFolder) { Label("Open a folder…", systemImage: "folder.badge.gearshape").font(.system(size: 11)) }.buttonStyle(.plain).foregroundStyle(.secondary).padding(12)
             }.padding(.horizontal, 12).padding(.top, 19)
-        }.background(.regularMaterial)
+        }.background(theme.panel)
     }
     private func sectionTitle(_ title: String) -> some View { Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 6) }
     private func sideItem(_ title: String, _ icon: String, _ url: URL) -> some View {
         let selected = !model.showDashboard && acting.directory.path == url.path
         return Button { acting.navigate(url) } label: {
-            HStack(spacing: 11) { Image(systemName: icon).font(.system(size: 14)).foregroundStyle(selected ? accent : .secondary).frame(width: 18); Text(title).font(.system(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1); Spacer(minLength: 0) }
+            HStack(spacing: 11) { ColorSymbol(name: icon, size: 14).frame(width: 18); Text(title).font(.system(size: 12, weight: selected ? .semibold : .regular)).lineLimit(1); Spacer(minLength: 0) }
                 .padding(.horizontal, 12).frame(height: 35).contentShape(Rectangle()).background(selected ? accent.opacity(0.1) : .clear, in: RoundedRectangle(cornerRadius: 6))
                 .overlay(alignment: .leading) { if selected { Capsule().fill(accent).frame(width: 3, height: 17) } }
         }.buttonStyle(.plain).help(url.path)
@@ -650,7 +666,7 @@ struct ExplorerView: View {
             tool("chevron.right", "Forward (⌘])", disabled: !model.canForward, action: model.forward)
             tool("arrow.up", "Parent folder (⌘↑)", disabled: model.directory.path == "/", action: model.up)
             HStack(spacing: 7) {
-                Image(systemName: "folder").foregroundStyle(accent)
+                ColorSymbol(name: "folder", size: 13)
                 if pathEditing {
                     TextField("Folder path", text: $path).textFieldStyle(.plain).focused($pathFocused).onSubmit { model.navigate(URL(fileURLWithPath: (path as NSString).expandingTildeInPath)); pathEditing = false }.onExitCommand { pathEditing = false }
                 } else {
@@ -662,28 +678,26 @@ struct ExplorerView: View {
                             }
                         }
                     }
-                    Button { beginPath() } label: { Image(systemName: "pencil").font(.system(size: 10)).foregroundStyle(.secondary) }.buttonStyle(.plain).help("Edit path (⌘L)")
+                    Button { beginPath() } label: { ColorSymbol(name: "pencil", size: 10) }.buttonStyle(.plain).help("Edit path (⌘L)")
                 }
-                Button(action: model.refresh) { Image(systemName: "arrow.clockwise").font(.system(size: 11)) }.buttonStyle(.plain).help("Refresh (⌘R)")
-            }.padding(.horizontal, 10).frame(height: 26).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.08)))
+                Button(action: model.refresh) { ColorSymbol(name: "arrow.clockwise", size: 11) }.buttonStyle(.plain).help("Refresh (⌘R)")
+            }.padding(.horizontal, 10).frame(height: 26).background(theme.control, in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.line))
             HStack(spacing: 7) {
-                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+                ColorSymbol(name: "magnifyingglass", size: 12)
                 TextField("Search this folder", text: $model.query).textFieldStyle(.plain).font(.system(size: 11)).focused($searchFocused)
                 if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
-            }.padding(.horizontal, 10).frame(width: 170, height: 26).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(Color.primary.opacity(0.08)))
-        }.padding(.horizontal, 12).frame(height: 40)
+            }.padding(.horizontal, 10).frame(width: 170, height: 26).background(theme.control, in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.line))
+        }.padding(.horizontal, 12).frame(height: 40).background(theme.panel)
     }
     private func beginPath() { path = model.directory.path; pathEditing = true; pathFocused = true }
-    private var groups: [FileSection<FileEntry>] {
-        fileSections(model.visible) { entry in model.grouping.key(name: entry.name, folder: entry.isDirectory, size: entry.size, modified: entry.modified, category: fileCategory(entry.url), location: entry.url.deletingLastPathComponent().path) }
-    }
+    private var groups: [FileSection<FileEntry>] { model.sections }
     @ViewBuilder private var content: some View {
         if model.visible.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: model.query.isEmpty ? "folder" : "magnifyingglass").font(.system(size: 42, weight: .ultraLight)).foregroundStyle(.tertiary)
                 Text(model.query.isEmpty ? "This folder is empty" : "No matching items").font(.system(size: 17, weight: .medium))
                 Text(model.query.isEmpty ? "Create a folder or paste files here." : "Try another name. Search looks in this folder only.").font(.system(size: 12)).foregroundStyle(.secondary)
-            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .textBackgroundColor))
+            }.frame(maxWidth: .infinity, maxHeight: .infinity).background(theme.content)
         } else if model.layout == .icons {
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 112, maximum: 144), spacing: 12)], alignment: .leading, spacing: 12) {
@@ -695,35 +709,38 @@ struct ExplorerView: View {
                         } header: { if model.grouping != .none { Text(group.title).font(.headline).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12) } }
                     }
                 }.padding(20)
-            }.background(Color(nsColor: .textBackgroundColor))
-        } else if model.grouping != .none {
-            List {
-                ForEach(groups) { group in
-                    Section(group.title) {
-                        ForEach(group.items) { entry in
-                            HStack(spacing: 12) {
-                                FileIcon(url: entry.url, size: 24, directory: entry.isDirectory)
-                                Text(entry.name).frame(maxWidth: .infinity, alignment: .leading).lineLimit(1)
-                                Text(entry.modified.formatted(date: .abbreviated, time: .shortened)).font(.caption).foregroundStyle(.secondary)
-                                Text(entry.kind).font(.caption).foregroundStyle(.secondary).frame(width: 100)
-                                Text(entry.isDirectory ? "—" : fileBytes(entry.size)).font(.caption).foregroundStyle(.secondary).frame(width: 75, alignment: .trailing)
-                            }.padding(5).contentShape(Rectangle()).background(model.selection.contains(entry.url) ? accent.opacity(0.12) : .clear)
-                            .onTapGesture(count: 2) { model.openEntry(entry) }.onTapGesture { model.select(entry) }.contextMenu { fileMenu(entry) }.onDrag { NSItemProvider(object: entry.url as NSURL) }
-                            .onDrop(of: [.fileURL], isTargeted: nil) { providers in (entry.isDirectory && !entry.isPackage) ? model.handleDrop(providers, into: entry.url) : false }
-                        }
-                    }
-                }
-            }.listStyle(.plain)
+            }.background(theme.content)
         } else {
-            Table(model.visible, selection: $model.selection) {
-                TableColumn("Name") { entry in HStack(spacing: 9) { FileIcon(url: entry.url, size: 24, directory: entry.isDirectory); Text(entry.name).lineLimit(1) }.opacity(model.isCut(entry.url) ? 0.45 : 1).contextMenu { fileMenu(entry) }.onDrag { NSItemProvider(object: entry.url as NSURL) } }.width(min: 150, ideal: 230)
-                TableColumn("Date modified") { entry in Text(entry.modified.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary).font(.system(size: 11)) }.width(min: 125, ideal: 145)
-                TableColumn("Kind") { entry in Text(entry.kind).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1) }.width(min: 80, ideal: 110)
-                TableColumn("Size") { entry in Text(entry.isDirectory ? "—" : ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file)).foregroundStyle(.secondary).font(.system(size: 11)) }.width(70)
-            }.contextMenu(forSelectionType: URL.self) { urls in
-                if !urls.isEmpty { Button("Open") { model.selection = urls; model.openSelection() }; Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting(Array(urls)) }; Divider(); Button("Copy") { model.selection = urls; model.copy() }; Button("Rename…") { model.selection = urls; model.rename() }.disabled(urls.count != 1); Button("Move to Trash…") { model.selection = urls; model.trash() }; Button("Delete Permanently…") { model.selection = urls; model.deletePermanently() } }
-            } primaryAction: { urls in if let url = urls.first, let entry = model.entries.first(where: { $0.url == url }) { model.openEntry(entry) } }
+            VStack(spacing: 0) {
+                DetailsHeader(model: model)
+                Divider()
+                List(selection: $model.selection) {
+                    ForEach(groups) { group in
+                        if model.grouping == .none { ForEach(group.items) { entry in detailRow(entry) } }
+                        else { Section(group.title) { ForEach(group.items) { entry in detailRow(entry) } } }
+                    }
+                }.listStyle(.plain).scrollContentBackground(.hidden).background(theme.content)
+                .contextMenu(forSelectionType: URL.self) { urls in
+                    if let url = urls.first, let entry = model.entries.first(where: { $0.url == url }) { fileMenu(entry) }
+                    else { Button("New Folder") { model.newFolder() }; Button("Paste") { model.paste() }.disabled(!model.canPaste) }
+                } primaryAction: { urls in if let url = urls.first, let entry = model.entries.first(where: { $0.url == url }) { model.openEntry(entry) } }
+            }
         }
+    }
+    private func detailRow(_ entry: FileEntry) -> some View {
+        HStack(spacing: 0) {
+            HStack(spacing: 9) {
+                FileIcon(url: entry.url, size: 22, directory: entry.isDirectory)
+                Text(entry.name).lineLimit(1)
+                if let color = library.color(entry.url) { Circle().fill(color).frame(width: 7, height: 7) }
+                if library.isStarred(entry.url) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow) }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            Text(entry.modified.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.dateColumn, alignment: .leading)
+            Text(entry.kind).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.kindColumn, alignment: .leading)
+            Text(entry.isDirectory ? "—" : ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file)).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.sizeColumn, alignment: .trailing)
+        }.opacity(model.isCut(entry.url) ? 0.45 : 1).padding(.vertical, 1)
+        .onDrag { NSItemProvider(object: entry.url as NSURL) }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in (entry.isDirectory && !entry.isPackage) ? model.handleDrop(providers, into: entry.url) : false }
     }
     private func iconCard(_ entry: FileEntry) -> some View {
                         VStack(spacing: 9) { FileIcon(url: entry.url, size: 52, thumbnail: true, directory: entry.isDirectory); Text(entry.name).font(.system(size: 11)).lineLimit(2).multilineTextAlignment(.center).frame(height: 30, alignment: .top) }
@@ -778,8 +795,8 @@ struct ExplorerView: View {
             if !model.selection.isEmpty { Text("·"); Text("\(model.selection.count) selected") }
             if !model.query.isEmpty { Text("· Filtered") }
             Spacer()
-            if let values = try? model.directory.resourceValues(forKeys: [.volumeAvailableCapacityKey]), let bytes = values.volumeAvailableCapacity { Text("\(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)) available") }
-        }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 22)
+            if !model.freeSpace.isEmpty { Text(model.freeSpace) }
+        }.font(.system(size: 10)).foregroundStyle(.secondary).padding(.horizontal, 14).frame(height: 22).background(theme.panel)
     }
     private var inspector: some View {
         ScrollView {
@@ -808,7 +825,7 @@ struct ExplorerView: View {
                     Button(action: acting.toggleFavorite) { Label(acting.favorites.contains(acting.directory) ? "Unpin folder" : "Pin this folder", systemImage: acting.favorites.contains(acting.directory) ? "star.fill" : "star").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                 }
             }.padding(14)
-        }.background(Color.primary.opacity(0.015))
+        }.background(theme.panel)
     }
     private func detail(_ label: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) { Text(label).font(.system(size: 9, weight: .medium)).tracking(0.8).foregroundStyle(.tertiary); Text(value).font(.system(size: 11)).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
@@ -830,7 +847,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window.tabbingMode = .disallowed
         window.minSize = NSSize(width: 850, height: 570)
         PaneState.shared.main = mainModel
-        window.contentView = NSHostingView(rootView: ExplorerView(model: mainModel))
+        let host = NSHostingView(rootView: ExplorerView(model: mainModel))
+        let container = ThemedContainer(content: host)
+        window.contentView = container
+        Theme.shared.apply(to: window, container: container)
+        NotificationCenter.default.addObserver(forName: .init("FileGladeThemeChanged"), object: nil, queue: .main) { [weak self] _ in Theme.shared.apply(to: self?.window, container: container) }
         NotificationCenter.default.addObserver(forName: .init("FileGladeRebuildMenu"), object: nil, queue: .main) { [weak self] _ in self?.buildMenu() }
         window.setFrameAutosaveName("FileGladeMain")
         if !window.setFrameUsingName("FileGladeMain") { window.center() }
@@ -846,13 +867,46 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard self.model.layout == .icons, modifiers.isEmpty || modifiers == .shift, [123, 124, 125, 126].contains(Int(event.keyCode)) else { return event }
             let items = self.model.visible
             guard !items.isEmpty else { return nil }
-            let contentWidth = self.window.contentView!.bounds.width - 208 - (self.model.inspector ? 280 : 0) - 42
+            let contentWidth = self.window.contentView!.bounds.width - PaneLayout.shared.sidebar - (self.model.inspector ? PaneLayout.shared.inspector : 0) - 42
             let columns = max(1, Int((contentWidth + 12) / 124))
             let current = items.firstIndex { self.model.selection.contains($0.url) }
             let step = event.keyCode == 123 ? -1 : event.keyCode == 124 ? 1 : event.keyCode == 125 ? columns : -columns
             let index = current.map { min(max($0 + step, 0), items.count - 1) } ?? 0
             if modifiers == .shift { self.model.selection.insert(items[index].url) } else { self.model.selection = [items[index].url] }
             return nil
+        }
+        // Developer tool: `--snapshot <png> [--theme colourful|dark|amoled] [--glass] [--dual] <folder>` saves a picture of the window.
+        if let flag = CommandLine.arguments.firstIndex(of: "--snapshot"), flag + 1 < CommandLine.arguments.count {
+            let output = CommandLine.arguments[flag + 1]
+            if let t = CommandLine.arguments.firstIndex(of: "--theme"), t + 1 < CommandLine.arguments.count { Theme.shared.mode = ThemeMode.allCases.first { $0.rawValue.lowercased().hasPrefix(CommandLine.arguments[t + 1].lowercased()) } ?? .colorful }
+            Theme.shared.glass = CommandLine.arguments.contains("--glass")
+            if let folder = CommandLine.arguments.last, folder.hasPrefix("/") { mainModel.navigate(URL(fileURLWithPath: folder)); mainModel.showDashboard = false }
+            if CommandLine.arguments.contains("--dual") { PaneState.shared.dual = true }
+            if CommandLine.arguments.contains("--details") { mainModel.setLayout(.details) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                if let first = self.mainModel.visible.dropFirst(3).first { self.mainModel.selection = [first.url] }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    guard let view = self.window.contentView, let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { exit(1) }
+                    view.cacheDisplay(in: view.bounds, to: rep)
+                    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: output)); exit(0)
+                }
+            }
+            return
+        }
+        // Developer benchmark: `--bench-select <folder>` steps through files so a profiler can see selection cost.
+        if let flag = CommandLine.arguments.firstIndex(of: "--bench-select"), flag + 1 < CommandLine.arguments.count {
+            mainModel.navigate(URL(fileURLWithPath: CommandLine.arguments[flag + 1])); mainModel.showDashboard = false
+            mainModel.setLayout(CommandLine.arguments.contains("--details") ? .details : .icons)
+            var step = 0
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { _ in
+                    let list = self.mainModel.visible; guard !list.isEmpty else { return }
+                    let started = CFAbsoluteTimeGetCurrent()
+                    self.mainModel.selection = [list[step % list.count].url]; step += 1
+                    DispatchQueue.main.async { fputs(String(format: "select #%d handled in %.0f ms\n", step, (CFAbsoluteTimeGetCurrent() - started) * 1000), stderr) }
+                }
+            }
+            return
         }
         if CommandLine.arguments.count > 1 {
             let arg = CommandLine.arguments[1]
@@ -880,7 +934,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         pane.addItem(item("Compare and Sync Panes…", #selector(comparePanes))); pane.addItem(.separator())
         pane.addItem(item("Add Selection to Basket", #selector(addToBasket), "b")); pane.addItem(item("Show Basket", #selector(showBasket)))
         pane.addItem(.separator()); pane.addItem(item("Browse Archive…", #selector(browseArchive), "b", modifiers: [.command, .option])); pane.addItem(item("Search Inside Documents…", #selector(docSearch), "f", modifiers: [.command, .shift]))
-        app.insertItem(item("Keyboard Shortcuts…", #selector(shortcutsWindow), ","), at: 1)
+        app.insertItem(item("Keyboard Shortcuts…", #selector(shortcutsWindow)), at: 1)
+        app.insertItem(item("Settings…", #selector(settingsWindow), ","), at: 1)
         let tools = NSMenu()
         tools.addItem(item("Automation Rules…", #selector(automationWindow))); tools.addItem(item("Storage Analyzer…", #selector(storageWindow))); tools.addItem(item("Find Similar Photos…", #selector(similarWindow)))
         tools.addItem(.separator()); tools.addItem(item("New Collection…", #selector(newCollection))); tools.addItem(item("Add Selection to Collection…", #selector(addToCollection)))
@@ -918,6 +973,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         NotificationCenter.default.addObserver(forName: NSWindow.willCloseNotification, object: panel, queue: .main) { [weak self] _ in if self?.toolWindows[id] === panel { self?.toolWindows[id] = nil } }
         panel.makeKeyAndOrderFront(nil)
     }
+    @objc func settingsWindow() { showToolWindow("settings", "FileGlade Settings", NSSize(width: 600, height: 560), SettingsView(openShortcuts: { [weak self] in self?.shortcutsWindow() })) }
     @objc func automationWindow() { showToolWindow("automation", "Automation Rules", NSSize(width: 900, height: 640), AutomationView()) }
     @objc func storageWindow() { let m = model; showToolWindow("storage", "Storage Analyzer", NSSize(width: 800, height: 600), fresh: true, StorageAnalyzerView(folder: m.directory) { url in m.navigate(url.deletingLastPathComponent()); m.selection = [powerURL(url)] }) }
     @objc func similarWindow() { let m = model; showToolWindow("similar", "Similar Photos", NSSize(width: 820, height: 600), fresh: true, SimilarPhotosView(folder: m.directory) { m.refresh() }) }

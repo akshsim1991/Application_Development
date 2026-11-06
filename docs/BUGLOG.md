@@ -927,3 +927,5 @@ Defects found and fixed on the way:
   page view without importing it; the repair message was a modal alert, which held up the scripted exit.
 - **Fix:** namespace `a11y`; the imports; the message as a sheet on the repaired document.
 - **Verified:** the Mac build check.
+
+2.16.0 "Mustang" published; both downloads match latest.json.

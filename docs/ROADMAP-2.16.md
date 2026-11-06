@@ -9,21 +9,21 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 
 | # | Feature | Engine | Windows | Mac |
 |---|---|---|---|---|
-| 13 | Saved workspaces | — | [x] | [ ] |
+| 13 | Saved workspaces | — | [x] | [x] |
 | 1 | Find and redact sensitive information (email, phone, Aadhaar, PAN, bank account) | [x] | [x] | [x] |
 | 2 | Search: whole word, wildcards, in comments | [x] | [x] | [x] |
 | 3 | Split by bookmarks / size / every N pages; merge keeping bookmarks; interleave odd and even scans | [x] | [x] | [x] |
 | 9 | Text compare, word by word, with a report | [x] | [x] | [x] |
 | 5 | Attachments (view, add, extract, save) and layers (show / hide) | [x] | [x] | [x] |
-| 10 | Repair; Fast Web View (linearize) | [x] | [x] | [ ] |
-| 6 | Undo history panel | [x] | [x] | [ ] |
-| 8 | Accessibility checker and fixes | [x] | [x] | [ ] |
-| 4 | Comment threads (replies), Accepted / Rejected, review summary | [x] | [x] | [ ] |
-| 12 | Read aloud with word highlighting, playback controls | [x] | [x] | [ ] |
-| 7 | Forms: calculated fields, input validation | [x] | [x] | [ ] |
-| 11 | Pen and tablet: pressure, palm rejection | [x] | [x] | [ ] |
-| — | About: development history, AI contributions, credits, contact | — | [x] | [ ] |
-| — | Version 2.16.0 "Mustang" everywhere; changelog; release | — | [ ] | [ ] |
+| 10 | Repair; Fast Web View (linearize) | [x] | [x] | [x] |
+| 6 | Undo history panel | [x] | [x] | [x] |
+| 8 | Accessibility checker and fixes | [x] | [x] | [x] |
+| 4 | Comment threads (replies), Accepted / Rejected, review summary | [x] | [x] | [x] |
+| 12 | Read aloud with word highlighting, playback controls | [x] | [x] | [x] |
+| 7 | Forms: calculated fields, input validation | [x] | [x] | [x] |
+| 11 | Pen and tablet: pressure, palm rejection | [x] | [x] | [x] |
+| — | About: development history, AI contributions, credits, contact | — | [x] | [x] |
+| — | Version 2.16.0 "Mustang" everywhere; changelog; release | — | [x] | [x] |
 
 ## Notes
 
@@ -43,3 +43,5 @@ Each feature: engine (shared/, with a command-line check) -> Windows screens -> 
 - 7 Forms: calculations (sum, product, average, smallest, largest) and checks (number, range, date, e-mail, phone) written as Acrobat's scripts and read back by pikepdf (cli_check); Windows on the virtual screen: a total recalculated as a price was typed, a quantity out of range refused and put back.
 - 11 Pen: pressure strokes (the stroke kept for other readers, its look as wide as pressed; widths measured from the page picture in cli_check). Windows: WM_POINTER pen pressure, touch ignored while the pen tool is on or the pen was just used; mouse drawing checked on the virtual screen (no pen there). Mac: tablet pressure, non-pen input ignored while a pen is near. A real pen not tried here.
 - Command palette: exact and word-start matches first ("pen" found Open before Pen).
+- Mac: every screen passed the Mac build check (run on 7000eec): sensitive information, search, interleave/merge/split, compare, layers, attachments, repair, Fast Web View, history, accessibility, review, read aloud (stand-in voice), form calculations; pen pressure built (no tablet in CI).
+- Released: 2.16.0 "Mustang" published to FeatherPDF-releases; both downloads match latest.json (size and SHA-256).

@@ -3,6 +3,7 @@
 #import <Cocoa/Cocoa.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #import "WindowController.h"
+#import "PageView.h"
 #import "FPDocument.h"
 #import "Form.h"
 #import "Trace.h"

@@ -38,7 +38,14 @@ void layout(HWND h, State* st) {
             DrawTextW(mdc, f.text.c_str(), -1, &tr, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX | DT_EXPANDTABS);
             SelectObject(mdc, mo);
             ReleaseDC(h, mdc);
-            const int nh = static_cast<int>(tr.bottom) + unit / 2;
+            int nh = static_cast<int>(tr.bottom) + unit / 2;
+            if (nh > unit * 26) {   // a long text (About, reports): a box of its own that scrolls, and its text can be copied
+                nh = unit * 26;
+                std::wstring crlf;
+                for (wchar_t c : f.text) { if (c == L'\n') crlf += L'\r'; crlf += c; }
+                ctl = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", crlf.c_str(), WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_MULTILINE | ES_READONLY | ES_AUTOVSCROLL,
+                                      pad, y, w - 2 * pad, nh, h, nullptr, st->inst, nullptr);
+            } else
             ctl = CreateWindowExW(0, L"STATIC", f.text.c_str(), WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX, pad, y, w - 2 * pad, nh, h, nullptr, st->inst, nullptr);
             y += nh + unit / 2;
         } else if (f.kind == FormField::Check) {

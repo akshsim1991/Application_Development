@@ -58,6 +58,7 @@
 #include "headfoot.hpp"
 #include "hfdialog.hpp"
 #include "tableeditor.hpp"
+#include "about.hpp"
 #include "icons.hpp"
 #include "themeui.hpp"
 #include "settingsdlg.hpp"
@@ -3148,9 +3149,14 @@ void onUpdateChecked(const update::Release* r, bool manual) {
 }
 
 void showAbout() {
-    std::vector<FormField> f(1);
-    f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L" \u201C" L"" FEATHER_CODENAME L"\u201D, built ") + buildDate() + L"\n\nA fast, lightweight PDF reader and editor for Windows. Read, search, print and present documents in tabs; change and replace text, fill in forms, sign, add comments, highlights, drawings, stamps, pictures and tables; add watermarks, page numbers, bookmarks and links; reorganise, merge, split and extract pages; compress, redact, password-protect, recognise text (OCR), compare and measure; export pages as pictures, text, Word or Excel. Everything happens on your PC, with no account, cloud service or tracking.\n\nCreated by: Akshaya Simha\n\nCourtesy:\nVinod Kumar C S\nAthith D\nMamatha H R\n\nFree to use and share, always. No subscription, no trial, no licence key.\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\nBuilt with care for a faster, simpler document experience."};
-    showForm(app.wnd, app.inst, L"About Feather PDF", f, L"!Close");
+    std::vector<FormField> f(2);
+    f[0] = {FormField::Note, L"", {}, std::wstring(L"Feather PDF\nVersion " L"" FEATHER_VERSION L" \u201C" L"" FEATHER_CODENAME L"\u201D, built ") + buildDate() +
+                                         L"\n\n" + about::body(L"Windows", L"your PC") +
+                                         L"\nPDF rendering by PDFium; text recognition by Tesseract (see the licenses folder).\n\n"
+                                         L"Built with care for a faster, simpler document experience."};
+    f[1] = {FormField::Check, L"Write to the developer now (opens your e-mail program)"};
+    if (showForm(app.wnd, app.inst, L"About Feather PDF", f, L"Close") && f[1].checked)
+        ShellExecuteW(app.wnd, L"open", (std::wstring(L"mailto:") + about::kFeedbackAddress + L"?subject=Feather%20PDF%20" FEATHER_VERSION).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 // how often unsaved changes are copied for recovery after a crash (never: no copy)
@@ -3330,12 +3336,103 @@ void onThumbReorder(const std::vector<int>& pages, int before) {
     if (d && finishInput() && d->movePages(pages, before)) afterPagesChanged();
 }
 
+// ---- saved workspaces: a named group of open documents (tab order, page, zoom), reopened together ----
+std::wstring workspaceDir() { std::wstring s = settingsPath(); return s.substr(0, s.find_last_of(L'\\')) + L"\\workspaces"; }
+
+std::vector<std::wstring> workspaceNames() {
+    std::vector<std::wstring> out;
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW((workspaceDir() + L"\\*.ini").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do { std::wstring n = fd.cFileName; out.push_back(n.substr(0, n.size() - 4)); } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    std::sort(out.begin(), out.end(), [](const std::wstring& a, const std::wstring& b) { return _wcsicmp(a.c_str(), b.c_str()) < 0; });
+    return out;
+}
+
+void saveWorkspace() {
+    if (app.tabs.empty() || !finishInput()) return;
+    int unsaved = 0;
+    for (const auto& t : app.tabs) if (t->path().empty()) ++unsaved;
+    std::wstring name;
+    if (!askText(L"Save as a workspace", L"Name of the workspace (for example: Semester 3 Papers):", false, name) || name.empty()) return;
+    for (auto& c : name) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+    const std::wstring dir = workspaceDir(), file = dir + L"\\" + name + L".ini";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES &&
+        MessageBoxW(app.wnd, (L"A workspace named \"" + name + L"\" exists. Replace it?").c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) return;
+    DeleteFileW(file.c_str());
+    int n = 0;
+    for (size_t i = 0; i < app.tabs.size(); ++i) {
+        const Document& d = *app.tabs[i];
+        if (d.path().empty()) continue;   // a new document that was never saved has no file to reopen
+        wchar_t sec[32], v[64];
+        swprintf(sec, 32, L"tab%d", n);
+        WritePrivateProfileStringW(sec, L"path", d.path().c_str(), file.c_str());
+        swprintf(v, 64, L"%.4f", d.zoom); WritePrivateProfileStringW(sec, L"zoom", v, file.c_str());
+        WritePrivateProfileStringW(sec, L"scrollY", std::to_wstring(d.scrollY).c_str(), file.c_str());
+        WritePrivateProfileStringW(sec, L"fit", d.fitWidth ? L"1" : L"0", file.c_str());
+        if (static_cast<int>(i) == app.active) WritePrivateProfileStringW(L"meta", L"active", std::to_wstring(n).c_str(), file.c_str());
+        ++n;
+    }
+    WritePrivateProfileStringW(L"meta", L"count", std::to_wstring(n).c_str(), file.c_str());
+    std::wstring msg = L"The workspace \"" + name + L"\" was saved with " + std::to_wstring(n) + L" document(s). Open it from the \x2026 menu > Workspaces.";
+    if (unsaved) msg += L"\n\n" + std::to_wstring(unsaved) + L" new document(s) that were never saved are not in it: save them first to include them.";
+    MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+extern bool g_restoring;
+void openWorkspace(const std::wstring& name) {
+    const std::wstring file = workspaceDir() + L"\\" + name + L".ini";
+    const int count = static_cast<int>(GetPrivateProfileIntW(L"meta", L"count", 0, file.c_str()));
+    const int active = static_cast<int>(GetPrivateProfileIntW(L"meta", L"active", 0, file.c_str()));
+    std::vector<std::wstring> missing;
+    int activeTab = -1;
+    g_restoring = true;   // all as tabs of this window, whatever "Opening files" says
+    for (int i = 0; i < count; ++i) {
+        wchar_t sec[32], path[MAX_PATH * 2], z[64];
+        swprintf(sec, 32, L"tab%d", i);
+        GetPrivateProfileStringW(sec, L"path", L"", path, MAX_PATH * 2, file.c_str());
+        if (!path[0]) continue;
+        if (GetFileAttributesW(path) == INVALID_FILE_ATTRIBUTES) { missing.push_back(path); continue; }
+        openFile(path);
+        Document* d = nullptr;
+        int at = -1;
+        for (size_t k = 0; k < app.tabs.size(); ++k) if (_wcsicmp(app.tabs[k]->path().c_str(), path) == 0) { d = app.tabs[k].get(); at = static_cast<int>(k); }
+        if (!d) continue;
+        GetPrivateProfileStringW(sec, L"zoom", L"1", z, 64, file.c_str());
+        d->zoom = wcstod(z, nullptr);
+        d->scrollY = static_cast<int>(GetPrivateProfileIntW(sec, L"scrollY", 0, file.c_str()));
+        d->fitWidth = GetPrivateProfileIntW(sec, L"fit", 1, file.c_str()) != 0;
+        if (i == active) activeTab = at;
+    }
+    g_restoring = false;
+    if (activeTab < 0 && !app.tabs.empty()) activeTab = app.active;
+    if (activeTab >= 0) { setActiveDocument(nullptr); app.active = -1; switchTab(activeTab); }   // shown at its saved place
+    writeSession();
+    if (!missing.empty()) {
+        std::wstring msg = L"These files of the workspace were not found (moved, renamed or deleted):";
+        for (const auto& m : missing) msg += L"\n  " + m;
+        MessageBoxW(app.wnd, msg.c_str(), kAppName, MB_OK | MB_ICONWARNING);
+    }
+}
+
+void deleteWorkspace() {
+    const auto names = workspaceNames();
+    if (names.empty()) return;
+    std::vector<FormField> f(1);
+    f[0] = {FormField::Choice, L"Workspace:", names, L"", 0};
+    if (!showForm(app.wnd, app.inst, L"Delete a workspace", f, L"Delete")) return;
+    const std::wstring& n = names[static_cast<size_t>(std::clamp(f[0].choice, 0, static_cast<int>(names.size()) - 1))];
+    DeleteFileW((workspaceDir() + L"\\" + n + L".ini").c_str());   // only the list: the documents themselves stay
+}
+
 // ---- the main ("...") menu ----
 void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_RECENT = 100 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_RECENT = 100, MM_WORKSPACE = 400 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -3355,6 +3452,17 @@ void showMainMenu(const RECT& anchor) {
         AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(np), L"New PDF");
     }
     add(MM_NEWWINDOW, L"New window\tCtrl+N");
+    const std::vector<std::wstring> spaces = workspaceNames();
+    {
+        HMENU ws = CreatePopupMenu();
+        AppendMenuW(ws, MF_STRING | (has ? 0 : MF_GRAYED), MM_WS_SAVE, L"Save open tabs as a workspace...");
+        AppendMenuW(ws, MF_SEPARATOR, 0, nullptr);
+        for (size_t i = 0; i < spaces.size() && i < 50; ++i) AppendMenuW(ws, MF_STRING, MM_WORKSPACE + i, spaces[i].c_str());
+        if (spaces.empty()) AppendMenuW(ws, MF_STRING | MF_GRAYED, 0, L"(no workspaces yet)");
+        AppendMenuW(ws, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(ws, MF_STRING | (spaces.empty() ? MF_GRAYED : 0), MM_WS_DELETE, L"Delete a workspace...");
+        AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(ws), L"Workspaces");
+    }
     add(MM_SAVEAS, L"Save as...\tCtrl+Shift+S", has);
     add(MM_EXPORT, L"Export as pictures, text, Word or Excel...", has);
     add(MM_CLOSE, L"Close tab\tCtrl+W", has);
@@ -3414,6 +3522,8 @@ void showMainMenu(const RECT& anchor) {
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
         case MM_NEWWINDOW: launchWindow({}); break;
+        case MM_WS_SAVE: saveWorkspace(); break;
+        case MM_WS_DELETE: deleteWorkspace(); break;
         case MM_NEWTEXT: {
             wchar_t buf[MAX_PATH * 2] = L"";
             OPENFILENAMEW ofn{sizeof(ofn)};
@@ -3438,6 +3548,7 @@ void showMainMenu(const RECT& anchor) {
         default:
             if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
             else if (cmd >= MM_RECENT && cmd < MM_RECENT + 100) openRecent(static_cast<size_t>(cmd - MM_RECENT));
+            else if (cmd >= MM_WORKSPACE && cmd < MM_WORKSPACE + 50) { if (static_cast<size_t>(cmd - MM_WORKSPACE) < spaces.size()) openWorkspace(spaces[static_cast<size_t>(cmd - MM_WORKSPACE)]); }
     }
 }
 

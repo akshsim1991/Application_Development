@@ -4,12 +4,15 @@
 #import "Updater.h"
 
 void FPInstallTabMenu();   // TabMenu.mm
+void FPAddWorkspacesMenu(NSMenu* fileMenu);   // Workspaces.mm
 #import "PageView.h"
 #import "NewPdf.h"
 #import "Palette.h"
 #import "FolderSearch.h"
 #import "Settings.h"
 #import "Trace.h"
+#include "about.hpp"
+#include "platform.hpp"
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <algorithm>
 #include "buildinfo.h"
@@ -225,22 +228,27 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 // The About window, with the Windows app's words, version and build date.
 - (IBAction)showAbout:(id)sender {
-    NSString* credits =
-        @"A fast, lightweight PDF reader and editor for macOS. Read, search, print and present documents in tabs; change "
-        @"text, add comments, watermarks, page numbers, headers and footers; reorganise pages; compress, password-protect "
-        @"and export. Everything happens on your Mac, with no account, cloud service or tracking.\n\n"
-        @"Created by: Akshaya Simha\n\nCourtesy:\nVinod Kumar C S\nAthith D\nMamatha H R\n\nFree to use and share, always. No subscription, no trial, no licence key.\n"
-        @"PDF rendering by PDFium.\n\nBuilt with care for a faster, simpler document experience.";
+    // the same words as the Windows app (shared/about.hpp); the e-mail address is a link
+    const std::wstring text = about::body(L"macOS", L"your Mac") + L"\nPDF rendering by PDFium; text recognition by Apple Vision.\n\n"
+                              L"Built with care for a faster, simpler document experience.";
+    NSString* credits = [NSString stringWithUTF8String:platform::utf8(text).c_str()];
     NSMutableParagraphStyle* centred = [[NSMutableParagraphStyle alloc] init];
     centred.alignment = NSTextAlignmentCenter;
+    NSMutableAttributedString* rich = [[NSMutableAttributedString alloc] initWithString:credits attributes:@{
+        NSFontAttributeName : [NSFont systemFontOfSize:11], NSForegroundColorAttributeName : NSColor.labelColor, NSParagraphStyleAttributeName : centred}];
+    for (NSString* head in @[ @"DEVELOPMENT HISTORY", @"DEVELOPMENT AND AI CONTRIBUTIONS", @"CREDITS AND ACKNOWLEDGEMENTS", @"FEEDBACK AND SUGGESTIONS" ]) {
+        const NSRange r = [credits rangeOfString:head];
+        if (r.location != NSNotFound) [rich addAttribute:NSFontAttributeName value:[NSFont boldSystemFontOfSize:11] range:r];
+    }
+    NSString* mail = [NSString stringWithUTF8String:platform::utf8(about::kFeedbackAddress).c_str()];
+    const NSRange m = [credits rangeOfString:mail];
+    if (m.location != NSNotFound)
+        [rich addAttribute:NSLinkAttributeName value:[NSURL URLWithString:[NSString stringWithFormat:@"mailto:%@?subject=Feather%%20PDF%%20%s", mail, FEATHER_VERSION]] range:m];
     [NSApp orderFrontStandardAboutPanelWithOptions:@{
         NSAboutPanelOptionApplicationName : @"Feather PDF",
         NSAboutPanelOptionApplicationVersion : [NSString stringWithFormat:@"Version %s \u201C%s\u201D, built %@", FEATHER_VERSION, FEATHER_CODENAME, [NSString stringWithUTF8String:FEATHER_BUILD_DATE_LONG]],
         NSAboutPanelOptionVersion : @"",
-        NSAboutPanelOptionCredits : [[NSAttributedString alloc] initWithString:credits attributes:@{
-            NSFontAttributeName : [NSFont systemFontOfSize:11], NSForegroundColorAttributeName : NSColor.labelColor,
-            NSParagraphStyleAttributeName : centred
-        }]
+        NSAboutPanelOptionCredits : rich
     }];
 }
 
@@ -286,6 +294,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"New Window\u2026", @selector(newWindow:), @"n", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    FPAddWorkspacesMenu(m);
     add(m, @"Close", @selector(performClose:), @"w");
     add(m, @"Open Directory Having This File", @selector(showFileInFolder:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     add(m, @"Print\u2026", @selector(printDocument:), @"p");

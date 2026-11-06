@@ -84,10 +84,13 @@ void add(NSMenu* m, NSString* title, BOOL enabled, void (^run)(void)) {
 // ---- more windows: File > New Window, the setting "each in its own window", and a tab opened in a new window ----
 
 static NSInteger g_ownPending = 0;   // documents still to open, each in a window of its own (File > New Window)
+static NSInteger g_tabsPending = 0;  // documents still to open as tabs, whatever the setting (a workspace)
+void FPForceTabs(NSInteger count) { g_tabsPending = std::max<NSInteger>(0, count); }
 void FPOpenNextInOwnWindows(NSInteger count) { g_ownPending = std::max<NSInteger>(0, count); }
 
 // Asked by each new document window: a window of its own (YES) or a tab of the window in front.
 BOOL FPTakeOwnWindow() {
+    if (g_tabsPending > 0) { --g_tabsPending; return NO; }
     if (g_ownPending > 0) { --g_ownPending; return YES; }
     return FPOwnWindows();
 }

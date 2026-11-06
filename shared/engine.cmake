@@ -21,6 +21,7 @@ set(ENGINE_SOURCES
   ${SHARED}/access.cpp
   ${SHARED}/review.cpp
   ${SHARED}/readaloud.cpp
+  ${SHARED}/formcalc.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

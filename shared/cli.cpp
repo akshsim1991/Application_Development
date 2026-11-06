@@ -35,6 +35,7 @@
 #include "access.hpp"
 #include "review.hpp"
 #include "readaloud.hpp"
+#include "formcalc.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -177,6 +178,35 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--formcalc") {
+        // --formcalc in.pdf out.txt out.pdf : a total, checks on four fields, values typed, worked out and checked
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::wstring rep;
+        formcalc::Calc c{L"total", formcalc::Op::Sum, {L"price", L"tax"}};
+        formcalc::Rule qty{L"qty", formcalc::Kind::Range, 0, true, true, 1, 100};
+        formcalc::Rule price{L"price", formcalc::Kind::Number, 2};
+        formcalc::Rule total{L"total", formcalc::Kind::Number, 2};
+        formcalc::Rule mail{L"email", formcalc::Kind::Email};
+        formcalc::Rule date{L"date", formcalc::Kind::Date};
+        formcalc::Rule phone{L"phone", formcalc::Kind::Phone};
+        rep += L"set=" + std::to_wstring(formcalc::setCalculation(doc, c)) + std::to_wstring(formcalc::setRule(doc, qty)) + std::to_wstring(formcalc::setRule(doc, price)) +
+               std::to_wstring(formcalc::setRule(doc, total)) + std::to_wstring(formcalc::setRule(doc, mail)) + std::to_wstring(formcalc::setRule(doc, date)) +
+               std::to_wstring(formcalc::setRule(doc, phone)) + L"\n";
+        for (const auto& k : formcalc::calculations(doc)) { rep += L"calc " + k.field + L"=" + formcalc::opName(k.op); for (const auto& s2 : k.sources) rep += L" " + s2; rep += L"\n"; }
+        for (const auto& r : formcalc::rules(doc)) rep += L"rule " + r.field + L" kind=" + std::to_wstring(static_cast<int>(r.kind)) + L" dec=" + std::to_wstring(r.decimals) +
+                                                      (r.hasMin ? L" min=" + std::to_wstring(static_cast<int>(r.min)) : L"") + (r.hasMax ? L" max=" + std::to_wstring(static_cast<int>(r.max)) : L"") + L"\n";
+        formdata::setValues(doc, {{L"price", L"100.50"}, {L"tax", L"18.09"}, {L"qty", L"500"}, {L"email", L"not an address"}, {L"date", L"31/02/2026"}, {L"phone", L"+91 98450 12345"}});
+        rep += L"recalculated=" + std::to_wstring(formcalc::recalculate(doc)) + L"\n";
+        for (const auto& f : formdata::list(doc)) if (f.name == L"total") rep += L"total=" + f.value + L"\n";
+        for (const auto& pr : formcalc::problems(doc)) rep += L"problem " + pr.first + L": " + pr.second + L"\n";
+        rep += L"ok: " + formcalc::check(qty, L"42") + formcalc::check(mail, L"a@b.in") + formcalc::check(date, L"29/02/2028") + L"|\n";
+        std::vector<unsigned char> bytes;
+        if (!doc.serialize(bytes) || Document::writeFile(files[3], bytes) != SaveResult::Ok) return 4;
+        const std::string u = platform::utf8(rep);
+        return Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--readaloud") {
         // --readaloud in.pdf out.txt : the script, each word's place on its page, and sentence steps

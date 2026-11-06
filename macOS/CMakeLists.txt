@@ -35,6 +35,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/History.mm
   src/Accessibility.mm
   src/Review.mm
+  src/FormCalc.mm
   src/Palette.mm
   src/Editing.mm
   src/TableSheet.mm

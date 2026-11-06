@@ -187,6 +187,17 @@ run --readaloud "$W/version1.pdf" "$W/ra.txt"
 check "each word found on its page"  "grep -q '^Payment=1:Payment$' '$W/ra.txt' && grep -q '^Second=2:Second$' '$W/ra.txt' && grep -q '^Final=3:Final$' '$W/ra.txt'"
 check "back, here, next sentence"     "grep -q '^back=The quick|here=Payment i|next=Second pa$' '$W/ra.txt'"
 
+echo "form calculations and checks"
+run --formcalc "$W/order.pdf" "$W/fc.txt" "$W/fc.pdf"
+check "set and read back"            "grep -q '^set=1111111$' '$W/fc.txt' && grep -q '^calc total=Sum price tax$' '$W/fc.txt' && grep -q '^rule qty kind=2 dec=0 min=1 max=100$' '$W/fc.txt'"
+check "the total worked out"         "grep -q '^total=118.59$' '$W/fc.txt'"
+check "bad values found, good ones pass" "grep -q '^problem qty: Type a number from 1 to 100.$' '$W/fc.txt' && grep -q '^problem email:' '$W/fc.txt' && grep -q '^problem date: That day does not exist' '$W/fc.txt' && ! grep -q '^problem phone' '$W/fc.txt' && grep -q '^ok: |$' '$W/fc.txt'"
+check "Acrobat's own scripts and order (pikepdf)" "python3 -c \"
+import pikepdf;p=pikepdf.open('$W/fc.pdf');f={str(x.T):x for x in p.Root.AcroForm.Fields}
+assert str(f['total'].AA.C.JS)=='AFSimple_Calculate(\\\"SUM\\\", new Array(\\\"price\\\", \\\"tax\\\"));'
+assert str(f['qty'].AA.V.JS)=='AFRange_Validate(true, 1, true, 100);' and 'AFNumber_Keystroke(0' in str(f['qty'].AA.K.JS)
+assert [str(x.T) for x in p.Root.AcroForm.CO]==['total']\""
+
 echo "sensitive information"
 run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
 check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"

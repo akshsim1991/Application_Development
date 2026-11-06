@@ -409,6 +409,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Find Fields in a Flat Form", @selector(findFormFields:), nil);
     add(m, @"Fill from a Spreadsheet (CSV)\u2026", @selector(fillFromCsv:), nil);
     add(m, @"Export the Answers to Excel or CSV\u2026", @selector(exportFormAnswers:), nil);
+    add(m, @"Calculations and Checks (Totals, Numbers, Dates, E-mail)\u2026", @selector(formCalcDialog:), nil);
     add(m, @"Clear All Answers (Reset the Form)\u2026", @selector(resetForm:), nil);
     add(m, @"Flatten: Make Fields and Comments Part of the Page\u2026", @selector(flattenComments:), nil);
 

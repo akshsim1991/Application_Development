@@ -49,6 +49,7 @@
 #include "access.hpp"
 #include "review.hpp"
 #include "readaloud.hpp"
+#include "formcalc.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -183,7 +184,7 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
-std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void reviewDialog(Document& d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
+std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void reviewDialog(Document& d); void formCalcDialog(Document& d); void formCommitted(Document* d); void formStarting(Document* d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
@@ -552,7 +553,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, P_INTERLEAVE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, N_REVIEW, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, N_REVIEW, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, F_CALC, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -858,7 +859,8 @@ void openFile(const std::wstring& pathIn) {
     {   // form fields repaint the page and mark the document as modified
         Document* raw = doc.get();
         doc->onFormInvalidate = [raw](int page) { if (activeDoc() == raw) app.viewer.invalidatePage(page); };
-        doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
+        doc->onFormStart = [raw]() { formStarting(raw); };
+        doc->onFormChanged = [raw]() { formCommitted(raw); if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
     }
     addRecent(path);
     const bool badSig = std::any_of(doc->signatures().begin(), doc->signatures().end(),
@@ -947,6 +949,110 @@ bool saveDocument(Document& d, const std::wstring& path) {
     }
     MessageBoxW(app.wnd, (L"\"" + name + L"\"" + msg).c_str(), kAppName, MB_OK | MB_ICONWARNING);
     return false;
+}
+
+// ---- form calculations and checks ----
+
+// Per document: whether it has calculations or checks, and the last answers that passed them.
+struct FormLogic { bool known = false, any = false; std::map<std::wstring, std::wstring> good; };
+std::map<Document*, FormLogic> g_formLogic;
+
+// Typing into a field begins: the answers as they are now are the ones to go back to (once per document).
+void formStarting(Document* d) {
+    FormLogic& fl = g_formLogic[d];
+    if (!fl.good.empty()) return;
+    for (const auto& f : formdata::list(*d)) fl.good[f.name] = f.value;
+}
+
+// An answer was committed: a value its check refuses is put back (with the reason), then the totals are worked out again.
+void formCommitted(Document* d) {
+    static bool busy = false;   // recalculating types into fields, which comes back here
+    if (busy || !d) return;
+    FormLogic& fl = g_formLogic[d];
+    if (!fl.known) { fl.known = true; fl.any = !formcalc::calculations(*d).empty() || !formcalc::rules(*d).empty(); }
+    if (!fl.any) return;
+    busy = true;
+    std::wstring msg;
+    std::map<std::wstring, std::wstring> back;
+    std::map<std::wstring, std::wstring> now;
+    for (const auto& f : formdata::list(*d)) now[f.name] = f.value;
+    for (const auto& pr : formcalc::problems(*d)) {
+        auto it = fl.good.find(pr.first);
+        if (it != fl.good.end() && now[pr.first] == it->second) continue;   // not just typed: left as it was
+        back[pr.first] = it == fl.good.end() ? L"" : it->second;
+        msg += L"\u201C" + pr.first + L"\u201D: " + pr.second + L"\n";
+    }
+    if (!back.empty()) formdata::setValues(*d, back);
+    formcalc::recalculate(*d);
+    fl.good.clear();
+    for (const auto& f : formdata::list(*d)) fl.good[f.name] = f.value;
+    busy = false;
+    if (!msg.empty()) MessageBoxW(app.wnd, (msg + L"\nThe answer was put back as it was.").c_str(), L"Check the answer", MB_OK | MB_ICONINFORMATION);
+}
+
+void formCalcDialog(Document& d) {
+    const auto fields = formdata::list(d);
+    std::vector<std::wstring> names;
+    for (const auto& f : fields) if (f.type == FPDF_FORMFIELD_TEXTFIELD && std::find(names.begin(), names.end(), f.name) == names.end()) names.push_back(f.name);
+    if (names.empty()) { MessageBoxW(app.wnd, L"This document has no text fields. Add some first (Fillable form > Add a text field).", kAppName, MB_OK | MB_ICONINFORMATION); return; }
+    std::wstring now;
+    for (const auto& c : formcalc::calculations(d)) {
+        now += L"\u201C" + c.field + L"\u201D = " + formcalc::opName(c.op) + L" of";
+        for (const auto& s2 : c.sources) now += L" " + s2;
+        now += L"\n";
+    }
+    static const wchar_t* kinds[] = {L"", L"a number", L"a number in a range", L"a date", L"an e-mail address", L"a phone number"};
+    for (const auto& r : formcalc::rules(d)) now += L"\u201C" + r.field + L"\u201D accepts " + kinds[static_cast<int>(r.kind)] + L"\n";
+    std::vector<FormField> f(7);
+    f[0] = {FormField::Note, L"", {}, (now.empty() ? L"No calculations or checks yet." : L"Now:\n" + now) +
+                                      L"\nCalculated fields work out their value from others (a total). Checks refuse what does not fit, as it is typed. "
+                                      L"They are written as Acrobat's standard form scripts, so other PDF readers do the same."};
+    f[1] = {FormField::Choice, L"Field:", names, L"", 0};
+    f[2] = {FormField::Choice, L"It should:", {L"Accept anything (no check, no calculation)", L"Accept a number", L"Accept a number in a range", L"Accept a date",
+                                              L"Accept an e-mail address", L"Accept a phone number", L"Be the sum of other fields", L"Be the product of other fields",
+                                              L"Be the average of other fields", L"Be the smallest of other fields", L"Be the largest of other fields"}, L"", 1};
+    f[3] = {FormField::Text, L"Decimals (numbers):", {}, L"2"};
+    f[4] = {FormField::Text, L"From / to (range):", {}, L"0 / 100"};
+    f[5] = {FormField::Text, L"Date as:", {}, L"dd/mm/yyyy"};
+    f[6] = {FormField::Text, L"Of the fields (names, commas):", {}, L""};
+    if (!showForm(app.wnd, app.inst, L"Calculations and checks", f, L"Apply", [](const std::vector<FormField>& v) -> std::wstring {
+            if (v[2].choice >= 6 && v[6].text.find_first_not_of(L" ,") == std::wstring::npos) return L"Type the names of the fields to work it out from, separated by commas.";
+            return L""; })) return;
+    const std::wstring field = names[static_cast<size_t>(std::clamp(f[1].choice, 0, static_cast<int>(names.size()) - 1))];
+    const int what = f[2].choice;
+    bool ok;
+    if (what >= 6) {
+        formcalc::Calc c;
+        c.field = field;
+        c.op = static_cast<formcalc::Op>(what - 6);
+        std::wstring list = f[6].text + L",", cur;
+        for (wchar_t ch : list) {
+            if (ch == L',') { while (!cur.empty() && cur.back() == L' ') cur.pop_back(); const size_t a = cur.find_first_not_of(L' '); if (a != std::wstring::npos) c.sources.push_back(cur.substr(a)); cur.clear(); }
+            else cur += ch;
+        }
+        for (const auto& s2 : c.sources)
+            if (std::find(names.begin(), names.end(), s2) == names.end()) { MessageBoxW(app.wnd, (L"There is no text field called \u201C" + s2 + L"\u201D.").c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+        ok = formcalc::setCalculation(d, c);
+        if (ok) formcalc::recalculate(d);
+    } else {
+        formcalc::Rule r;
+        r.field = field;
+        r.kind = static_cast<formcalc::Kind>(what);
+        r.decimals = std::clamp(static_cast<int>(wcstol(f[3].text.c_str(), nullptr, 10)), 0, 6);
+        const size_t slash = f[4].text.find(L'/');
+        const std::wstring lo = f[4].text.substr(0, slash), hi = slash == std::wstring::npos ? L"" : f[4].text.substr(slash + 1);
+        r.hasMin = lo.find_first_of(L"0123456789") != std::wstring::npos;
+        r.hasMax = hi.find_first_of(L"0123456789") != std::wstring::npos;
+        r.min = wcstod(lo.c_str(), nullptr);
+        r.max = wcstod(hi.c_str(), nullptr);
+        r.dateFormat = f[5].text.empty() ? L"dd/mm/yyyy" : f[5].text;
+        ok = formcalc::setRule(d, r);
+        if (ok && what == 0) formcalc::setCalculation(d, {field, formcalc::Op::Sum, {}});   // "anything": no calculation either
+    }
+    g_formLogic[&d] = FormLogic();
+    if (!ok) { MessageBoxW(app.wnd, L"That could not be set in this document.", kAppName, MB_OK | MB_ICONWARNING); return; }
+    afterDocReplaced();
+    notice(L"Set. Save the document to keep it.");
 }
 
 // ---- comment threads and review ----
@@ -3367,6 +3473,7 @@ void toolsDispatch(int cmd) {
         case F_LIST: startFormField(Viewer::Tool::FormList); break;
         case F_DATE: startFormField(Viewer::Tool::FormDate); break;
         case F_RESET: formReset(); break;
+        case F_CALC: formCalcDialog(*d); break;
         case F_FLATTEN: flattenDocument(); break;
         default:
             if (cmd >= PX_ROT_R && cmd <= PX_PASTE) { pictureAction(cmd); break; }
@@ -3418,6 +3525,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(frm, MF_STRING | (app.tool == Viewer::Tool::FormDate ? MF_CHECKED : 0), F_DATE, L"Add a date field");
     AppendMenuW(frm, MF_STRING, F_AUTO, L"Find fields in a flat form...");
     AppendMenuW(frm, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(frm, MF_STRING, F_CALC, L"Calculations and checks (totals, numbers, dates, e-mail)...");
     AppendMenuW(frm, MF_STRING, F_RESET, L"Clear all answers (reset the form)");
     AppendMenuW(frm, MF_STRING, F_FLATTEN, L"Flatten: make fields and comments part of the page...");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(frm), L"Fillable form");
@@ -4093,7 +4201,8 @@ void showMainMenu(const RECT& anchor) {
 void addDocumentTab(std::unique_ptr<Document> doc) {
     Document* raw = doc.get();
     doc->onFormInvalidate = [raw](int page) { if (activeDoc() == raw) app.viewer.invalidatePage(page); };
-    doc->onFormChanged = [raw]() { if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
+    doc->onFormStart = [raw]() { formStarting(raw); };
+        doc->onFormChanged = [raw]() { formCommitted(raw); if (activeDoc() == raw) { refresh(); app.sidebar.refresh(); } else InvalidateRect(app.wnd, nullptr, FALSE); };
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
 }
@@ -5869,6 +5978,7 @@ void commandPalette() {
         add(L"Document properties", [] { showProperties(); });
         add(L"Attached files: open, save, add or remove", [] { attachmentsDialog(); });
         add(L"Repair a damaged PDF", [] { repairPdf(); });
+        add(L"Form: calculated fields (totals) and checks on what is typed", [] { if (Document* d = activeDoc()) formCalcDialog(*d); });
         add(L"Accessibility: check for screen readers and fix (title, language, tab order...)", [] { if (Document* d = activeDoc()) accessibilityCheck(*d); });
         add(L"Save a copy for the web (Fast Web View, linearized)", [] { if (Document* d = activeDoc()) saveForWeb(*d); });
         add(L"Layers: show or hide", [] { layersDialog(); });

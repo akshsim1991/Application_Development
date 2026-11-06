@@ -405,7 +405,11 @@ static NSImage* symbol(NSString* name, NSString* description) {
     if (!d) return;
     __weak FPWindowController* weak = self;
     d->onFormInvalidate = [weak](int page) { [weak.pageView invalidatePage:page]; };
-    d->onFormChanged = [weak]() { [(FPDocument*)weak.document changed]; };
+    d->onFormChanged = [weak]() {
+        [(FPDocument*)weak.document changed];
+        if ([weak respondsToSelector:@selector(formCommitted)]) [weak performSelector:@selector(formCommitted)];   // FormCalc.mm
+    };
+    d->onFormStart = [weak]() { if ([weak respondsToSelector:@selector(formStarting)]) [weak performSelector:@selector(formStarting)]; };
 }
 
 // ---- find: every match tinted, Return / ⌘G for the next, ⇧⌘G for the previous ----

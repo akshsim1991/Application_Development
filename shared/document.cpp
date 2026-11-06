@@ -149,6 +149,7 @@ void Document::exitForm() {
 
 void Document::formBeforeInput() {
     formSnapValid_ = serialize(formSnap_);
+    if (onFormStart) onFormStart();
 }
 
 void Document::formCommitted() {

@@ -493,3 +493,11 @@ try:
 except Exception:
     pass
 
+# an order form for calculated fields and checks on what is typed
+c = canvas.Canvas(f"{out}/order.pdf", pagesize=A4)
+y = 760
+for label, name in (("Quantity", "qty"), ("Price", "price"), ("Tax", "tax"), ("Total", "total"), ("E-mail", "email"), ("Date", "date"), ("Phone", "phone")):
+    c.drawString(72, y + 5, label + ":")
+    c.acroForm.textfield(name=name, x=180, y=y, width=200, height=20)
+    y -= 40
+c.save()

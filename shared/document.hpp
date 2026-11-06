@@ -66,6 +66,7 @@ public:
     void formBeforeInput();
     std::function<void(int page)> onFormInvalidate;   // a field changed how it looks
     std::function<void()> onFormChanged;              // a field value was committed (the document is now modified)
+    std::function<void()> onFormStart;                // the user is starting to type into (or click) a field
     int currentPageForForm = 0;
 #ifdef _WIN32
     static void setTimerWindow(void* hwnd);

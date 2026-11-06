@@ -23,6 +23,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/access.cpp
   ${SHARED}/review.cpp
   ${SHARED}/readaloud.cpp
+  ${SHARED}/formcalc.cpp
   ${SHARED}/compress.cpp
   ${SHARED}/protect.cpp
   ${SHARED}/ocr.cpp

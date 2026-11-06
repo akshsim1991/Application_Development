@@ -53,6 +53,21 @@ check "10 protected files all open with both passwords" "[ $bad -eq 0 ]"
 echo "redaction"
 run --redact "$W/rich.pdf" "$W/red.pdf" "Quarterly"; rc=$?
 check "redaction verified (exit code)" "[ $rc -eq 0 ]"
+
+echo "sensitive information"
+run --sensitive "$W/sensitive.pdf" "$W/sens.txt"; rc=$?
+check "lists without changing (exit code)" "[ $rc -eq 0 ] && grep -q '^found=10$' '$W/sens.txt'"
+for want in "E-mail address|priya.sharma@example.co.in" "E-mail address|p_s+bills@mail.example.com" "Phone number|+91 98450 12345" \
+            "Phone number|(080) 2345 6789" "Phone number|9876543210" "PAN|ABCPE1234F" "Bank account or IFSC|123456789012345" \
+            "Bank account or IFSC|SBIN0001234"; do
+  check "finds $want" "grep -qF '|$want' '$W/sens.txt'"; done
+aad="$(cat "$W/sensitive-aadhaar.txt")"
+check "finds the Aadhaar number (check digit valid)" "grep -qF 'Aadhaar number|${aad:0:4} ${aad:4:4} ${aad:8:4}' '$W/sens.txt'"
+check "second page searched too"    "grep -qF '2|E-mail address|accounts@example.org' '$W/sens.txt'"
+check "look-alikes left alone (dates, amounts, ISBN, wrong check digit, bad PAN)" "! grep -qE '2026-11|1,234|978-3|ABCDE1234F|localhost|[|]4521|[|]12345\$''$W/sens.txt' && [ \$(grep -c 'Aadhaar' '$W/sens.txt') -eq 1 ]"
+run --sensitive "$W/sensitive.pdf" "$W/sens2.txt" "$W/sens-red.pdf"; rc=$?
+check "all redacted, none left in the file" "[ $rc -eq 0 ] && grep -q 'left=0' '$W/sens2.txt'"
+check "redacted text gone (pdfminer)" "! text '$W/sens-red.pdf' | grep -qE 'priya|ABCPE|98450'"
 check "the text is gone"            "! text '$W/red.pdf' | grep -q 'Quarterly'"
 
 echo "forms"

@@ -12,6 +12,7 @@ set(ENGINE_SOURCES
   ${SHARED}/annot.cpp
   ${SHARED}/outline.cpp
   ${SHARED}/redact.cpp
+  ${SHARED}/sensitive.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp

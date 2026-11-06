@@ -11,6 +11,34 @@ out = sys.argv[1]
 os.makedirs(out, exist_ok=True)
 st = getSampleStyleSheet()
 
+# sensitive information: real-shaped values to find and look-alikes that must be left alone
+def verhoeff_digit(num):
+    d = [[0,1,2,3,4,5,6,7,8,9],[1,2,3,4,0,6,7,8,9,5],[2,3,4,0,1,7,8,9,5,6],[3,4,0,1,2,8,9,5,6,7],[4,0,1,2,3,9,5,6,7,8],
+         [5,9,8,7,6,0,4,3,2,1],[6,5,9,8,7,1,0,4,3,2],[7,6,5,9,8,2,1,0,4,3],[8,7,6,5,9,3,2,1,0,4],[9,8,7,6,5,4,3,2,1,0]]
+    pp = [[0,1,2,3,4,5,6,7,8,9],[1,5,7,6,2,8,3,0,9,4],[5,8,0,3,7,9,6,1,4,2],[8,9,1,6,0,4,3,5,2,7],[9,4,5,3,1,2,6,8,7,0],
+          [4,2,8,6,5,7,3,9,0,1],[2,7,9,3,8,0,6,4,1,5],[7,0,4,6,9,1,3,2,5,8]]
+    inv = [0,4,3,2,1,5,6,7,8,9]
+    c = 0
+    for i, ch in enumerate(reversed(num)): c = d[c][pp[(i + 1) % 8][int(ch)]]
+    return str(inv[c])
+aad = "23456789012"; aad += verhoeff_digit(aad)            # valid check digit
+bad_aad = aad[:-1] + str((int(aad[-1]) + 1) % 10)          # wrong check digit: not an Aadhaar number
+c = canvas.Canvas(f"{out}/sensitive.pdf", pagesize=A4)
+y = 800
+for line in ["Customer record",
+             "Email: priya.sharma@example.co.in, backup p_s+bills@mail.example.com",
+             "Mobile: +91 98450 12345   Office: (080) 2345 6789   Alt: 9876543210",
+             f"Aadhaar: {aad[:4]} {aad[4:8]} {aad[8:]}",
+             "PAN: ABCPE1234F",
+             "Bank account no. 123456789012345, IFSC SBIN0001234",
+             "Not sensitive: invoice 2026-11-06, amount 1,234,567.89, version 2.16.0, ISBN 978-3-16-148410-0,",
+             f"order 4521, count 12345, reference {bad_aad[:4]} {bad_aad[4:8]} {bad_aad[8:]}, code ABCDE1234F, user@localhost"]:
+    c.drawString(60, y, line); y -= 22
+c.showPage()
+c.drawString(60, 800, "Second page: write to accounts@example.org")
+c.save()
+open(f"{out}/sensitive-aadhaar.txt", "w").write(aad)
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),

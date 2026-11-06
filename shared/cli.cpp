@@ -25,6 +25,7 @@
 #include "platform.hpp"
 #include "protect.hpp"
 #include "redact.hpp"
+#include "sensitive.hpp"
 #include "sanitize.hpp"
 #include "selftest.hpp"
 #include "sign.hpp"
@@ -167,6 +168,31 @@ int run(std::vector<std::wstring> files) {
         std::vector<unsigned char> rb(rep.begin(), rep.end());
         Document::writeFile(files[2] + L".txt", rb);
         return r.found.empty() ? 0 : 5;
+    }
+    if (!files.empty() && files[0] == L"--sensitive") {
+        // --sensitive in.pdf report.txt [out.pdf] : lists e-mail, phone, Aadhaar, PAN and bank details (page|kind|text);
+        // with out.pdf, redacts them all, saves and checks that none is left
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const std::vector<sensitive::Hit> hits = sensitive::scan(doc);
+        std::wstring rep = L"found=" + std::to_wstring(hits.size()) + L"\n";
+        for (const auto& h : hits) rep += std::to_wstring(h.page + 1) + L"|" + sensitive::name(h.kind) + L"|" + h.text + L"\n";
+        int rc = 0;
+        if (files.size() >= 4 && !hits.empty()) {
+            const int marked = sensitive::mark(doc, hits);
+            std::vector<std::wstring> phrases;
+            for (const auto& h : hits) if (std::find(phrases.begin(), phrases.end(), h.text) == phrases.end()) phrases.push_back(h.text);
+            const int pages = marked ? redact::apply(doc) : 0;
+            const redact::Report r = redact::verify(doc, phrases);
+            std::vector<unsigned char> out;
+            if (!pages || !doc.serialize(out) || Document::writeFile(files[3], out) != SaveResult::Ok) return 4;
+            rep += L"marked=" + std::to_wstring(marked) + L" pages=" + std::to_wstring(pages) + L" left=" + std::to_wstring(r.found.size()) + L"\n";
+            rc = r.found.empty() ? 0 : 5;
+        }
+        const std::string u = platform::utf8(rep);
+        if (Document::writeFile(files[2], std::vector<unsigned char>(u.begin(), u.end())) != SaveResult::Ok) return 4;
+        return rc;
     }
     if (!files.empty() && files[0] == L"--batch") {   // --batch preset.ini : runs the saved preset on its folders, writes preset.ini.log
         if (files.size() < 2) return 2;

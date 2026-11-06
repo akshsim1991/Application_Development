@@ -77,7 +77,9 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
             });
         }
         // FEATHER_UI_PRESS=1: a second later, the default button of the form that opened is pressed (as the user would)
-        if (getenv("FEATHER_UI_PRESS")) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 4 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        // (FEATHER_UI_PRESS=n: n forms one after another, 4 seconds apart)
+        const int presses = getenv("FEATHER_UI_PRESS") ? std::max(1, atoi(getenv("FEATHER_UI_PRESS"))) : 0;
+        for (int press = 1; press <= presses; ++press) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, static_cast<int64_t>(4 * press) * static_cast<int64_t>(NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             NSWindow* sheet = nil;
             for (NSWindow* w in NSApp.windows) if (w.attachedSheet) { sheet = w.attachedSheet; break; }
             __block NSButton* found = nil;
@@ -446,6 +448,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(red.submenu, @"Mark Areas to Redact", @selector(chooseTool:), nil).tag = FPToolRedact;
     add(red.submenu, @"Mark Selected Text", @selector(markSelectionForRedaction:), nil);
     add(red.submenu, @"Find and Mark\u2026", @selector(findAndMarkRedaction:), nil);
+    add(red.submenu, @"Find Sensitive Information (E-mail, Phone, Aadhaar, PAN, Bank)\u2026", @selector(findSensitiveInformation:), nil);
     add(red.submenu, @"Apply Redactions\u2026", @selector(applyRedactions:), nil);
     add(red.submenu, @"Clear Marks", @selector(clearRedactionMarks:), nil);
     add(red.submenu, @"Check That the Text Is Gone\u2026", @selector(checkRedaction:), nil);

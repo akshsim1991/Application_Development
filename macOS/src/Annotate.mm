@@ -12,6 +12,8 @@
 #include "pageobjects.hpp"
 #include "platform.hpp"
 #include "redact.hpp"
+#include "sensitive.hpp"
+#import "Trace.h"
 
 using form::Field;
 using form::Fields;
@@ -315,6 +317,82 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
         const int n = redact::markText(*d, v[0].text, v[1].checked);
         [self.pageView setNeedsDisplay:YES];
         [self note:n ? std::to_wstring(n) + L" place(s) marked. Check the marks, then choose Apply Redactions." : L"The text was not found."];
+    });
+}
+
+// Finds e-mail addresses, phone numbers, Aadhaar numbers, PAN and bank details (as on Windows); the ones the user
+// keeps ticked are marked for redaction, and Apply Redactions removes them for good.
+- (IBAction)findSensitiveInformation:(id)sender {
+    Document* d = self.pdf;
+    if (!d) return;
+    const std::vector<sensitive::Kind> kinds = sensitive::kinds();
+    Fields f(kinds.size() + 1);
+    f[0] = {Field::Note, L"", {}, L"Looks through the text of every page for:"};
+    for (size_t i = 0; i < kinds.size(); ++i) {
+        f[i + 1] = {Field::Check, sensitive::name(kinds[i])};
+        f[i + 1].checked = true;
+    }
+    __weak FPWindowController* weak = self;
+    form::show(self.window, L"Find sensitive information", f, L"Find", [](const Fields& v) -> std::wstring {
+        for (size_t i = 1; i < v.size(); ++i) if (v[i].checked) return L"";
+        return L"Choose at least one kind of information to look for.";
+    }, [weak, d, kinds](const Fields& v) {
+        unsigned want = 0;   // read now: the answers go with the form
+        for (size_t i = 0; i < kinds.size(); ++i) if (v[i + 1].checked) want |= kinds[i];
+        dispatch_async(dispatch_get_main_queue(), ^{ [weak showSensitive:sensitive::scan(*d, want) in:d]; });
+    });
+}
+
+- (void)showSensitive:(std::vector<sensitive::Hit>)hits in:(Document*)d {
+    FPTrace(@"sensitive: found %d", static_cast<int>(hits.size()));
+    if (hits.empty()) {
+        [self note:L"None was found in the text of this document.\n\nScanned pages have no text to look through: recognise their text first (Tools > Recognise Text), then look again."];
+        return;
+    }
+    const std::vector<sensitive::Kind> kinds = sensitive::kinds();
+    const bool each = hits.size() <= 14;   // one check box per item when there are few; one per kind when there are many
+    std::wstring summary = L"Found " + std::to_wstring(hits.size()) + (hits.size() == 1 ? L" item:" : L" items:");
+    std::vector<sensitive::Kind> groups;
+    for (sensitive::Kind k : kinds) {
+        size_t n = 0;
+        for (const auto& h : hits) n += h.kind == k;
+        if (!n) continue;
+        summary += L" " + std::wstring(sensitive::name(k)) + L" " + std::to_wstring(n) + L";";
+        groups.push_back(k);
+    }
+    summary.back() = L'.';
+    summary += L" The ticked ones are marked for redaction. Look over the marks, then choose Apply Redactions.";
+    Fields g;
+    g.push_back({Field::Note, L"", {}, summary});
+    if (each)
+        for (const auto& h : hits) {
+            Field c{Field::Check, L"Page " + std::to_wstring(h.page + 1) + L" \u00b7 " + sensitive::name(h.kind) + L": " + h.text.substr(0, 48)};
+            c.checked = true;
+            g.push_back(c);
+        }
+    else
+        for (sensitive::Kind k : groups) {
+            size_t n = 0;
+            for (const auto& h : hits) n += h.kind == k;
+            Field c{Field::Check, std::wstring(sensitive::name(k)) + L" (" + std::to_wstring(n) + L")"};
+            c.checked = true;
+            g.push_back(c);
+        }
+    __weak FPWindowController* weak = self;
+    form::show(self.window, L"Sensitive information found", g, L"Mark for Redaction", nullptr, [weak, d, hits, each, groups](const Fields& v) {
+        std::vector<sensitive::Hit> chosen;
+        for (size_t i = 0; i < hits.size(); ++i) {
+            bool on = false;
+            if (each) on = v[i + 1].checked;
+            else for (size_t k = 0; k < groups.size(); ++k) on = on || (groups[k] == hits[i].kind && v[k + 1].checked);
+            if (on) chosen.push_back(hits[i]);
+        }
+        if (chosen.empty()) return;
+        const int n = sensitive::mark(*d, chosen);
+        FPTrace(@"sensitive: marked %d items %d boxes", static_cast<int>(chosen.size()), n);
+        FPWindowController* me = weak;
+        [me.pageView showPage:chosen.front().page];
+        [me.pageView setNeedsDisplay:YES];
     });
 }
 

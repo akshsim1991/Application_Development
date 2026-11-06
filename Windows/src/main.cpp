@@ -40,6 +40,7 @@
 #include "exporter.hpp"
 #include "speech.hpp"
 #include "redact.hpp"
+#include "sensitive.hpp"
 #include "compress.hpp"
 #include "ocr.hpp"
 #include "sign.hpp"
@@ -527,7 +528,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -2246,6 +2247,73 @@ void checkRedactionText(Document& d) {
     showRedactionReport(d, list);
 }
 
+// Finds e-mail addresses, phone numbers, Aadhaar numbers, PAN and bank details, lets the user choose which to hide,
+// and marks those for redaction (Apply redactions then removes them for good, as for any other marks).
+void findSensitive(Document& d) {
+    const auto& kinds = sensitive::kinds();
+    std::vector<FormField> f(kinds.size() + 1);
+    f[0] = {FormField::Note, L"", {}, L"Looks through the text of every page for:"};
+    for (size_t i = 0; i < kinds.size(); ++i) {
+        f[i + 1] = {FormField::Check, sensitive::name(kinds[i])};
+        f[i + 1].checked = true;
+    }
+    if (!showForm(app.wnd, app.inst, L"Find sensitive information", f, L"Find", [](const std::vector<FormField>& v) -> std::wstring {
+            for (size_t i = 1; i < v.size(); ++i) if (v[i].checked) return L"";
+            return L"Choose at least one kind of information to look for."; })) return;
+    unsigned want = 0;
+    for (size_t i = 0; i < kinds.size(); ++i) if (f[i + 1].checked) want |= kinds[i];
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const std::vector<sensitive::Hit> hits = sensitive::scan(d, want);
+    SetCursor(old);
+    if (hits.empty()) {
+        MessageBoxW(app.wnd, L"None was found in the text of this document.\n\nScanned pages have no text to look through: recognise their text first (OCR), then look again.", L"Find sensitive information", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    // one check box per item when there are few; one per kind when there are many
+    const bool each = hits.size() <= 14;
+    std::vector<FormField> g;
+    std::wstring summary = L"Found " + std::to_wstring(hits.size()) + (hits.size() == 1 ? L" item" : L" items") + L":";
+    for (sensitive::Kind k : kinds) {
+        size_t n = 0;
+        for (const auto& h : hits) n += h.kind == k;
+        if (n) summary += L"  " + std::wstring(sensitive::name(k)) + L" " + std::to_wstring(n) + L";";
+    }
+    summary.back() = L'.';
+    summary += L"\nThe ticked ones are marked for redaction. Look over the black boxes, then choose Edit PDF > Redact > Apply redactions.";
+    g.push_back({FormField::Note, L"", {}, summary});
+    std::vector<sensitive::Kind> groupKinds;
+    if (each) {
+        for (const auto& h : hits) {
+            FormField c{FormField::Check, L"Page " + std::to_wstring(h.page + 1) + L"  \u00b7  " + sensitive::name(h.kind) + L":  " + h.text.substr(0, 48)};
+            c.checked = true;
+            g.push_back(c);
+        }
+    } else {
+        for (sensitive::Kind k : kinds) {
+            size_t n = 0;
+            for (const auto& h : hits) n += h.kind == k;
+            if (!n) continue;
+            FormField c{FormField::Check, std::wstring(sensitive::name(k)) + L" (" + std::to_wstring(n) + L")"};
+            c.checked = true;
+            g.push_back(c);
+            groupKinds.push_back(k);
+        }
+    }
+    if (!showForm(app.wnd, app.inst, L"Sensitive information found", g, L"Mark for redaction")) return;
+    std::vector<sensitive::Hit> chosen;
+    for (size_t i = 0; i < hits.size(); ++i) {
+        bool on = false;
+        if (each) on = g[i + 1].checked;
+        else for (size_t k = 0; k < groupKinds.size(); ++k) on = on || (groupKinds[k] == hits[i].kind && g[k + 1].checked);
+        if (on) chosen.push_back(hits[i]);
+    }
+    if (chosen.empty()) return;
+    const int n = sensitive::mark(d, chosen);
+    app.viewer.setMarks(&d.redactions);
+    app.viewer.goToPage(chosen.front().page);
+    notice(std::to_wstring(chosen.size()) + L" item(s) marked (" + std::to_wstring(n) + L" box(es)). Check them, then choose Edit PDF > Redact > Apply redactions.");
+}
+
 void redactionMenuAction(Document& d, int cmd) {
     switch (cmd) {
         case T_RED_AREA:
@@ -2273,6 +2341,7 @@ void redactionMenuAction(Document& d, int cmd) {
             break;
         }
         case N_RED_CHECK: checkRedactionText(d); break;
+        case N_RED_SENSITIVE: findSensitive(d); break;
         case T_RED_CLEAR:
             d.redactions.clear();
             app.viewer.setMarks(&d.redactions);
@@ -2857,7 +2926,7 @@ void toolsDispatch(int cmd) {
         default:
             if (cmd >= PX_ROT_R && cmd <= PX_PASTE) { pictureAction(cmd); break; }
             if (cmd >= T_STAMP && cmd < T_STAMP + 7) { startStamp(kStampNames[cmd - T_STAMP], kStampCols[cmd - T_STAMP]); break; }
-            if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK) { redactionMenuAction(*d, cmd); break; }
+            if ((cmd >= T_RED_AREA && cmd <= T_RED_APPLY) || cmd == N_RED_CHECK || cmd == N_RED_SENSITIVE) { redactionMenuAction(*d, cmd); break; }
             if (cmd >= P_DELETE && cmd <= P_HFDELETE) { pagesMenuAction(cmd, {}); break; }
             break;
     }
@@ -2909,6 +2978,7 @@ void showToolsMenu(const RECT& anchor) {
     AppendMenuW(red, MF_STRING | (app.tool == Viewer::Tool::Redact ? MF_CHECKED : 0), T_RED_AREA, L"Mark areas to redact");
     AppendMenuW(red, MF_STRING, T_RED_SEL, L"Mark selected text");
     AppendMenuW(red, MF_STRING, T_RED_FIND, L"Find and mark...");
+    AppendMenuW(red, MF_STRING, N_RED_SENSITIVE, L"Find sensitive information (e-mail, phone, Aadhaar, PAN, bank)...");
     AppendMenuW(red, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_APPLY, L"Apply redactions...");
     AppendMenuW(red, d->redactions.empty() ? MF_GRAYED : MF_STRING, T_RED_CLEAR, L"Clear marks");
@@ -5428,6 +5498,7 @@ void commandPalette() {
         add(L"Split into several files", [] { splitPdf(); });
         add(L"Crop by drawing a box", [] { cropByBox(); });
         add(L"Check that redacted text is gone", [] { toolsDispatch(N_RED_CHECK); });
+        add(L"Find sensitive information to redact (e-mail, phone, Aadhaar, PAN, bank)", [] { toolsDispatch(N_RED_SENSITIVE); });
         add(L"Delete pages", [] { pagesMenuAction(P_DELETE, {}); });
         add(L"Insert blank page", [] { pagesMenuAction(P_BLANK, {}); });
     }

@@ -142,6 +142,29 @@ c.drawImage(f"{out}/blank-scan.png", 72, 400, 400, 300)
 c.showPage()
 c.save()
 
+# an order form for calculated fields and checks on what is typed
+c = canvas.Canvas(f"{out}/order.pdf", pagesize=A4)
+y = 760
+for label, name in (("Quantity", "qty"), ("Price", "price"), ("Tax", "tax"), ("Total", "total"), ("E-mail", "email"), ("Date", "date"), ("Phone", "phone")):
+    c.drawString(72, y + 5, label + ":")
+    c.acroForm.textfield(name=name, x=180, y=y, width=200, height=20)
+    y -= 40
+c.save()
+
+# a tagged document with a title and language, and one picture (a Figure) without alternate text
+try:
+    import pikepdf
+    with pikepdf.open(f"{out}/search.pdf") as tg:
+        tg.docinfo["/Title"] = "Search Samples"
+        tg.Root.Lang = pikepdf.String("en-US")
+        tg.Root.MarkInfo = pikepdf.Dictionary(Marked=True)
+        fig = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure))
+        par = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P))
+        tg.Root.StructTreeRoot = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot, K=[par, fig]))
+        tg.save(f"{out}/tagged.pdf")
+except Exception:
+    pass
+
 # a report with headings, a bullet list and a table (export test)
 doc = SimpleDocTemplate(f"{out}/rich.pdf", pagesize=A4)
 doc.build([Paragraph("Quarterly Report", st['Title']), Paragraph("1. Summary", st['Heading1']),
@@ -478,26 +501,3 @@ try:
         subprocess.run(["soffice", "--headless", "--convert-to", "pdf", "--outdir", out, f"{out}/qp.docx"], capture_output=True, timeout=180)
 except Exception:
     pass
-
-# a tagged document with a title and language, and one picture (a Figure) without alternate text
-try:
-    import pikepdf
-    with pikepdf.open(f"{out}/rich.pdf") as tg:
-        tg.docinfo["/Title"] = "Quarterly Report"
-        tg.Root.Lang = pikepdf.String("en-US")
-        tg.Root.MarkInfo = pikepdf.Dictionary(Marked=True)
-        fig = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.Figure))
-        par = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructElem, S=pikepdf.Name.P))
-        tg.Root.StructTreeRoot = tg.make_indirect(pikepdf.Dictionary(Type=pikepdf.Name.StructTreeRoot, K=[par, fig]))
-        tg.save(f"{out}/tagged.pdf")
-except Exception:
-    pass
-
-# an order form for calculated fields and checks on what is typed
-c = canvas.Canvas(f"{out}/order.pdf", pagesize=A4)
-y = 760
-for label, name in (("Quantity", "qty"), ("Price", "price"), ("Tax", "tax"), ("Total", "total"), ("E-mail", "email"), ("Date", "date"), ("Phone", "phone")):
-    c.drawString(72, y + 5, label + ":")
-    c.acroForm.textfield(name=name, x=180, y=y, width=200, height=20)
-    y -= 40
-c.save()

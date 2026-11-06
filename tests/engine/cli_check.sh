@@ -164,7 +164,7 @@ assert str(p.docinfo.Title)=='Annual Safety Report' and str(p.Root.Lang)=='en-GB
 assert [str(a.Contents) for pg in p.pages for a in pg.get('/Annots',[]) if a.Subtype=='/Link']==['Link to https://example.org/safety']
 assert [str(f.TU) for f in p.Root.AcroForm.Fields]==['full name'] and p.pages[0].Tabs=='/S'\""
 run --access "$W/tagged.pdf" "$W/acc2.txt"
-check "a tagged document: tags pass, a picture without a description fails" "grep -q '^tagged|passed' '$W/acc2.txt' && grep -q '^title|passed|.*Quarterly Report' '$W/acc2.txt' && grep -q '^alt|failed|1 picture has no alternate text' '$W/acc2.txt'"
+check "a tagged document: tags pass, a picture without a description fails" "grep -q '^tagged|passed' '$W/acc2.txt' && grep -q '^title|passed|.*Search Samples' '$W/acc2.txt' && grep -q '^alt|failed|1 picture has no alternate text' '$W/acc2.txt'"
 
 echo "comment threads and review"
 run --review "$W/search.pdf" "$W/rev.txt" "$W/rev.pdf"

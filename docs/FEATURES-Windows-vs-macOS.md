@@ -1,9 +1,9 @@
 # Feather PDF: Windows and macOS features
 
-Version 2.14.2 on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
+Version 2.16.0 "Mustang" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 113 of 113 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
+**macOS: 127 of 127 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -120,3 +120,17 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 111 | Tools | Auto-update: Help > Update to new version, check at start, update now or later | Yes | Yes | new on both (Windows: being checked here; Mac: being checked); needs the public releases repository |
 | 112 | Reading | Separate windows: Open in new window (tab menu), a tab dragged off the tab row, New window | Yes | Yes | Mac: macOS window tabs (Window > Merge All Windows joins them again) |
 | 113 | Reading | Setting: each file opened in its own window | Yes | Yes |  |
+| 114 | Redaction | Find sensitive information (e-mail, phone, Aadhaar, PAN, bank, IFSC) and redact it | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 115 | Search | Search options: whole words, wildcards (* ?), in comments | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 116 | Pages | Split at bookmarks, by size, every N pages; each part keeps its bookmarks | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 117 | Pages | Merge keeping bookmarks (or a bookmark per file); two-sided scans interleaved | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 118 | Comments | Comment threads: replies, Accepted / Rejected / Completed / Cancelled, review summary | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 119 | Document | Attached files (open, save, add, remove) and layers (show / hide) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 120 | Editing | Undo history panel: every step named, back or forward to any step | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 121 | Forms | Calculated fields and checks on what is typed (number, range, date, e-mail, phone) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 122 | Tools | Accessibility check and fixes, with a report | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 123 | Tools | Text compare word by word: report and marked copy | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 124 | Tools | Repair a damaged PDF; Fast Web View (linearized copy) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 125 | Annotations | Pen pressure and palm rejection | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 126 | Reading | Read aloud: spoken word highlighted, back / forward a sentence, pause, speed | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 127 | Reading | Saved workspaces (tabs, pages and zoom) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |

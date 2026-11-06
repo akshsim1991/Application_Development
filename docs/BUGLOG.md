@@ -886,3 +886,44 @@ From this version each minor version has a name of its own, shown with the numbe
   All Windows). The tab menu's "Move Tab to New Window" is now "Open in New Window", as on Windows.
 - Not across windows: "this PDF is already open" sees only the tabs of its own window.
 2.15.0 "Falcon" published; both downloads match latest.json.
+
+## Version 2.16.0 "Mustang" (both apps): 13 features
+The 13 requested features, the new About text and saved workspaces; plan and checks in docs/ROADMAP-2.16.md, the list in
+docs/CHANGELOG.md. Every engine part has command-line checks in tests/engine/cli_check.sh (run on Linux and in the Mac
+build); the Windows screens were tried on a virtual screen with Wine; the Mac screens are driven by the Mac build check.
+Not tried with real hardware here: a pen with pressure (Windows and Mac), real speech voices (Wine has none; a stand-in
+voice was used), and the Mac screens by a person.
+
+Defects found and fixed on the way:
+
+### B-058 The command palette listed "Open a file" before "Pen" for "pen"
+- **Status:** Fixed (2.16.0)
+- **Root cause:** matches were listed in menu order; an exact name had no precedence over a word containing it.
+- **Fix:** exact name first, then names starting with the words, then words starting with them, then anywhere.
+- **Verified:** typing "pen" lists Pen first (virtual screen).
+
+### B-059 Repair: the "repaired" copy still made other readers report errors
+- **Status:** Fixed (2.16.0)
+- **Root cause:** PDFium's default save appended to the damaged bytes; also a trailer entry pointed at a lost object.
+- **Fix:** a full rewrite (FPDF_NO_INCREMENTAL); a dangling /Info entry blanked without moving offsets.
+- **Verified:** poppler reads both damaged samples' repaired copies without an error (cli_check).
+
+### B-060 Form checks complained about answers the user had not touched
+- **Status:** Fixed (2.16.0)
+- **Root cause:** every field breaking its rule was reported after each answer, including values already in the file.
+- **Fix:** only an answer that changed since typing began is checked and, if refused, put back.
+- **Verified:** virtual screen: a new price accepted (total recalculated), a quantity of 900 refused and put back to 7,
+  the file's old bad values left alone.
+
+### B-061 Accessibility: links were described as "another place" although they had a web address
+- **Status:** Fixed (2.16.0)
+- **Root cause:** the key lookup found "/URI" as the value of "/S" (the action type) before the "/URI" key.
+- **Fix:** the address is the string after a "/URI" key.
+- **Verified:** cli_check: the link reads "Link to https://example.org/safety".
+
+### B-062 Mac build errors and a stuck build check
+- **Status:** Fixed (2.16.0)
+- **Root cause:** the accessibility namespace was called `access` (the POSIX function's name); two new files used the
+  page view without importing it; the repair message was a modal alert, which held up the scripted exit.
+- **Fix:** namespace `a11y`; the imports; the message as a sheet on the repaired document.
+- **Verified:** the Mac build check.

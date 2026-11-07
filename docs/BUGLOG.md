@@ -947,3 +947,5 @@ with the original colours of pictures and coloured content.
 - **Root cause:** the page shadow of the Windows viewer is light grey, made for a grey surround.
 - **Fix:** a faint dark grey edge in the blackboard modes.
 - **Verified:** Windows app screenshot under Wine.
+
+2.17.0 "Bronco" published; both downloads match latest.json.

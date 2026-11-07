@@ -1,0 +1,20 @@
+{
+ "codec": "h264",
+ "width": 540,
+ "height": 960,
+ "fps": "30/1",
+ "frames": 1800,
+ "duration": 60.0,
+ "pix_fmt": "yuv420p",
+ "audio": [
+  {
+   "codec": "aac",
+   "rate": "48000",
+   "channels": 2
+  }
+ ],
+ "decode_errors": "",
+ "narration": "SILENT placeholder track",
+ "size_mb": 8.29,
+ "file": "/home/user/Application_Development/robotics_short/exports/robotics_short_preview.mp4"
+}

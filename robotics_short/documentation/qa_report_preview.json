@@ -1,0 +1,107 @@
+{
+ "timing": [
+  {
+   "window": "0-7s",
+   "words": 16,
+   "seconds": 7.0,
+   "wps": 2.29,
+   "status": "OK"
+  },
+  {
+   "window": "7-20s",
+   "words": 29,
+   "seconds": 13.0,
+   "wps": 2.23,
+   "status": "OK"
+  },
+  {
+   "window": "20-38s",
+   "words": 40,
+   "seconds": 18.0,
+   "wps": 2.22,
+   "status": "OK"
+  },
+  {
+   "window": "38-52s",
+   "words": 31,
+   "seconds": 14.0,
+   "wps": 2.21,
+   "status": "OK"
+  },
+  {
+   "window": "52-60s",
+   "words": 23,
+   "seconds": 8.0,
+   "wps": 2.88,
+   "status": "OK"
+  }
+ ],
+ "contact_sheet": "/home/user/Application_Development/robotics_short/documentation/contact_sheet_preview.png",
+ "checks": [
+  {
+   "check": "1-3. Rotation matrices, positive directions, 90-degree transform",
+   "status": "PASS",
+   "detail": "18 numeric checks"
+  },
+  {
+   "check": "4. Mesh intersections (BVH, sampled frames)",
+   "status": "FAIL",
+   "detail": "2 overlapping pairs: T_glow/weld_bead@1620; T_nozzle/weld_web@1620"
+  },
+  {
+   "check": "Animation == kinematics (tool_frame matrix_world)",
+   "status": "PASS",
+   "detail": "max err 1.44e-06"
+  },
+  {
+   "check": "5. Camera framing: TCP inside frame and clear of panel/caption zones",
+   "status": "PASS",
+   "detail": "71 frames, outliers: "
+  },
+  {
+   "check": "6. Text readability (min size at 1080x1920 >= 30 px)",
+   "status": "PASS",
+   "detail": "min text size 30 px"
+  },
+  {
+   "check": "Captions never overlap matrix/panels",
+   "status": "PASS",
+   "detail": "0 overlaps"
+  },
+  {
+   "check": "7. Subtitles verbatim, ordered, inside script windows",
+   "status": "PASS",
+   "detail": "19 cues, timing source: nominal-placeholder"
+  },
+  {
+   "check": "Narration pace (<=3.0 words/s per block)",
+   "status": "PASS",
+   "detail": "0-7s:2.29w/s, 7-20s:2.23w/s, 20-38s:2.22w/s, 38-52s:2.21w/s, 52-60s:2.88w/s"
+  },
+  {
+   "check": "8. Lighting consistency (no luminance jumps >35% outside transitions)",
+   "status": "PASS",
+   "detail": "300 samples, mean luminance 121/255, jumps: []"
+  },
+  {
+   "check": "Rendered 3-D frame count",
+   "status": "PASS",
+   "detail": "1800/1800"
+  },
+  {
+   "check": "9. Composited frame count == 1800",
+   "status": "PASS",
+   "detail": "1800"
+  },
+  {
+   "check": "9. MP4 frame count / duration",
+   "status": "PASS",
+   "detail": "1800 frames, 60.000s, 540x960 h264 yuv420p"
+  },
+  {
+   "check": "10. Export integrity (full decode, audio track)",
+   "status": "PASS",
+   "detail": "audio=[{'codec': 'aac', 'rate': '48000', 'channels': 2}] (SILENT placeholder track)"
+  }
+ ]
+}

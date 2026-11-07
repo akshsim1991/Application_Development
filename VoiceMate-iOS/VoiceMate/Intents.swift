@@ -1,13 +1,12 @@
 import AppIntents
 
-/// "Hey Siri, ask VoiceMate" -> Siri asks "What would you like to ask?" -> answer is spoken by Siri
-/// through your headphones. Runs without opening the app.
+/// "Hey Siri, ask VoiceMate" (when Siri is triggered by the helmet button). Runs without opening the app.
 struct AskVoiceMateIntent: AppIntent {
     static var title: LocalizedStringResource = "Ask VoiceMate"
-    static var description = IntentDescription("Ask VoiceMate a question and hear the answer.")
+    static var description = IntentDescription("Ask VoiceMate for speed, location, time and more.")
     static var openAppWhenRun = false
 
-    @Parameter(title: "Question", requestValueDialog: "What would you like to ask?")
+    @Parameter(title: "Question", requestValueDialog: "What would you like to know?")
     var question: String
 
     @MainActor
@@ -17,16 +16,15 @@ struct AskVoiceMateIntent: AppIntent {
     }
 }
 
-/// "Hey Siri, talk to VoiceMate" -> opens the app and starts the headphone-mic conversation loop.
-struct StartTalkingIntent: AppIntent {
-    static var title: LocalizedStringResource = "Talk to VoiceMate"
-    static var description = IntentDescription("Open VoiceMate and start a hands-free conversation.")
+/// Hold the helmet button -> "Start ride mode": launches the app and begins always-on listening.
+struct StartRideModeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Start Ride Mode"
+    static var description = IntentDescription("Open VoiceMate and start hands-free listening.")
     static var openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        ConversationController.shared.pendingListen = true
-        ConversationController.shared.continuous = true
+        RideController.shared.pendingStart = true
         return .result()
     }
 }
@@ -34,24 +32,16 @@ struct StartTalkingIntent: AppIntent {
 struct VoiceMateShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
-            intent: AskVoiceMateIntent(),
-            phrases: [
-                "Ask \(.applicationName)",
-                "Ask \(.applicationName) a question",
-                "Question for \(.applicationName)"
-            ],
-            shortTitle: "Ask",
-            systemImageName: "questionmark.bubble"
+            intent: StartRideModeIntent(),
+            phrases: ["Start ride mode in \(.applicationName)", "Start \(.applicationName)", "Ride mode in \(.applicationName)"],
+            shortTitle: "Ride Mode",
+            systemImageName: "figure.outdoor.cycle"
         )
         AppShortcut(
-            intent: StartTalkingIntent(),
-            phrases: [
-                "Talk to \(.applicationName)",
-                "Start \(.applicationName)",
-                "Chat with \(.applicationName)"
-            ],
-            shortTitle: "Talk",
-            systemImageName: "waveform"
+            intent: AskVoiceMateIntent(),
+            phrases: ["Ask \(.applicationName)", "Ask \(.applicationName) a question"],
+            shortTitle: "Ask",
+            systemImageName: "questionmark.bubble"
         )
     }
 }

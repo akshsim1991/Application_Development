@@ -1,36 +1,35 @@
-# VoiceMate (iPhone)
+# VoiceMate (iPhone) - hands-free for riders
 
-Hands-free voice assistant that works through Bluetooth headphones (AirPods, etc.).
+Made for a Bluetooth helmet headset (e.g. BluArmor) where touching the phone is not an option.
 
-## What it does
-- **Siri → VoiceMate:** with headphones on, say *"Hey Siri, ask VoiceMate"* (Siri then asks your question and
-  speaks the answer) or *"Hey Siri, talk to VoiceMate"* (opens the app and starts a hands-free loop).
-- **In-app loop:** tap the mic; your speech is captured from the headphone mic (Speech framework), answered by
-  `Assistant`, and spoken back into the headphones (`AVSpeechSynthesizer`).
+## Why not just "Hey Siri"?
+"Hey Siri" hands-free only works through the headset mic for AirPods/Beats. Generic Bluetooth headsets need a
+button press, and iOS gives apps no way to talk to Siri. So VoiceMate listens itself.
 
-## Important limitation
-iOS gives third-party apps no API to send audio to Siri or read Siri's replies. Integration with Siri is
-one-way: Siri launches VoiceMate through App Intents. VoiceMate has its own speech-in / speech-out loop.
+## Ride Mode
+1. Pair the helmet, tap **START RIDE MODE** once (or hold the helmet button and say "Start VoiceMate").
+2. Lock the phone / put it in your pocket. The app keeps listening (background audio + location).
+3. Say the wake phrase (default **"hey rider"**), then a command, e.g. "hey rider, what's my speed".
+   Or say just the wake phrase, wait for "Yes?", then the command.
+
+Commands: speed, where am I, heading, time, battery, play, pause, next song, previous song, repeat, help.
+Calls, messages and navigation are not possible from the background: hold the helmet button for Siri.
+
+## Limits to know about
+- While the helmet mic is active, Bluetooth switches to call quality, so music sounds lower quality. This is
+  how Bluetooth headsets work (HFP) and cannot be avoided by an app.
+- Wind noise at speed will hurt recognition. Use the helmet's noise-reduced mic, say commands clearly, and
+  consider a short wake phrase. Test at low speed first. Never look at or use the phone while riding.
+- Music control works for the Apple Music / Music app only (not Spotify).
+- iOS shows the orange mic indicator and a location indicator while Ride Mode is on; battery use is high.
+  Keep the phone charging.
 
 ## Build
-Requires macOS + Xcode 15+ and [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+macOS + Xcode 15+ + XcodeGen (`brew install xcodegen`):
 
-    cd VoiceMate-iOS
-    xcodegen generate
-    open VoiceMate.xcodeproj
+    cd VoiceMate-iOS && xcodegen generate && open VoiceMate.xcodeproj
 
-Set your signing team, run on a **real iPhone** (Siri, the Bluetooth mic and speech recognition don't work
-properly in the Simulator). After first launch, the Siri phrases are available automatically; check
-Settings > Siri to make sure "Hey Siri" / "Press Side Button for Siri" is enabled.
+Set your signing team and run on a real iPhone (not the Simulator).
 
-## Customising answers
-Edit `VoiceMate/Assistant.swift`. It currently answers time, date and battery questions locally; swap in a call
-to your own backend or an LLM API for open-ended conversation.
-
-## Files
-- `AudioRoute.swift` – audio session setup for Bluetooth mic + output, route display
-- `SpeechListener.swift` – live speech recognition with silence detection
-- `Speaker.swift` – text-to-speech
-- `ConversationController.swift` – listen → answer → speak loop
-- `Intents.swift` – Siri App Intents and phrases
-- `ContentView.swift` – SwiftUI UI
+## Extending
+Add commands in `VoiceMate/Assistant.swift`.

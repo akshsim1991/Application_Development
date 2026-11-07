@@ -28,7 +28,7 @@ final class AudioRoute: ObservableObject {
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .duckOthers]
+            options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
         )
         try session.setActive(true)
         refresh()

@@ -2,12 +2,11 @@ import SwiftUI
 
 @main
 struct VoiceMateApp: App {
-    @StateObject private var controller = ConversationController.shared
+    @StateObject private var ride = RideController.shared
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environmentObject(controller)
+            ContentView().environmentObject(ride)
         }
     }
 }

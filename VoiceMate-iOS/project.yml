@@ -14,8 +14,10 @@ targets:
         CFBundleDisplayName: VoiceMate
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
-        UIBackgroundModes: [audio]
+        UIBackgroundModes: [audio, location]
         NSMicrophoneUsageDescription: VoiceMate listens through your headphones' microphone to hear your questions.
+        NSLocationWhenInUseUsageDescription: VoiceMate tells you your speed and location when you ask.
+        NSAppleMusicUsageDescription: VoiceMate controls music playback by voice.
         NSSpeechRecognitionUsageDescription: VoiceMate converts your speech to text to answer you.
     settings:
       base:

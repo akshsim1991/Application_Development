@@ -32,7 +32,9 @@ final class RideController: ObservableObject {
         }
     }
 
-    func toggle() { isRiding ? stop() : Task { await start() } }
+    func toggle() {
+        if isRiding { stop() } else { Task { await start() } }
+    }
 
     func start() async {
         guard !isRiding else { return }

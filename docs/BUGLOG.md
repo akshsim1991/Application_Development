@@ -929,3 +929,21 @@ Defects found and fixed on the way:
 - **Verified:** the Mac build check.
 
 2.16.0 "Mustang" published; both downloads match latest.json.
+
+## Version 2.17.0 "Bronco" (both apps): blackboard page colours
+
+Requested 6 November: a completely black (AMOLED) page with white text, like a blackboard, in two kinds: inverted, and
+with the original colours of pictures and coloured content.
+
+### B-063 Blackboard, original colours: a white line at the right edge of a picture
+- **Status:** Fixed (2.17.0)
+- **Root cause:** the area kept as drawn reached one pixel past the picture, so a column of white paper was left.
+- **Fix:** the kept area ends at the picture's own last pixel.
+- **Verified:** engine pixel check of the picture's four edges (paper black on both sides of each edge); Windows app
+  screenshot under Wine.
+
+### B-064 Blackboard: a light grey page shadow on the black
+- **Status:** Fixed (2.17.0)
+- **Root cause:** the page shadow of the Windows viewer is light grey, made for a grey surround.
+- **Fix:** a faint dark grey edge in the blackboard modes.
+- **Verified:** Windows app screenshot under Wine.

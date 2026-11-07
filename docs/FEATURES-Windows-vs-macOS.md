@@ -1,9 +1,9 @@
 # Feather PDF: Windows and macOS features
 
-Version 2.16.0 "Mustang" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
+Version 2.17.0 "Bronco" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
-**macOS: 127 of 127 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
+**macOS: 128 of 128 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
 
 | Sl. No. | Area | Feature | Windows | macOS | Note |
 |---:|---|---|:---:|:---:|---|
@@ -134,3 +134,4 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 125 | Annotations | Pen pressure and palm rejection | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
 | 126 | Reading | Read aloud: spoken word highlighted, back / forward a sentence, pause, speed | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
 | 127 | Reading | Saved workspaces (tabs, pages and zoom) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
+| 128 | Reading | Blackboard page colours: pure black page, white text; inverted, or with the original colours of pictures, coloured text and highlights | Yes | Yes | new in 2.17.0: checked by the engine tests (pixels), the Windows app and the Mac build check; to be tried by hand on a Mac |

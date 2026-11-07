@@ -67,11 +67,12 @@ public:
     Tool tool() const { return tool_; }
     void setStyle(COLORREF c, double widthPt) { penColor_ = c; penWidth_ = widthPt; }
 
-    enum class Colours { Normal, Dark, Dimmed };
+    enum class Colours { Normal, Dark, Dimmed, BlackboardInverted, BlackboardOriginal };   // saved as these numbers
     void setMarks(const std::vector<RedactMark>* marks);   // pending redaction marks to show (not owned)
     void setEmptyText(const std::wstring& t) { emptyText_ = t; InvalidateRect(hwnd_, nullptr, TRUE); }   // shown when no document is open
     void setColours(Colours c);          // page colour filter: normal, night mode, or softened
     Colours colours() const { return colours_; }
+    bool blackboard() const { return colours_ == Colours::BlackboardInverted || colours_ == Colours::BlackboardOriginal; }
     // How many drawn pages are kept ready in memory (more: faster paging back and forth, more memory).
     void setCacheLimit(int pages) { cacheLimit_ = pages < 2 ? 2 : pages; }
     int cacheLimit() const { return cacheLimit_; }
@@ -194,7 +195,7 @@ private:
     Colours colours_ = Colours::Normal;
     std::wstring emptyText_ = L"Open a PDF with Ctrl+O, or drop a file here.";
     const std::vector<RedactMark>* marks_ = nullptr;
-    void filterPixels(void* bits, int w, int h) const;
+    void filterPixels(void* bits, int w, int h, int page, int ox, int oy, int pw, int ph) const;
     COLORREF penColor_ = RGB(0xE5, 0x39, 0x35);
     double penWidth_ = 2;
     bool drawing_ = false;

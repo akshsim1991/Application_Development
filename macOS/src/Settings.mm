@@ -27,6 +27,8 @@ NSInteger FPPagesKept() { const NSInteger i = intPref(@"pageCache", 1); return i
 
 // The surround of the pages for each theme (Windows: the "view" colour of its palette).
 NSColor* FPThemeSurround() {
+    const NSInteger pc = intPref(@"pageColours", 0);
+    if (pc == 3 || pc == 4) return NSColor.blackColor;                             // Blackboard pages: all black
     switch (FPTheme()) {
         case 1: return [NSColor colorWithSRGBRed:0.93 green:0.94 blue:0.96 alpha:1];   // Modern Light
         case 3: return NSColor.blackColor;                                             // AMOLED Dark
@@ -139,8 +141,8 @@ static NSButton* button(NSString* title, void (^act)(void)) {
         row(@"Opening files", @"Each file in a window of its own (to see two PDFs at once, or one on each screen), or as a tab of the window already open. For Finder, Open and Open Recent alike.",
             choice(@"ownWindows", 0, @[ @"As tabs of one window", @"Each in its own window" ], nil)) ]]];
     [_tabs addTabViewItem:[self group:@"PDF Viewing" rows:@[
-        row(@"Page colours", @"Dark turns pages dark for reading at night; Dimmed softens bright white.",
-            choice(FPPageColoursKey, 0, @[ @"Normal", @"Dark (night mode)", @"Dimmed (softer white)" ], ^{
+        row(@"Page colours", @"Dark turns pages dark for reading at night; Dimmed softens bright white. Blackboard makes the page pure black (for OLED screens) with white text: Inverted turns everything into a negative, pictures included; Original colours keeps pictures, coloured text and highlights in their own colours.",
+            choice(FPPageColoursKey, 0, @[ @"Normal", @"Dark (night mode)", @"Dimmed (softer white)", @"Blackboard: inverted", @"Blackboard: original colours" ], ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:FPPageColoursChanged object:nil]; })),
         row(@"Open documents where they were last read", @"The page and zoom of the last 100 documents are remembered.", toggle(@"restorePositions", YES, nil)),
         row(@"Reading speed (read aloud)", @"How fast the Mac's voice reads.", choice(@"readingSpeed", 1, @[ @"Slow", @"Normal", @"Fast", @"Very fast" ], nil)) ]]];

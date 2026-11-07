@@ -665,7 +665,7 @@ void loadSettings() {
     app.drawColour = std::clamp(num(L"drawingColour", app.drawColour), 0, 6);
     app.widthIdx = std::clamp(num(L"lineWidth", app.widthIdx), 0, 2);
     app.readRate = std::clamp(num(L"readingSpeed", app.readRate), -10, 10);
-    app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 2)));
+    app.viewer.setColours(static_cast<Viewer::Colours>(std::clamp(num(L"pageColours", 0), 0, 4)));
     app.viewer2.setColours(app.viewer.colours());   // the second view of side by side shows pages the same way
     app.theme = std::clamp(num(L"theme", 2), 0, ThemeCount - 1);
     app.colourIcons = num(L"colourIcons", 1) != 0;
@@ -3843,7 +3843,8 @@ void showSettings(int first) {
         choice(L"Opening files", L"Each file in a window of its own (to see two PDFs at once, or one on each screen), or as a tab of the window already open. For File Explorer, Open and Open recent alike.",
                {L"As tabs of one window", L"Each in its own window"}, [] { return app.ownWindows ? 1 : 0; }, [](int i) { app.ownWindows = i == 1; })}};
     cats[SP_VIEWING] = {L"PDF Viewing", {
-        choice(L"Page colours", L"Dark turns pages dark for reading at night; Dimmed softens bright white.", {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)"},
+        choice(L"Page colours", L"Dark turns pages dark for reading at night; Dimmed softens bright white. Blackboard makes the page pure black (for AMOLED screens) with white text: Inverted turns everything into a negative, pictures included; Original colours keeps pictures, coloured text and highlights in their own colours.",
+               {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)", L"Blackboard: inverted", L"Blackboard: original colours"},
                [] { return static_cast<int>(app.viewer.colours()); },
                [](int i) { app.viewer.setColours(static_cast<Viewer::Colours>(i)); app.viewer2.setColours(static_cast<Viewer::Colours>(i)); }),
         toggle(L"Open documents where they were last read", L"The page and zoom of the last 100 documents are remembered.", app.restorePositions),
@@ -6077,6 +6078,10 @@ void commandPalette() {
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
+        static const wchar_t* const colourNames[] = {L"Page colours: normal", L"Page colours: dark (night mode)", L"Page colours: dimmed (softer white)",
+            L"Page colours: blackboard, inverted (AMOLED black)", L"Page colours: blackboard, original colours (AMOLED black)"};
+        for (int i = 0; i < 5; ++i)
+            add(colourNames[i], [i] { app.viewer.setColours(static_cast<Viewer::Colours>(i)); app.viewer2.setColours(static_cast<Viewer::Colours>(i)); saveSettings(); });
         add(L"Compare with another open tab", [] { compareDocs(); });
         add(L"Split into several files (every N pages, at bookmarks, by size)", [] { splitPdf(); });
         add(L"Merge PDFs into this document (keeping their bookmarks)", [] { pagesMenuAction(P_MERGE, {}); });

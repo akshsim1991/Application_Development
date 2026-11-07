@@ -490,8 +490,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     NSMenuItem* pageColours = add(m, @"Page Colours", nil, nil);
     pageColours.submenu = [[NSMenu alloc] initWithTitle:@"Page Colours"];
-    NSString* names[] = {@"Normal", @"Dark (night mode)", @"Dimmed (softer white)"};
-    for (int i = 0; i < 3; ++i) {
+    NSString* names[] = {@"Normal", @"Dark (night mode)", @"Dimmed (softer white)", @"Blackboard: Inverted", @"Blackboard: Original Colours"};
+    for (int i = 0; i < 5; ++i) {
         NSMenuItem* c = add(pageColours.submenu, names[i], @selector(setPageColours:), nil);
         c.tag = i;
         c.target = self;

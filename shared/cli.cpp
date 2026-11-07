@@ -41,6 +41,7 @@
 #include "sign.hpp"
 #include "textpdf.hpp"
 #include "visualdiff.hpp"
+#include "pagecolours.hpp"
 
 namespace cli {
 namespace {
@@ -563,6 +564,32 @@ int run(std::vector<std::wstring> files) {
         std::string rep = "ok=" + std::to_string(r.ok) + " pixels=" + std::to_string(r.differingPixels) + "\n";
         Document::writeFile(files[3] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         return r.ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--pagecolours") {   // --pagecolours in.pdf out.ppm normal|dark|dimmed|blackboard|blackboard-original : page 1 at 2x, as shown
+        if (files.size() < 4) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        using M = pagecolours::Mode;
+        const std::wstring& n = files[3];
+        const M m = n == L"dark" ? M::Dark : n == L"dimmed" ? M::Dimmed : n == L"blackboard" ? M::BlackboardInverted
+                  : n == L"blackboard-original" ? M::BlackboardOriginal : M::Normal;
+        const auto& api = pdfium::api();
+        const int w = static_cast<int>(doc.pageSize(0).w * 2), h = static_cast<int>(doc.pageSize(0).h * 2);
+        std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4);
+        FPDF_BITMAP fb = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, px.data(), w * 4);
+        if (!fb) return 4;
+        api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
+        doc.renderPage(0, fb, 0, 0, w, h);
+        api.FPDFBitmap_Destroy(fb);
+        std::vector<pagecolours::Box> keep;
+        if (m == M::BlackboardOriginal) keep = pagecolours::pictureBoxes(doc, 0, 0, 0, w, h);
+        pagecolours::apply(m, px.data(), w, h, w * 4, keep);
+        const std::string head = "P6\n" + std::to_string(w) + " " + std::to_string(h) + "\n255\n";
+        std::vector<unsigned char> out(head.begin(), head.end());
+        for (size_t i = 0; i < px.size(); i += 4) { out.push_back(px[i + 2]); out.push_back(px[i + 1]); out.push_back(px[i]); }
+        std::string rep = "pictures=" + std::to_string(keep.size()) + "\n";
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--topdf") {   // --topdf in.txt|in.md out.pdf
         if (files.size() < 3) return 2;

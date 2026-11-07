@@ -14,7 +14,9 @@ CGImageRef FPRenderPage(Document& doc, int page, int pw, int ph, int rx, int ry,
     api.FPDFBitmap_FillRect(bmp, 0, 0, rw, rh, 0xFFFFFFFF);
     doc.renderPage(page, bmp, -rx, -ry, pw, ph);
     api.FPDFBitmap_Destroy(bmp);
-    pagecolours::apply(colours, buf.data(), rw, rh, stride);
+    std::vector<pagecolours::Box> keep;   // Blackboard with original colours: the pictures stay as drawn
+    if (colours == pagecolours::Mode::BlackboardOriginal) keep = pagecolours::pictureBoxes(doc, page, -rx, -ry, pw, ph);
+    pagecolours::apply(colours, buf.data(), rw, rh, stride, keep);
     // PDFium's BGRx is, read as a little-endian 32-bit number, xRGB: "skip first" in Core Graphics' words.
     CGColorSpaceRef cs = CGColorSpaceCreateWithName(kCGColorSpaceSRGB);
     CGContextRef ctx = CGBitmapContextCreate(buf.data(), rw, rh, 8, stride, cs,

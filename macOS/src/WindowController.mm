@@ -24,7 +24,8 @@ static const double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
 
 static pagecolours::Mode savedColours() {
     const NSInteger c = [[NSUserDefaults standardUserDefaults] integerForKey:FPPageColoursKey];
-    return c == 1 ? pagecolours::Mode::Dark : c == 2 ? pagecolours::Mode::Dimmed : pagecolours::Mode::Normal;
+    return c == 1 ? pagecolours::Mode::Dark : c == 2 ? pagecolours::Mode::Dimmed : c == 3 ? pagecolours::Mode::BlackboardInverted
+         : c == 4 ? pagecolours::Mode::BlackboardOriginal : pagecolours::Mode::Normal;
 }
 
 NSString* const FPSidebarShownKey = @"sidebarShown";
@@ -603,6 +604,8 @@ static NSString* const kFindOptions[] = {@"findMatchCase", @"findWholeWord", @"f
 - (void)coloursChanged:(NSNotification*)n {
     _view.colours = savedColours();
     _sidebar.colours = savedColours();
+    _view.enclosingScrollView.backgroundColor = FPThemeSurround();   // black around Blackboard pages
+    [_view setNeedsDisplay:YES];
 }
 
 // ---- menu commands (View and Go menus) ----

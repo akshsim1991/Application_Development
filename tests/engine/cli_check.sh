@@ -418,5 +418,32 @@ check "lists the fonts, not embedded" "grep -q \$'^Helvetica\tType 1\tno' '$W/fo
 run --annottest "$W/rich.pdf" "$W/shapes.pdf"
 check "polygon, cloud and callout"  "python3 -c \"import pikepdf;p=pikepdf.open('$W/shapes.pdf');assert len(p.pages[0].Annots)==3\""
 
+echo "page colours: blackboard (AMOLED black)"
+python3 - "$W" <<'PY'
+import sys
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from PIL import Image
+d=sys.argv[1]
+im=Image.new("RGB",(100,100),(30,120,200)); im.save(d+"/bb_pic.png")
+c=canvas.Canvas(d+"/bb.pdf",pagesize=(400,300))
+c.setFillColorRGB(0,0,0); c.rect(20,240,80,30,fill=1,stroke=0)          # black "text" block
+c.setFillColorRGB(0.85,0.1,0.1); c.rect(120,240,80,30,fill=1,stroke=0)  # red text
+c.setFillColorRGB(1,1,0.5); c.rect(220,240,80,30,fill=1,stroke=0)       # a light yellow highlight
+c.drawImage(ImageReader(d+"/bb_pic.png"),50,50,width=100,height=100)
+c.save()
+PY
+run --pagecolours "$W/bb.pdf" "$W/bb_inv.ppm" blackboard
+run --pagecolours "$W/bb.pdf" "$W/bb_orig.ppm" blackboard-original
+pix() { python3 -c "from PIL import Image;print(*Image.open('$1').getpixel(($2,$3)))"; }   # at 2x: (x*2, (300-y)*2)
+check "inverted: paper pure black"        "[ \"\$(pix $W/bb_inv.ppm 700 20)\" = '0 0 0' ]"
+check "inverted: black text white"        "[ \"\$(pix $W/bb_inv.ppm 120 90)\" = '255 255 255' ]"
+check "inverted: picture inverted"        "[ \"\$(pix $W/bb_inv.ppm 200 400)\" = '225 135 55' ]"
+check "original: paper pure black"        "[ \"\$(pix $W/bb_orig.ppm 700 20)\" = '0 0 0' ]"
+check "original: black text white"        "[ \"\$(pix $W/bb_orig.ppm 120 90)\" = '255 255 255' ]"
+check "original: red stays red"           "python3 -c \"from PIL import Image;r,g,b=Image.open('$W/bb_orig.ppm').getpixel((320,90));assert r>200 and g<60 and b<60\""
+check "original: picture as it is"        "[ \"\$(pix $W/bb_orig.ppm 200 400)\" = '30 120 200' ] && grep -q pictures=1 '$W/bb_orig.ppm.txt'"
+check "original: highlight a dark tint"   "python3 -c \"from PIL import Image;r,g,b=Image.open('$W/bb_orig.ppm').getpixel((520,90));assert 100<r<160 and 100<g<160 and b<10\""
+
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

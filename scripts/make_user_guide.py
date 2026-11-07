@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.16.0"
+VERSION = "2.17.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -343,7 +343,7 @@ story += [table([["Group", "What is there"],
                                 "Colourful toolbar icons (on: each icon in its own colour). Random tab colours (on: each new tab gets a colour of its own and keeps it until it is closed)."],
                  ["Tabs", "Show tab numbers (\u201c1. Report.pdf\u201d; the numbers follow when tabs are opened, closed or dragged). "
                           "What happens when a PDF that is already open is opened again: ask first, or go to its tab."],
-                 ["PDF Viewing", "Page colours (normal, dark for night reading, dimmed), opening documents where they were last read, reading speed of Read aloud."],
+                 ["PDF Viewing", "Page colours (normal, dark for night reading, dimmed, blackboard: pure black inverted or with the original colours), opening documents where they were last read, reading speed of Read aloud."],
                  ["Editing", "Highlight colour, drawing colour and line width."],
                  ["Performance", "How many drawn pages are kept ready in memory, and how often unsaved changes are copied for recovery after a crash."],
                  ["Advanced", "Set as the default PDF application (opens Windows' Default apps), clear the recent files, open the settings folder, reset all settings."]],
@@ -450,6 +450,10 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.17 \u201cBronco\u201d", "h2")]
+story += bullets([
+    "<b>Blackboard page colours</b> (Settings > PDF Viewing > Page colours; also in the command palette): the page pure black, as an OLED screen shows it switched off, with white text. <b>Inverted</b> turns everything into a negative, pictures included. <b>Original colours</b> keeps pictures, coloured text and highlights in their own colours; a scanned page turns black like any other.",
+])
 story += [P("New in 2.16 \u201cMustang\u201d", "h2")]
 story += bullets([
     "<b>Find sensitive information</b> (Edit PDF > Redact): e-mail addresses, phone numbers, Aadhaar, PAN and bank details. Untick what should stay; the rest is marked for redaction.",
@@ -474,7 +478,7 @@ features = [
     ("Reading", ["Tabs and one window for every launch", "Single page, continuous and two-page layouts", "Zoom, fit width, fit page, actual size",
                  "Go to page, back and forward", "Bookmarks panel and page thumbnails", "Search with every match highlighted",
                  "Search all PDFs in a folder", "Text selection and copy", "Clickable links", "Seven themes, including AMOLED Dark, Midnight Blue and Graphite",
-                 "Dark and dimmed page colours", "Full screen and presentation mode", "Read aloud", "Remembered reading position",
+                 "Dark, dimmed and blackboard (pure black) page colours", "Full screen and presentation mode", "Read aloud", "Remembered reading position",
                  "Password-protected files", "Command palette (Ctrl+K)"]),
     ("Annotating", ["Highlight, underline, strikethrough, squiggly", "Comments on text and sticky notes", "Rectangle, ellipse, line, arrow, pen",
                     "Polygon, cloud and callout", "Stamps, date stamps and custom stamps", "Handwritten signatures", "Links",

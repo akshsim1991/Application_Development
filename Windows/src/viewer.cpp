@@ -371,7 +371,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
             api.FPDFBitmap_FillRect(fb, 0, 0, w, h, 0xFFFFFFFF);
             if (pg) doc_->renderPage(page, fb, 0, 0, w, h);
             api.FPDFBitmap_Destroy(fb);
-            filterPixels(bits, w, h);
+            filterPixels(bits, w, h, page, 0, 0, w, h);
             it = cache_.emplace(page, Cached{bmp, w, h, doc_->zoom, doc_->revision()}).first;
         }
         HDC mem = CreateCompatibleDC(dc);
@@ -392,7 +392,7 @@ void Viewer::drawPage(HDC dc, int page, int x, int y, int w, int h, const RECT& 
         api.FPDFBitmap_FillRect(fb, 0, 0, sw, sh, 0xFFFFFFFF);
         if (pg) doc_->renderPage(page, fb, x - vis.left, y - vis.top, w, h);
         api.FPDFBitmap_Destroy(fb);
-        filterPixels(bits, sw, sh);
+        filterPixels(bits, sw, sh, page, x - vis.left, y - vis.top, w, h);
         HDC mem = CreateCompatibleDC(dc);
         HGDIOBJ old = SelectObject(mem, bmp);
         BitBlt(dc, vis.left, vis.top, sw, sh, mem, 0, 0, SRCCOPY);
@@ -804,10 +804,17 @@ void Viewer::setColours(Colours cl) {
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
-// Night mode and dimmed pages (shared/pagecolours.hpp, the same on the Mac). The bitmaps here are packed (stride w * 4).
-void Viewer::filterPixels(void* bits, int w, int h) const {
-    pagecolours::apply(colours_ == Colours::Dark ? pagecolours::Mode::Dark : colours_ == Colours::Dimmed ? pagecolours::Mode::Dimmed
-                       : pagecolours::Mode::Normal, bits, w, h, w * 4);
+// Night mode, dimmed and blackboard pages (shared/pagecolours.hpp, the same on the Mac). The bitmaps here are packed
+// (stride w * 4); the page is drawn at (ox, oy) with size (pw, ph). Blackboard with original colours leaves the pictures
+// of the page as they are.
+void Viewer::filterPixels(void* bits, int w, int h, int page, int ox, int oy, int pw, int ph) const {
+    using M = pagecolours::Mode;
+    const M m = colours_ == Colours::Dark ? M::Dark : colours_ == Colours::Dimmed ? M::Dimmed
+              : colours_ == Colours::BlackboardInverted ? M::BlackboardInverted
+              : colours_ == Colours::BlackboardOriginal ? M::BlackboardOriginal : M::Normal;
+    std::vector<pagecolours::Box> keep;
+    if (m == M::BlackboardOriginal && doc_) keep = pagecolours::pictureBoxes(*doc_, page, ox, oy, pw, ph);
+    pagecolours::apply(m, bits, w, h, w * 4, keep);
 }
 
 void Viewer::setTool(Tool t) {
@@ -993,7 +1000,7 @@ void Viewer::onPaint() {
     PaintBuf buf(screenDc, rc, ps.rcPaint);
     HDC dc = buf.dc;
 
-    HBRUSH bg = CreateSolidBrush(pal().dark || colours_ == Colours::Dark ? pal().view : RGB(0xE8, 0xE8, 0xE8));
+    HBRUSH bg = CreateSolidBrush(blackboard() ? RGB(0, 0, 0) : pal().dark || colours_ == Colours::Dark ? pal().view : RGB(0xE8, 0xE8, 0xE8));
     FillRect(dc, &ps.rcPaint, bg);
     DeleteObject(bg);
 
@@ -1015,7 +1022,7 @@ void Viewer::onPaint() {
             if (y + heights_[i] < ps.rcPaint.top) continue;
             if (y > ps.rcPaint.bottom) break;
             RECT shadow{x + 2, y + 2, x + widths_[i] + 2, y + heights_[i] + 2};
-            HBRUSH sb = CreateSolidBrush(RGB(0xC8, 0xC8, 0xC8));
+            HBRUSH sb = CreateSolidBrush(blackboard() ? RGB(0x26, 0x26, 0x26) : RGB(0xC8, 0xC8, 0xC8));   // on black: a faint edge
             FillRect(dc, &shadow, sb);
             DeleteObject(sb);
             drawPage(dc, static_cast<int>(i), x, y, widths_[i], heights_[i], ps.rcPaint);

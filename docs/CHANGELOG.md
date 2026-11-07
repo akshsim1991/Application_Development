@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.17.0 "Bronco" (7 November 2026)
+
+- **Blackboard page colours**, in both apps: the page pure black (#000000, so an OLED screen shows those pixels
+  switched off) with white text. Two choices:
+  - **Inverted**: everything as a negative, pictures and colours included.
+  - **Original colours**: only the paper and black or grey text change; pictures stay exactly as they are, and red
+    text stays red, blue stays blue. A highlight behind text becomes a darker tint of its colour, with white text on
+    it. A scanned page (one picture over the whole page) turns black like any other page.
+
+  Windows: Settings > PDF Viewing > Page colours, or the command palette (Ctrl+K, "Page colours"). Mac: View > Page
+  Colours, or Settings. The space around the pages turns black too.
+
 ## 2.16.0 "Mustang" (6 November 2026)
 
 Thirteen new features, in both apps (Windows and Mac):

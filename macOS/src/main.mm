@@ -44,7 +44,9 @@ static int renderCommand(const std::vector<std::string>& a) {
     if (page < 0 || page >= doc.pageCount()) return 5;
     const double zoom = a.size() > 4 ? std::atof(a[4].c_str()) : 1.0;
     const pagecolours::Mode mode = a.size() > 5 && a[5] == "dark" ? pagecolours::Mode::Dark
-                                 : a.size() > 5 && a[5] == "dimmed" ? pagecolours::Mode::Dimmed : pagecolours::Mode::Normal;
+                                 : a.size() > 5 && a[5] == "dimmed" ? pagecolours::Mode::Dimmed
+                                 : a.size() > 5 && a[5] == "blackboard" ? pagecolours::Mode::BlackboardInverted
+                                 : a.size() > 5 && a[5] == "blackboard-original" ? pagecolours::Mode::BlackboardOriginal : pagecolours::Mode::Normal;
     const int w = static_cast<int>(std::lround(doc.pageSize(page).w * zoom));
     const int h = static_cast<int>(std::lround(doc.pageSize(page).h * zoom));
     CGImageRef img = FPRenderPage(doc, page, w, h, 0, 0, w, h, mode);

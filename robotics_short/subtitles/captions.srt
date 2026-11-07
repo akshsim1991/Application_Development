@@ -1,0 +1,76 @@
+1
+00:00:00,000 --> 00:00:03,570
+Have you ever wondered how an industrial robot
+
+2
+00:00:03,571 --> 00:00:06,999
+knows exactly which way to turn its gripper?
+
+3
+00:00:07,000 --> 00:00:11,930
+In robotics, orientation describes which way a tool is facing.
+
+4
+00:00:11,931 --> 00:00:14,321
+We can rotate it about three
+
+5
+00:00:14,322 --> 00:00:16,786
+coordinate axes: X, Y, and Z.
+
+6
+00:00:16,787 --> 00:00:19,999
+Each rotation is described by an angle.
+
+7
+00:00:20,000 --> 00:00:23,991
+But how do we represent these rotations mathematically?
+
+8
+00:00:23,992 --> 00:00:26,901
+That’s where rotation matrices come in!
+
+9
+00:00:26,902 --> 00:00:29,676
+A rotation matrix is a three-by-three
+
+10
+00:00:29,677 --> 00:00:32,653
+matrix containing sine and cosine terms.
+
+11
+00:00:32,654 --> 00:00:34,886
+It allows us to calculate how
+
+12
+00:00:34,887 --> 00:00:37,999
+coordinates change when an object rotates.
+
+13
+00:00:38,000 --> 00:00:41,059
+For example, when a robotic gripper rotates
+
+14
+00:00:41,060 --> 00:00:44,055
+ninety degrees about the Z-axis, its local
+
+15
+00:00:44,056 --> 00:00:47,832
+X-axis points along the original positive Y-direction.
+
+16
+00:00:47,833 --> 00:00:51,999
+The rotation matrix describes this transformation precisely.
+
+17
+00:00:52,000 --> 00:00:54,572
+And that’s how industrial robots can calculate tool
+
+18
+00:00:54,573 --> 00:00:58,221
+orientations for precise assembly, welding, and pick-and-place operations.
+
+19
+00:00:58,222 --> 00:00:59,999
+Follow for more robotics concepts!
+

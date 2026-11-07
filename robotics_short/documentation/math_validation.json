@@ -1,0 +1,119 @@
+{
+  "all_passed": true,
+  "checks": [
+    {
+      "check": "Rz(theta) matches printed matrix for 97 angles",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Rx orthonormal, det=+1 (right-handed)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Ry orthonormal, det=+1 (right-handed)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Rz orthonormal, det=+1 (right-handed)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Right-hand rule Rx(90): Y->Z",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Right-hand rule Ry(90): Z->X",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Right-hand rule Rz(90): X->Y",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Rz(90) == [[0,-1,0],[1,0,0],[0,0,1]]",
+      "passed": true,
+      "detail": [
+        [
+          0.0,
+          -1.0,
+          0.0
+        ],
+        [
+          1.0,
+          0.0,
+          0.0
+        ],
+        [
+          0.0,
+          0.0,
+          1.0
+        ]
+      ]
+    },
+    {
+      "check": "Rz(90) x [1,0,0]^T == [0,1,0]^T",
+      "passed": true,
+      "detail": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "check": "CCW viewed from +Z: atan2(y,x) of rotated X equals +theta",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "IK reproduces commanded tool pose on all 1800 frames (<1e-5)",
+      "passed": true,
+      "detail": "worst=2.00e-06"
+    },
+    {
+      "check": "FK(joints) == commanded pose (every 7th frame)",
+      "passed": true,
+      "detail": "max=1.44e-06"
+    },
+    {
+      "check": "Scene 4: tool local X at end of rotation == world +Y",
+      "passed": true,
+      "detail": [
+        0.0,
+        1.0,
+        0.0
+      ]
+    },
+    {
+      "check": "Scene 4: tool local X before rotation == world +X",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Scene 4: theta_z(end) == 90 deg exactly",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Orientation at frame 0 and 1799 is identity (loop)",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Scene 2: each frame is identity or a single-axis rotation",
+      "passed": true,
+      "detail": ""
+    },
+    {
+      "check": "Scene 2: tool reset to identity between demos",
+      "passed": true,
+      "detail": ""
+    }
+  ]
+}

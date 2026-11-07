@@ -1,0 +1,7 @@
+renders/
+exports/*.mp4
+scenes/*.blend
+scenes/*.blend1
+scenes/trajectory.npz
+audio/*_raw.wav
+__pycache__/

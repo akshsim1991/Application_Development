@@ -1,0 +1,25 @@
+name: VoiceMate
+options:
+  bundleIdPrefix: com.akshayasimha
+  deploymentTarget:
+    iOS: "17.0"
+targets:
+  VoiceMate:
+    type: application
+    platform: iOS
+    sources: [VoiceMate]
+    info:
+      path: VoiceMate/Info.plist
+      properties:
+        CFBundleDisplayName: VoiceMate
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIBackgroundModes: [audio]
+        NSMicrophoneUsageDescription: VoiceMate listens through your headphones' microphone to hear your questions.
+        NSSpeechRecognitionUsageDescription: VoiceMate converts your speech to text to answer you.
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.akshayasimha.voicemate
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        CODE_SIGN_STYLE: Automatic

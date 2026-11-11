@@ -1051,3 +1051,5 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
 - **Verified:** under Wine: the check takes 0.1 s; with the other two servers made 20 seconds late (a test switch),
   the answer still comes in under a second. Not tried here: an answer from jsDelivr or GitHub's API (this cloud
   machine cannot reach jsDelivr, and GitHub's API limit for its shared address was used up).
+
+2.19.0 "Endeavour" published; both downloads match latest.json.

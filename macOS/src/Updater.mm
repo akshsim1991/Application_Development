@@ -1,4 +1,5 @@
 #import "Updater.h"
+#include <algorithm>
 #include <string>
 #include <vector>
 #include "platform.hpp"
@@ -49,17 +50,45 @@ static NSURLRequest* requestFor(const update::Source& src) {
     return q;
 }
 
-// Fetches the first place of `list` (from `at`) that answers 200; `done(data, why)` on the main queue, why = "" on success.
-static void fetchFirst(std::vector<update::Source> list, size_t at, NSString* tried, void (^done)(NSData*, NSString*, NSInteger)) {
-    if (at >= list.size()) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, tried, 0); }); return; }
-    const update::Source src = list[at];
-    [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
-        const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
-        if (data && !err && status == 200) { dispatch_async(dispatch_get_main_queue(), ^{ done(data, @"", 200); }); return; }
-        if (at == 0 && !err && status == 404) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, @"", 404); }); return; }   // nothing published
-        NSString* why = err ? err.localizedDescription : [NSString stringWithFormat:@"the server answered with an error (%ld)", (long)status];
-        fetchFirst(list, at + 1, [tried stringByAppendingFormat:@"\n  %@: %@", ns(src.host), why], done);
-    }] resume];
+// Every place of `list` asked at the same moment; the first good answer from raw.githubusercontent.com or GitHub's API
+// is taken, jsDelivr's (which can be a few hours behind) once neither has answered within two seconds more.
+// `done(data, why, status, via)` on the main queue: data nil when none answered (why lists each), status 404 when
+// nothing is published.
+static void fetchFastest(std::vector<update::Source> list, void (^done)(NSData*, NSString*, NSInteger, NSString*)) {
+    const size_t n = list.size();
+    NSMutableArray* results = [NSMutableArray array];   // per place: NSNull waiting, NSData good, NSString why
+    for (size_t i = 0; i < n; ++i) [results addObject:[NSNull null]];
+    __block BOOL finished = NO;
+    __block NSInteger firstStatus = 0;
+    void (^decide)(BOOL) = ^(BOOL timeUp) {
+        if (finished) return;
+        int fresh = -1, any = -1; BOOL waiting = NO;
+        for (size_t i = 0; i < n; ++i) {
+            id r = results[i];
+            if (r == [NSNull null]) waiting = YES;
+            else if ([r isKindOfClass:[NSData class]]) { if (any < 0) any = static_cast<int>(i); if (fresh < 0 && list[i].host != "cdn.jsdelivr.net") fresh = static_cast<int>(i); }
+        }
+        const int pick = fresh >= 0 ? fresh : (any >= 0 && (timeUp || !waiting) ? any : -1);
+        if (pick >= 0) { finished = YES; done(results[pick], @"", 200, ns(list[pick].host)); return; }
+        if (waiting) return;
+        finished = YES;
+        NSMutableString* why = [NSMutableString string];
+        for (size_t i = 0; i < n; ++i) [why appendFormat:@"\n  %@: %@", ns(list[i].host), results[i]];
+        done(nil, why, firstStatus == 404 ? 404 : 0, nil);
+    };
+    for (size_t i = 0; i < n; ++i) {
+        const update::Source src = list[i];
+        [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
+            const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (i == 0) firstStatus = status;
+                results[i] = data && !err && status == 200 ? data : (id)(err ? err.localizedDescription : [NSString stringWithFormat:@"the server answered with an error (%ld)", (long)status]);
+                const BOOL gotStale = [results[i] isKindOfClass:[NSData class]] && src.host == "cdn.jsdelivr.net";
+                decide(NO);
+                if (gotStale) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ decide(YES); });
+            });
+        }] resume];
+    }
 }
 
 // Where the update script leaves a note when the new version could not be put in place (read at the next start).
@@ -104,11 +133,13 @@ static BOOL installAndRestart(NSString* dmg) {
     return [t launchAndReturnError:&e];
 }
 
-static void downloadAndInstall(const update::Release& r) {
+static void downloadAndInstall(const update::Release& r, NSString* via) {
     FPUpdateProgress* progress = [[FPUpdateProgress alloc] initWithText:[NSString stringWithFormat:@"Downloading Feather PDF %@…", ns(r.version)]];
     [progress showWindow:nil];
     const std::string sha = r.mac.sha256, version = r.version;
-    const std::vector<update::Source> list = update::sources(r.mac.url);
+    std::vector<update::Source> list = update::sources(r.mac.url);
+    const std::string prefer = via ? std::string(via.UTF8String) : std::string();   // the server that gave the version file first
+    std::stable_partition(list.begin(), list.end(), [&](const update::Source& x) { return !prefer.empty() && x.host == prefer; });
     __block size_t at = 0;
     __block NSString* tried = @"";
     __block void (^attempt)(void) = nil;
@@ -158,7 +189,7 @@ static void downloadAndInstall(const update::Release& r) {
     tryOne();
 }
 
-static void offer(const update::Release& r, BOOL manual) {
+static void offer(const update::Release& r, BOOL manual, NSString* via) {
     NSString* version = ns(r.version);
     if (!manual && [[[NSUserDefaults standardUserDefaults] stringForKey:kSkipKey] isEqualToString:version]) return;
     NSAlert* a = [[NSAlert alloc] init];
@@ -175,12 +206,12 @@ static void offer(const update::Release& r, BOOL manual) {
     a.suppressionButton.title = @"Do not remind me about this version";
     const NSModalResponse resp = [a runModal];
     if (a.suppressionButton.state == NSControlStateValueOn) [[NSUserDefaults standardUserDefaults] setObject:version forKey:kSkipKey];
-    if (resp == NSAlertFirstButtonReturn) downloadAndInstall(r);
+    if (resp == NSAlertFirstButtonReturn) downloadAndInstall(r, via);
 }
 
 void FPCheckForUpdates(BOOL manual) {
     // the version file from the first place that answers (some networks block raw.githubusercontent.com)
-    fetchFirst(update::sources(update::kLatestUrl), 0, @"", ^(NSData* data, NSString* tried, NSInteger status) {
+    fetchFastest(update::sources(update::kLatestUrl), ^(NSData* data, NSString* tried, NSInteger status, NSString* via) {
         update::Release r;
         const bool ok = data && update::parse(std::string(static_cast<const char*>(data.bytes), data.length), r);
         {
@@ -197,7 +228,7 @@ void FPCheckForUpdates(BOOL manual) {
                 if (manual) tell([NSString stringWithFormat:@"You have the newest version of Feather PDF (%s).", FEATHER_VERSION], NO);
                 return;
             }
-            offer(r, manual);
+            offer(r, manual, via);
         }
     });
 }

@@ -11,6 +11,9 @@ Free forever. Windows and macOS. Newest first.
 - Fixed: **a .jpg converted to a blank white page**. The picture was really a PNG with a .jpg name (common with
   downloaded wallpapers and AI pictures); it was put in the PDF as if it were a JPEG, which no reader could show.
   Pictures are now told apart by what is in the file, in Convert to PDF, New PDF from pictures and Insert picture.
+- Fixed: **Help > Update to new version took about 20 seconds to answer** where raw.githubusercontent.com does not
+  answer. The servers are now asked at the same moment and the first good answer is taken; the download of a new
+  version starts with the server that answered. "Looking for a new version…" shows at once.
 - Fixed: photos that a phone or camera marked as turned (EXIF orientation) came out lying on their side; they now
   stand the right way up.
 

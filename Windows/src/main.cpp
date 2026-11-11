@@ -3770,7 +3770,7 @@ void onUpdateChecked(const update::Release* r, bool manual) {
             else swprintf(t, 160, L"Downloading Feather PDF %ls...  %.1f MB  (Esc stops)", version.c_str(), done / 1048576.0);
             pr.set(t);
             return !pr.stopRequested();
-        });
+        }, r->via);
         if (!ok) { MessageBoxW(app.wnd, (L"The new version could not be downloaded.\n\n" + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
     }
     if (!update::verify(setup, r->windows.sha256)) {
@@ -3876,7 +3876,7 @@ void showSettings(int first) {
     cats[SP_ADVANCED] = {L"Advanced", {
         toggle(L"Look for new versions", L"When Feather PDF starts, it checks whether a new version is out and asks whether to update now or later.", app.checkUpdates),
         button(L"Update", L"Checks now whether a new version of Feather PDF is out.", L"Update to new version\x2026", [] {
-            updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); }),
+            notice(L"Looking for a new version\u2026"); updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); }),
         button(L"Default PDF application", L"Opens the Windows settings where you choose the app that opens PDF files.", L"Set as default\x2026", [] { registerAsViewer(); }),
         button(L"Recent files", L"The list on the start page and in Open recent.", L"Clear the list", [] {
             if (MessageBoxW(GetActiveWindow(), L"Clear the list of recent files?", L"Settings", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
@@ -4204,7 +4204,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_PALETTE: commandPalette(); break;
         case MM_SETTINGS: showSettings(SP_APPEARANCE); break;
         case MM_ABOUT: showAbout(); break;
-        case MM_UPDATE: updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); break;
+        case MM_UPDATE: notice(L"Looking for a new version\u2026"); updater::checkInBackground(app.wnd, kMsgUpdateChecked, true); break;
         case MM_EXIT: PostMessageW(app.wnd, WM_CLOSE, 0, 0); break;
         default:
             if (cmd >= MM_LAYOUT && cmd < MM_LAYOUT + 4) setPageLayout(cmd - MM_LAYOUT);
@@ -7390,7 +7390,10 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         std::vector<unsigned char> bytes;
         std::wstring err;
         const std::string url = files.size() > 2 ? platform::utf8(files[2]) : update::kLatestUrl;
-        const bool ok = updater::download(url, bytes, err);
+        std::string via;
+        const DWORD t0 = GetTickCount();
+        const bool ok = files.size() > 2 ? updater::download(url, bytes, err) : updater::fetchFastest(url, bytes, err, via);
+        if (ok && !via.empty()) err = L"from " + platform::wide(via) + L" in " + std::to_wstring((GetTickCount() - t0) / 100 / 10.0).substr(0, 3) + L" s";
         update::Release r;
         std::string rep = ok ? "ok " + platform::utf8(err) + " bytes=" + std::to_string(bytes.size()) + (update::parse(std::string(bytes.begin(), bytes.end()), r) ? " version=" + r.version : " not a version file") + "\n"
                              : "failed\n" + platform::utf8(err) + "\n";

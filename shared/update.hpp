@@ -23,6 +23,7 @@ struct Release {
     std::wstring notes;      // what is new, a few lines
     Package windows, mac;
     std::wstring problem;    // set instead when the version file could not be read: why, for a person
+    std::string via;         // the server that gave it (update::Source::host): the download tries it first
 };
 
 // The places a file of the releases repository can be fetched from, in the order to try: the address itself

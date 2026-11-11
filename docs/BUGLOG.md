@@ -1037,3 +1037,17 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
 - **Verified:** under Wine (no Office there): the automation calls checked on Windows' own FileSystemObject (method
   with arguments in order, property, collection count, unknown name refused); without an office program the message
   says so. Not yet tried: real Microsoft Office, WPS Office or LibreOffice on a Windows PC.
+
+### B-073 The update check took about 20 seconds
+- **Status:** Fixed (2.19.0)
+- **Reported:** 11 November, 2.18.0: "You have the newest version (2.18.0)" (correct: 2.19.0 was not published yet)
+  came after about 20 seconds.
+- **Root cause:** the servers were tried one after another, and the first (raw.githubusercontent.com), which does not
+  answer on the reporter's network, was given up to 15 seconds to connect before the next was asked. It also confirms
+  why 2.17.0 could not check at all there.
+- **Fix:** all servers are asked at the same moment; the first good answer from raw.githubusercontent.com or GitHub's
+  API is taken, a jsDelivr answer once neither has answered within two seconds more; the download starts with the
+  server that gave the version file. The menu shows "Looking for a new version…" at once. The Mac does the same.
+- **Verified:** under Wine: the check takes 0.1 s; with the other two servers made 20 seconds late (a test switch),
+  the answer still comes in under a second. Not tried here: an answer from jsDelivr or GitHub's API (this cloud
+  machine cannot reach jsDelivr, and GitHub's API limit for its shared address was used up).

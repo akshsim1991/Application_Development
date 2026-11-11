@@ -1053,3 +1053,15 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   machine cannot reach jsDelivr, and GitHub's API limit for its shared address was used up).
 
 2.19.0 "Endeavour" published; both downloads match latest.json.
+
+## Version 2.19.1 (Windows)
+
+### B-074 Swiping left or right on a touchpad did not scroll the page
+- **Status:** Fixed (2.19.1)
+- **Reported:** 11 November, a laptop touchpad.
+- **Root cause:** the page view handled only the up-and-down wheel (WM_MOUSEWHEEL); sideways scrolling arrives as
+  WM_MOUSEHWHEEL, which nothing handled. Shift + wheel was not sideways either. The Mac was not affected (its scroll
+  view does both).
+- **Fix:** WM_MOUSEHWHEEL scrolls sideways (right is positive), Shift + wheel too, at the same speed as up and down.
+- **Verified:** under Wine, zoomed in so the page is wider than the window: sideways scroll events (X buttons 6 and 7)
+  moved the page right and back left; Shift + wheel moved it sideways. Not tried here: a real touchpad.

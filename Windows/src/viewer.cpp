@@ -330,6 +330,18 @@ void Viewer::goToPage(int index) {
     notify();
 }
 
+// Sideways (a touchpad swiped left or right, a tilting wheel, Shift + wheel): only when the pages are wider than the view.
+void Viewer::scrollByX(int dx) {
+    if (!doc_ || !dx) return;
+    const int before = doc_->scrollX;
+    doc_->scrollX += dx;
+    clampScroll();
+    if (doc_->scrollX == before) return;
+    themeui::setScrollPos(hwnd_, SB_HORZ, doc_->scrollX);
+    InvalidateRect(hwnd_, nullptr, FALSE);
+    notify();
+}
+
 void Viewer::scrollBy(int dy) {
     if (!doc_) return;
     if (layout_ == 0 && !tops_.empty()) {   // single page: scrolling past the end of the page turns it
@@ -1098,10 +1110,17 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 POINT p{GET_X_LPARAM(l), GET_Y_LPARAM(l)};
                 ScreenToClient(hwnd_, &p);
                 setZoomAt(doc_->zoom * std::pow(1.1, delta / static_cast<double>(WHEEL_DELTA)), p.x, p.y);
+            } else if (GET_KEYSTATE_WPARAM(w) & MK_SHIFT) {
+                scrollByX(-delta * 3 / 2);   // Shift + wheel: sideways, as in other Windows programs
             } else {
                 scrollBy(-delta * 3 / 2);
             }
             return 0;
+        }
+        case WM_MOUSEHWHEEL: {   // a touchpad swiped left or right, or a wheel tilted: positive is to the right
+            if (!doc_ || presenting_) return TRUE;
+            scrollByX(GET_WHEEL_DELTA_WPARAM(w) * 3 / 2);
+            return TRUE;
         }
         case WM_SETCURSOR:
             if (LOWORD(l) == HTCLIENT && doc_) {

@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.19.0"
+VERSION = "2.19.1"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -453,6 +453,7 @@ story += bullets([
 story += [P("New in 2.19 \u201cEndeavour\u201d", "h2")]
 story += bullets([
     "<b>Convert to PDF</b> in File Explorer now also takes PowerPoint, Word and Excel files (.ppt, .pptx, .doc, .docx, .rtf, .xls, .xlsx and the OpenDocument kinds). The office program on the PC makes the PDF: Microsoft Office, else WPS Office, else LibreOffice. Without any of them Feather PDF says so.",
+    "<b>Scrolling sideways</b> (2.19.1): swipe left or right on a touchpad, tilt the mouse wheel, or hold Shift while turning it, when the page is wider than the window.",
     "Pictures: a picture whose name says .jpg but which is really a PNG (common with downloaded wallpapers and AI pictures) now shows; before, the page stayed white. Photos turned by the phone or camera stand the right way up.",
 ])
 story += [P("New in 2.18 \u201cRanger\u201d", "h2")]

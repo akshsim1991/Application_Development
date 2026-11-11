@@ -22,6 +22,7 @@ public:
     void goToPage(int index);            // 0-based
     int currentPage() const;
     void scrollBy(int dy);
+    void scrollByX(int dx);   // sideways, in pixels (right is positive)
     void scrollTo(int y) { if (!doc_) return; doc_->scrollY = y; clampScroll(); updateScrollBars(); InvalidateRect(hwnd_, nullptr, FALSE); }
     // Called after any change of page, zoom, or document, so the toolbar can update.
     void setOnChange(void (*cb)(void*), void* ctx) { onChange_ = cb; onChangeCtx_ = ctx; }

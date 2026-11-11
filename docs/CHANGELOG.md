@@ -2,6 +2,11 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.19.1 (11 November 2026)
+
+- Fixed (Windows): **swiping left or right on a touchpad did not scroll the page** sideways. It now does, as do a
+  tilting mouse wheel and Shift + wheel, whenever the page is wider than the window. (The Mac already did.)
+
 ## 2.19.0 "Endeavour" (11 November 2026)
 
 - **Convert to PDF for PowerPoint, Word and Excel files** (Windows): right-click a .ppt, .pptx, .pps, .ppsx, .doc,

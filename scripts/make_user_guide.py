@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.18.0"
+VERSION = "2.19.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -450,6 +450,11 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.19 \u201cEndeavour\u201d", "h2")]
+story += bullets([
+    "<b>Convert to PDF</b> in File Explorer now also takes PowerPoint, Word and Excel files (.ppt, .pptx, .doc, .docx, .rtf, .xls, .xlsx and the OpenDocument kinds). The office program on the PC makes the PDF: Microsoft Office, else WPS Office, else LibreOffice. Without any of them Feather PDF says so.",
+    "Pictures: a picture whose name says .jpg but which is really a PNG (common with downloaded wallpapers and AI pictures) now shows; before, the page stayed white. Photos turned by the phone or camera stand the right way up.",
+])
 story += [P("New in 2.18 \u201cRanger\u201d", "h2")]
 story += bullets([
     "<b>Combine PDFs</b> (… menu > Combine PDFs, or the command palette): the documents open in the tabs become one new PDF, in the order of the tabs. Untick any to leave out; each document gets a bookmark, or their own bookmarks are kept. The new PDF opens in a tab of its own, not yet saved.",

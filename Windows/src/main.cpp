@@ -23,6 +23,7 @@
 #include "visualdiff.hpp"
 #include "textpdf.hpp"
 #include "topdf.hpp"
+#include "officepdf.hpp"
 #include "sanitize.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
@@ -7351,7 +7352,21 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     // ("Photo.jpg" -> "Photo.pdf", or "Photo (2).pdf" when that exists) and opened like any other file.
     if (files.size() == 2 && files[0] == L"--convert-open") {
         std::wstring written;
-        const topdf::Result r = topdf::convert(files[1], written);
+        topdf::Result r;
+        if (officepdf::kindOf(files[1]) != officepdf::Kind::None) {
+            // an Office file: its own program makes the PDF (it may take a while; a note says so)
+            const std::wstring name = files[1].substr(files[1].find_last_of(L"\\/") + 1);
+            const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+            HWND note = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", (L"Converting \"" + name + L"\" to PDF\u2026").c_str(),
+                                        WS_POPUP | WS_BORDER | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE, sw / 2 - 230, sh / 2 - 40, 460, 80, nullptr, nullptr, inst, nullptr);
+            SendMessageW(note, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+            UpdateWindow(note);
+            std::wstring program;
+            const std::wstring out = topdf::outputPath(files[1]);
+            r.ok = officepdf::convert(files[1], out, program, r.error);
+            if (note) DestroyWindow(note);
+            if (r.ok) written = out;
+        } else r = topdf::convert(files[1], written);
         if (!r.ok) {
             const std::wstring name = files[1].substr(files[1].find_last_of(L"\\/") + 1);
             MessageBoxW(nullptr, (L"\"" + name + L"\" could not be converted to PDF.\n\n" + r.error).c_str(), L"Convert to PDF", MB_OK | MB_ICONWARNING);
@@ -7364,6 +7379,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (!files.empty()) {
         const int rc = cli::run(files);
         if (rc >= 0) return rc;
+    }
+    if (files.size() == 3 && files[0] == L"--officetest") {   // --officetest out.txt existing-file : the Office automation calls, without Office
+        const std::string rep = platform::utf8(officepdf::selfTest(files[2]));
+        Document::writeFile(files[1], std::vector<unsigned char>(rep.begin(), rep.end()));
+        return 0;
     }
     if (!files.empty() && files[0] == L"--updatecheck") {   // --updatecheck out.txt [url] : reads the version file (or url) as Help > Update does
         if (files.size() < 2) return 2;

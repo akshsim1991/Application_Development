@@ -34,8 +34,10 @@ const wchar_t* kInnoKey = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninst
 const wchar_t* kFileList = L"installed-files.txt";
 const wchar_t* kUninstaller = L"uninstall.exe";
 // "Convert to PDF" in File Explorer's right-click menu, for the files Feather PDF can make into PDFs (shared/topdf.cpp:
-// extensions(), Windows part). Under SystemFileAssociations, so it is offered whichever program opens those files.
-const wchar_t* const kConvertTypes[] = {L".png", L".jpg", L".jpeg", L".bmp", L".gif", L".tif", L".tiff", L".txt", L".md", L".markdown"};
+// extensions(), Windows part; and Windows/src/officepdf.cpp, made by the office program on the PC). Under
+// SystemFileAssociations, so it is offered whichever program opens those files.
+const wchar_t* const kConvertTypes[] = {L".png", L".jpg", L".jpeg", L".bmp", L".gif", L".tif", L".tiff", L".txt", L".md", L".markdown",
+                                        L".ppt", L".pptx", L".pps", L".ppsx", L".odp", L".doc", L".docx", L".rtf", L".odt", L".xls", L".xlsx", L".ods"};
 const wchar_t* kConvertVerb = L"\\shell\\FeatherPDF.ConvertToPDF";
 
 // ---------------------------------------------------------------- small helpers

@@ -1009,3 +1009,31 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   once by hand there.
 
 2.18.0 "Ranger" published; both downloads match latest.json.
+
+## Version 2.19.0 "Endeavour" (both apps)
+
+### B-070 A .jpg converted to a blank white page
+- **Status:** Fixed (2.19.0)
+- **Reported:** 11 November, with a 1,926 KB wallpaper (1672 x 941) named .jpg: Convert to PDF made a white page.
+- **Root cause:** a picture was taken to be a JPEG by its name. A PNG named .jpg (its size points that way: 1.9 MB is
+  much for a JPEG of that size) was put in the PDF as JPEG data, which PDFium accepted but no reader can decode.
+- **Fix:** a JPEG is recognised by its first bytes (FF D8 FF); anything else goes in as pixels. For Convert to PDF,
+  New PDF from pictures and Insert picture alike.
+- **Verified:** under Wine, a PNG named .jpg: before, a white page; now the picture. Engine check: such a file is no
+  longer stored as JPEG data. Ordinary, large (4000 x 3000 and 9000 x 6000), progressive, CMYK and grey JPEGs still
+  convert. The reporter's own file was not available here (only its picture was shared).
+
+### B-071 Photos marked as turned by the camera lay on their side
+- **Status:** Fixed (2.19.0)
+- **Root cause:** the EXIF orientation of JPEG photos was not read.
+- **Fix:** read; the picture is turned (and saved as JPEG again at high quality) and the page sized to match.
+- **Verified:** under Wine, orientations 6 and 8: a portrait page, the corner mark where it belongs.
+
+### B-072 Convert to PDF was not offered for PowerPoint files
+- **Status:** Done (2.19.0); it was not part of 2.18.0, which converted pictures and text only.
+- **Fix:** Office files are made into PDFs by the office program on the PC, through its automation interface
+  (PowerPoint SaveAs ppSaveAsPDF, Word and Excel ExportAsFixedFormat; WPS Office's equivalents), else LibreOffice
+  (soffice --convert-to pdf, with a profile of its own). The installer offers the entry for 12 Office extensions.
+- **Verified:** under Wine (no Office there): the automation calls checked on Windows' own FileSystemObject (method
+  with arguments in order, property, collection count, unknown name refused); without an office program the message
+  says so. Not yet tried: real Microsoft Office, WPS Office or LibreOffice on a Windows PC.

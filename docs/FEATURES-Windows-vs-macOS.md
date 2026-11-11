@@ -1,6 +1,6 @@
 # Feather PDF: Windows and macOS features
 
-Version 2.18.0 "Ranger" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
+Version 2.19.0 "Endeavour" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared
 engine underneath). This list is updated with every Mac batch until every row says Yes.
 
 **macOS: 130 of 130 (100 %).** Rows marked "new, to be tried by hand" are built and pass the Mac build checks, but have not yet been tried by a person on a Mac.
@@ -136,4 +136,4 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 127 | Reading | Saved workspaces (tabs, pages and zoom) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
 | 128 | Reading | Blackboard page colours: pure black page, white text; inverted, or with the original colours of pictures, coloured text and highlights | Yes | Yes | new in 2.17.0: checked by the engine tests (pixels), the Windows app and the Mac build check; to be tried by hand on a Mac |
 | 129 | Pages | Combine PDFs: the open documents (ticked, in tab order) into one new PDF, with bookmarks | Yes | Yes | new in 2.18.0: tried in the Windows app; checked in the Mac build check; to be tried by hand on a Mac |
-| 130 | Tools | Convert to PDF from the file manager (File Explorer's right-click menu; the Finder's Quick Actions / Services): pictures, text, Markdown | Yes | Yes | new in 2.18.0: the installer's menu entry tried under Wine; the Mac service checked in the Mac build check, to be tried by hand in a real Finder |
+| 130 | Tools | Convert to PDF from the file manager (File Explorer's right-click menu; the Finder's Quick Actions / Services): pictures, text, Markdown; on Windows also PowerPoint, Word and Excel files through the office program on the PC (the Mac: not yet) | Yes | Yes | new in 2.18.0: the installer's menu entry tried under Wine; the Mac service checked in the Mac build check, to be tried by hand in a real Finder |

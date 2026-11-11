@@ -452,6 +452,8 @@ printf '# Notes\n\nSome text.\n' > "$W/conv/notes.md"; printf 'plain text\n' > "
 check "a picture, Markdown and text made into PDFs" "'$prog' --convert '$W/conv/Photo.png' '$W/conv/notes.md' '$W/conv/a.txt' </dev/null >/dev/null 2>&1 && [ -f '$W/conv/Photo.pdf' ] && [ -f '$W/conv/notes.pdf' ] && [ -f '$W/conv/a.pdf' ]"
 check "the picture's page: no larger than A4's long side" "python3 -c \"import pikepdf;p=pikepdf.open('$W/conv/Photo.pdf');b=[float(x) for x in p.pages[0].MediaBox];assert b[2]==842 and abs(b[3]-631.5)<0.6\""
 check "the Markdown's words in its PDF"   "text '$W/conv/notes.pdf' | grep -q 'Some text.'"
+python3 -c "from PIL import Image;Image.new('RGB',(400,300),(30,120,200)).save('$W/conv/really-png.jpg',format='PNG')"
+check "a PNG named .jpg: its picture, not a blank page" "'$prog' --convert '$W/conv/really-png.jpg' </dev/null >/dev/null 2>&1 && python3 -c \"import pikepdf;p=pikepdf.open('$W/conv/really-png.pdf');i=next(iter(p.pages[0].images.values()));assert '/DCTDecode' not in str(i.get('/Filter'))\""
 check "an existing PDF is not replaced"   "'$prog' --convert '$W/conv/Photo.png' </dev/null >/dev/null 2>&1 && [ -f '$W/conv/Photo (2).pdf' ]"
 check "a damaged picture, a Word file and a missing file refused" "! '$prog' --convert '$W/conv/bad.png' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/doc.docx' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/none.png' </dev/null >/dev/null 2>&1 && [ ! -f '$W/conv/bad.pdf' ] && [ ! -f '$W/conv/doc.pdf' ]"
 

@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.19.0 "Endeavour" (11 November 2026)
+
+- **Convert to PDF for PowerPoint, Word and Excel files** (Windows): right-click a .ppt, .pptx, .pps, .ppsx, .doc,
+  .docx, .rtf, .xls, .xlsx, .odp, .odt or .ods file. The office program on the PC makes the PDF, as its own "Save as
+  PDF" would: Microsoft Office, else WPS Office, else LibreOffice; with none of them, Feather PDF says so. The PDF goes
+  next to the file and opens in Feather PDF.
+- Fixed: **a .jpg converted to a blank white page**. The picture was really a PNG with a .jpg name (common with
+  downloaded wallpapers and AI pictures); it was put in the PDF as if it were a JPEG, which no reader could show.
+  Pictures are now told apart by what is in the file, in Convert to PDF, New PDF from pictures and Insert picture.
+- Fixed: photos that a phone or camera marked as turned (EXIF orientation) came out lying on their side; they now
+  stand the right way up.
+
 ## 2.18.0 "Ranger" (11 November 2026)
 
 - **Combine PDFs**: the documents open in the tabs become one new PDF, one after another in the order of the tabs.

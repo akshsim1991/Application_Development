@@ -26,6 +26,60 @@ int readBlock(void* param, unsigned long pos, unsigned char* buf, unsigned long 
 
 bool readFile(const std::wstring& path, std::vector<unsigned char>& out) { return platform::readFile(path, out); }
 
+// A JPEG by its contents (FF D8 FF), whatever the file is called: a PNG or WebP named .jpg is not one.
+bool isJpeg(const std::vector<unsigned char>& b) { return b.size() > 3 && b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF; }
+
+// The orientation a camera wrote into a JPEG (EXIF tag 0x0112): 1 as stored, 6 turn a quarter clockwise, 8 a quarter
+// anticlockwise, 3 a half turn; 2, 4, 5, 7 mirrored. 1 when there is none.
+int jpegOrientation(const std::vector<unsigned char>& b) {
+    size_t i = 2;
+    while (i + 4 <= b.size() && b[i] == 0xFF) {
+        const unsigned marker = b[i + 1];
+        const size_t len = (static_cast<size_t>(b[i + 2]) << 8) | b[i + 3];
+        if (marker == 0xDA || len < 2) break;   // the picture data: no more headers
+        if (marker == 0xE1 && len > 14 && i + 2 + len <= b.size() && std::memcmp(&b[i + 4], "Exif\0\0", 6) == 0) {
+            const size_t t = i + 10;   // the TIFF header
+            const bool le = b[t] == 'I';
+            auto u16 = [&](size_t o) -> unsigned { return o + 2 > b.size() ? 0 : le ? b[o] | (b[o + 1] << 8) : (b[o] << 8) | b[o + 1]; };
+            auto u32 = [&](size_t o) -> size_t { return o + 4 > b.size() ? 0 : le ? (u16(o) | (static_cast<size_t>(u16(o + 2)) << 16)) : ((static_cast<size_t>(u16(o)) << 16) | u16(o + 2)); };
+            const size_t ifd = t + u32(t + 4);
+            const unsigned n = u16(ifd);
+            for (unsigned k = 0; k < n && k < 512; ++k) {
+                const size_t e = ifd + 2 + k * 12;
+                if (e + 12 > i + 2 + len) break;
+                if (u16(e) == 0x0112) { const unsigned v = u16(e + 8); return v >= 1 && v <= 8 ? static_cast<int>(v) : 1; }
+            }
+            return 1;
+        }
+        i += 2 + len;
+    }
+    return 1;
+}
+
+// The pixels turned and mirrored as `orientation` says, so the picture stands as the camera saw it.
+image::Picture oriented(const image::Picture& p, int orientation) {
+    if (orientation <= 1 || orientation > 8) return p;
+    const bool swap = orientation >= 5;
+    image::Picture o;
+    o.w = swap ? p.h : p.w; o.h = swap ? p.w : p.h;
+    o.px.resize(static_cast<size_t>(o.w) * o.h * 4);
+    for (int y = 0; y < o.h; ++y)
+        for (int x = 0; x < o.w; ++x) {
+            int sx = x, sy = y;
+            switch (orientation) {
+                case 2: sx = p.w - 1 - x; break;
+                case 3: sx = p.w - 1 - x; sy = p.h - 1 - y; break;
+                case 4: sy = p.h - 1 - y; break;
+                case 5: sx = y; sy = x; break;
+                case 6: sx = y; sy = p.h - 1 - x; break;
+                case 7: sx = p.w - 1 - y; sy = p.h - 1 - x; break;
+                case 8: sx = p.w - 1 - y; sy = x; break;
+            }
+            std::memcpy(&o.px[(static_cast<size_t>(y) * o.w + x) * 4], &p.px[(static_cast<size_t>(sy) * p.w + sx) * 4], 4);
+        }
+    return o;
+}
+
 
 // The picture as it appears on the page, rendered with `k` pixels per point (BGRA, top row = top of the bounding box).
 FPDF_BITMAP renderPicture(Document& d, FPDF_PAGE pg, FPDF_PAGEOBJECT o, double& k, float& l, float& b, float& r, float& t) {
@@ -121,18 +175,20 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
     bool ok = false;
     {
         image::Picture bmp;
+        std::vector<unsigned char> raw;
+        const bool haveRaw = readFile(path, raw);
+        const bool jpeg = haveRaw && isJpeg(raw);   // by what the file holds, not its name
+        const int orientation = jpeg ? jpegOrientation(raw) : 1;
         if (!image::load(path, bmp) || bmp.w == 0 || bmp.h == 0) {
             error = L"That is not a picture Feather PDF can read (PNG, JPEG, BMP, GIF and TIFF are).";
         } else {
+            if (orientation != 1) bmp = oriented(bmp, orientation);
             const int w = bmp.w, h = bmp.h;
             const auto& api = pdfium::api();
             const double vw = d.pageSize(page).w, vh = d.pageSize(page).h;
             double wPt = std::min(w * 0.75, vw * 0.5), hPt = wPt * h / w;
             if (hPt > vh * 0.8) { hPt = vh * 0.8; wPt = hPt * w / h; }
             if (forceWidthPt > 0) { wPt = forceWidthPt; hPt = wPt * h / w; }
-            std::wstring ext = path.substr(path.find_last_of(L'.') == std::wstring::npos ? path.size() : path.find_last_of(L'.'));
-            for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
-            const bool jpeg = ext == L".jpg" || ext == L".jpeg";
 
             d.beginChange(L"Add a picture");
             pg = d.page(page);
@@ -140,8 +196,9 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
             bool loaded = false;
             std::vector<unsigned char> keep;   // must stay alive until the page content is generated
             if (img && jpeg) {
+                // As stored; a turned photo is turned in pixels and saved as a JPEG again (high quality), so it stays small.
                 MemAccess ma;
-                if (readFile(path, ma.data)) {
+                if (orientation == 1 ? (ma.data = raw, true) : image::encode(bmp.px.data(), w, h, w * 4, image::Format::Jpeg, 92, false, ma.data)) {
                     ma.m_FileLen = static_cast<unsigned long>(ma.data.size());
                     ma.m_GetBlock = readBlock;
                     ma.m_Param = &ma;
@@ -406,7 +463,12 @@ bool copyPageToClipboard(Document& d, int page, void* owner, int dpi) {
 
 namespace pageobj {
 
-bool imageSize(const std::wstring& path, int& w, int& h) { return image::sizeOf(path, w, h); }
+bool imageSize(const std::wstring& path, int& w, int& h) {
+    if (!image::sizeOf(path, w, h)) return false;
+    std::vector<unsigned char> raw;   // a photo turned by its camera: the size as it stands
+    if (readFile(path, raw) && isJpeg(raw) && jpegOrientation(raw) >= 5) std::swap(w, h);
+    return true;
+}
 
 #ifdef _WIN32
 bool copyAreaToClipboard(Document& d, int page, double l, double b, double r, double t, void* owner, int dpi) {

@@ -22,6 +22,7 @@
 #include "formcreate.hpp"
 #include "visualdiff.hpp"
 #include "textpdf.hpp"
+#include "topdf.hpp"
 #include "sanitize.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
@@ -185,7 +186,7 @@ void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
 std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void reviewDialog(Document& d); void formCalcDialog(Document& d); void formCommitted(Document* d); void formStarting(Document* d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
-void commandPalette(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
+void commandPalette(); void combineOpenPdfs(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
 std::vector<annot::RectD> tableOutlines(int page);
@@ -4070,7 +4071,7 @@ void showMainMenu(const RECT& anchor) {
     Document* d = activeDoc();
     enum { MM_OPEN = 1, MM_SAVE, MM_SAVEAS, MM_EXPORT, MM_CLOSE, MM_UNDO, MM_REDO, MM_PRINT, MM_PROPS, MM_READ, MM_COPYPAGE, MM_SELALL,
            MM_FIRST, MM_LAST, MM_GOTO, MM_BM, MM_THUMBS, MM_FITW, MM_FITP, MM_ACTUAL, MM_FULL, MM_PRESENT, MM_COL, MM_THEME = MM_COL + 3,
-           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_REPAIR, MM_WEBVIEW, MM_HISTORY, MM_RECENT = 100, MM_WORKSPACE = 400 };
+           MM_SETTINGS = MM_THEME + 3, MM_DEFAULT, MM_ABOUT, MM_EXIT, MM_NEWPDF, MM_RELOAD, MM_SIGN, MM_COPYAREA, MM_BACK, MM_FWD, MM_ROTL, MM_ROTR, MM_PALETTE, MM_COMPARE, MM_SEARCHDIR, MM_BATCH, MM_NEWTEXT, MM_SBSTAB, MM_SBSOPEN, MM_SBSOFF, MM_LAYOUT, MM_PREVIEW = MM_LAYOUT + 4 /* four layout items */, MM_GUIDE, MM_UPDATE, MM_NEWWINDOW, MM_WS_SAVE, MM_WS_DELETE, MM_ATTACH, MM_LAYERS, MM_REPAIR, MM_WEBVIEW, MM_HISTORY, MM_COMBINE, MM_RECENT = 100, MM_WORKSPACE = 400 };
     static_assert(MM_GUIDE < MM_RECENT, "main menu ids run into the recent files");
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) {
@@ -4089,6 +4090,7 @@ void showMainMenu(const RECT& anchor) {
         AppendMenuW(np, MF_STRING, MM_NEWTEXT, L"From a text or Markdown file...");
         AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(np), L"New PDF");
     }
+    add(MM_COMBINE, L"Combine PDFs (the open tabs)...", app.tabs.size() > 1);
     add(MM_NEWWINDOW, L"New window\tCtrl+N");
     const std::vector<std::wstring> spaces = workspaceNames();
     {
@@ -4169,6 +4171,7 @@ void showMainMenu(const RECT& anchor) {
         case MM_FULL: setFullscreen(true, false); break;
         case MM_PRESENT: setFullscreen(true, true); break;
         case MM_NEWPDF: newPdfFromPictures(); break;
+        case MM_COMBINE: combineOpenPdfs(); break;
         case MM_NEWWINDOW: launchWindow({}); break;
         case MM_WS_SAVE: saveWorkspace(); break;
         case MM_WS_DELETE: deleteWorkspace(); break;
@@ -5049,6 +5052,52 @@ void linkOnSelection() {
 }
 
 // ---- new PDF from pictures, split ----
+// Combine PDFs: the documents open in this window's tabs (those ticked, in the order of the tabs) as one new PDF in a
+// new tab, with their unsaved changes. Their bookmarks are kept, or put under a bookmark for each document.
+static constexpr size_t kCombineMax = 24;   // tabs listed in the form
+void combineOpenPdfs() {
+    if (app.tabs.size() < 2) {
+        MessageBoxW(app.wnd, L"Open the PDFs to combine first, each in a tab of this window (two or more), then choose Combine PDFs again.", L"Combine PDFs", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
+    const size_t n = std::min(app.tabs.size(), kCombineMax);
+    std::vector<FormField> f;
+    f.push_back({FormField::Note, L"", {}, L"Tick the documents to combine. They follow one another in the order of their tabs (drag a tab to move it)."});
+    for (size_t i = 0; i < n; ++i) {
+        const Document& d = *app.tabs[i];
+        FormField c{FormField::Check, d.title() + L"  (" + std::to_wstring(d.pageCount()) + (d.pageCount() == 1 ? L" page)" : L" pages)")};
+        c.checked = true;
+        f.push_back(c);
+    }
+    f.push_back({FormField::Choice, L"Bookmarks:", {L"A bookmark for each document, its own bookmarks inside", L"Keep the bookmarks of every document", L"No bookmarks"}, L"", 0});
+    if (!showForm(app.wnd, app.inst, L"Combine PDFs", f, L"Combine", [](const std::vector<FormField>& v) -> std::wstring {
+            int ticked = 0;
+            for (const auto& x : v) if (x.kind == FormField::Check && x.checked) ++ticked;
+            return ticked < 2 ? L"Tick two or more documents." : L"";
+        })) return;
+    std::vector<splitmerge::Source> src;
+    for (size_t i = 0; i < n; ++i)
+        if (f[i + 1].checked) {
+            std::wstring name = app.tabs[i]->title();
+            const size_t dot = name.find_last_of(L'.');
+            if (dot != std::wstring::npos && _wcsicmp(name.c_str() + dot, L".pdf") == 0) name.resize(dot);
+            src.push_back({app.tabs[i].get(), name});
+        }
+    const int marks = f.back().choice;
+    std::vector<unsigned char> bytes;
+    HCURSOR old = SetCursor(LoadCursor(nullptr, IDC_WAIT));
+    const bool ok = splitmerge::merge(src, marks == 0 ? splitmerge::Marks::UnderFileNames : marks == 1 ? splitmerge::Marks::Keep : splitmerge::Marks::None, bytes);
+    SetCursor(old);
+    auto doc = std::make_unique<Document>();
+    if (!ok || doc->load(std::move(bytes), {}) != OpenResult::Ok) {
+        MessageBoxW(app.wnd, L"The documents could not be combined. A document protected against changes (a permissions password) cannot be copied from; remove its protection first.", L"Combine PDFs", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    doc->setName(L"Combined.pdf");
+    doc->markModified();   // not saved yet: Save asks where
+    addDocumentTab(std::move(doc));
+}
+
 void newPdfFromPictures() {
     std::vector<wchar_t> buf(MAX_PATH * 64, 0);
     OPENFILENAMEW ofn{sizeof(ofn)};
@@ -6078,6 +6127,7 @@ void commandPalette() {
         add(L"Sign with a certificate", [] { toolsDispatch(T_SIGN); });
         add(L"Export", [] { toolsDispatch(T_EXPORT); });
         add(L"Read aloud", [] { readAloud(); });
+        add(L"Combine PDFs: the open tabs into one PDF", [] { combineOpenPdfs(); });
         static const wchar_t* const colourNames[] = {L"Page colours: normal", L"Page colours: dark (night mode)", L"Page colours: dimmed (softer white)",
             L"Page colours: blackboard, inverted (AMOLED black)", L"Page colours: blackboard, original colours (AMOLED black)"};
         for (int i = 0; i < 5; ++i)
@@ -7288,6 +7338,19 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     for (int i = 1; i < argc; ++i) files.push_back(argv[i]);
     LocalFree(argv);
 
+    // "--convert-open file": Convert to PDF in the right-click menu of File Explorer. The PDF is saved next to the file
+    // ("Photo.jpg" -> "Photo.pdf", or "Photo (2).pdf" when that exists) and opened like any other file.
+    if (files.size() == 2 && files[0] == L"--convert-open") {
+        std::wstring written;
+        const topdf::Result r = topdf::convert(files[1], written);
+        if (!r.ok) {
+            const std::wstring name = files[1].substr(files[1].find_last_of(L"\\/") + 1);
+            MessageBoxW(nullptr, (L"\"" + name + L"\" could not be converted to PDF.\n\n" + r.error).c_str(), L"Convert to PDF", MB_OK | MB_ICONWARNING);
+            return 4;
+        }
+        files = {written};
+    }
+
     // The command line (shared/cli.cpp): every feature that runs without a window, the same as on the Mac.
     if (!files.empty()) {
         const int rc = cli::run(files);
@@ -7343,6 +7406,11 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
     // the setting "each file in its own window" (read before the window and the other settings exist)
     const bool ownWindows = GetPrivateProfileIntW(L"view", L"ownWindows", 0, settingsPath().c_str()) != 0;
+    // One launch at a time looks for a window and makes its own: several files converted or opened at once from File
+    // Explorer (one launch each) then become tabs of one window, not a window each. Let go once the window exists.
+    HANDLE startLock = CreateMutexW(nullptr, FALSE, L"Local\\FeatherPDF.Starting");
+    if (startLock) WaitForSingleObject(startLock, 15000);
+    auto letGo = [&] { if (startLock) { ReleaseMutex(startLock); CloseHandle(startLock); startLock = nullptr; } };
     HWND existing = menuCheckOut.empty() && !newWindow && !(ownWindows && !files.empty()) ? FindWindowW(L"FeatherPdfMain", nullptr) : nullptr;
     if (existing) {
         for (auto& f : files) {
@@ -7353,6 +7421,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         }
         if (IsIconic(existing)) ShowWindow(existing, SW_RESTORE);
         SetForegroundWindow(existing);
+        letGo();
         return 0;
     }
 
@@ -7451,6 +7520,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         return g_menuCheck.report.empty() && doc ? 0 : 1;
     }
 
+    letGo();   // the window is ready, with its files open: the next launch hands its file to it
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);

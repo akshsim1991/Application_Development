@@ -38,6 +38,8 @@ bool writeFile(const std::wstring& path, const std::vector<unsigned char>& data)
 // A text file as text: UTF-16 with a byte order mark, UTF-8, or else the system's old 8-bit code page (Latin-1 off
 // Windows). Empty when it cannot be read.
 std::wstring readTextFile(const std::wstring& path);
+// True when a file (not a folder) of that name exists.
+bool fileExists(const std::wstring& path);
 // The folder for the app's own files (settings, search index), made when missing: %APPDATA%\FeatherPDF on Windows,
 // ~/Library/Application Support/Feather PDF on the Mac. Empty when there is none.
 std::wstring appDataDir();

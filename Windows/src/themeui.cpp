@@ -226,7 +226,7 @@ LRESULT CALLBACK boxProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             RECT line{0, foot.top, rc.right, foot.top + 1};
             fillRect(dc, line, pal().line);
             if (st->icon) paintIcon(dc, st->iconRc, st->icon);
-            SelectObject(dc, g_font);
+            SelectObject(dc, g_font ? g_font : GetStockObject(DEFAULT_GUI_FONT));   // the font it was measured with
             SetBkMode(dc, TRANSPARENT);
             SetTextColor(dc, pal().text);
             RECT t = st->textRc;

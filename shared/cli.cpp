@@ -40,6 +40,7 @@
 #include "selftest.hpp"
 #include "sign.hpp"
 #include "textpdf.hpp"
+#include "topdf.hpp"
 #include "visualdiff.hpp"
 #include "pagecolours.hpp"
 
@@ -590,6 +591,19 @@ int run(std::vector<std::wstring> files) {
         std::string rep = "pictures=" + std::to_string(keep.size()) + "\n";
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--convert") {   // --convert file [file ...] : each made into a PDF next to it ("Photo.jpg" -> "Photo.pdf")
+        if (files.size() < 2) return 2;
+        int failed = 0;
+        for (size_t i = 1; i < files.size(); ++i) {
+            std::wstring written;
+            const topdf::Result r = topdf::convert(files[i], written);
+            const std::string line = r.ok ? platform::utf8(files[i]) + " -> " + platform::utf8(written) + " (" + std::to_string(r.pages) + " pages)\n"
+                                          : platform::utf8(files[i]) + ": " + platform::utf8(r.error) + "\n";
+            std::fputs(line.c_str(), r.ok ? stdout : stderr);
+            if (!r.ok) ++failed;
+        }
+        return failed ? 4 : 0;
     }
     if (!files.empty() && files[0] == L"--topdf") {   // --topdf in.txt|in.md out.pdf
         if (files.size() < 3) return 2;

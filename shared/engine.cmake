@@ -26,6 +26,7 @@ set(ENGINE_SOURCES
   ${SHARED}/formdata.cpp
   ${SHARED}/formcreate.cpp
   ${SHARED}/textpdf.cpp
+  ${SHARED}/topdf.cpp
   ${SHARED}/fontlist.cpp
   ${SHARED}/buildinfo.cpp
   ${SHARED}/selftest.cpp

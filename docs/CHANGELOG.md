@@ -2,6 +2,19 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.18.0 "Ranger" (11 November 2026)
+
+- **Combine PDFs**: the documents open in the tabs become one new PDF, one after another in the order of the tabs.
+  Untick any to leave out; a bookmark for each document (its own bookmarks inside), or their bookmarks as they are, or
+  none. Unsaved changes are included. The result opens in a new tab, not yet saved. Windows: the … menu or the command
+  palette; Mac: File > Combine Open PDFs (every open document, this window's tabs first).
+- **Convert to PDF** from File Explorer: right-click a picture (PNG, JPEG, BMP, GIF, TIFF) or a text or Markdown file.
+  The PDF goes next to the file with the same name ("Photo.jpg" -> "Photo.pdf", or "Photo (2).pdf" when that exists)
+  and opens in Feather PDF; several files chosen at once open as tabs of one window. Added by the installer and removed
+  by the uninstaller. On Windows 11 it is under "Show more options". On the Mac: the Finder's Quick Actions / Services
+  menu, "Convert to PDF with Feather PDF".
+- Fixed: a message shown before the window opens (such as "could not be converted") had its last lines cut off.
+
 ## 2.17.0 "Bronco" (7 November 2026)
 
 - **Blackboard page colours**, in both apps: the page pure black (#000000, so an OLED screen shows those pixels

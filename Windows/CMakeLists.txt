@@ -36,6 +36,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/formdata.cpp
   ${SHARED}/visualdiff.cpp
   ${SHARED}/textpdf.cpp
+  ${SHARED}/topdf.cpp
   ${SHARED}/sanitize.cpp
   ${SHARED}/picture.cpp
   src/printing.cpp

@@ -27,5 +27,19 @@
             <key>NSDocumentClass</key><string>FPDocument</string>
         </dict>
     </array>
+    <key>NSServices</key>
+    <array>
+        <dict>
+            <key>NSMenuItem</key><dict><key>default</key><string>Convert to PDF with Feather PDF</string></dict>
+            <key>NSMessage</key><string>convertToPDF</string>
+            <key>NSPortName</key><string>Feather PDF</string>
+            <key>NSRequiredContext</key><dict/>
+            <key>NSSendFileTypes</key>
+            <array>
+                <string>public.png</string><string>public.jpeg</string><string>com.microsoft.bmp</string><string>com.compuserve.gif</string>
+                <string>public.tiff</string><string>public.heic</string><string>public.plain-text</string><string>net.daringfireball.markdown</string>
+            </array>
+        </dict>
+    </array>
 </dict>
 </plist>

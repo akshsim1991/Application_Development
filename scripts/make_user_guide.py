@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.17.0"
+VERSION = "2.18.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -450,6 +450,11 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.18 \u201cRanger\u201d", "h2")]
+story += bullets([
+    "<b>Combine PDFs</b> (… menu > Combine PDFs, or the command palette): the documents open in the tabs become one new PDF, in the order of the tabs. Untick any to leave out; each document gets a bookmark, or their own bookmarks are kept. The new PDF opens in a tab of its own, not yet saved.",
+    "<b>Convert to PDF</b> in File Explorer: right-click a picture (PNG, JPEG, BMP, GIF, TIFF) or a text or Markdown file and choose Convert to PDF. The PDF is saved next to the file with the same name (Photo.jpg becomes Photo.pdf; an existing PDF is never replaced) and opens in Feather PDF. Several files chosen at once open as tabs of one window. On Windows 11 the entry is under <b>Show more options</b>. On the Mac it is in the Finder's right-click menu under Quick Actions or Services: <b>Convert to PDF with Feather PDF</b>.",
+])
 story += [P("New in 2.17 \u201cBronco\u201d", "h2")]
 story += bullets([
     "<b>Blackboard page colours</b> (Settings > PDF Viewing > Page colours; also in the command palette): the page pure black, as an OLED screen shows it switched off, with white text. <b>Inverted</b> turns everything into a negative, pictures included. <b>Original colours</b> keeps pictures, coloured text and highlights in their own colours; a scanned page turns black like any other.",
@@ -487,7 +492,7 @@ features = [
                  "Tables", "Move and resize objects with guides", "Insert, paste and replace pictures",
                  "Turn, flip, crop pictures", "Brightness, contrast, black and white", "Save pictures as PNG", "Bring to front, send to back",
                  "Undo and redo (30 steps)"]),
-    ("Pages", ["Delete, insert, rotate, move", "Crop (also by drawing a box)", "Insert from file, merge", "Extract and split",
+    ("Pages", ["Delete, insert, rotate, move", "Crop (also by drawing a box)", "Insert from file, merge", "Combine the open PDFs into one", "Convert pictures and text files to PDF from File Explorer or the Finder", "Extract and split",
                "Reverse the order", "Remove blank pages", "Find duplicate pages", "Headers and footers", "Background colour",
                "Watermark and page numbers", "Copy, cut and paste pages"]),
     ("Forms", ["Fill text, check, radio, list and drop-down fields", "Create text, check, radio, list, drop-down and date fields",
@@ -572,6 +577,7 @@ cmds = [
     ("--repair in.pdf out.pdf", "Repair a damaged file (report in out.pdf.txt)"),
     ("--linearize in.pdf out.pdf", "Fast Web View copy"),
     ("--access in.pdf report.txt [fixed.pdf]", "Accessibility check (and fixes)"),
+    ("--convert file [file ...]", "Pictures, text and Markdown files made into PDFs next to them"),
 ]
 rows = [["Command", "What it does"]] + [[Paragraph(c.replace("|", "|​"), S["mono"]), d] for c, d in cmds]
 story += [table(rows, [104, 66], pad=2)]

@@ -53,6 +53,16 @@ std::wstring wide(const std::string& s) {
     return out;
 }
 
+bool fileExists(const std::wstring& path) {
+#ifdef _WIN32
+    const DWORD a = GetFileAttributesW(path.c_str());
+    return a != INVALID_FILE_ATTRIBUTES && !(a & FILE_ATTRIBUTE_DIRECTORY);
+#else
+    struct stat st{};
+    return stat(utf8(path).c_str(), &st) == 0 && S_ISREG(st.st_mode);
+#endif
+}
+
 bool readFile(const std::wstring& path, std::vector<unsigned char>& out) {
 #ifdef _WIN32
     HANDLE f = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);

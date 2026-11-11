@@ -33,6 +33,10 @@ const wchar_t* kUninstallKey = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\U
 const wchar_t* kInnoKey = L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\{B6F5A1E2-7D43-4C8E-9A5B-FEA7E2C0D913}_is1";
 const wchar_t* kFileList = L"installed-files.txt";
 const wchar_t* kUninstaller = L"uninstall.exe";
+// "Convert to PDF" in File Explorer's right-click menu, for the files Feather PDF can make into PDFs (shared/topdf.cpp:
+// extensions(), Windows part). Under SystemFileAssociations, so it is offered whichever program opens those files.
+const wchar_t* const kConvertTypes[] = {L".png", L".jpg", L".jpeg", L".bmp", L".gif", L".tif", L".tiff", L".txt", L".md", L".markdown"};
+const wchar_t* kConvertVerb = L"\\shell\\FeatherPDF.ConvertToPDF";
 
 // ---------------------------------------------------------------- small helpers
 std::wstring widen(const std::string& s) {
@@ -524,6 +528,13 @@ bool installWork(const std::wstring& dirIn) {
         regSet(M, L"SOFTWARE\\FeatherPDF\\Capabilities", L"ApplicationIcon", exe + L",0");
         regSet(M, L"SOFTWARE\\FeatherPDF\\Capabilities\\FileAssociations", L".pdf", L"FeatherPDF.Document");
         regSet(M, L"SOFTWARE\\RegisteredApplications", kApp, L"SOFTWARE\\FeatherPDF\\Capabilities");
+        for (const wchar_t* t : kConvertTypes) {
+            const std::wstring verb = cls + L"SystemFileAssociations\\" + t + kConvertVerb;
+            regSet(M, verb, nullptr, L"Convert to PDF");
+            regSet(M, verb, L"Icon", exe + L",0");
+            regSet(M, verb + L"\\command", nullptr, L"\"" + exe + L"\" --convert-open \"%1\"");
+        }
+        logLine(L"Convert to PDF added to the right-click menu");
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     }
     advance(1000);
@@ -575,6 +586,7 @@ bool uninstallWork(const std::wstring& dirIn) {
     regDeleteTree(M, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\App Paths\\FeatherPDF.exe");
     regDeleteValue(M, L"SOFTWARE\\RegisteredApplications", kApp);
     regDeleteTree(M, L"SOFTWARE\\FeatherPDF");
+    for (const wchar_t* t : kConvertTypes) regDeleteTree(M, std::wstring(L"SOFTWARE\\Classes\\SystemFileAssociations\\") + t + kConvertVerb);
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     advance(1000);
     if (!busy.empty()) {

@@ -949,3 +949,21 @@ with the original colours of pictures and coloured content.
 - **Verified:** Windows app screenshot under Wine.
 
 2.17.0 "Bronco" published; both downloads match latest.json.
+
+## Version 2.18.0 "Ranger" (both apps): Combine PDFs and Convert to PDF
+
+Requested 11 November: combine the PDFs open in the app into one, and Convert to PDF in File Explorer's right-click menu.
+
+### B-065 Messages shown before the window opened were cut off
+- **Status:** Fixed (2.18.0)
+- **Root cause:** the message box measured its text with Windows' default dialogue font while the app's font was not yet
+  set, but drew it with the larger system font, so wrapped lines ran past the bottom.
+- **Fix:** it draws with the font it measured with.
+- **Verified:** Convert to PDF of a Word file and of a damaged picture under Wine: every line shows.
+
+### B-066 Several files opened at once from File Explorer could each open a window
+- **Status:** Fixed (2.18.0)
+- **Root cause:** each launch looked for the app's window before the first launch had made one.
+- **Fix:** one launch at a time looks for the window and makes its own; the next waits (at most 15 seconds) until the
+  window is ready, then hands its file to it.
+- **Verified:** five Convert to PDF launches started at the same moment under Wine: one window with five tabs.

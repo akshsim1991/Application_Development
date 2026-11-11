@@ -48,6 +48,8 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 - (void)applicationDidFinishLaunching:(NSNotification*)n {
     FPInstallTabMenu();   // right-click on a tab (TabMenu.mm)
+    NSApp.servicesProvider = self;   // Convert to PDF in the Finder (convertToPDF:userData:error:)
+    NSUpdateDynamicServices();
     [NSApp activateIgnoringOtherApps:YES];   // to the front, also when started from Terminal
     // AppKit itself opens the files named on the command line; open here only the ones it has not (so a file is never
     // opened twice, which would ask "already open" at start). After a turn of the run loop, when AppKit's opens are done.
@@ -70,6 +72,16 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
         NSString* out = [NSString stringWithUTF8String:dir];
         if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
         // FEATHER_UI_ACTION=showProperties: (a menu command) is chosen after 3 s, so the picture shows what it opens.
+        // FEATHER_UI_CONVERT=file: the Finder's Convert to PDF, given that file (as the Services menu gives it)
+        if (const char* conv = getenv("FEATHER_UI_CONVERT")) {
+            NSPasteboard* pb = [NSPasteboard pasteboardWithUniqueName];
+            [pb clearContents];
+            [pb writeObjects:@[ [NSURL fileURLWithPath:[NSString stringWithUTF8String:conv]] ]];
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+                NSString* err = nil;
+                [self convertToPDF:pb userData:nil error:&err];
+            });
+        }
         if (const char* action = getenv("FEATHER_UI_ACTION")) {
             NSString* a = [NSString stringWithUTF8String:action];
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{
@@ -204,6 +216,15 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 - (IBAction)newPdfFromPictures:(id)sender { [FPNewPdf fromPictures]; }
 - (IBAction)newPdfFromText:(id)sender { [FPNewPdf fromTextFile]; }
+- (IBAction)combinePdfs:(id)sender { [FPNewPdf combineOpen]; }
+
+// The Finder's Services (Quick Actions) menu: "Convert to PDF with Feather PDF" on pictures and text files (Info.plist,
+// NSServices). Each file becomes a PDF next to it, which then opens.
+- (void)convertToPDF:(NSPasteboard*)pb userData:(NSString*)userData error:(NSString* __autoreleasing*)error {
+    NSArray<NSURL*>* urls = [pb readObjectsForClasses:@[ [NSURL class] ] options:@{NSPasteboardURLReadingFileURLsOnlyKey : @YES}];
+    if (!urls.count) { if (error) *error = @"No files were given."; return; }
+    [FPNewPdf convertFiles:urls];
+}
 
 // ---- updates ----
 
@@ -296,6 +317,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(recent.submenu, @"Clear Menu", @selector(clearRecentDocuments:), nil);   // macOS fills this menu itself
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"New Window\u2026", @selector(newWindow:), @"n", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    add(m, @"Combine Open PDFs\u2026", @selector(combinePdfs:), nil);
     FPAddWorkspacesMenu(m);
     add(m, @"Close", @selector(performClose:), @"w");
     add(m, @"Open Directory Having This File", @selector(showFileInFolder:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagOption);

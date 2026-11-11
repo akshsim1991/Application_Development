@@ -16,6 +16,7 @@
 #include "platform.hpp"
 #include "splitmerge.hpp"
 #include "textpdf.hpp"
+#include "topdf.hpp"
 
 using form::Field;
 using form::Fields;
@@ -317,6 +318,72 @@ using form::ns;
     std::vector<unsigned char> out;
     if (!doc.serialize(out) || ![FPDocument openNewWithBytes:std::move(out) name:@"New PDF.pdf"]) { form::message(nil, L"The new document could not be made.", true); return; }
     if (bad) form::message(nil, L"Some pictures could not be placed. Their pages are empty.", true);
+}
+
++ (void)combineOpen {
+    // the key window's tabs in their order, then every other open document
+    NSMutableArray<FPDocument*>* docs = [NSMutableArray array];
+    auto take = [&](NSWindow* w) {
+        FPDocument* d = [w.windowController.document isKindOfClass:[FPDocument class]] ? (FPDocument*)w.windowController.document : nil;
+        if (d && d.pdf && ![docs containsObject:d]) [docs addObject:d];
+    };
+    NSWindow* key = NSApp.keyWindow ?: NSApp.mainWindow;
+    for (NSWindow* w in (key.tabbedWindows ?: (key ? @[ key ] : @[]))) take(w);
+    for (NSDocument* d in [NSDocumentController sharedDocumentController].documents)
+        if ([d isKindOfClass:[FPDocument class]] && ((FPDocument*)d).pdf && ![docs containsObject:(FPDocument*)d]) [docs addObject:(FPDocument*)d];
+    if (docs.count > 24) [docs removeObjectsInRange:NSMakeRange(24, docs.count - 24)];
+    if (docs.count < 2) {
+        form::message(key, L"Open the PDFs to combine first (two or more), then choose Combine Open PDFs again.");
+        return;
+    }
+    form::Fields f;
+    f.push_back({form::Field::Note, L"", {}, L"Tick the documents to combine. They follow one another in the order shown (this window's tabs first)."});
+    for (FPDocument* d in docs) {
+        const int n = d.pdf->pageCount();
+        form::Field c{form::Field::Check, d.pdf->title() + L"  (" + std::to_wstring(n) + (n == 1 ? L" page)" : L" pages)")};
+        c.checked = true;
+        f.push_back(c);
+    }
+    f.push_back({form::Field::Choice, L"Bookmarks:", {L"A bookmark for each document, its own bookmarks inside", L"Keep the bookmarks of every document", L"No bookmarks"}, L"", 0});
+    NSArray<FPDocument*>* list = [docs copy];
+    form::show(key, L"Combine PDFs", f, L"Combine", [](const form::Fields& v) -> std::wstring {
+        int ticked = 0;
+        for (const auto& x : v) if (x.kind == form::Field::Check && x.checked) ++ticked;
+        return ticked < 2 ? L"Tick two or more documents." : L"";
+    }, [list](const form::Fields& v) {
+        std::vector<bool> use;
+        for (size_t i = 0; i < list.count; ++i) use.push_back(v[i + 1].checked);
+        const int marks = v.back().choice;
+        dispatch_async(dispatch_get_main_queue(), ^{   // after the sheet has gone
+            std::vector<splitmerge::Source> src;
+            for (size_t i = 0; i < list.count; ++i) {
+                if (!use[i] || !list[i].pdf) continue;
+                std::wstring name = list[i].pdf->title();
+                const size_t dot = name.find_last_of(L'.');
+                if (dot != std::wstring::npos && (name.compare(dot, std::wstring::npos, L".pdf") == 0 || name.compare(dot, std::wstring::npos, L".PDF") == 0)) name.resize(dot);
+                src.push_back({list[i].pdf, name});
+            }
+            std::vector<unsigned char> bytes;
+            const bool ok = src.size() > 1 && splitmerge::merge(src, marks == 0 ? splitmerge::Marks::UnderFileNames : marks == 1 ? splitmerge::Marks::Keep : splitmerge::Marks::None, bytes);
+            FPDocument* made = ok ? [FPDocument openNewWithBytes:std::move(bytes) name:@"Combined.pdf"] : nil;
+            if (!made) { form::message(nil, L"The documents could not be combined. A document protected against changes (a permissions password) cannot be copied from; remove its protection first.", true); return; }
+            FPTrace(@"combine: %d documents, %d pages, %d bookmarks", static_cast<int>(src.size()), made.pdf->pageCount(), static_cast<int>(made.pdf->bookmarks().size()));
+        });
+    });
+}
+
++ (void)convertFiles:(NSArray<NSURL*>*)urls {
+    std::wstring problems;
+    for (NSURL* u in urls) {
+        std::wstring written;
+        const topdf::Result r = topdf::convert(platform::wide(u.fileSystemRepresentation), written);
+        FPTrace(@"convert %@: %d %s", u.lastPathComponent, r.ok, platform::utf8(written).c_str());
+        if (!r.ok) { problems += L"\u201c" + form::ws(u.lastPathComponent) + L"\u201d could not be converted to PDF. " + r.error + L"\n\n"; continue; }
+        NSURL* pdf = [NSURL fileURLWithPath:[NSString stringWithUTF8String:platform::utf8(written).c_str()]];
+        [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:pdf display:YES
+                                                                     completionHandler:^(NSDocument*, BOOL, NSError* e) { if (e) [NSApp presentError:e]; }];
+    }
+    if (!problems.empty()) form::message(nil, problems, true);
 }
 
 + (void)fromTextFile {

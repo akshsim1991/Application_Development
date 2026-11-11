@@ -445,5 +445,15 @@ check "original: red stays red"           "python3 -c \"from PIL import Image;r,
 check "original: picture as it is"        "[ \"\$(pix $W/bb_orig.ppm 200 400)\" = '30 120 200' ] && grep -q pictures=1 '$W/bb_orig.ppm.txt'"
 check "original: highlight a dark tint"   "python3 -c \"from PIL import Image;r,g,b=Image.open('$W/bb_orig.ppm').getpixel((520,90));assert 100<r<160 and 100<g<160 and b<10\""
 
+echo "convert to PDF (the right-click menu)"
+mkdir -p "$W/conv"
+python3 -c "from PIL import Image;Image.new('RGB',(1200,900),(200,50,50)).save('$W/conv/Photo.png')"
+printf '# Notes\n\nSome text.\n' > "$W/conv/notes.md"; printf 'plain text\n' > "$W/conv/a.txt"; echo junk > "$W/conv/bad.png"; echo x > "$W/conv/doc.docx"
+check "a picture, Markdown and text made into PDFs" "'$prog' --convert '$W/conv/Photo.png' '$W/conv/notes.md' '$W/conv/a.txt' </dev/null >/dev/null 2>&1 && [ -f '$W/conv/Photo.pdf' ] && [ -f '$W/conv/notes.pdf' ] && [ -f '$W/conv/a.pdf' ]"
+check "the picture's page: no larger than A4's long side" "python3 -c \"import pikepdf;p=pikepdf.open('$W/conv/Photo.pdf');b=[float(x) for x in p.pages[0].MediaBox];assert b[2]==842 and abs(b[3]-631.5)<0.6\""
+check "the Markdown's words in its PDF"   "text '$W/conv/notes.pdf' | grep -q 'Some text.'"
+check "an existing PDF is not replaced"   "'$prog' --convert '$W/conv/Photo.png' </dev/null >/dev/null 2>&1 && [ -f '$W/conv/Photo (2).pdf' ]"
+check "a damaged picture, a Word file and a missing file refused" "! '$prog' --convert '$W/conv/bad.png' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/doc.docx' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/none.png' </dev/null >/dev/null 2>&1 && [ ! -f '$W/conv/bad.pdf' ] && [ ! -f '$W/conv/doc.pdf' ]"
+
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

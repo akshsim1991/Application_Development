@@ -1007,3 +1007,5 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   address was checked with curl to give the version file and the 2.17.0 installer (the same SHA-256). Not yet tried:
   the reporter's PC; a 2.17.0 PC cannot reach 2.18.0 by itself if its check fails, so 2.18.0 has to be downloaded
   once by hand there.
+
+2.18.0 "Ranger" published; both downloads match latest.json.

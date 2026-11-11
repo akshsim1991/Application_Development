@@ -1065,3 +1065,5 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
 - **Fix:** WM_MOUSEHWHEEL scrolls sideways (right is positive), Shift + wheel too, at the same speed as up and down.
 - **Verified:** under Wine, zoomed in so the page is wider than the window: sideways scroll events (X buttons 6 and 7)
   moved the page right and back left; Shift + wheel moved it sideways. Not tried here: a real touchpad.
+
+2.19.1 published; both downloads match latest.json.

@@ -8,3 +8,5 @@ extern NSString* const FPCheckUpdatesKey;   // user default: look for a new vers
 
 // `manual`: the user asked, so "you have the newest version" and network problems are said too.
 void FPCheckForUpdates(BOOL manual);
+// After an update that did not go in (the app was not replaced): says why, once. Called when the app starts.
+void FPReportUpdateProblem();

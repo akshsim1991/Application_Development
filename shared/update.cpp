@@ -87,6 +87,28 @@ bool parse(const std::string& json, Release& out) {
     return !out.version.empty();
 }
 
+std::vector<Source> sources(const std::string& url) {
+    std::vector<Source> out{{url, "", "raw.githubusercontent.com"}};
+    const std::string prefix = "https://raw.githubusercontent.com/";
+    if (url.compare(0, prefix.size(), prefix) != 0) { out[0].host = url; return out; }
+    // owner/repo/branch/path
+    std::string rest = url.substr(prefix.size());
+    std::string part[3];
+    for (auto& p : part) {
+        const size_t slash = rest.find('/');
+        if (slash == std::string::npos) return out;
+        p = rest.substr(0, slash);
+        rest = rest.substr(slash + 1);
+    }
+    if (rest.empty()) return out;
+    // jsDelivr before GitHub's API: the API allows 60 requests an hour per address, which many people share behind one
+    // provider address. jsDelivr may be up to about 12 hours behind; installers are named by version and checked by SHA-256.
+    out.push_back({"https://cdn.jsdelivr.net/gh/" + part[0] + "/" + part[1] + "@" + part[2] + "/" + rest, "", "cdn.jsdelivr.net"});
+    out.push_back({"https://api.github.com/repos/" + part[0] + "/" + part[1] + "/contents/" + rest + "?ref=" + part[2],
+                   "application/vnd.github.raw", "api.github.com"});
+    return out;
+}
+
 int compareVersions(const std::string& a, const std::string& b) {
     size_t i = 0, j = 0;
     while (i < a.size() || j < b.size()) {

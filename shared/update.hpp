@@ -22,7 +22,19 @@ struct Release {
     std::string date;        // "30 October 2026"
     std::wstring notes;      // what is new, a few lines
     Package windows, mac;
+    std::wstring problem;    // set instead when the version file could not be read: why, for a person
 };
+
+// The places a file of the releases repository can be fetched from, in the order to try: the address itself
+// (raw.githubusercontent.com), the jsDelivr mirror (cdn.jsdelivr.net) and GitHub's API (api.github.com, with
+// `accept` as the Accept header). Some networks block raw.githubusercontent.com (some Indian providers do at times) while
+// the others work. An address not of raw.githubusercontent.com is the only place.
+struct Source {
+    std::string url;
+    std::string accept;   // the Accept header to send ("" for none)
+    std::string host;     // for messages
+};
+std::vector<Source> sources(const std::string& url);
 
 // Reads latest.json. False when it is not a version file.
 bool parse(const std::string& json, Release& out);

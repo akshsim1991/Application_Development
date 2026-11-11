@@ -271,6 +271,16 @@ bool makeDirs(const std::wstring& dir) {
 
 bool isFeatherRunning() { return FindWindowW(L"FeatherPdfMain", nullptr) != nullptr; }
 
+// Asks every Feather PDF window to close (each asks about its unsaved changes, as when closed by hand). Since 2.15
+// every separate window is a program of its own.
+void closeFeatherWindows() {
+    EnumWindows([](HWND w, LPARAM) -> BOOL {
+        wchar_t cls[64] = L"";
+        if (GetClassNameW(w, cls, 64) && wcscmp(cls, L"FeatherPdfMain") == 0) PostMessageW(w, WM_CLOSE, 0, 0);
+        return TRUE;
+    }, 0);
+}
+
 bool createShortcut(const std::wstring& lnk, const std::wstring& target, const std::wstring& args, const std::wstring& dir, const std::wstring& desc) {
     IShellLinkW* sl = nullptr;
     if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, reinterpret_cast<void**>(&sl)))) return false;
@@ -1267,19 +1277,37 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmdLine, int) {
         } else if (g_old.inno) {
             g_ui.status = L"An earlier installation of Feather PDF (" + (g_old.version.empty() ? std::wstring(L"older version") : g_old.version) + L") is removed first, so there is only one copy. Your settings stay.";
         }
-        // An update from Feather PDF: it closes itself after starting this; wait for it (at most a minute).
+        // An update from Feather PDF: it closes its windows after starting this; wait for them (at most two minutes,
+        // time to answer "save the changes?"). It was asked for by a person, so what goes wrong is said, not only logged.
         const std::wstring waitFor = switchValue(cmd, L"/waitfor=");
-        if (!waitFor.empty()) {
+        const bool fromApp = !waitFor.empty();
+        if (fromApp) {
             if (HANDLE p = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(wcstoul(waitFor.c_str(), nullptr, 10)))) {
-                WaitForSingleObject(p, 60000);
+                WaitForSingleObject(p, 120000);
                 CloseHandle(p);
             }
-            for (int i = 0; i < 50 && isFeatherRunning(); ++i) Sleep(200);
+            for (int i = 0; i < 150 && isFeatherRunning(); ++i) Sleep(200);   // the other windows: 30 seconds more
+            while (isFeatherRunning()) {
+                logLine(L"Feather PDF is still open: asking");
+                const int a = MessageBoxW(nullptr, (L"Feather PDF " + g_pay.version + L" is ready to install, but Feather PDF is still open in another window.\n\n"
+                                                    L"Close every Feather PDF window (save your work first), then choose Retry. "
+                                                    L"Cancel leaves the version you have.").c_str(), kApp, MB_RETRYCANCEL | MB_ICONINFORMATION | MB_SETFOREGROUND | MB_TOPMOST);
+                if (a != IDRETRY) break;
+                closeFeatherWindows();
+                for (int i = 0; i < 100 && isFeatherRunning(); ++i) Sleep(200);
+            }
         }
         if (silent) {
             if (isFeatherRunning()) { logLine(L"Feather PDF is running"); rc = 3; }
             else rc = installWork(g_ui.dir) ? 0 : 1;
-            if (rc == 0 && hasSwitch(cmd, L"/relaunch")) runAsUser(g_ui.dir + L"\\" + kExe, L"");
+            if (rc == 1 && fromApp) {
+                std::wstring e;
+                { std::lock_guard<std::mutex> l(g_prog.m); e = g_prog.error; }
+                MessageBoxW(nullptr, (L"Feather PDF could not be updated to " + g_pay.version + L". Nothing was changed: you still have the version you had.\n\n" + e).c_str(),
+                            kApp, MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
+            }
+            // after an update asked for in Feather PDF it opens again, updated or not (unless it is still open)
+            if (hasSwitch(cmd, L"/relaunch") && (rc == 0 || (fromApp && rc == 1))) runAsUser(g_ui.dir + L"\\" + kExe, L"");
         } else rc = runWindow(inst);
     }
     Gdiplus::GdiplusShutdown(gtok);

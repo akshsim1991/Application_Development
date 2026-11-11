@@ -125,7 +125,7 @@ jobs:
           grep -q "interleave: 6 pages, page 2 says Back 1" ui-interleave/trace.txt   # two-sided scan put in order
           grep -q "merge: 1 file(s), 11 pages, 4 bookmarks" ui-merge/trace.txt   # merged keeping every bookmark
           cat ui-combine/trace.txt ui-convert/trace.txt
-          grep -q "combine: 2 documents, 11 pages" ui-combine/trace.txt   # the two open documents combined into a new one
+          grep -Eq "combine: [2-9] documents, (1[1-9]|[2-9][0-9]) pages" ui-combine/trace.txt   # the open documents (book and appendix, and any the Mac reopened) combined into a new one
           grep -q "convert photo.png: 1" ui-convert/trace.txt && [ -f ui-samples/photo.pdf ] && python3 -c "import pikepdf;assert len(pikepdf.open('ui-samples/photo.pdf').pages)==1"   # Finder's Convert to PDF
           grep -q "split: 3 file(s)" ui-split/trace.txt && [ -f "ui-samples/part-2 Chapter Two.pdf" ] && python3 tests/outline_dump.py "ui-samples/part-2 Chapter Two.pdf" | grep -q "^3 Chapter Two->1;   Section 5.1->2$"   # at the chapters, bookmarks kept
           grep -q "find cat\*: 7" ui-find/trace.txt && grep -q "find: at 4 in a comment 1" ui-find/trace.txt   # whole words, wildcards, comments

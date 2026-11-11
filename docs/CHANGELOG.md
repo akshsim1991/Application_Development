@@ -14,6 +14,18 @@ Free forever. Windows and macOS. Newest first.
   by the uninstaller. On Windows 11 it is under "Show more options". On the Mac: the Finder's Quick Actions / Services
   menu, "Convert to PDF with Feather PDF".
 - Fixed: a message shown before the window opens (such as "could not be converted") had its last lines cut off.
+- Fixed: **Update to new version did nothing when more than one Feather PDF window was open** (Windows). The window
+  that asked closed, the others stayed open, and the installer gave up without a word. Now every window closes (each
+  asks about unsaved changes), and if one is still open the installer asks to close it, with Retry; a failed install
+  says why, and Feather PDF opens again either way. Updating from 2.15, 2.16 or 2.17 with several windows open: the
+  2.18 installer asks to close the other windows, then installs.
+- Fixed: **"Could not find out whether there is a new version" although the internet works** (reported with a
+  screenshot, Windows). Feather PDF now uses the proxy set in Windows (also an automatic one), and when
+  raw.githubusercontent.com cannot be reached (some providers block it at times) it tries the jsDelivr mirror and then
+  GitHub's API, for the version file and for the new version itself (still checked by its SHA-256). When all fail,
+  the message says what each server answered.
+- Fixed (Mac): an update that could not be put in place started the old version without a word; it now says why at
+  the next start. Cancelling Quit (a document not saved) no longer lets the new version replace the running app later.
 
 ## 2.17.0 "Bronco" (7 November 2026)
 

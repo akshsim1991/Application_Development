@@ -41,24 +41,65 @@ static void tell(NSString* text, BOOL warning) {
 }
 @end
 
+// A request for one of the places a file can come from (update::sources), with its Accept header.
+static NSURLRequest* requestFor(const update::Source& src) {
+    NSMutableURLRequest* q = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:ns(src.url)]];
+    q.timeoutInterval = 30;
+    if (!src.accept.empty()) [q setValue:ns(src.accept) forHTTPHeaderField:@"Accept"];
+    return q;
+}
+
+// Fetches the first place of `list` (from `at`) that answers 200; `done(data, why)` on the main queue, why = "" on success.
+static void fetchFirst(std::vector<update::Source> list, size_t at, NSString* tried, void (^done)(NSData*, NSString*, NSInteger)) {
+    if (at >= list.size()) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, tried, 0); }); return; }
+    const update::Source src = list[at];
+    [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
+        const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
+        if (data && !err && status == 200) { dispatch_async(dispatch_get_main_queue(), ^{ done(data, @"", 200); }); return; }
+        if (at == 0 && !err && status == 404) { dispatch_async(dispatch_get_main_queue(), ^{ done(nil, @"", 404); }); return; }   // nothing published
+        NSString* why = err ? err.localizedDescription : [NSString stringWithFormat:@"the server answered with an error (%ld)", (long)status];
+        fetchFirst(list, at + 1, [tried stringByAppendingFormat:@"\n  %@: %@", ns(src.host), why], done);
+    }] resume];
+}
+
+// Where the update script leaves a note when the new version could not be put in place (read at the next start).
+static NSString* problemFile() {
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/Feather PDF/update-problem.txt"];
+}
+
+void FPReportUpdateProblem() {
+    NSString* f = problemFile();
+    NSString* why = [NSString stringWithContentsOfFile:f encoding:NSUTF8StringEncoding error:nil];
+    if (!why.length) return;
+    [[NSFileManager defaultManager] removeItemAtPath:f error:nil];
+    tell([NSString stringWithFormat:@"The new version of Feather PDF could not be installed. %@\n\nYou still have version %s. Try Help > Update to New Version again; if it fails again, download the new version from the Feather PDF releases page and drag it onto Applications.",
+                                    [why stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet], FEATHER_VERSION], YES);
+}
+
 // Puts the new app in place of this one after it has quit, then starts it (a small shell script, so nothing of the
-// old app is running while it is replaced). False when this app's folder cannot be written to.
+// old app is running while it is replaced). False when this app's folder cannot be written to. When it cannot put the
+// new app in place, it leaves a note (problemFile) and starts the old one, which then says why.
 static BOOL installAndRestart(NSString* dmg) {
     NSString* app = NSBundle.mainBundle.bundlePath;
     if (![[NSFileManager defaultManager] isWritableFileAtPath:app.stringByDeletingLastPathComponent]) return NO;
     NSString* script =
-        @"pid=\"$1\"; dmg=\"$2\"; app=\"$3\"; n=0\n"
+        @"pid=\"$1\"; dmg=\"$2\"; app=\"$3\"; note=\"$4\"; n=0\n"
+        @"mkdir -p \"$(dirname \"$note\")\"; rm -f \"$note\"\n"
+        // quitting was cancelled (a document not saved): leave everything as it is
         @"while kill -0 \"$pid\" 2>/dev/null && [ $n -lt 1200 ]; do sleep 0.5; n=$((n+1)); done\n"
+        @"if kill -0 \"$pid\" 2>/dev/null; then rm -f \"$dmg\"; exit 0; fi\n"
         @"mnt=$(mktemp -d)\n"
-        @"hdiutil attach -nobrowse -readonly -mountpoint \"$mnt\" \"$dmg\" >/dev/null || exit 1\n"
+        @"if ! hdiutil attach -nobrowse -readonly -mountpoint \"$mnt\" \"$dmg\" >/dev/null 2>&1; then\n"
+        @"  echo 'The downloaded disk image could not be opened.' > \"$note\"; open \"$app\"; exit 1; fi\n"
         @"rm -rf \"$app.old\"\n"
-        @"if mv \"$app\" \"$app.old\" && ditto \"$mnt/Feather PDF.app\" \"$app\"; then rm -rf \"$app.old\"; else rm -rf \"$app\"; mv \"$app.old\" \"$app\"; fi\n"
-        @"hdiutil detach \"$mnt\" >/dev/null\n"
+        @"if mv \"$app\" \"$app.old\" && ditto \"$mnt/Feather PDF.app\" \"$app\"; then rm -rf \"$app.old\"; xattr -dr com.apple.quarantine \"$app\" 2>/dev/null\n"
+        @"else rm -rf \"$app\"; mv \"$app.old\" \"$app\"; echo \"The new version could not be put in place of the old one in $(dirname \"$app\").\" > \"$note\"; fi\n"
+        @"hdiutil detach \"$mnt\" >/dev/null 2>&1\n"
         @"rm -f \"$dmg\"\n"
         @"open \"$app\"\n";
     NSTask* t = [[NSTask alloc] init];
     t.executableURL = [NSURL fileURLWithPath:@"/bin/sh"];
-    t.arguments = @[ @"-c", script, @"feather-update", [NSString stringWithFormat:@"%d", NSProcessInfo.processInfo.processIdentifier], dmg, app ];
+    t.arguments = @[ @"-c", script, @"feather-update", [NSString stringWithFormat:@"%d", NSProcessInfo.processInfo.processIdentifier], dmg, app, problemFile() ];
     NSError* e = nil;
     return [t launchAndReturnError:&e];
 }
@@ -67,17 +108,33 @@ static void downloadAndInstall(const update::Release& r) {
     FPUpdateProgress* progress = [[FPUpdateProgress alloc] initWithText:[NSString stringWithFormat:@"Downloading Feather PDF %@…", ns(r.version)]];
     [progress showWindow:nil];
     const std::string sha = r.mac.sha256, version = r.version;
-    NSURLSessionDownloadTask* task = [NSURLSession.sharedSession downloadTaskWithURL:[NSURL URLWithString:ns(r.mac.url)]
-                                                                   completionHandler:^(NSURL* file, NSURLResponse* resp, NSError* err) {
+    const std::vector<update::Source> list = update::sources(r.mac.url);
+    __block size_t at = 0;
+    __block NSString* tried = @"";
+    __block void (^attempt)(void) = nil;
+    void (^tryOne)(void) = ^{
+    const update::Source src = list[at];
+    NSURLSessionDownloadTask* task = [NSURLSession.sharedSession downloadTaskWithRequest:requestFor(src)
+                                                                       completionHandler:^(NSURL* file, NSURLResponse* resp, NSError* err) {
         NSString* kept = nil;
-        if (file && !err && [(NSHTTPURLResponse*)resp statusCode] == 200) {   // moved before the handler returns (the file goes then)
+        const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
+        if (file && !err && status == 200) {   // moved before the handler returns (the file goes then)
             kept = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"FeatherPDF-%@-mac.dmg", ns(version)]];
             [[NSFileManager defaultManager] removeItemAtPath:kept error:nil];
             if (![[NSFileManager defaultManager] moveItemAtURL:file toURL:[NSURL fileURLWithPath:kept] error:nil]) kept = nil;
         }
+        NSString* why = err ? err.localizedDescription : [NSString stringWithFormat:@"the server answered with an error (%ld)", (long)status];
         dispatch_async(dispatch_get_main_queue(), ^{
+            if (!kept) {
+                tried = [tried stringByAppendingFormat:@"\n  %@: %@", ns(src.host), why];
+                if (++at < list.size()) { attempt(); return; }   // the next place
+                [progress close];
+                tell([@"The new version could not be downloaded:" stringByAppendingString:tried], YES);
+                attempt = nil;
+                return;
+            }
+            attempt = nil;
             [progress close];
-            if (!kept) { tell(@"The new version could not be downloaded. Check the internet connection and try again.", YES); return; }
             NSData* d = [NSData dataWithContentsOfFile:kept];
             std::vector<unsigned char> bytes(static_cast<const unsigned char*>(d.bytes), static_cast<const unsigned char*>(d.bytes) + d.length);
             if (!update::verify(bytes, sha)) {
@@ -93,9 +150,12 @@ static void downloadAndInstall(const update::Release& r) {
             [NSApp terminate:nil];   // asks about unsaved changes as usual; the new version starts when this one has quit
         });
     }];
-    if (@available(macOS 10.13, *))
-        [progress.bar bind:@"doubleValue" toObject:task.progress withKeyPath:@"fractionCompleted" options:nil];
+    [progress.bar unbind:@"doubleValue"];   // from the place tried before
+    [progress.bar bind:@"doubleValue" toObject:task.progress withKeyPath:@"fractionCompleted" options:nil];
     [task resume];
+    };
+    attempt = tryOne;
+    tryOne();
 }
 
 static void offer(const update::Release& r, BOOL manual) {
@@ -119,19 +179,18 @@ static void offer(const update::Release& r, BOOL manual) {
 }
 
 void FPCheckForUpdates(BOOL manual) {
-    NSURLSessionDataTask* task = [NSURLSession.sharedSession dataTaskWithURL:[NSURL URLWithString:ns(update::kLatestUrl)]
-                                                           completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
+    // the version file from the first place that answers (some networks block raw.githubusercontent.com)
+    fetchFirst(update::sources(update::kLatestUrl), 0, @"", ^(NSData* data, NSString* tried, NSInteger status) {
         update::Release r;
-        const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
-        const bool ok = data && !err && status == 200 &&
-                        update::parse(std::string(static_cast<const char*>(data.bytes), data.length), r);
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (!ok && !err && status == 404) {   // the server answered: no version has been published there yet
+        const bool ok = data && update::parse(std::string(static_cast<const char*>(data.bytes), data.length), r);
+        {
+            if (!ok && status == 404) {   // the server answered: no version has been published there yet
                 if (manual) tell([NSString stringWithFormat:@"You have the newest version of Feather PDF (%s).", FEATHER_VERSION], NO);
                 return;
             }
             if (!ok) {
-                if (manual) tell(@"Feather PDF could not find out whether there is a new version. Check the internet connection and try again.", YES);
+                if (manual) tell([NSString stringWithFormat:@"Feather PDF could not find out whether there is a new version.%@\n\nIf the internet works in your browser, a proxy, VPN or security program may be stopping Feather PDF; the new version can also be downloaded from github.com/akshsim1991/FeatherPDF-releases.",
+                                                       data ? @"\n\nThe version file that came back could not be read." : [@"\n\nNone of the update servers could be reached:" stringByAppendingString:tried]], YES);
                 return;
             }
             if (update::compareVersions(r.version, FEATHER_VERSION) <= 0 || r.mac.url.empty()) {
@@ -139,7 +198,6 @@ void FPCheckForUpdates(BOOL manual) {
                 return;
             }
             offer(r, manual);
-        });
-    }];
-    [task resume];
+        }
+    });
 }

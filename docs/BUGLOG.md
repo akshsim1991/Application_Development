@@ -967,3 +967,43 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
 - **Fix:** one launch at a time looks for the window and makes its own; the next waits (at most 15 seconds) until the
   window is ready, then hands its file to it.
 - **Verified:** five Convert to PDF launches started at the same moment under Wine: one window with five tabs.
+
+### B-067 Update to new version did nothing with more than one window open (Windows)
+- **Status:** Fixed (2.18.0)
+- **Reported:** 11 November, "Unable to update to the recent version through Feather PDF UI".
+- **Root cause:** since 2.15 each separate window is a program of its own. Update now closed only the window it was
+  chosen in; the installer, started silently, found Feather PDF still running, logged "Feather PDF is running" and
+  stopped (code 3) without a message, so the window simply closed and nothing changed. Reproduced under Wine: 2.16.0
+  with two windows, the 2.17.0 installer as the app starts it: exit 3, still 2.16.0, nothing restarted.
+- **Fix:** Update now closes every Feather PDF window. The installer, when started by an update, waits for them, then
+  asks to close any still open (Retry closes them, Cancel keeps the old version); a failed install is reported with its
+  reason, and Feather PDF is started again in every case.
+- **Verified:** under Wine, 2.17.0 with two windows updated by the 2.18.0 installer started as 2.17.0 starts it: the
+  question appeared, Retry closed the other window, 2.18.0 was installed and started. One window: installed and started
+  without a question. Not yet tried: a real Windows PC with the download from the releases site.
+
+### B-068 A Mac update that could not be put in place was silent; cancelling Quit did not cancel it
+- **Status:** Fixed (2.18.0)
+- **Root cause:** the script that replaces the app after it quits ended quietly when the disk image would not open or
+  the copy failed, and started the old version; when Quit was cancelled it still replaced the app after ten minutes.
+- **Fix:** it leaves a note that the app shows at its next start; when the app did not quit it changes nothing.
+- **Verified:** the script with stand-ins for hdiutil and ditto: good update (new version, opened), broken image (old
+  version, opened, note written), Quit cancelled (nothing changed, nothing opened). Not yet tried on a real Mac.
+
+### B-069 "Could not find out whether there is a new version" with the internet working (Windows)
+- **Status:** Fixed in 2.18.0; the cause on the reporter's PC is not yet known for certain.
+- **Reported:** 11 November, screenshot of 2.17.0 "Bronco" on Windows: Help > Update to new version says the internet
+  connection should be checked, while the internet works.
+- **Root cause (likely, two candidates):** the version file was read from one address only, raw.githubusercontent.com,
+  which some Indian providers block at times (browsers often still reach it through their own DNS); and WinHTTP was
+  opened with its own proxy setting, not the one set in Windows, so a PC behind a proxy, VPN or filtering program could
+  not reach it. The message gave no reason, so the two could not be told apart.
+- **Fix:** the proxy set in Windows (automatic too); TLS 1.2 and 1.3 asked for explicitly; when the first address
+  fails, the jsDelivr mirror and then GitHub's API (installer downloads too, still checked by SHA-256); the message
+  lists what each server answered. The Mac does the same (it already used the Mac's proxy).
+- **Verified:** under Wine, the check reads 2.17.0 from raw.githubusercontent.com; with that server treated as
+  blocked, the next ones are tried and each failure is listed (here api.github.com answered 403: this cloud machine's
+  shared address had used GitHub's 60 requests an hour; cdn.jsdelivr.net is not allowed from this machine). The API
+  address was checked with curl to give the version file and the 2.17.0 installer (the same SHA-256). Not yet tried:
+  the reporter's PC; a 2.17.0 PC cannot reach 2.18.0 by itself if its check fails, so 2.18.0 has to be downloaded
+  once by hand there.

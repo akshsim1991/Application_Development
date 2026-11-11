@@ -3734,8 +3734,10 @@ void applyTheme() {
 // ---- updates (shared/update.hpp, updater.cpp) ----
 
 void onUpdateChecked(const update::Release* r, bool manual) {
-    if (!r) {
-        if (manual) MessageBoxW(app.wnd, L"Feather PDF could not find out whether there is a new version. Check the internet connection and try again.", kAppName, MB_OK | MB_ICONWARNING);
+    if (!r || !r->problem.empty()) {
+        if (manual) MessageBoxW(app.wnd, (L"Feather PDF could not find out whether there is a new version.\n\n" + (r ? r->problem : std::wstring()) +
+                                          L"\n\nIf the internet works in your browser, a proxy, VPN or security program may be stopping Feather PDF; "
+                                          L"the new version can also be downloaded from github.com/akshsim1991/FeatherPDF-releases.").c_str(), kAppName, MB_OK | MB_ICONWARNING);
         return;
     }
     const std::wstring version = platform::wide(r->version), current = platform::wide(FEATHER_VERSION);
@@ -3750,7 +3752,7 @@ void onUpdateChecked(const update::Release* r, bool manual) {
     std::vector<FormField> f(2);
     f[0] = {FormField::Note, L"", {}, L"Feather PDF " + version + L" is out" + (r->date.empty() ? L"" : L" (" + platform::wide(r->date) + L")") +
                                      L". You have " + current + L".\n\n" + (r->notes.empty() ? L"" : L"What is new:\n" + r->notes + L"\n\n") +
-                                     L"Update now downloads it (" + mb + L"), closes Feather PDF, installs the new version in the same place and starts it again. "
+                                     L"Update now downloads it (" + mb + L"), closes Feather PDF (every window of it), installs the new version in the same place and starts it again. "
                                      L"Your settings stay. Windows asks for permission to install.\n\nCancel: update later."};
     f[1] = {FormField::Check, L"Do not remind me about this version"};
     const bool now = showForm(app.wnd, app.inst, L"A new version of Feather PDF", f, L"Update now");
@@ -3768,7 +3770,7 @@ void onUpdateChecked(const update::Release* r, bool manual) {
             pr.set(t);
             return !pr.stopRequested();
         });
-        if (!ok) { MessageBoxW(app.wnd, (L"The new version could not be downloaded. " + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
+        if (!ok) { MessageBoxW(app.wnd, (L"The new version could not be downloaded.\n\n" + err).c_str(), kAppName, MB_OK | MB_ICONWARNING); return; }
     }
     if (!update::verify(setup, r->windows.sha256)) {
         MessageBoxW(app.wnd, L"The downloaded file is not the right one (it may have been damaged on the way), so it was not installed. Try again later.", kAppName, MB_OK | MB_ICONWARNING);
@@ -3783,7 +3785,14 @@ void onUpdateChecked(const update::Release* r, bool manual) {
         MessageBoxW(app.wnd, L"The installer could not be started (was the permission refused?). Nothing was changed.", kAppName, MB_OK | MB_ICONWARNING);
         return;
     }
-    PostMessageW(app.wnd, WM_CLOSE, 0, 0);   // asks about unsaved changes as usual; the installer waits for Feather PDF to close
+    // Every Feather PDF window closes, not only this one: each separate window is a program of its own, and the installer
+    // can replace the files only when none is running. Each asks about its unsaved changes as usual.
+    EnumWindows([](HWND w, LPARAM) -> BOOL {
+        wchar_t cls[64] = L"";
+        if (w != app.wnd && GetClassNameW(w, cls, 64) && wcscmp(cls, L"FeatherPdfMain") == 0) PostMessageW(w, WM_CLOSE, 0, 0);
+        return TRUE;
+    }, 0);
+    PostMessageW(app.wnd, WM_CLOSE, 0, 0);
 }
 
 void showAbout() {
@@ -7355,6 +7364,18 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     if (!files.empty()) {
         const int rc = cli::run(files);
         if (rc >= 0) return rc;
+    }
+    if (!files.empty() && files[0] == L"--updatecheck") {   // --updatecheck out.txt [url] : reads the version file (or url) as Help > Update does
+        if (files.size() < 2) return 2;
+        std::vector<unsigned char> bytes;
+        std::wstring err;
+        const std::string url = files.size() > 2 ? platform::utf8(files[2]) : update::kLatestUrl;
+        const bool ok = updater::download(url, bytes, err);
+        update::Release r;
+        std::string rep = ok ? "ok " + platform::utf8(err) + " bytes=" + std::to_string(bytes.size()) + (update::parse(std::string(bytes.begin(), bytes.end()), r) ? " version=" + r.version : " not a version file") + "\n"
+                             : "failed\n" + platform::utf8(err) + "\n";
+        Document::writeFile(files[1], std::vector<unsigned char>(rep.begin(), rep.end()));
+        return ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--printsheet") {   // --printsheet in.pdf out.png perSheet [grey] : sheet 1 on A4 at 100 dpi, as the preview shows it
         if (files.size() < 4) return 2;

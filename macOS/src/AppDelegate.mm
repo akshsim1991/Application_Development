@@ -115,6 +115,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     }
     FPStartRecovery();   // offers what a crash left, then keeps copies of unsaved changes
     // A quiet look for a new version (it asks only when there is one), as the Windows app does.
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ FPReportUpdateProblem(); });
     if ([self automaticUpdates]) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 3 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ FPCheckForUpdates(NO); });
     // Started with nothing to open (and no windows brought back from last time): the start window, as on Windows.
     dispatch_async(dispatch_get_main_queue(), ^{

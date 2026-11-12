@@ -5,6 +5,7 @@ struct ContentView: View {
     @ObservedObject private var route = RideController.shared.route
     @ObservedObject private var listener = RideController.shared.listener
     @ObservedObject private var nav = Navigator.shared
+    @AppStorage("googleKey") private var googleKey = ""
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -36,6 +37,15 @@ struct ContentView: View {
             if let e = ride.errorMessage { Text(e).font(.footnote).foregroundStyle(.red) }
 
             Spacer()
+
+            DisclosureGroup("Navigation settings (\(nav.providerStatus))") {
+                SecureField("Google Maps API key", text: $googleKey)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never).autocorrectionDisabled()
+                Text("With a key, routing uses Google Maps two-wheeler mode. Without one, Apple Maps is used.")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+            .font(.footnote)
 
             HStack {
                 Text("Wake phrase").font(.footnote)

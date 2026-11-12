@@ -14,7 +14,7 @@ struct Reply {
 final class Assistant {
     static let shared = Assistant()
     private var lastReply = ""
-    private var pending: MKMapItem?
+    private var pending: Place?
 
     func reply(to question: String) async -> String { await handle(question).text }
 
@@ -43,33 +43,31 @@ final class Assistant {
         guard let loc = await LocationProvider.shared.freshLocation() else {
             return Reply(text: "I can't get your location yet.")
         }
-        let item: MKMapItem?
+        let item: Place?
         if ["home", "my home", "back home"].contains(dest) {
-            guard let h = homeItem() else { return Reply(text: "You haven't set a home. Say set home when you're there.") }
+            guard let h = homePlace() else { return Reply(text: "You haven't set a home. Say set home when you're there.") }
             item = h
         } else {
             item = await Navigator.shared.search(dest, near: loc)
         }
         guard let item else { return Reply(text: "I couldn't find \(dest).") }
         pending = item
-        let d = loc.distance(from: item.placemark.location ?? loc)
-        return Reply(text: "\(item.name ?? dest), about \(spokenDistance(d)) away. Say yes to start.", followUp: true)
+        let d = loc.distance(from: CLLocation(latitude: item.coordinate.latitude, longitude: item.coordinate.longitude))
+        return Reply(text: "\(item.name), about \(spokenDistance(d)) away. Say yes to start.", followUp: true)
     }
 
-    private func startNavigation(to item: MKMapItem) async -> Reply {
+    private func startNavigation(to item: Place) async -> Reply {
         guard let loc = await LocationProvider.shared.freshLocation() else {
             return Reply(text: "I can't get your location yet.")
         }
         return Reply(text: await Navigator.shared.begin(to: item, from: loc))
     }
 
-    private func homeItem() -> MKMapItem? {
+    private func homePlace() -> Place? {
         let d = UserDefaults.standard
         guard d.object(forKey: "homeLat") != nil else { return nil }
-        let item = MKMapItem(placemark: MKPlacemark(coordinate: CLLocationCoordinate2D(
-            latitude: d.double(forKey: "homeLat"), longitude: d.double(forKey: "homeLon"))))
-        item.name = "Home"
-        return item
+        return Place(name: "Home", coordinate: CLLocationCoordinate2D(
+            latitude: d.double(forKey: "homeLat"), longitude: d.double(forKey: "homeLon")))
     }
 
     // MARK: Commands

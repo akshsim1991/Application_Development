@@ -68,21 +68,21 @@ func spokenDuration(_ s: TimeInterval) -> String {
     return "\(h) hour" + (h == 1 ? "" : "s") + (m == 0 ? "" : " \(m) minutes")
 }
 
-/// Turns MapKit's visual instructions ("take the second exit") into plain directions
-/// based on the real geometry: go straight / turn left / turn right.
-private func plainPhrase(prev: MKRoute.Step, next: MKRoute.Step, isLast: Bool) -> String {
-    let text = next.instructions.lowercased()
-    if isLast || text.contains("arrive") || text.contains("destination") { return "you will arrive at your destination" }
-    if text.contains("u-turn") { return "make a U-turn" }
+/// Turns visual instructions ("take the second exit") into plain directions based on the
+/// maneuver type and the real geometry: go straight / turn left / turn right.
+private func plainPhrase(prev: NavStep, next: NavStep, isLast: Bool) -> String {
+    let text = next.instruction.lowercased()
+    let m = next.maneuver ?? ""
+    if isLast || m == "ARRIVE" || text.hasPrefix("arrive") { return "you will arrive at your destination" }
 
-    let roundabout = text.contains("roundabout") || text.contains("traffic circle")
-    let side = text.contains("left") ? "left" : (text.contains("right") ? "right" : nil)
+    let roundabout = m.hasPrefix("ROUNDABOUT") || text.contains("roundabout") || text.contains("traffic circle")
+    let head = String(text.prefix(30))
+    let side = head.contains("left") ? "left" : (head.contains("right") ? "right" : nil)
 
     var angle: Double?
-    if let a = endBearing(prev.polyline.coords) {
-        let nextPts = next.polyline.coords
+    if let a = endBearing(prev.points) {
         // Through a roundabout the exit direction is where the step finally ends up.
-        if let b = roundabout ? endBearing(nextPts) : startBearing(nextPts) {
+        if let b = roundabout ? endBearing(next.points) : startBearing(next.points) {
             var d = (b - a).truncatingRemainder(dividingBy: 360)
             if d > 180 { d -= 360 }
             if d < -180 { d += 360 }
@@ -91,73 +91,87 @@ private func plainPhrase(prev: MKRoute.Step, next: MKRoute.Step, isLast: Bool) -
     }
 
     func turn(_ d: Double) -> String {
-        let s = d < 0 ? "left" : "right", m = abs(d)
-        if m < 25 { return "go straight" }
-        if m < 60 { return "bear \(s)" }
-        if m < 120 { return "turn \(s)" }
-        if m < 165 { return "take a sharp \(s)" }
+        let s = d < 0 ? "left" : "right", mag = abs(d)
+        if mag < 25 { return "go straight" }
+        if mag < 60 { return "bear \(s)" }
+        if mag < 120 { return "turn \(s)" }
+        if mag < 165 { return "take a sharp \(s)" }
         return "make a U-turn"
     }
 
     var core: String
-    if text.contains("keep left") { core = "keep left" }
-    else if text.contains("keep right") { core = "keep right" }
-    else if text.contains("exit") && !roundabout { core = "take the exit" + (side.map { " on the \($0)" } ?? "") }
-    else if let angle { core = turn(angle) }
-    else if let side { core = "turn \(side)" }
-    else { core = "continue straight" }
-    if roundabout { core = "at the roundabout, " + core }
+    switch m {
+    case "TURN_LEFT": core = "turn left"
+    case "TURN_RIGHT": core = "turn right"
+    case "TURN_SLIGHT_LEFT": core = "bear left"
+    case "TURN_SLIGHT_RIGHT": core = "bear right"
+    case "TURN_SHARP_LEFT": core = "take a sharp left"
+    case "TURN_SHARP_RIGHT": core = "take a sharp right"
+    case "UTURN_LEFT", "UTURN_RIGHT": core = "make a U-turn"
+    case "STRAIGHT", "NAME_CHANGE", "DEPART": core = "go straight"
+    case "RAMP_LEFT": core = "take the exit on the left"
+    case "RAMP_RIGHT": core = "take the exit on the right"
+    case "FORK_LEFT": core = "keep left"
+    case "FORK_RIGHT": core = "keep right"
+    default:
+        if text.contains("u-turn") { core = "make a U-turn" }
+        else if text.contains("keep left") { core = "keep left" }
+        else if text.contains("keep right") { core = "keep right" }
+        else if text.contains("exit") && !roundabout { core = "take the exit" + (side.map { " on the \($0)" } ?? "") }
+        else if let angle { core = turn(angle) }
+        else if let side { core = "turn \(side)" }
+        else { core = "continue straight" }
+    }
+    if roundabout {
+        if let angle { core = turn(angle) } else if m == "ROUNDABOUT_LEFT" { core = "turn left" } else if m == "ROUNDABOUT_RIGHT" { core = "turn right" }
+        core = "at the roundabout, " + core
+    }
     return core
 }
 
 private func capitalised(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
 
-// MARK: - Navigator
+// MARK: - Provider-neutral models
 
-/// Audio-only turn-by-turn navigation: announces plain directions with distances, reroutes when
-/// you leave the route, and answers "what's next" / "how far". Uses Apple Maps routing (MapKit).
-@MainActor
-final class Navigator: ObservableObject {
-    static let shared = Navigator()
+struct Place { var name: String; var coordinate: CLLocationCoordinate2D }
 
-    @Published private(set) var isNavigating = false
-    @Published private(set) var destinationName = ""
+struct NavStep {
+    var instruction: String
+    /// Google maneuver code (e.g. "TURN_LEFT"); nil for Apple Maps.
+    var maneuver: String?
+    var points: [CLLocationCoordinate2D]
+    var distance: Double
+}
 
-    /// Set by RideController; speaks through the helmet.
-    var speak: ((String) async -> Void)?
+struct NavRoute {
+    var distance: Double
+    var duration: TimeInterval
+    var points: [CLLocationCoordinate2D]
+    var steps: [NavStep]
+}
 
-    private var route: MKRoute?
-    private var destination: MKMapItem?
-    private var steps: [MKRoute.Step] = []
-    private var junctions: [CLLocationCoordinate2D] = []   // junctions[i] = where step i's maneuver happens
-    private var phrases: [String] = []
-    private var routeCoords: [CLLocationCoordinate2D] = []
-    private var nextIdx = 1
-    private var announced: [Int: Int] = [:]
-    private var prevDistance = Double.infinity
-    private var offRouteCount = 0
-    private var rerouting = false
-    private var rerouteCooldown = Date.distantPast
-    private var lastLoc: CLLocation?
+protocol RoutingProvider {
+    private var google: GoogleProvider? {
+        let k = (UserDefaults.standard.string(forKey: "googleKey") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return k.isEmpty ? nil : GoogleProvider(key: k)
+    }
 
-    // MARK: Search & start
-
-    func search(_ query: String, near loc: CLLocation) async -> MKMapItem? {
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = query
-        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
-        req.resultTypes = [.pointOfInterest, .address]
-        return try? await MKLocalSearch(request: req).start().mapItems.first
+    func search(_ query: String, near loc: CLLocation) async -> Place? {
+        if let g = google {
+            if let p = await g.search(query, near: loc) { providerStatus = "Google Maps"; return p }
+            providerStatus = "Google failed, using Apple Maps"
+        } else { providerStatus = "Apple Maps" }
+        return await AppleProvider().search(query, near: loc)
     }
 
     /// Returns what to say to the rider.
-    func begin(to item: MKMapItem, from loc: CLLocation) async -> String {
-        guard let r = await calculate(to: item, from: loc) else {
+    func begin(to place: Place, from loc: CLLocation) async -> String {
+        guard let r = await calculate(to: place, from: loc) else {
             return "I couldn't get directions. Check your internet connection."
         }
-        install(r, item)
-        var msg = "Navigation started. \(spokenDistance(r.distance)), about \(spokenDuration(r.expectedTravelTime))."
-        if let first = steps.first?.instructions, !first.isEmpty { msg += " " + first + "." }
+        install(r, place)
+        var msg = "Navigation started. \(spokenDistance(r.distance)), about \(spokenDuration(r.duration))."
+        if let first = steps.first?.instruction, !first.isEmpty { msg += " " + first + "." }
         return msg
     }
 
@@ -177,34 +191,34 @@ final class Navigator: ObservableObject {
 
     func remaining() -> String {
         guard isNavigating, let route, route.distance > 0 else { return "I'm not navigating." }
-        var rem = steps.dropFirst(nextIdx).reduce(0) { $0 + $1.distance }
+        var rem = steps.dropFirst(nextIdx).reduce(0.0) { $0 + $1.distance }
         if nextIdx < steps.count, let loc = lastLoc {
             rem += loc.distance(from: CLLocation(latitude: junctions[nextIdx].latitude, longitude: junctions[nextIdx].longitude))
         }
-        let secs = route.expectedTravelTime * min(1, rem / route.distance)
+        let secs = route.duration * min(1, rem / route.distance)
         return "\(spokenDistance(rem)) to go, about \(spokenDuration(secs))."
     }
 
     // MARK: Internals
 
-    private func calculate(to item: MKMapItem, from loc: CLLocation) async -> MKRoute? {
-        let req = MKDirections.Request()
-        req.source = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
-        req.destination = item
-        req.transportType = .automobile
-        return try? await MKDirections(request: req).calculate().routes.first
+    private func calculate(to place: Place, from loc: CLLocation) async -> NavRoute? {
+        if let g = google {
+            if let r = await g.route(from: loc, to: place), r.steps.count > 1 { providerStatus = "Google Maps"; return r }
+            providerStatus = "Google failed, using Apple Maps"
+        } else { providerStatus = "Apple Maps" }
+        return await AppleProvider().route(from: loc, to: place)
     }
 
-    private func install(_ r: MKRoute, _ item: MKMapItem) {
+    private func install(_ r: NavRoute, _ place: Place) {
         route = r
-        destination = item
-        destinationName = item.name ?? "destination"
-        steps = r.steps.filter { !$0.instructions.isEmpty }
-        routeCoords = r.polyline.coords
-        junctions = [steps.first?.polyline.coords.first ?? kCLLocationCoordinate2DInvalid]
+        destination = place
+        destinationName = place.name
+        steps = r.steps
+        routeCoords = r.points
+        junctions = [steps.first?.points.first ?? kCLLocationCoordinate2DInvalid]
         phrases = [""]
         for i in 1..<max(steps.count, 1) {
-            junctions.append(steps[i - 1].polyline.coords.last ?? kCLLocationCoordinate2DInvalid)
+            junctions.append(steps[i - 1].points.last ?? kCLLocationCoordinate2DInvalid)
             phrases.append(plainPhrase(prev: steps[i - 1], next: steps[i], isLast: i == steps.count - 1))
         }
         nextIdx = 1
@@ -272,7 +286,7 @@ final class Navigator: ObservableObject {
         say("Rerouting.")
         if let r = await calculate(to: destination, from: loc) {
             install(r, destination)
-            if let first = steps.first?.instructions, !first.isEmpty { say(first + ".") }
+            if let first = steps.first?.instruction, !first.isEmpty { say(first + ".") }
         } else {
             rerouting = false
             rerouteCooldown = Date().addingTimeInterval(20)

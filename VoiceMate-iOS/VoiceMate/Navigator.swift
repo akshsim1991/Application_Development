@@ -50,7 +50,7 @@ private func distToSegment(_ p: CLLocationCoordinate2D, _ a: CLLocationCoordinat
 }
 
 func spokenDistance(_ m: Double) -> String {
-    if Locale.current.measurementSystem == .us {
+    if Prefs.imperial {
         let ft = m * 3.28084
         if ft < 1000 { return "\(max(50, Int((ft / 50).rounded()) * 50)) feet" }
         let mi = m / 1609.34
@@ -131,6 +131,28 @@ private func plainPhrase(prev: NavStep, next: NavStep, isLast: Bool) -> String {
 
 private func capitalised(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
 
+/// Compact distance for the UI ("300 m", "1.5 km").
+func shortDistance(_ m: Double) -> String {
+    if Prefs.imperial {
+        let ft = m * 3.28084
+        if ft < 1000 { return "\(Int((ft / 10).rounded()) * 10) ft" }
+        return String(format: "%.1f mi", m / 1609.34)
+    }
+    if m < 1000 { return "\(Int((m / 10).rounded()) * 10) m" }
+    return String(format: "%.1f km", m / 1000)
+}
+
+/// SF Symbol for a plain-language maneuver ("turn left", "go straight", ...).
+func maneuverSymbol(_ phrase: String) -> String {
+    let p = phrase.lowercased()
+    if p.contains("arrive") { return "flag.checkered" }
+    if p.contains("u-turn") { return "arrow.uturn.left" }
+    if p.contains("roundabout") { return "arrow.triangle.turn.up.right.circle" }
+    if p.contains("left") { return "arrow.turn.up.left" }
+    if p.contains("right") { return "arrow.turn.up.right" }
+    return "arrow.up"
+}
+
 // MARK: - Provider-neutral models
 
 struct Place { var name: String; var coordinate: CLLocationCoordinate2D }
@@ -191,6 +213,10 @@ final class Navigator: ObservableObject {
     @Published private(set) var isNavigating = false
     @Published private(set) var destinationName = ""
     @Published private(set) var providerStatus = "Apple Maps"
+    @Published private(set) var upcomingPhrase = ""
+    @Published private(set) var upcomingMeters = 0.0
+    @Published private(set) var remainingMeters = 0.0
+    @Published private(set) var remainingSeconds = 0.0
 
     /// Set by RideController; speaks through the helmet.
     var speak: ((String) async -> Void)?
@@ -208,6 +234,7 @@ final class Navigator: ObservableObject {
     private var rerouting = false
     private var rerouteCooldown = Date.distantPast
     private var lastLoc: CLLocation?
+    private var observerID: UUID?
 
     // MARK: Search & start
 
@@ -238,7 +265,8 @@ final class Navigator: ObservableObject {
     func stop() {
         isNavigating = false
         route = nil; destination = nil; steps = []; phrases = []; junctions = []; routeCoords = []
-        LocationProvider.shared.onUpdate = nil
+        if let id = observerID { LocationProvider.shared.removeObserver(id); observerID = nil }
+        upcomingPhrase = ""; upcomingMeters = 0; remainingMeters = 0; remainingSeconds = 0
     }
 
     // MARK: Queries
@@ -250,13 +278,17 @@ final class Navigator: ObservableObject {
     }
 
     func remaining() -> String {
-        guard isNavigating, let route, route.distance > 0 else { return "I'm not navigating." }
+        guard let r = remainingValues(lastLoc) else { return "I'm not navigating." }
+        return "\(spokenDistance(r.distance)) to go, about \(spokenDuration(r.seconds))."
+    }
+
+    private func remainingValues(_ loc: CLLocation?) -> (distance: Double, seconds: TimeInterval)? {
+        guard isNavigating, let route, route.distance > 0 else { return nil }
         var rem = steps.dropFirst(nextIdx).reduce(0.0) { $0 + $1.distance }
-        if nextIdx < steps.count, let loc = lastLoc {
+        if nextIdx < steps.count, let loc {
             rem += loc.distance(from: CLLocation(latitude: junctions[nextIdx].latitude, longitude: junctions[nextIdx].longitude))
         }
-        let secs = route.duration * min(1, rem / route.distance)
-        return "\(spokenDistance(rem)) to go, about \(spokenDuration(secs))."
+        return (rem, route.duration * min(1, rem / route.distance))
     }
 
     // MARK: Internals
@@ -287,7 +319,8 @@ final class Navigator: ObservableObject {
         offRouteCount = 0
         rerouting = false
         isNavigating = steps.count > 1
-        LocationProvider.shared.onUpdate = { [weak self] loc in self?.update(loc) }
+        if let id = observerID { LocationProvider.shared.removeObserver(id) }
+        observerID = LocationProvider.shared.observe { [weak self] loc in self?.update(loc) }
     }
 
     private func say(_ text: String) { Task { await speak?(text) } }
@@ -303,6 +336,9 @@ final class Navigator: ObservableObject {
 
         let j = junctions[nextIdx]
         let d = loc.distance(from: CLLocation(latitude: j.latitude, longitude: j.longitude))
+        upcomingPhrase = phrases[nextIdx]
+        upcomingMeters = d
+        if let r = remainingValues(loc) { remainingMeters = r.distance; remainingSeconds = r.seconds }
         let v = max(loc.speed, 0)
         let far = max(500, v * 25), mid = max(200, v * 10), near = max(50, v * 3.5)
         let level = d <= near ? 3 : d <= mid ? 2 : d <= far ? 1 : 0

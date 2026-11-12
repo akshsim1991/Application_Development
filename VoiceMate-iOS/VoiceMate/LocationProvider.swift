@@ -1,15 +1,16 @@
 import CoreLocation
 
-/// Speed / position / heading, usable in the background while Ride Mode is on.
+/// Speed / position, usable in the background while Ride Mode is on. Several parts of the app
+/// (navigation, trip recorder, dashboard) observe it.
 @MainActor
-final class LocationProvider: NSObject, CLLocationManagerDelegate {
+final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDelegate {
     static let shared = LocationProvider()
 
+    @Published private(set) var latest: CLLocation?
+
     private let manager = CLLocationManager()
-    private(set) var latest: CLLocation?
-    /// Called for every new fix (used by Navigator).
-    var onUpdate: ((CLLocation) -> Void)?
     private var waiters: [CheckedContinuation<CLLocation?, Never>] = []
+    private var observers: [UUID: (CLLocation) -> Void] = [:]
 
     override init() {
         super.init()
@@ -17,6 +18,15 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
         manager.activityType = .automotiveNavigation
     }
+
+    @discardableResult
+    func observe(_ f: @escaping (CLLocation) -> Void) -> UUID {
+        let id = UUID()
+        observers[id] = f
+        return id
+    }
+
+    func removeObserver(_ id: UUID) { observers[id] = nil }
 
     func startContinuous() {
         manager.requestWhenInUseAuthorization()
@@ -42,8 +52,12 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     private func deliver(_ loc: CLLocation?) {
-        if let loc { latest = loc; onUpdate?(loc) }
-        let w = waiters; waiters = []
+        if let loc {
+            latest = loc
+            for f in Array(observers.values) { f(loc) }
+        }
+        let w = waiters
+        waiters = []
         w.forEach { $0.resume(returning: loc ?? latest) }
     }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 import UniformTypeIdentifiers
 
 private struct NearbyCategory: Identifiable {
@@ -157,23 +158,8 @@ struct NavigateView: View {
         NavigationStack {
             List {
                 if nearbyResults.isEmpty { Text("Nothing found nearby.").foregroundStyle(Theme.dim) }
-                ForEach(Array(nearbyResults.enumerated()), id: \.offset) { _, p in
-                    Button {
-                        showNearby = false
-                        Task { if nav.isNavigating { await ride.addStop(p) } else { await ride.navigate(to: p) } }
-                    } label: {
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text(p.name).font(.headline)
-                                if let from = nearbyFrom {
-                                    Text(shortDistance(from.distance(from: CLLocation(latitude: p.coordinate.latitude, longitude: p.coordinate.longitude))))
-                                        .font(.caption).foregroundStyle(Theme.dim)
-                                }
-                            }
-                            Spacer()
-                            Text(nav.isNavigating ? "Add stop" : "Go").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
-                        }
-                    }
+                ForEach(0..<nearbyResults.count, id: \.self) { i in
+                    nearbyRow(nearbyResults[i])
                 }
             }
             .navigationTitle(nearbyTitle)
@@ -182,6 +168,31 @@ struct NavigateView: View {
         }
         .presentationDetents([.medium, .large])
         .preferredColorScheme(.dark)
+    }
+
+    private func nearbyRow(_ p: Place) -> some View {
+        let actionLabel: String = nav.isNavigating ? "Add stop" : "Go"
+        return Button {
+            showNearby = false
+            Task {
+                if nav.isNavigating { await ride.addStop(p) } else { await ride.navigate(to: p) }
+            }
+        } label: {
+            HStack {
+                VStack(alignment: .leading) {
+                    Text(p.name).font(.headline)
+                    Text(distanceText(to: p)).font(.caption).foregroundStyle(Theme.dim)
+                }
+                Spacer()
+                Text(actionLabel).font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+            }
+        }
+    }
+
+    private func distanceText(to p: Place) -> String {
+        guard let from = nearbyFrom else { return "" }
+        let target = CLLocation(latitude: p.coordinate.latitude, longitude: p.coordinate.longitude)
+        return shortDistance(from.distance(from: target))
     }
 
     // MARK: Actions

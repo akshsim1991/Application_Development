@@ -12,6 +12,22 @@ button press, and iOS gives apps no way to talk to Siri. So VoiceMate listens it
 3. Say the wake phrase (default **"hey rider"**), then a command, e.g. "hey rider, what's my speed".
    Or say just the wake phrase, wait for "Yes?", then the command.
 
+## Audio-only navigation
+Say: **"hey rider, navigate to <place>"** -> it replies with the place and distance -> say **"yes"**.
+Directions are plain and relative, never "take the second exit":
+"In 300 metres, turn left." / "At the roundabout, go straight." / "Take the exit on the right."
+It announces earlier at higher speed, says "now" at the junction, reroutes if you leave the route, and says
+"You have arrived". Also: "next turn", "how far", "stop navigation", "set home" then "navigate home".
+Routing uses Apple Maps (MapKit): needs mobile data, and map quality/coverage varies by country - test your
+usual roads first. It is car routing (no motorcycle profile, no avoid-highways option yet).
+
+## Using Siri without touching the phone
+"Hey Siri" will not hear a generic headset mic. Use the headset's call/multifunction button instead (usually
+press and hold ~2 s; check the BluArmor manual). To make it work with the phone locked in your pocket enable
+Settings > Face ID & Passcode > Allow Access When Locked > Siri (and Settings > Siri > Allow Siri When Locked).
+Siri can then run: "Navigate with VoiceMate" (asks "Where do you want to go?"), "Start ride mode in VoiceMate",
+or ask Siri directly to call/message anyone.
+
 Commands: speed, where am I, heading, time, battery, play, pause, next song, previous song, repeat, help.
 Calls, messages and navigation are not possible from the background: hold the helmet button for Siri.
 

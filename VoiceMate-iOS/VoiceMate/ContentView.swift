@@ -4,6 +4,7 @@ struct ContentView: View {
     @EnvironmentObject var ride: RideController
     @ObservedObject private var route = RideController.shared.route
     @ObservedObject private var listener = RideController.shared.listener
+    @ObservedObject private var nav = Navigator.shared
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -29,6 +30,7 @@ struct ContentView: View {
                 Text("Listening. Say “\(ride.wakeWord)” then a command.").font(.headline).multilineTextAlignment(.center)
                 if !listener.heard.isEmpty { Text(listener.heard).foregroundStyle(.secondary) }
             }
+            if nav.isNavigating { Label("Navigating to \(nav.destinationName)", systemImage: "location.north.line.fill").font(.headline) }
             if !ride.lastHeard.isEmpty { Text("You: \(ride.lastHeard)") }
             if !ride.lastReply.isEmpty { Text("VoiceMate: \(ride.lastReply)").bold() }
             if let e = ride.errorMessage { Text(e).font(.footnote).foregroundStyle(.red) }
@@ -42,7 +44,7 @@ struct ContentView: View {
                     .textInputAutocapitalization(.never).autocorrectionDisabled()
                     .disabled(ride.isRiding)
             }
-            Text("Commands: speed · where am I · heading · time · battery · play · pause · next song · repeat · help")
+            Text("Commands: navigate to … · next turn · how far · stop navigation · set home · speed · where am I · time · battery · play · pause · next song · help")
                 .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
         .padding()
@@ -51,7 +53,7 @@ struct ContentView: View {
     }
 
     private func startIfRequested(_ phase: ScenePhase) {
-        guard phase == .active, ride.pendingStart else { return }
+        guard phase == .active, ride.pendingStart || ride.pendingDestination != nil else { return }
         ride.pendingStart = false
         Task { await ride.start() }
     }

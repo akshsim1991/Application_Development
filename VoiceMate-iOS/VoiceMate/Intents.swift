@@ -29,6 +29,23 @@ struct StartRideModeIntent: AppIntent {
     }
 }
 
+/// Hold the helmet button -> "Navigate with VoiceMate" -> "Where do you want to go?" -> answer.
+struct NavigateToIntent: AppIntent {
+    static var title: LocalizedStringResource = "Navigate with VoiceMate"
+    static var description = IntentDescription("Start audio-only navigation to a place.")
+    static var openAppWhenRun = true
+
+    @Parameter(title: "Destination", requestValueDialog: "Where do you want to go?")
+    var destination: String
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        RideController.shared.pendingDestination = destination
+        RideController.shared.pendingStart = true
+        return .result()
+    }
+}
+
 struct VoiceMateShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -36,6 +53,12 @@ struct VoiceMateShortcuts: AppShortcutsProvider {
             phrases: ["Start ride mode in \(.applicationName)", "Start \(.applicationName)", "Ride mode in \(.applicationName)"],
             shortTitle: "Ride Mode",
             systemImageName: "figure.outdoor.cycle"
+        )
+        AppShortcut(
+            intent: NavigateToIntent(),
+            phrases: ["Navigate with \(.applicationName)", "Take me somewhere with \(.applicationName)"],
+            shortTitle: "Navigate",
+            systemImageName: "location.north.line"
         )
         AppShortcut(
             intent: AskVoiceMateIntent(),

@@ -7,12 +7,15 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     private let manager = CLLocationManager()
     private(set) var latest: CLLocation?
+    /// Called for every new fix (used by Navigator).
+    var onUpdate: ((CLLocation) -> Void)?
     private var waiters: [CheckedContinuation<CLLocation?, Never>] = []
 
     override init() {
         super.init()
         manager.delegate = self
-        manager.desiredAccuracy = kCLLocationAccuracyBest
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.activityType = .automotiveNavigation
     }
 
     func startContinuous() {
@@ -39,7 +42,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     private func deliver(_ loc: CLLocation?) {
-        if let loc { latest = loc }
+        if let loc { latest = loc; onUpdate?(loc) }
         let w = waiters; waiters = []
         w.forEach { $0.resume(returning: loc ?? latest) }
     }

@@ -18,7 +18,7 @@ final class RideListener: ObservableObject {
 
     var wakeWord = "hey rider"
     var onWake: (() async -> Void)?
-    var onCommand: ((String) async -> Void)?
+    var onCommand: ((String) async -> Bool)?
 
     private let recognizer = SFSpeechRecognizer(locale: .current) ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     private let engine = AVAudioEngine()
@@ -60,6 +60,9 @@ final class RideListener: ObservableObject {
         ]
         startCycle()
     }
+
+    /// Next utterance is treated as a command even without the wake phrase (for yes/no answers).
+    func expectFollowUp() { awaitingUntil = Date().addingTimeInterval(8) }
 
     func stop() {
         running = false
@@ -175,7 +178,7 @@ final class RideListener: ObservableObject {
                 await onWake?()
                 awaitingUntil = Date().addingTimeInterval(8)
             } else if let command {
-                await onCommand?(command)
+                if await onCommand?(command) == true { awaitingUntil = Date().addingTimeInterval(8) }
             }
             paused = false
             if running { startCycle() }

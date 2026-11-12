@@ -8,6 +8,7 @@ final class RideController: ObservableObject {
     let route = AudioRoute()
     let listener = RideListener()
     private let speaker = Speaker()
+    private var speechTail: Task<Void, Never>?
 
     @Published private(set) var isRiding = false
     @Published var lastHeard = ""
@@ -17,8 +18,9 @@ final class RideController: ObservableObject {
         didSet { UserDefaults.standard.set(wakeWord, forKey: "wakeWord"); listener.wakeWord = wakeWord }
     }
 
-    /// Set by the "Start Ride Mode" Siri intent; the UI starts it when the app appears.
+    /// Set by Siri intents; the UI acts on them when the app appears.
     var pendingStart = false
+    var pendingDestination: String?
 
     init() {
         let saved = UserDefaults.standard.string(forKey: "wakeWord") ?? "hey rider"
@@ -26,10 +28,13 @@ final class RideController: ObservableObject {
         listener.wakeWord = saved
         listener.onWake = { [weak self] in await self?.say("Yes?") }
         listener.onCommand = { [weak self] text in
-            guard let self else { return }
+            guard let self else { return false }
             self.lastHeard = text
-            await self.say(await Assistant.shared.reply(to: text))
+            let r = await Assistant.shared.handle(text)
+            await self.say(r.text)
+            return r.followUp
         }
+        Navigator.shared.speak = { [weak self] text in await self?.say(text) }
     }
 
     func toggle() {
@@ -37,7 +42,7 @@ final class RideController: ObservableObject {
     }
 
     func start() async {
-        guard !isRiding else { return }
+        guard !isRiding else { await handlePendingDestination(); return }
         errorMessage = nil
         guard await RideListener.requestPermissions() else {
             errorMessage = "Allow Microphone and Speech Recognition in Settings > VoiceMate."
@@ -46,10 +51,12 @@ final class RideController: ObservableObject {
         do {
             try route.activate()
             LocationProvider.shared.startContinuous()
-            try listener.start()
             isRiding = true
             UIApplication.shared.isIdleTimerDisabled = true
-            await say("Ride mode on. Say \(wakeWord) and then a command.")
+            // Spoken before listening starts so the app never hears its own announcement.
+            await say("Ride mode on.")
+            try listener.start()
+            await handlePendingDestination()
         } catch {
             errorMessage = error.localizedDescription
             stop()
@@ -57,6 +64,7 @@ final class RideController: ObservableObject {
     }
 
     func stop() {
+        Navigator.shared.stop()
         listener.stop()
         speaker.stop()
         LocationProvider.shared.stopContinuous()
@@ -65,8 +73,20 @@ final class RideController: ObservableObject {
         isRiding = false
     }
 
+    private func handlePendingDestination() async {
+        guard let dest = pendingDestination else { return }
+        pendingDestination = nil
+        let r = await Assistant.shared.requestNavigation(to: dest)
+        await say(r.text)
+        if r.followUp { listener.expectFollowUp() }
+    }
+
+    /// Speech is queued so navigation prompts never cut off an answer (or each other).
     private func say(_ text: String) async {
         lastReply = text
-        await speaker.speak(text)
+        let previous = speechTail
+        let task = Task { await previous?.value; await speaker.speak(text) }
+        speechTail = task
+        await task.value
     }
 }

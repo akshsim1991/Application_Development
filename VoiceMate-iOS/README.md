@@ -1,4 +1,6 @@
-# VoiceMate (iPhone) - hands-free for riders
+# VoiceMate 2.0 (iPhone) - hands-free for riders
+
+Designed and developed by Akshaya Simha.
 
 Made for a Bluetooth helmet headset (e.g. BluArmor) where touching the phone is not an option.
 
@@ -60,3 +62,30 @@ Set your signing team and run on a real iPhone (not the Simulator).
 
 ## Extending
 Add commands in `VoiceMate/Assistant.swift`.
+
+
+## Version 2.0 features
+- **Navigation:** avoid tolls / highways, fastest or curvy route, multi-stop ("add a stop at ..."), nearest petrol pump /
+  hospital / ATM / mechanic / puncture shop / food, import and export GPX.
+- **Garage tab:** odometer (grows with rides), fuel log with mileage and cost per km, service reminders, insurance / PUC /
+  licence expiry reminders. Anything due is announced when you start a ride.
+- **Safety:** SOS and live location to your emergency contact, crash detection with a 30-second "I'm OK" countdown,
+  speed alert, break reminder, speed camera and posted-limit warnings (OpenStreetMap data, patchy in India).
+- **Trips tab:** every ride with a map, weekly distance chart, records, GPX export.
+- **Ask anything:** unknown questions are answered by Claude if you add an Anthropic key.
+
+## One-time setup for 2.0
+### Emergency contact (free, uses a Telegram bot)
+1. In Telegram, message **@BotFather**, send `/newbot`, follow the steps, copy the **bot token**.
+2. Send any message to your new bot (or add the bot to a family group and write there).
+3. VoiceMate > Settings > Emergency contact: paste the token, tap **Find chat ID**, then **Send test message**.
+4. Turn on **Crash detection** and/or set **Live tracking** (location every N minutes, sent to the same chat).
+Use "Test crash alert" in Settings to rehearse the countdown. Crash detection is experimental and can give false
+alarms (phone dropped or jolted) or miss a crash (phone not moving fast beforehand); it is an extra, not a guarantee.
+
+### AI assistant (optional)
+Create an API key at console.anthropic.com and paste it in Settings > AI assistant. Uses `claude-haiku-5-5`.
+
+## Limits
+Widgets / Dynamic Island, CarPlay and offline maps are not possible with a free-Apple-ID sideload. Music control works
+for Apple Music only.

@@ -46,6 +46,31 @@ struct NavigateToIntent: AppIntent {
     }
 }
 
+/// Hold the helmet button -> "Send SOS with VoiceMate": messages your emergency contact with your location.
+struct SendSOSIntent: AppIntent {
+    static var title: LocalizedStringResource = "Send SOS"
+    static var description = IntentDescription("Send an emergency message with your location to your emergency contact.")
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let msg = await Emergency.shared.sendSOS(manual: true)
+        return .result(dialog: IntentDialog(stringLiteral: msg))
+    }
+}
+
+struct ShareLocationIntent: AppIntent {
+    static var title: LocalizedStringResource = "Share my location"
+    static var description = IntentDescription("Send your current location to your emergency contact.")
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let msg = await Emergency.shared.shareLocation()
+        return .result(dialog: IntentDialog(stringLiteral: msg))
+    }
+}
+
 struct VoiceMateShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -59,6 +84,18 @@ struct VoiceMateShortcuts: AppShortcutsProvider {
             phrases: ["Navigate with \(.applicationName)", "Take me somewhere with \(.applicationName)"],
             shortTitle: "Navigate",
             systemImageName: "location.north.line"
+        )
+        AppShortcut(
+            intent: SendSOSIntent(),
+            phrases: ["Send SOS with \(.applicationName)", "Emergency with \(.applicationName)"],
+            shortTitle: "SOS",
+            systemImageName: "sos"
+        )
+        AppShortcut(
+            intent: ShareLocationIntent(),
+            phrases: ["Share my location with \(.applicationName)"],
+            shortTitle: "Share location",
+            systemImageName: "location.fill"
         )
         AppShortcut(
             intent: AskVoiceMateIntent(),

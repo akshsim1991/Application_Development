@@ -7,33 +7,36 @@ struct GoogleProvider: RoutingProvider {
 
     // MARK: Search
 
-    func search(_ query: String, near loc: CLLocation) async -> Place? {
+    func search(_ query: String, near loc: CLLocation, nearest: Bool, limit: Int) async -> [Place] {
         var body: [String: Any] = [
             "textQuery": query,
-            "pageSize": 1,
+            "pageSize": limit,
             "locationBias": ["circle": [
                 "center": ["latitude": loc.coordinate.latitude, "longitude": loc.coordinate.longitude],
                 "radius": 50_000.0
             ]]
         ]
+        if nearest { body["rankPreference"] = "DISTANCE" }
         if let region = Locale.current.region?.identifier { body["regionCode"] = region }
         guard let data = await post("https://places.googleapis.com/v1/places:searchText",
                                     mask: "places.displayName,places.formattedAddress,places.location", body: body),
-              let r = try? JSONDecoder().decode(PlacesResponse.self, from: data),
-              let p = r.places?.first, let l = p.location else { return nil }
-        return Place(name: p.displayName?.text ?? p.formattedAddress ?? query,
-                     coordinate: CLLocationCoordinate2D(latitude: l.latitude, longitude: l.longitude))
+              let r = try? JSONDecoder().decode(PlacesResponse.self, from: data) else { return [] }
+        return (r.places ?? []).compactMap { p in
+            guard let l = p.location else { return nil }
+            return Place(name: p.displayName?.text ?? p.formattedAddress ?? query,
+                         coordinate: CLLocationCoordinate2D(latitude: l.latitude, longitude: l.longitude))
+        }
     }
 
-    // MARK: Route
+    // MARK: Routes
 
-    func route(from loc: CLLocation, to place: Place) async -> NavRoute? {
+    func routes(from loc: CLLocation, to place: Place, options: RouteOptions) async -> [NavRoute] {
         let mask = "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,"
             + "routes.legs.steps.navigationInstruction,routes.legs.steps.distanceMeters,routes.legs.steps.polyline.encodedPolyline"
         for mode in ["TWO_WHEELER", "DRIVE"] {
             var origin: [String: Any] = ["latLng": ["latitude": loc.coordinate.latitude, "longitude": loc.coordinate.longitude]]
             if loc.course >= 0, loc.speed > 2 { origin["heading"] = Int(loc.course) }
-            let body: [String: Any] = [
+            var body: [String: Any] = [
                 "origin": ["location": origin],
                 "destination": ["location": ["latLng": ["latitude": place.coordinate.latitude, "longitude": place.coordinate.longitude]]],
                 "travelMode": mode,
@@ -41,12 +44,22 @@ struct GoogleProvider: RoutingProvider {
                 "languageCode": "en-IN",
                 "units": "METRIC"
             ]
+            if options.avoidTolls || options.avoidHighways {
+                body["routeModifiers"] = ["avoidTolls": options.avoidTolls, "avoidHighways": options.avoidHighways]
+            }
+            if !options.vias.isEmpty {
+                body["intermediates"] = options.vias.prefix(25).map { v in
+                    ["location": ["latLng": ["latitude": v.latitude, "longitude": v.longitude]], "via": true] as [String: Any]
+                }
+            } else if options.alternatives {
+                body["computeAlternativeRoutes"] = true
+            }
             guard let data = await post("https://routes.googleapis.com/directions/v2:computeRoutes", mask: mask, body: body),
                   let r = try? JSONDecoder().decode(RoutesResponse.self, from: data),
-                  let route = r.routes?.first else { continue }
-            return convert(route)
+                  let routes = r.routes, !routes.isEmpty else { continue }
+            return routes.map(convert)
         }
-        return nil
+        return []
     }
 
     private func convert(_ r: RoutesResponse.Route) -> NavRoute {
@@ -69,8 +82,9 @@ struct GoogleProvider: RoutingProvider {
             steps.append(NavStep(instruction: "Arrive at destination", maneuver: "ARRIVE", points: [end], distance: 0))
         }
         let secs = Double(r.duration?.dropLast() ?? "") ?? 0
-        return NavRoute(distance: Double(r.distanceMeters ?? 0), duration: secs,
-                        points: decodePolyline(r.polyline?.encodedPolyline ?? ""), steps: steps)
+        let pts = decodePolyline(r.polyline?.encodedPolyline ?? "")
+        return NavRoute(distance: Double(r.distanceMeters ?? 0), duration: secs, points: pts, steps: steps,
+                        curviness: routeCurviness(pts))
     }
 
     // MARK: HTTP

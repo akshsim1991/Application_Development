@@ -14,9 +14,12 @@ private let quickActions: [QuickAction] = [
     .init(title: "Next turn", icon: "arrow.turn.up.right", command: "next turn"),
     .init(title: "ETA", icon: "flag.checkered", command: "how far"),
     .init(title: "Trip", icon: "chart.bar.fill", command: "trip stats"),
+    .init(title: "Petrol", icon: "fuelpump.fill", command: "nearest petrol pump"),
+    .init(title: "Hospital", icon: "cross.case.fill", command: "nearest hospital"),
     .init(title: "Music", icon: "playpause.fill", command: "toggle music"),
-    .init(title: "Next song", icon: "forward.fill", command: "next song"),
-    .init(title: "Park here", icon: "parkingsign.circle.fill", command: "save parking")
+    .init(title: "Park here", icon: "parkingsign.circle.fill", command: "save parking"),
+    .init(title: "Service", icon: "wrench.and.screwdriver.fill", command: "service status"),
+    .init(title: "Share", icon: "square.and.arrow.up", command: "share my location")
 ]
 
 struct RideView: View {
@@ -26,6 +29,8 @@ struct RideView: View {
     @ObservedObject private var loc = LocationProvider.shared
     @ObservedObject private var trip = TripRecorder.shared
     @ObservedObject private var nav = Navigator.shared
+    @ObservedObject private var road = RoadInfo.shared
+    @State private var showSOS = false
     @AppStorage("speedLimit") private var speedLimit = 0
 
     private var speed: Double { ride.isRiding ? Prefs.displaySpeed(loc.latest?.speed ?? 0) : 0 }
@@ -43,6 +48,7 @@ struct RideView: View {
                     Text(e).font(.footnote).foregroundStyle(Theme.bad).multilineTextAlignment(.center)
                 }
                 quickActionGrid
+                sosButton
                 if !ride.log.isEmpty { logCard }
             }
             .padding()
@@ -78,13 +84,38 @@ struct RideView: View {
                        over: speedLimit > 0 && speed > Double(speedLimit))
             HStack(spacing: 18) {
                 Label(cardinal(ride.isRiding ? (loc.latest?.course ?? -1) : -1), systemImage: "safari")
-                if speedLimit > 0 { Label("Limit \(speedLimit)", systemImage: "exclamationmark.triangle") }
+                if speedLimit > 0 { Label("Alert \(speedLimit)", systemImage: "exclamationmark.triangle") }
+                if ride.isRiding, let lim = road.limitDisplay { limitSign(Int(lim.rounded())) }
             }
             .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.dim)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 12)
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Theme.card))
+    }
+
+    private func limitSign(_ v: Int) -> some View {
+        Text("\(v)")
+            .font(.system(size: 18, weight: .heavy, design: .rounded))
+            .foregroundStyle(.black)
+            .frame(width: 40, height: 40)
+            .background(Circle().fill(.white))
+            .overlay(Circle().stroke(Theme.bad, lineWidth: 4))
+    }
+
+    private var sosButton: some View {
+        Button { showSOS = true } label: {
+            Label("SOS", systemImage: "sos")
+                .font(.headline.weight(.heavy))
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, minHeight: 54)
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Theme.bad.opacity(0.85)))
+        }
+        .confirmationDialog("Send an emergency message with your location?", isPresented: $showSOS, titleVisibility: .visible) {
+            Button("Send SOS now", role: .destructive) {
+                Task { await ride.say(await Emergency.shared.sendSOS(manual: true)) }
+            }
+        }
     }
 
     private var navCard: some View {

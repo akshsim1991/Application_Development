@@ -67,6 +67,7 @@ final class TripRecorder: ObservableObject {
         isRecording = false
         timer?.invalidate(); timer = nil
         if let id = observerID { LocationProvider.shared.removeObserver(id); observerID = nil }
+        Garage.shared.addDistance(meters: distance)
         if distance >= 200 {
             trips.insert(Trip(start: startDate, end: Date(), distance: distance, movingTime: movingTime,
                               maxSpeed: maxSpeed, points: points), at: 0)
@@ -105,8 +106,9 @@ final class TripRecorder: ObservableObject {
         } else { points.append([l.coordinate.latitude, l.coordinate.longitude]) }
         lastLoc = l
 
-        let limit = Prefs.speedLimit
-        if limit > 0, l.speed >= 0, Prefs.displaySpeed(l.speed) > Double(limit), Date().timeIntervalSince(lastAlert) > 45 {
+        let manual = Prefs.speedLimit
+        let limit: Double? = manual > 0 ? Double(manual) : (Prefs.autoLimitAlert ? RoadInfo.shared.limitDisplay : nil)
+        if let limit, l.speed >= 0, Prefs.displaySpeed(l.speed) > limit + (manual > 0 ? 0 : 5), Date().timeIntervalSince(lastAlert) > 45 {
             lastAlert = Date()
             let now = Int(Prefs.displaySpeed(l.speed).rounded())
             Task { await speak?("Speed alert. \(now) \(Prefs.speedUnitSpoken).") }

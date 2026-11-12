@@ -12,6 +12,9 @@ targets:
       path: VoiceMate/Info.plist
       properties:
         CFBundleDisplayName: VoiceMate
+        CFBundleShortVersionString: "2.0"
+        CFBundleVersion: "2"
+        NSMotionUsageDescription: VoiceMate uses motion sensors to detect a possible crash while you ride.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [audio, location]

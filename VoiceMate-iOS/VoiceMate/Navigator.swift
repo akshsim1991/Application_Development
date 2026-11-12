@@ -3,7 +3,7 @@ import CoreLocation
 
 // MARK: - Geometry helpers
 
-private extension MKPolyline {
+extension MKPolyline {
     var coords: [CLLocationCoordinate2D] {
         var c = [CLLocationCoordinate2D](repeating: kCLLocationCoordinate2DInvalid, count: pointCount)
         getCoordinates(&c, range: NSRange(location: 0, length: pointCount))
@@ -11,12 +11,12 @@ private extension MKPolyline {
     }
 }
 
-private func meters(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+func meters(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
     CLLocation(latitude: a.latitude, longitude: a.longitude)
         .distance(from: CLLocation(latitude: b.latitude, longitude: b.longitude))
 }
 
-private func bearing(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
+func bearing(_ a: CLLocationCoordinate2D, _ b: CLLocationCoordinate2D) -> Double {
     let la1 = a.latitude * .pi / 180, la2 = b.latitude * .pi / 180
     let dl = (b.longitude - a.longitude) * .pi / 180
     let y = sin(dl) * cos(la2)
@@ -49,6 +49,30 @@ private func distToSegment(_ p: CLLocationCoordinate2D, _ a: CLLocationCoordinat
     return hypot(ax + t * dx, ay + t * dy)
 }
 
+/// Degrees of turning per kilometre: higher means twistier. Used for "curvy" route choice.
+func routeCurviness(_ pts: [CLLocationCoordinate2D]) -> Double {
+    guard pts.count > 2 else { return 0 }
+    var total = 0.0, dist = 0.0
+    var last = pts[0]
+    var lastBearing: Double?
+    for p in pts.dropFirst() {
+        let d = meters(last, p)
+        if d < 30 { continue }
+        let b = bearing(last, p)
+        if let lb = lastBearing {
+            var x = abs(b - lb)
+            if x > 180 { x = 360 - x }
+            if x > 3 { total += x }
+        }
+        dist += d
+        lastBearing = b
+        last = p
+    }
+    return dist > 0 ? total / (dist / 1000) : 0
+}
+
+// MARK: - Spoken & short formats
+
 func spokenDistance(_ m: Double) -> String {
     if Prefs.imperial {
         let ft = m * 3.28084
@@ -67,6 +91,99 @@ func spokenDuration(_ s: TimeInterval) -> String {
     let h = mins / 60, m = mins % 60
     return "\(h) hour" + (h == 1 ? "" : "s") + (m == 0 ? "" : " \(m) minutes")
 }
+
+/// Compact distance for the UI ("300 m", "1.5 km").
+func shortDistance(_ m: Double) -> String {
+    if Prefs.imperial {
+        let ft = m * 3.28084
+        if ft < 1000 { return "\(Int((ft / 10).rounded()) * 10) ft" }
+        return String(format: "%.1f mi", m / 1609.34)
+    }
+    if m < 1000 { return "\(Int((m / 10).rounded()) * 10) m" }
+    return String(format: "%.1f km", m / 1000)
+}
+
+/// SF Symbol for a plain-language maneuver ("turn left", "go straight", ...).
+func maneuverSymbol(_ phrase: String) -> String {
+    let p = phrase.lowercased()
+    if p.contains("arrive") { return "flag.checkered" }
+    if p.contains("u-turn") { return "arrow.uturn.left" }
+    if p.contains("roundabout") { return "arrow.triangle.turn.up.right.circle" }
+    if p.contains("left") { return "arrow.turn.up.left" }
+    if p.contains("right") { return "arrow.turn.up.right" }
+    return "arrow.up"
+}
+
+// MARK: - Provider-neutral models
+
+struct Place { var name: String; var coordinate: CLLocationCoordinate2D }
+
+struct NavStep {
+    var instruction: String
+    /// Google maneuver code (e.g. "TURN_LEFT"); nil for Apple Maps.
+    var maneuver: String?
+    var points: [CLLocationCoordinate2D]
+    var distance: Double
+}
+
+struct NavRoute {
+    var distance: Double
+    var duration: TimeInterval
+    var points: [CLLocationCoordinate2D]
+    var steps: [NavStep]
+    var curviness: Double = 0
+}
+
+struct RouteOptions {
+    var avoidTolls = false
+    var avoidHighways = false
+    var vias: [CLLocationCoordinate2D] = []
+    var alternatives = false
+}
+
+protocol RoutingProvider {
+    func search(_ query: String, near loc: CLLocation, nearest: Bool, limit: Int) async -> [Place]
+    func routes(from loc: CLLocation, to place: Place, options: RouteOptions) async -> [NavRoute]
+}
+
+/// Apple Maps (MapKit) routing: no key needed, but weaker coverage in India.
+struct AppleProvider: RoutingProvider {
+    func search(_ query: String, near loc: CLLocation, nearest: Bool, limit: Int) async -> [Place] {
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = query
+        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
+        req.resultTypes = [.pointOfInterest, .address]
+        guard var items = try? await MKLocalSearch(request: req).start().mapItems else { return [] }
+        if nearest {
+            items.sort {
+                loc.distance(from: CLLocation(latitude: $0.placemark.coordinate.latitude, longitude: $0.placemark.coordinate.longitude))
+                    < loc.distance(from: CLLocation(latitude: $1.placemark.coordinate.latitude, longitude: $1.placemark.coordinate.longitude))
+            }
+        }
+        return items.prefix(limit).map { Place(name: $0.name ?? query, coordinate: $0.placemark.coordinate) }
+    }
+
+    func routes(from loc: CLLocation, to place: Place, options: RouteOptions) async -> [NavRoute] {
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
+        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate))
+        req.transportType = .automobile
+        req.requestsAlternateRoutes = options.alternatives
+        req.highwayPreference = options.avoidHighways ? .avoid : .any
+        req.tollPreference = options.avoidTolls ? .avoid : .any
+        guard let resp = try? await MKDirections(request: req).calculate() else { return [] }
+        return resp.routes.map { r in
+            let steps = r.steps.filter { !$0.instructions.isEmpty }.map {
+                NavStep(instruction: $0.instructions, maneuver: nil, points: $0.polyline.coords, distance: $0.distance)
+            }
+            let pts = r.polyline.coords
+            return NavRoute(distance: r.distance, duration: r.expectedTravelTime, points: pts, steps: steps,
+                            curviness: routeCurviness(pts))
+        }
+    }
+}
+
+// MARK: - Plain-language directions
 
 /// Turns visual instructions ("take the second exit") into plain directions based on the
 /// maneuver type and the real geometry: go straight / turn left / turn right.
@@ -131,81 +248,11 @@ private func plainPhrase(prev: NavStep, next: NavStep, isLast: Bool) -> String {
 
 private func capitalised(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
 
-/// Compact distance for the UI ("300 m", "1.5 km").
-func shortDistance(_ m: Double) -> String {
-    if Prefs.imperial {
-        let ft = m * 3.28084
-        if ft < 1000 { return "\(Int((ft / 10).rounded()) * 10) ft" }
-        return String(format: "%.1f mi", m / 1609.34)
-    }
-    if m < 1000 { return "\(Int((m / 10).rounded()) * 10) m" }
-    return String(format: "%.1f km", m / 1000)
-}
-
-/// SF Symbol for a plain-language maneuver ("turn left", "go straight", ...).
-func maneuverSymbol(_ phrase: String) -> String {
-    let p = phrase.lowercased()
-    if p.contains("arrive") { return "flag.checkered" }
-    if p.contains("u-turn") { return "arrow.uturn.left" }
-    if p.contains("roundabout") { return "arrow.triangle.turn.up.right.circle" }
-    if p.contains("left") { return "arrow.turn.up.left" }
-    if p.contains("right") { return "arrow.turn.up.right" }
-    return "arrow.up"
-}
-
-// MARK: - Provider-neutral models
-
-struct Place { var name: String; var coordinate: CLLocationCoordinate2D }
-
-struct NavStep {
-    var instruction: String
-    /// Google maneuver code (e.g. "TURN_LEFT"); nil for Apple Maps.
-    var maneuver: String?
-    var points: [CLLocationCoordinate2D]
-    var distance: Double
-}
-
-struct NavRoute {
-    var distance: Double
-    var duration: TimeInterval
-    var points: [CLLocationCoordinate2D]
-    var steps: [NavStep]
-}
-
-protocol RoutingProvider {
-    func search(_ query: String, near loc: CLLocation) async -> Place?
-    func route(from loc: CLLocation, to place: Place) async -> NavRoute?
-}
-
-/// Apple Maps (MapKit) routing: no key needed, but weaker coverage in India.
-struct AppleProvider: RoutingProvider {
-    func search(_ query: String, near loc: CLLocation) async -> Place? {
-        let req = MKLocalSearch.Request()
-        req.naturalLanguageQuery = query
-        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
-        req.resultTypes = [.pointOfInterest, .address]
-        guard let item = try? await MKLocalSearch(request: req).start().mapItems.first else { return nil }
-        return Place(name: item.name ?? query, coordinate: item.placemark.coordinate)
-    }
-
-    func route(from loc: CLLocation, to place: Place) async -> NavRoute? {
-        let req = MKDirections.Request()
-        req.source = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
-        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate))
-        req.transportType = .automobile
-        guard let r = try? await MKDirections(request: req).calculate().routes.first else { return nil }
-        let steps = r.steps.filter { !$0.instructions.isEmpty }.map {
-            NavStep(instruction: $0.instructions, maneuver: nil, points: $0.polyline.coords, distance: $0.distance)
-        }
-        return NavRoute(distance: r.distance, duration: r.expectedTravelTime, points: r.polyline.coords, steps: steps)
-    }
-}
-
 // MARK: - Navigator
 
 /// Audio-only turn-by-turn navigation: announces plain directions with distances, reroutes when
-/// you leave the route, and answers "what's next" / "how far". Routing comes from Google (if a key is
-/// set) or Apple Maps.
+/// you leave the route, supports multiple stops, and answers "what's next" / "how far". Routing
+/// comes from Google (if a key is set) or Apple Maps.
 @MainActor
 final class Navigator: ObservableObject {
     static let shared = Navigator()
@@ -217,6 +264,8 @@ final class Navigator: ObservableObject {
     @Published private(set) var upcomingMeters = 0.0
     @Published private(set) var remainingMeters = 0.0
     @Published private(set) var remainingSeconds = 0.0
+    /// Stops still to visit after the current destination.
+    @Published private(set) var queue: [Place] = []
 
     /// Set by RideController; speaks through the helmet.
     var speak: ((String) async -> Void)?
@@ -236,35 +285,86 @@ final class Navigator: ObservableObject {
     private var lastLoc: CLLocation?
     private var observerID: UUID?
 
-    // MARK: Search & start
+    // MARK: Search
 
-    private var google: GoogleProvider? {
-        let k = (UserDefaults.standard.string(forKey: "googleKey") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return k.isEmpty ? nil : GoogleProvider(key: k)
+    private var google: GoogleProvider? { Prefs.googleKey.isEmpty ? nil : GoogleProvider(key: Prefs.googleKey) }
+
+    private func searchMany(_ query: String, near loc: CLLocation, nearest: Bool, limit: Int) async -> [Place] {
+        if let g = google {
+            let r = await g.search(query, near: loc, nearest: nearest, limit: limit)
+            if !r.isEmpty { providerStatus = "Google Maps"; return r }
+            providerStatus = "Google failed, using Apple Maps"
+        } else { providerStatus = "Apple Maps" }
+        return await AppleProvider().search(query, near: loc, nearest: nearest, limit: limit)
     }
 
     func search(_ query: String, near loc: CLLocation) async -> Place? {
-        if let g = google {
-            if let p = await g.search(query, near: loc) { providerStatus = "Google Maps"; return p }
-            providerStatus = "Google failed, using Apple Maps"
-        } else { providerStatus = "Apple Maps" }
-        return await AppleProvider().search(query, near: loc)
+        await searchMany(query, near: loc, nearest: false, limit: 1).first
     }
 
+    /// Closest matches first (petrol pump, hospital, ...).
+    func nearby(_ query: String, near loc: CLLocation, limit: Int = 5) async -> [Place] {
+        await searchMany(query, near: loc, nearest: true, limit: limit)
+    }
+
+    // MARK: Start / stops
+
     /// Returns what to say to the rider.
-    func begin(to place: Place, from loc: CLLocation) async -> String {
-        guard let r = await calculate(to: place, from: loc) else {
+    func begin(to place: Place, from loc: CLLocation, keepQueue: Bool = false, vias: [CLLocationCoordinate2D] = []) async -> String {
+        guard let r = await calculate(to: place, from: loc, vias: vias) else {
             return "I couldn't get directions. Check your internet connection."
         }
+        if !keepQueue { queue = [] }
         install(r, place)
-        var msg = "Navigation started. \(spokenDistance(r.distance)), about \(spokenDuration(r.duration))."
+        var msg = ""
+        if !vias.isEmpty && providerStatus != "Google Maps" {
+            msg += "Apple Maps can't follow the imported route, so I'm going straight to its end. "
+        }
+        msg += "Navigation started. \(spokenDistance(r.distance)), about \(spokenDuration(r.duration))."
         if let first = steps.first?.instruction, !first.isEmpty { msg += " " + first + "." }
         return msg
+    }
+
+    /// Follow an imported GPX route by routing through sample points along it.
+    func beginRoute(points: [CLLocationCoordinate2D], name: String, from loc: CLLocation) async -> String {
+        guard let end = points.last else { return "That file has no route points." }
+        let mids = Array(points.dropFirst().dropLast())
+        let n = min(8, mids.count)
+        var vias: [CLLocationCoordinate2D] = []
+        for i in 0..<n { vias.append(mids[min(mids.count - 1, (i * mids.count + mids.count / 2) / n)]) }
+        return await begin(to: Place(name: name.isEmpty ? "Imported route" : name, coordinate: end), from: loc, vias: vias)
+    }
+
+    /// Adds a stop before the current destination.
+    func addStop(_ stop: Place, from loc: CLLocation) async -> String {
+        guard isNavigating, let current = destination else { return await begin(to: stop, from: loc) }
+        guard let r = await calculate(to: stop, from: loc, vias: []) else { return "I couldn't get directions to that stop." }
+        queue.insert(current, at: 0)
+        install(r, stop)
+        return "Stop added. Going to \(stop.name) first, then \(current.name)."
+    }
+
+    func skipStop(from loc: CLLocation) async -> String {
+        guard isNavigating, !queue.isEmpty else { return "There's no other stop to skip to." }
+        let next = queue.removeFirst()
+        guard let r = await calculate(to: next, from: loc, vias: []) else { return "I couldn't get directions." }
+        install(r, next)
+        return "Skipping. Heading to \(next.name)."
+    }
+
+    /// Recalculate after changing route preferences.
+    func replan() async -> String {
+        guard isNavigating, let d = destination, let loc = lastLoc else { return "" }
+        rerouting = true
+        if let r = await calculate(to: d, from: loc, vias: []) { install(r, d); return "Route updated." }
+        rerouting = false
+        return "I couldn't update the route."
     }
 
     func stop() {
         isNavigating = false
         route = nil; destination = nil; steps = []; phrases = []; junctions = []; routeCoords = []
+        queue = []
         if let id = observerID { LocationProvider.shared.removeObserver(id); observerID = nil }
         upcomingPhrase = ""; upcomingMeters = 0; remainingMeters = 0; remainingSeconds = 0
     }
@@ -293,12 +393,21 @@ final class Navigator: ObservableObject {
 
     // MARK: Internals
 
-    private func calculate(to place: Place, from loc: CLLocation) async -> NavRoute? {
+    private func pick(_ routes: [NavRoute]) -> NavRoute? {
+        let usable = routes.filter { $0.steps.count > 1 }
+        guard !usable.isEmpty else { return nil }
+        if Prefs.routeStyle == "curvy" { return usable.max { $0.curviness < $1.curviness } }
+        return usable.min { $0.duration < $1.duration }
+    }
+
+    private func calculate(to place: Place, from loc: CLLocation, vias: [CLLocationCoordinate2D]) async -> NavRoute? {
+        let opts = RouteOptions(avoidTolls: Prefs.avoidTolls, avoidHighways: Prefs.avoidHighways, vias: vias,
+                                alternatives: Prefs.routeStyle == "curvy" && vias.isEmpty)
         if let g = google {
-            if let r = await g.route(from: loc, to: place), r.steps.count > 1 { providerStatus = "Google Maps"; return r }
+            if let r = pick(await g.routes(from: loc, to: place, options: opts)) { providerStatus = "Google Maps"; return r }
             providerStatus = "Google failed, using Apple Maps"
         } else { providerStatus = "Apple Maps" }
-        return await AppleProvider().route(from: loc, to: place)
+        return pick(await AppleProvider().routes(from: loc, to: place, options: opts))
     }
 
     private func install(_ r: NavRoute, _ place: Place) {
@@ -325,6 +434,16 @@ final class Navigator: ObservableObject {
 
     private func say(_ text: String) { Task { await speak?(text) } }
 
+    private func continueTo(_ next: Place, from loc: CLLocation) async {
+        if let r = await calculate(to: next, from: loc, vias: []) {
+            install(r, next)
+        } else {
+            rerouting = false
+            stop()
+            say("I couldn't get directions to \(next.name).")
+        }
+    }
+
     private func update(_ loc: CLLocation) {
         guard isNavigating, !rerouting, nextIdx < steps.count else { return }
         lastLoc = loc
@@ -339,6 +458,7 @@ final class Navigator: ObservableObject {
         upcomingPhrase = phrases[nextIdx]
         upcomingMeters = d
         if let r = remainingValues(loc) { remainingMeters = r.distance; remainingSeconds = r.seconds }
+
         let v = max(loc.speed, 0)
         let far = max(500, v * 25), mid = max(200, v * 10), near = max(50, v * 3.5)
         let level = d <= near ? 3 : d <= mid ? 2 : d <= far ? 1 : 0
@@ -346,8 +466,15 @@ final class Navigator: ObservableObject {
 
         if isLast && d < 40 {
             let name = destinationName
-            stop()
-            say("You have arrived at \(name).")
+            if !queue.isEmpty {
+                let next = queue.removeFirst()
+                rerouting = true
+                say("You have arrived at \(name). Continuing to \(next.name).")
+                Task { await continueTo(next, from: loc) }
+            } else {
+                stop()
+                say("You have arrived at \(name).")
+            }
             return
         }
         if level > (announced[nextIdx] ?? 0) {
@@ -380,7 +507,7 @@ final class Navigator: ObservableObject {
         guard let destination, !rerouting else { return }
         rerouting = true
         say("Rerouting.")
-        if let r = await calculate(to: destination, from: loc) {
+        if let r = await calculate(to: destination, from: loc, vias: []) {
             install(r, destination)
             if let first = steps.first?.instruction, !first.isEmpty { say(first + ".") }
         } else {

@@ -1,12 +1,41 @@
 import SwiftUI
+import UniformTypeIdentifiers
+
+private struct NearbyCategory: Identifiable {
+    let id = UUID()
+    let title: String
+    let icon: String
+    let query: String
+}
+
+private let categories: [NearbyCategory] = [
+    .init(title: "Petrol", icon: "fuelpump.fill", query: "petrol pump"),
+    .init(title: "Food", icon: "fork.knife", query: "restaurant"),
+    .init(title: "Chai", icon: "cup.and.saucer.fill", query: "tea stall cafe"),
+    .init(title: "ATM", icon: "banknote.fill", query: "ATM"),
+    .init(title: "Hospital", icon: "cross.case.fill", query: "hospital"),
+    .init(title: "Mechanic", icon: "wrench.and.screwdriver.fill", query: "motorcycle repair shop"),
+    .init(title: "Puncture", icon: "circle.dashed", query: "tyre puncture repair"),
+    .init(title: "Hotel", icon: "bed.double.fill", query: "hotel")
+]
 
 struct NavigateView: View {
     @EnvironmentObject var ride: RideController
     @ObservedObject private var nav = Navigator.shared
     @ObservedObject private var places = PlaceStore.shared
+    @AppStorage("routeStyle") private var routeStyle = "fastest"
+    @AppStorage("avoidTolls") private var avoidTolls = false
+    @AppStorage("avoidHighways") private var avoidHighways = false
+
     @State private var query = ""
     @State private var showSave = false
     @State private var saveName = ""
+    @State private var showImport = false
+    @State private var showNearby = false
+    @State private var nearbyTitle = ""
+    @State private var nearbyResults: [Place] = []
+    @State private var nearbyFrom: CLLocation?
+    @State private var loadingNearby = false
 
     var body: some View {
         NavigationStack {
@@ -25,6 +54,38 @@ struct NavigateView: View {
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
+                Section("Find nearby") {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                        ForEach(categories) { c in
+                            Button { Task { await loadNearby(c) } } label: {
+                                VStack(spacing: 4) {
+                                    Image(systemName: c.icon).font(.title3)
+                                    Text(c.title).font(.caption2.weight(.semibold))
+                                }
+                                .frame(maxWidth: .infinity, minHeight: 56)
+                                .background(RoundedRectangle(cornerRadius: 12).fill(Theme.bg))
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    if loadingNearby { ProgressView() }
+                }
+
+                Section("Route options") {
+                    Picker("Style", selection: $routeStyle) {
+                        Text("Fastest").tag("fastest")
+                        Text("Curvy").tag("curvy")
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Avoid tolls", isOn: $avoidTolls)
+                    Toggle("Avoid highways", isOn: $avoidHighways)
+                    Text("Curvy picks the twistiest of Google's alternative routes (experimental, needs a Google key). Changes apply to the next route, or tap Update route while navigating.")
+                        .font(.caption).foregroundStyle(Theme.dim)
+                    if nav.isNavigating {
+                        Button("Update route now") { Task { await ride.say(await nav.replan()) } }
+                    }
+                }
+
                 Section("Saved places") {
                     ForEach(places.saved) { p in
                         Button { Task { await ride.navigate(to: p.place) } } label: {
@@ -34,6 +95,12 @@ struct NavigateView: View {
                     .onDelete { places.delete(at: $0) }
                     Button { showSave = true } label: { Label("Save current location…", systemImage: "plus.circle.fill") }
                     Text("Voice: “save parking”, “set home”, “save this place as <name>”, “where did I park”.")
+                        .font(.caption).foregroundStyle(Theme.dim)
+                }
+
+                Section("Routes") {
+                    Button { showImport = true } label: { Label("Import GPX route…", systemImage: "square.and.arrow.down") }
+                    Text("Follow a route from Kurviger, Rever, Komoot and similar apps. Works best with a Google key.")
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
@@ -56,8 +123,14 @@ struct NavigateView: View {
                 Button("Save") { Task { await saveCurrent() } }
                 Button("Cancel", role: .cancel) { saveName = "" }
             }
+            .fileImporter(isPresented: $showImport,
+                          allowedContentTypes: [UTType(filenameExtension: "gpx") ?? .xml, .xml],
+                          allowsMultipleSelection: false) { result in importGPX(result) }
+            .sheet(isPresented: $showNearby) { nearbySheet }
         }
     }
+
+    // MARK: Pieces
 
     private var activeSection: some View {
         Section("Navigating") {
@@ -72,9 +145,46 @@ struct NavigateView: View {
             LabeledContent("Destination", value: nav.destinationName)
             LabeledContent("Remaining", value: "\(shortDistance(nav.remainingMeters)) · \(Int((nav.remainingSeconds / 60).rounded())) min")
             LabeledContent("Arrive", value: Date().addingTimeInterval(nav.remainingSeconds).formatted(date: .omitted, time: .shortened))
+            if !nav.queue.isEmpty {
+                LabeledContent("Then", value: nav.queue.map(\.name).joined(separator: " → "))
+                Button("Skip to next stop") { Task { await ride.skipStop() } }
+            }
             Button(role: .destructive) { nav.stop() } label: { Label("Stop navigation", systemImage: "xmark.circle.fill") }
         }
     }
+
+    private var nearbySheet: some View {
+        NavigationStack {
+            List {
+                if nearbyResults.isEmpty { Text("Nothing found nearby.").foregroundStyle(Theme.dim) }
+                ForEach(Array(nearbyResults.enumerated()), id: \.offset) { _, p in
+                    Button {
+                        showNearby = false
+                        Task { if nav.isNavigating { await ride.addStop(p) } else { await ride.navigate(to: p) } }
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading) {
+                                Text(p.name).font(.headline)
+                                if let from = nearbyFrom {
+                                    Text(shortDistance(from.distance(from: CLLocation(latitude: p.coordinate.latitude, longitude: p.coordinate.longitude))))
+                                        .font(.caption).foregroundStyle(Theme.dim)
+                                }
+                            }
+                            Spacer()
+                            Text(nav.isNavigating ? "Add stop" : "Go").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(nearbyTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { showNearby = false } } }
+        }
+        .presentationDetents([.medium, .large])
+        .preferredColorScheme(.dark)
+    }
+
+    // MARK: Actions
 
     private func go() {
         let q = query
@@ -82,10 +192,29 @@ struct NavigateView: View {
         Task { await ride.navigate(toQuery: q) }
     }
 
+    private func loadNearby(_ c: NearbyCategory) async {
+        loadingNearby = true
+        defer { loadingNearby = false }
+        guard let l = await LocationProvider.shared.freshLocation() else { return }
+        nearbyFrom = l
+        nearbyTitle = c.title
+        nearbyResults = await nav.nearby(c.query, near: l, limit: 6)
+        showNearby = true
+    }
+
     private func saveCurrent() async {
         let name = saveName
         saveName = ""
         if let l = await LocationProvider.shared.freshLocation() { places.save(name: name, at: l.coordinate) }
+    }
+
+    private func importGPX(_ result: Result<[URL], Error>) {
+        guard case .success(let urls) = result, let url = urls.first else { return }
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url) else { return }
+        let parsed = GPX.parse(data)
+        Task { await ride.followGPX(parsed.points, name: parsed.name) }
     }
 
     private func icon(for name: String) -> String {

@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreLocation
 
 enum RidePhase { case off, listening, thinking, speaking }
 
@@ -46,6 +47,9 @@ final class RideController: ObservableObject {
         }
         Navigator.shared.speak = { [weak self] text in await self?.say(text) }
         TripRecorder.shared.speak = { [weak self] text in await self?.say(text) }
+        Emergency.shared.speak = { [weak self] text in await self?.say(text) }
+        Emergency.shared.expectReply = { [weak self] in self?.listener.expectFollowUp() }
+        RoadInfo.shared.speak = { [weak self] text in await self?.say(text) }
     }
 
     func toggle() {
@@ -63,11 +67,15 @@ final class RideController: ObservableObject {
             try route.activate()
             LocationProvider.shared.startContinuous()
             TripRecorder.shared.start()
+            Emergency.shared.rideStarted()
+            RoadInfo.shared.start()
             isRiding = true
             phase = .listening
             UIApplication.shared.isIdleTimerDisabled = Prefs.keepScreenOn
             // Spoken before listening starts so the app never hears its own announcement.
             await say("Ride mode on.")
+            let due = Garage.shared.dueMessages()
+            if !due.isEmpty { await say(due.joined(separator: " ")) }
             try listener.start()
             await handlePendingDestination()
         } catch {
@@ -78,6 +86,8 @@ final class RideController: ObservableObject {
 
     func stop() {
         Navigator.shared.stop()
+        Emergency.shared.rideEnded()
+        RoadInfo.shared.stop()
         TripRecorder.shared.stop()
         listener.stop()
         speaker.stop()
@@ -117,6 +127,28 @@ final class RideController: ObservableObject {
         guard isRiding else { return }
         add(user: true, "Navigate to \(place.name)")
         await say(await Assistant.shared.startNavigation(to: place).text)
+    }
+
+    /// Adds a stop to the current route (from the nearby list).
+    func addStop(_ place: Place) async {
+        guard isRiding, let loc = await LocationProvider.shared.freshLocation() else { return }
+        add(user: true, "Add stop: \(place.name)")
+        await say(await Navigator.shared.addStop(place, from: loc))
+    }
+
+    func skipStop() async {
+        guard let loc = await LocationProvider.shared.freshLocation() else { return }
+        await say(await Navigator.shared.skipStop(from: loc))
+    }
+
+    /// Follow a GPX route imported from a file.
+    func followGPX(_ points: [CLLocationCoordinate2D], name: String) async {
+        isSearching = true
+        defer { isSearching = false }
+        if !isRiding { await start() }
+        guard isRiding, let loc = await LocationProvider.shared.freshLocation() else { return }
+        add(user: true, "Follow route: \(name.isEmpty ? "imported GPX" : name)")
+        await say(await Navigator.shared.beginRoute(points: points, name: name, from: loc))
     }
 
     private func handlePendingDestination() async {

@@ -1,8 +1,26 @@
 import SwiftUI
 import MapKit
+import Charts
+
+private struct WeekBar: Identifiable {
+    let id = UUID()
+    let weekStart: Date
+    let value: Double
+}
 
 struct TripsView: View {
     @ObservedObject private var trip = TripRecorder.shared
+
+    private var weekly: [WeekBar] {
+        let cal = Calendar.current
+        var sums: [Date: Double] = [:]
+        for t in trip.trips {
+            guard let start = cal.dateInterval(of: .weekOfYear, for: t.start)?.start else { continue }
+            sums[start, default: 0] += t.distance / 1000
+        }
+        let k = Prefs.imperial ? 0.621371 : 1
+        return sums.map { WeekBar(weekStart: $0.key, value: $0.value * k) }.sorted { $0.weekStart < $1.weekStart }.suffix(8).map { $0 }
+    }
 
     var body: some View {
         NavigationStack {
@@ -15,6 +33,25 @@ struct TripsView: View {
                             totals("Distance", shortDistance(trip.trips.reduce(0) { $0 + $1.distance }))
                             Divider()
                             totals("Time", clockString(trip.trips.reduce(0) { $0 + $1.duration }))
+                        }
+                    }
+                    Section("Distance per week") {
+                        Chart(weekly) { w in
+                            BarMark(x: .value("Week", w.weekStart, unit: .weekOfYear), y: .value("Distance", w.value))
+                                .foregroundStyle(Theme.accent)
+                        }
+                        .chartYAxisLabel(Prefs.imperial ? "mi" : "km")
+                        .frame(height: 160)
+                    }
+                    Section("Records") {
+                        if let longest = trip.trips.max(by: { $0.distance < $1.distance }) {
+                            LabeledContent("Longest ride", value: shortDistance(longest.distance))
+                        }
+                        if let fastest = trip.trips.max(by: { $0.maxSpeed < $1.maxSpeed }) {
+                            LabeledContent("Top speed", value: "\(Int(Prefs.displaySpeed(fastest.maxSpeed).rounded())) \(Prefs.speedUnit)")
+                        }
+                        if let long = trip.trips.max(by: { $0.duration < $1.duration }) {
+                            LabeledContent("Longest time", value: clockString(long.duration))
                         }
                     }
                 }
@@ -76,5 +113,12 @@ struct TripDetail: View {
         .background(Theme.bg.ignoresSafeArea())
         .navigationTitle(trip.start.formatted(date: .abbreviated, time: .omitted))
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let url = GPX.writeFile(for: trip) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
+                }
+            }
+        }
     }
 }

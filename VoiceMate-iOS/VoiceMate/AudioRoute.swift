@@ -21,6 +21,8 @@ final class AudioRoute: ObservableObject {
 
     deinit { if let observer { NotificationCenter.default.removeObserver(observer) } }
 
+    /// `.defaultToSpeaker` makes sound come from the loudspeaker (not the earpiece) when no Bluetooth
+    /// headset or wired headphones are connected; Bluetooth still takes priority when present.
     /// `.allowBluetooth` enables the headset (HFP) microphone; `.allowBluetoothA2DP`
     /// keeps high-quality output when the mic is idle.
     func activate() throws {
@@ -28,7 +30,7 @@ final class AudioRoute: ObservableObject {
         try session.setCategory(
             .playAndRecord,
             mode: .default,
-            options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers]
+            options: [.allowBluetooth, .allowBluetoothA2DP, .mixWithOthers, .defaultToSpeaker]
         )
         try session.setActive(true)
         refresh()

@@ -151,6 +151,66 @@ struct NavRoute {
 }
 
 protocol RoutingProvider {
+    func search(_ query: String, near loc: CLLocation) async -> Place?
+    func route(from loc: CLLocation, to place: Place) async -> NavRoute?
+}
+
+/// Apple Maps (MapKit) routing: no key needed, but weaker coverage in India.
+struct AppleProvider: RoutingProvider {
+    func search(_ query: String, near loc: CLLocation) async -> Place? {
+        let req = MKLocalSearch.Request()
+        req.naturalLanguageQuery = query
+        req.region = MKCoordinateRegion(center: loc.coordinate, latitudinalMeters: 60_000, longitudinalMeters: 60_000)
+        req.resultTypes = [.pointOfInterest, .address]
+        guard let item = try? await MKLocalSearch(request: req).start().mapItems.first else { return nil }
+        return Place(name: item.name ?? query, coordinate: item.placemark.coordinate)
+    }
+
+    func route(from loc: CLLocation, to place: Place) async -> NavRoute? {
+        let req = MKDirections.Request()
+        req.source = MKMapItem(placemark: MKPlacemark(coordinate: loc.coordinate))
+        req.destination = MKMapItem(placemark: MKPlacemark(coordinate: place.coordinate))
+        req.transportType = .automobile
+        guard let r = try? await MKDirections(request: req).calculate().routes.first else { return nil }
+        let steps = r.steps.filter { !$0.instructions.isEmpty }.map {
+            NavStep(instruction: $0.instructions, maneuver: nil, points: $0.polyline.coords, distance: $0.distance)
+        }
+        return NavRoute(distance: r.distance, duration: r.expectedTravelTime, points: r.polyline.coords, steps: steps)
+    }
+}
+
+// MARK: - Navigator
+
+/// Audio-only turn-by-turn navigation: announces plain directions with distances, reroutes when
+/// you leave the route, and answers "what's next" / "how far". Routing comes from Google (if a key is
+/// set) or Apple Maps.
+@MainActor
+final class Navigator: ObservableObject {
+    static let shared = Navigator()
+
+    @Published private(set) var isNavigating = false
+    @Published private(set) var destinationName = ""
+    @Published private(set) var providerStatus = "Apple Maps"
+
+    /// Set by RideController; speaks through the helmet.
+    var speak: ((String) async -> Void)?
+
+    private var route: NavRoute?
+    private var destination: Place?
+    private var steps: [NavStep] = []
+    private var junctions: [CLLocationCoordinate2D] = []   // junctions[i] = where step i's maneuver happens
+    private var phrases: [String] = []
+    private var routeCoords: [CLLocationCoordinate2D] = []
+    private var nextIdx = 1
+    private var announced: [Int: Int] = [:]
+    private var prevDistance = Double.infinity
+    private var offRouteCount = 0
+    private var rerouting = false
+    private var rerouteCooldown = Date.distantPast
+    private var lastLoc: CLLocation?
+
+    // MARK: Search & start
+
     private var google: GoogleProvider? {
         let k = (UserDefaults.standard.string(forKey: "googleKey") ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         return k.isEmpty ? nil : GoogleProvider(key: k)

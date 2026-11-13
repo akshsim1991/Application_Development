@@ -1086,3 +1086,5 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   their absence).
 - **Still to know on Windows 7:** its WinHTTP speaks TLS 1.2 only after update KB3140245; without it the update check
   cannot reach GitHub's servers and says why ("the secure connection failed").
+
+2.19.2 published; both downloads match latest.json.

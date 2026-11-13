@@ -452,8 +452,14 @@ from reportlab.pdfgen import canvas
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 d=sys.argv[1]
-pdfmetrics.registerFont(TTFont('SB','/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf'))
-pdfmetrics.registerFont(TTFont('SR','/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf'))
+import os
+pairs=[('/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf','/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf'),
+       ('/System/Library/Fonts/Supplemental/Times New Roman Bold.ttf','/System/Library/Fonts/Supplemental/Times New Roman.ttf'),
+       ('C:/Windows/Fonts/timesbd.ttf','C:/Windows/Fonts/times.ttf')]
+pair=next((p for p in pairs if os.path.exists(p[0]) and os.path.exists(p[1])), None)
+if not pair: print('  skip no serif TrueType font here'); sys.exit(0)
+pdfmetrics.registerFont(TTFont('SB',pair[0]))
+pdfmetrics.registerFont(TTFont('SR',pair[1]))
 c=canvas.Canvas(d+'/texraw.pdf',pagesize=(595,842))
 c.setFont('SR',17); c.drawString(72,780,'2. Enumerate the limitations of both online and offline')
 c.setFont('SB',17); c.drawString(72,735,'Module 5 (b)')
@@ -467,11 +473,13 @@ for f in p.pages[0].Resources.Font.values():
         if '/FontDescriptor' in x: x.FontDescriptor.FontName=new; x.FontDescriptor.Flags=4
 p.save(d+'/tex.pdf')
 PY
+if [ -f "$W/tex.pdf" ]; then
 run --paratest "$W/tex.pdf" "$W/tex_e.pdf" "$W/tex.txt" 120 740 append "- Revised"
 check "a LaTeX bold heading is a bold serif" "grep -q 'style family=1 bold=1 italic=0 size=17.0 font=NimbusRomNo9L-Medi' '$W/tex.txt'"
 run --paratest "$W/tex.pdf" "$W/tex_b.pdf" "$W/tex2.txt" 120 703 same
 check "its body text a regular serif"      "grep -q 'style family=1 bold=0 italic=0' '$W/tex2.txt'"
 check "a heading grows along its line, not onto a second" "text '$W/tex_e.pdf' | grep -qx 'Module 5 (b) - Revised'"
+fi
 
 echo "edit mode: the outlined blocks"
 run --blocks "$W/rich.pdf" "$W/blocks.txt"

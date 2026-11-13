@@ -48,7 +48,13 @@ bool hash(Hash h, const Bytes& data, Bytes& out) {
     DWORD len = 0, got = 0;
     BCryptGetProperty(a.h, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&len), sizeof(len), &got, 0);
     out.assign(len, 0);
-    return BCryptHash(a.h, nullptr, 0, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), out.data(), len) == 0;
+    // create, feed, finish: on every Windows from 7 (BCryptHash, all in one call, exists only from Windows 10)
+    BCRYPT_HASH_HANDLE hh = nullptr;
+    if (BCryptCreateHash(a.h, &hh, nullptr, 0, nullptr, 0, 0) != 0) return false;
+    const bool ok = BCryptHashData(hh, const_cast<PUCHAR>(data.data()), static_cast<ULONG>(data.size()), 0) == 0 &&
+                    BCryptFinishHash(hh, out.data(), len, 0) == 0;
+    BCryptDestroyHash(hh);
+    return ok;
 }
 bool aesCbc(const Bytes& key, const Bytes& iv, const Bytes& in, Bytes& out) { return aes(BCRYPT_CHAIN_MODE_CBC, key, &iv, in, out); }
 bool aesEcb(const Bytes& key, const Bytes& in, Bytes& out) { return aes(BCRYPT_CHAIN_MODE_ECB, key, nullptr, in, out); }

@@ -11,6 +11,7 @@ fail=0
 ok()   { echo "  ok   $1"; }
 bad()  { echo "  FAIL $1"; fail=1; }
 check(){ if eval "$2"; then ok "$1"; else bad "$1"; fi; }
+check "runs on Windows 7 (no function of a newer Windows imported)" "python3 '$root/tests/win7check.py' '$exe' '$(dirname "$exe")/pdfium.dll' >/dev/null"
 win()  { winepath -w "$1" 2>/dev/null; }
 run()  { wine "$exe" "$@"; }
 

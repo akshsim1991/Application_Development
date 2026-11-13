@@ -1067,3 +1067,22 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   moved the page right and back left; Shift + wheel moved it sideways. Not tried here: a real touchpad.
 
 2.19.1 published; both downloads match latest.json.
+
+## Version 2.19.2 (Windows)
+
+### B-075 Feather PDF did not start on Windows 7: "entry point BCryptHash could not be located"
+- **Status:** Fixed (2.19.2)
+- **Reported:** 13 November, screenshot of Windows 7.
+- **Root cause:** SHA-256 and the other hashes (signatures, passwords of AES-256 PDFs, checking a downloaded update)
+  called BCryptHash, which Windows has only from Windows 10. Windows 7 refuses to start a program that imports a
+  function it lacks. No other import is newer than Windows 7; the three newer functions used (GetDpiForWindow,
+  GetPointerType, GetPointerPenInfo) are already looked up while running, with a way round when missing.
+- **Fix:** BCryptCreateHash, BCryptHashData, BCryptFinishHash (Windows Vista and later), the same results. The
+  manifests list Windows 7, 8 and 8.1 beside 10. tests/win7check.py, part of tests/smoke.sh, fails when the program,
+  pdfium.dll or the setup imports a function of Windows 8 or later.
+- **Verified:** the check finds BCryptHash in the 2.19.1 program and nothing in the new one, pdfium.dll or the setup;
+  the Windows tests all pass with Wine set to Windows 7 (build 7601), signatures and encrypted PDFs included, and the
+  window opens. Not tried here: a real Windows 7 PC (Wine has the newer functions too, so only the import check shows
+  their absence).
+- **Still to know on Windows 7:** its WinHTTP speaks TLS 1.2 only after update KB3140245; without it the update check
+  cannot reach GitHub's servers and says why ("the secure connection failed").

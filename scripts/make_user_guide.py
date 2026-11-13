@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.19.1"
+VERSION = "2.19.2"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -189,7 +189,7 @@ story += [P("It is <b>free forever</b>. There are no subscriptions, trials, lice
             "may give the program to anyone.")]
 story += [P("At a glance", "h2")]
 story += [table([["", ""],
-                 ["Runs on", "Windows 10 and Windows 11 (64-bit)"],
+                 ["Runs on", "Windows 7 (Service Pack 1), 8.1, 10 and 11 (64-bit)"],
                  ["Size", "A 12 MB setup program; about 25 MB installed, including the text recognition (OCR) engine"],
                  ["Installs", "In C:\\Program Files\\Feather PDF (or a folder you choose), for every user of the PC; Windows asks for administrator rights once. Run the setup again to update or repair; uninstall from Installed apps (your settings stay)"],
                  ["Opens", "PDF files (also password-protected ones), plain text and Markdown files, and pictures as new PDFs"],

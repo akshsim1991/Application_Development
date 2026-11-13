@@ -2,6 +2,15 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.19.2 (13 November 2026)
+
+- Fixed: **Feather PDF did not start on Windows 7** ("The procedure entry point BCryptHash could not be located in
+  the dynamic link library bcrypt.dll"). It used a Windows function that exists only from Windows 10; it now uses the
+  older ones that do the same. Feather PDF runs on Windows 7 SP1, 8.1, 10 and 11 (64-bit), and the tests now fail if
+  a function of a newer Windows creeps in again.
+- Windows 7: the update check needs Windows 7's TLS 1.2 update (KB3140245, offered by Windows Update) to reach the
+  update servers; without it, download new versions from the releases page.
+
 ## 2.19.1 (11 November 2026)
 
 - Fixed (Windows): **swiping left or right on a touchpad did not scroll the page** sideways. It now does, as do a

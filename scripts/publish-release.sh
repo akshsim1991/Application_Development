@@ -32,7 +32,7 @@ cloud service, no tracking. Free to use and share, always.
 
 **Version $version**
 
-- Windows 10 and 11: [$win]($base/$win)
+- Windows 7 SP1, 8.1, 10 and 11 (64-bit): [$win]($base/$win)
 - macOS 11 or later (Apple silicon and Intel): [$mac]($base/$mac)
 
 Installed copies find new versions themselves (Help > Update to new version) and ask whether to update now or later.

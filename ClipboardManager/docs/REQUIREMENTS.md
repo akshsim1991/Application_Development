@@ -1,4 +1,4 @@
-# Requirement matrix — Feather Clipboard Manager 2.1.0
+# Requirement matrix — Feather Clipboard Manager 2.1.1
 
 One row for each of the 216 feature rows in *Windows Clipboard Manager Development Specification*. **Status is stated honestly:** this build was written and tested on Linux with a cross-compiler and Wine, never on a real Windows PC, so many rows are "implemented, not tested on Windows".
 
@@ -294,7 +294,7 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 |---|---|---|---|---|
 | MAINT-001 | P0 | Clean installation | DONE-U | Per-user, no administrator, no service, statically linked (no runtime to install). |
 | MAINT-002 | P0 | Clean uninstallation | DONE-T | Run under Wine: asks (or /DELETEDATA) about history; keeps it by default. |
-| MAINT-003 | P0 | Application version display | DONE-U | About dialog and file properties show 2.1.0. |
+| MAINT-003 | P0 | Application version display | DONE-U | About dialog and file properties show 2.1.1. |
 | MAINT-004 | P1 | Offline installer | DONE-T | Single self-contained installer (about 0.7 MB). |
 | MAINT-005 | P1 | Portable executable distribution | EXCLUDED | EXCLUDED by your decision (not portable). |
 | MAINT-006 | P1 | Local diagnostic logging | DONE-T | W: content-free local log. |

@@ -1,13 +1,14 @@
 ; Feather Clipboard Manager - installer (NSIS). Per-user: no administrator permission is needed.
-; Build:  makensis -DVERSION=2.1.0 -DEXE=build\FeatherClipboardManager.exe -DOUT=releases\FeatherClipboardManager-Setup-2.1.0.exe installer\FeatherClipboardManager.nsi
+; Build:  makensis -DVERSION=2.1.1 -DEXE=build\FeatherClipboardManager.exe -DOUT=releases\FeatherClipboardManager-Setup-2.1.1.exe installer\FeatherClipboardManager.nsi
 ; Silent (used by the in-app updater):  Setup.exe /S /relaunch /waitfor=<process id>
 Unicode true
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
 !include "LogicLib.nsh"
+!include "nsDialogs.nsh"
 
 !ifndef VERSION
-  !define VERSION "2.1.0"
+  !define VERSION "2.1.1"
 !endif
 !ifndef EXE
   !define EXE "..\build\FeatherClipboardManager.exe"
@@ -26,7 +27,6 @@ Unicode true
 Name "${APPNAME}"
 OutFile "${OUT}"
 InstallDir "$LOCALAPPDATA\Programs\Feather Clipboard Manager"
-InstallDirRegKey HKCU "Software\FeatherClipboardManager" "InstallDir"
 RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APPNAME} ${VERSION}"
@@ -44,19 +44,15 @@ VIAddVersionKey "LegalCopyright" "(c) 2026 Akshaya Simha"
 !define MUI_ICON "${ICON}"
 !define MUI_UNICON "${ICON}"
 !define MUI_ABORTWARNING
-!define MUI_WELCOMEPAGE_TITLE "${APPNAME} ${VERSION}"
-!define MUI_WELCOMEPAGE_TEXT "This installs ${APPNAME} for your Windows account. It keeps what you copy - text, pictures and files - on this PC only, so you can search and paste it again.$\r$\n$\r$\nNo administrator permission is needed. Your history is kept in %LOCALAPPDATA%\FeatherClipboardManager and is not touched when you update or uninstall.$\r$\n$\r$\nClick Install to continue."
-!define MUI_FINISHPAGE_RUN "$INSTDIR\${EXENAME}"
-!define MUI_FINISHPAGE_RUN_TEXT "Start ${APPNAME} now"
-!define MUI_FINISHPAGE_SHOWREADME ""
-!define MUI_FINISHPAGE_SHOWREADME_TEXT "Start ${APPNAME} automatically when I sign in to Windows"
-!define MUI_FINISHPAGE_SHOWREADME_FUNCTION SetAutostartFromFinish
-!define MUI_FINISHPAGE_SHOWREADME_NOTCHECKED
+!define MUI_HEADERIMAGE
+!define MUI_HEADERIMAGE_RIGHT
+!define MUI_HEADERIMAGE_BITMAP "header.bmp"
 
-!insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
+; One screen like Feather PDF: the install location and a single Install button, then progress, then the program starts.
+Page custom MainPageCreate MainPageLeave
+!define MUI_PAGE_HEADER_TEXT "Installing ${APPNAME}"
+!define MUI_PAGE_HEADER_SUBTEXT "Version ${VERSION}"
 !insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
@@ -95,11 +91,84 @@ Function .onInit
   ${EndIf}
 FunctionEnd
 
-Function SetAutostartFromFinish
-  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FeatherClipboardManager" '"$INSTDIR\${EXENAME}" /tray'
+Var Dlg
+Var PathEdit
+Var ActionWord
+
+Function MainPageCreate
+  ; is it already installed? then this is an update (or a repair) in the same place
+  StrCpy $ActionWord "Install"
+  ReadRegStr $R0 HKCU "${UNINSTKEY}" "DisplayVersion"
+  ReadRegStr $R1 HKCU "${UNINSTKEY}" "InstallLocation"
+  ${If} $R1 != ""
+    StrCpy $INSTDIR $R1
+    ${If} $R0 == "${VERSION}"
+      StrCpy $ActionWord "Repair"
+    ${Else}
+      StrCpy $ActionWord "Update"
+    ${EndIf}
+  ${EndIf}
+
+  !insertmacro MUI_HEADER_TEXT "Setup" "Version ${VERSION}  -  clipboard history that stays on your PC"
+  nsDialogs::Create 1018
+  Pop $Dlg
+  ${If} $Dlg == error
+    Abort
+  ${EndIf}
+
+  CreateFont $R5 "$(^Font)" 13 700
+  ${NSD_CreateLabel} 0 4u 100% 16u "${APPNAME}"
+  Pop $0
+  SendMessage $0 ${WM_SETFONT} $R5 0
+  ${NSD_CreateLabel} 0 22u 100% 24u "Keeps what you copy - text, pictures and files - on this PC only, so you can search it and paste it again. No account, no cloud."
+  Pop $0
+
+  ${NSD_CreateLabel} 0 56u 100% 10u "Install location"
+  Pop $0
+  ${NSD_CreateText} 0 68u 80% 12u "$INSTDIR"
+  Pop $PathEdit
+  SendMessage $PathEdit ${EM_SETREADONLY} 1 0
+  ${NSD_CreateButton} 83% 66u 17% 14u "Change..."
+  Pop $0
+  ${NSD_OnClick} $0 OnChangeDir
+
+  ${If} $ActionWord == "Update"
+    ${NSD_CreateLabel} 0 90u 100% 24u "Version $R0 is installed. It will be updated to ${VERSION} in the same place. Your history and settings stay."
+    Pop $0
+  ${ElseIf} $ActionWord == "Repair"
+    ${NSD_CreateLabel} 0 90u 100% 24u "This version is already installed. Installing it again repairs it. Your history and settings stay."
+    Pop $0
+  ${Else}
+    ${NSD_CreateLabel} 0 90u 100% 24u "It needs about 2 MB and no administrator permission. Your history will be kept in %LOCALAPPDATA%\FeatherClipboardManager."
+    Pop $0
+  ${EndIf}
+
+  ; one button: Install / Update / Repair
+  GetDlgItem $0 $HWNDPARENT 1
+  SendMessage $0 ${WM_SETTEXT} 0 "STR:$ActionWord"
+  GetDlgItem $0 $HWNDPARENT 3
+  ShowWindow $0 ${SW_HIDE}
+  nsDialogs::Show
+FunctionEnd
+
+Function OnChangeDir
+  nsDialogs::SelectFolderDialog "Choose the folder to install ${APPNAME} in" "$INSTDIR"
+  Pop $0
+  ${If} $0 != error
+    ${NSD_SetText} $PathEdit "$0"
+  ${EndIf}
+FunctionEnd
+
+Function MainPageLeave
+  ${NSD_GetText} $PathEdit $INSTDIR
+  ${If} $INSTDIR == ""
+    MessageBox MB_OK|MB_ICONEXCLAMATION "Choose a folder to install in."
+    Abort
+  ${EndIf}
 FunctionEnd
 
 Section "Install"
+  SetAutoClose true
   !insertmacro StopRunning
   SetOutPath "$INSTDIR"
   File "${EXE}"
@@ -131,7 +200,10 @@ Section "Install"
     WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "FeatherClipboardManager" '"$INSTDIR\${EXENAME}" /tray'
   ${EndIf}
 
+  ; the program starts when the installation is done (silently only when the updater asked for it)
   ${If} $Relaunch == "1"
+    Exec '"$INSTDIR\${EXENAME}"'
+  ${ElseIfNot} ${Silent}
     Exec '"$INSTDIR\${EXENAME}"'
   ${EndIf}
 SectionEnd

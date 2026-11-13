@@ -206,7 +206,7 @@ S = {
 'A11Y-009': (N, 'Not implemented.'),
 'MAINT-001': (UU, 'Per-user, no administrator, no service, statically linked (no runtime to install).'),
 'MAINT-002': (T, 'Run under Wine: asks (or /DELETEDATA) about history; keeps it by default.'),
-'MAINT-003': (UU, 'About dialog and file properties show 2.1.0.'),
+'MAINT-003': (UU, 'About dialog and file properties show 2.1.1.'),
 'MAINT-004': (T, 'Single self-contained installer (about 0.7 MB).'),
 'MAINT-005': (X, 'EXCLUDED by your decision (not portable).'),
 'MAINT-006': (T, 'W: content-free local log.'),
@@ -232,7 +232,7 @@ cnt = collections.Counter(S[r['id']][0] for r in rows)
 bypri = collections.defaultdict(collections.Counter)
 for r in rows: bypri[r['pri']][S[r['id']][0]] += 1
 out = []
-out.append('# Requirement matrix — Feather Clipboard Manager 2.1.0\n')
+out.append('# Requirement matrix — Feather Clipboard Manager 2.1.1\n')
 out.append('One row for each of the 216 feature rows in *Windows Clipboard Manager Development Specification*. **Status is stated honestly:** this build was written and tested on Linux with a cross-compiler and Wine, never on a real Windows PC, so many rows are "implemented, not tested on Windows".\n')
 out.append('| Status | Meaning |\n|---|---|\n| DONE-T | implemented **and** checked by an automated test or measurement |\n| DONE-U | implemented and compiled, but never exercised on real Windows (at most seen in Wine) |\n| PARTIAL | part of the row is implemented; the note says what is missing |\n| NOT DONE | not implemented |\n| EXCLUDED | deliberately not built (your decision) |\n')
 out.append('Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-test under Wine (`--selftest`, 47 checks) · **V** screenshot under Wine · **B** benchmark (`--bench`) · **R** code review only.\n')

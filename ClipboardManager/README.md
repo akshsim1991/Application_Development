@@ -4,7 +4,7 @@ A fast, private clipboard history for Windows 10 and 11. It keeps everything you
 
 Designed and developed by Akshaya Simha.
 
-* **Install:** run `releases/FeatherClipboardManager-Setup-2.1.0.exe` (per user, no administrator permission needed).
+* **Install:** run `releases/FeatherClipboardManager-Setup-2.1.1.exe` (per user, no administrator permission needed).
 * **Open it:** `Ctrl+Shift+V` from any program (changeable). Pick an item and press Enter to paste.
 * **Your history** is kept in `%LOCALAPPDATA%\FeatherClipboardManager\Clipboard contents` as ordinary files. It is **not** portable by design and is never removed by an update or a normal uninstall.
 * **User guide:** [docs/USER_GUIDE.md](docs/USER_GUIDE.md) · **What is done and what is not:** [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) · **Design, data format, privacy:** [docs/DESIGN.md](docs/DESIGN.md) · **Tests and measurements:** [docs/TESTING.md](docs/TESTING.md)

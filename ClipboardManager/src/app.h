@@ -32,7 +32,7 @@ using std::max;
 #include "core.h"
 
 #define APP_NAME L"Feather Clipboard Manager"
-#define APP_VERSION L"2.1.0"
+#define APP_VERSION L"2.1.1"
 #define APP_VERSION_SHORT L"2.1"
 #define APP_AUTHOR L"Akshaya Simha"
 #define APP_YEAR L"2026"

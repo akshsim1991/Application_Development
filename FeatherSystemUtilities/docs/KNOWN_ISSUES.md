@@ -1,6 +1,8 @@
-# Known issues / limitations
-- KI1: Only smoke-tested under Wine with synthetic data; not yet on real Windows. Task/shell-extension/service mutations unexercised.
-- KI2: Scan scope partial: no policy Run, Winlogon/AppInit/IFEO/WMI, packaged apps, other users, drivers.
-- KI3: StartupApproved read-only interpretation (byte0 2/6 enabled, 3/7 disabled) is unverified across builds; unknown shows "Unknown".
-- KI4: Toolbar is owner-drawn without UI Automation providers (F220 open). Dark scrollbars/menus need Win10 1903+; verified only in Wine (not dark there).
-- KI5: No installer; unsigned. CSV export removed with the old minimal UI (re-add).
+# Known issues / limitations (1.5.0)
+- KI1: Smoke-tested only under Wine; never on real Windows. Task Scheduler paths, event-log history, installer (32-bit NSIS stub), service control are unexercised.
+- KI2: Scan scope: no policy Run, Winlogon/AppInit/IFEO/WMI, packaged apps, other users.
+- KI3: StartupApproved format handled for 12-byte values only; others stay read-only.
+- KI4: Sign-in impact is "Not measured". No boot/session metrics.
+- KI5: No tray monitor, scheduled service operations, remote machines, CLI, code signing.
+- KI6: UI Automation covered by native buttons/listview only; custom dashboard/settings panel has keyboard but no UIA provider.
+- KI7: Custom service accounts/passwords and "restart computer" recovery intentionally unsupported.

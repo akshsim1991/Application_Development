@@ -8,7 +8,7 @@ Memory: `docs/PROJECT_STATE.md`, `DECISIONS.md`, `KNOWN_ISSUES.md`, `FEATURE_TRA
 - `src/win/` Win32 shell (`main.cpp`), manifest (PerMonitorV2, asInvoker), version rc.
 - `tests/core_tests.cpp`. `reference-binaries/` = original old EXEs (do not modify; not the integration path).
 ## Build/test
-`./build.sh test` (native, 26 checks) · `./build.sh win` (MinGW cross → build/FeatherSystemUtilities.exe) · `./build.sh all`.
+`./build.sh test|win|installer|all` (installer needs `makensis`). Version 1.5.0; files also: settings.cpp, installer/setup.nsi.
 Env: Linux container, `g++-mingw-w64-x86-64` (apt). No Windows/wine: Win32 code is compile-checked only, NEVER run here.
 ## Hard rules
 - No mutation of startup/services without preview→backup→apply→read-back→journal (spec §6.1). Current build is READ-ONLY.

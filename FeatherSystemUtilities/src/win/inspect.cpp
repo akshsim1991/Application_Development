@@ -51,6 +51,8 @@ std::wstring DataDir() {
     return d;
 }
 
+std::wstring SubDir(const wchar_t* name) { std::wstring d = DataDir() + L"\\" + name; CreateDirectoryW(d.c_str(), nullptr); return d; }
+
 static std::wstring SignerFromState(HANDLE state) {
     CRYPT_PROVIDER_DATA* pd = WTHelperProvDataFromStateData(state);
     if (!pd) return L"";

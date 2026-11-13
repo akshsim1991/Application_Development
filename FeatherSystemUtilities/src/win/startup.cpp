@@ -78,6 +78,8 @@ static void Finish(StartupEntry& e) {   // inspect target, build warnings
     else if (fi.sig == Sig::Invalid) warn = L"Signature not trusted";
     if (IsScriptHost(pc.exe) || IsScriptHost(pc.args)) warn += (warn.empty() ? L"" : L", ") + wstring(L"Script");
     e.warnings = warn; e.hasWarning = !warn.empty();
+    static wstring win = [] { wchar_t b[MAX_PATH]; GetWindowsDirectoryW(b, MAX_PATH); return Lower(b); }();
+    if (e.microsoft && !e.program.empty() && Lower(ExpandEnv(e.program)).rfind(win, 0) == 0) e.isSystem = true;
 }
 
 // ---------- registry Run / RunOnce ----------
@@ -197,6 +199,12 @@ static void WalkFolder(ITaskFolder* f, std::vector<StartupEntry>& out, int& scan
                             ac->Release();
                         }
                         acs->Release();
+                    }
+                    e.isSystem = e.taskPath.rfind(L"\\Microsoft\\", 0) == 0;
+                    if (e.taskPath.rfind(L"\\FeatherSystemUtilities\\", 0) == 0) {
+                        e.managedDelay = true; e.type = L"Scheduled task (delayed by Feather)"; e.starts = L"At sign-in (delayed)";
+                        IRegistrationInfo* ri = nullptr; BSTR d = nullptr;
+                        if (SUCCEEDED(def->get_RegistrationInfo(&ri)) && ri) { ri->get_Description(&d); if (d) { e.delayNote = d; SysFreeString(d); } ri->Release(); }
                     }
                     e.toggle = Toggle::Task; e.key = L"task|" + Lower(e.taskPath);
                     Finish(e); out.push_back(std::move(e));
@@ -468,19 +476,107 @@ bool RestoreBackup(const wstring& path, wstring& err, wstring& summary) {
     return ok;
 }
 
-bool AddStartupEntry(const wstring& name, const wstring& command, wstring& err) {
+bool AddStartupEntry(const wstring& name, const wstring& command, bool allUsers, wstring& err) {
     if (name.empty() || name.size() > 200 || name.find(L'\\') != wstring::npos) { err = L"Enter a name (no backslashes, up to 200 characters)."; return false; }
     if (command.empty() || command.size() > 1900) { err = L"Enter a command."; return false; }
     if (!JournalWritable()) { err = L"Cannot write the change journal; nothing was changed."; return false; }
-    HKEY k; LONG r = RegCreateKeyExW(HKEY_CURRENT_USER, kRun, 0, nullptr, 0, KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &k, nullptr);
-    if (r != ERROR_SUCCESS) { err = Win32Err(r); return false; }
+    HKEY root = allUsers ? HKEY_LOCAL_MACHINE : HKEY_CURRENT_USER;
+    HKEY k; LONG r = RegCreateKeyExW(root, kRun, 0, nullptr, 0, KEY_QUERY_VALUE | KEY_SET_VALUE | KEY_WOW64_64KEY, nullptr, &k, nullptr);
+    if (r != ERROR_SUCCESS) { err = r == ERROR_ACCESS_DENIED ? L"Administrator rights are required for all-users entries." : Win32Err(r); return false; }
     if (RegQueryValueExW(k, name.c_str(), nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS) { RegCloseKey(k); err = L"An entry with this name already exists."; return false; }
     r = RegSetValueExW(k, name.c_str(), 0, REG_SZ, (const BYTE*)command.c_str(), (DWORD)((command.size() + 1) * 2));
     bool ok = r == ERROR_SUCCESS && RegQueryValueExW(k, name.c_str(), nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
     RegCloseKey(k);
     if (!ok) err = Win32Err(r);
-    WriteJournal(name, L"HKCU\\" + wstring(kRun), L"absent", ok ? command : L"unchanged", ok ? L"ok (add)" : L"failed: " + err, true);
+    WriteJournal(name, wstring(allUsers ? L"HKLM\\" : L"HKCU\\") + kRun, L"absent", ok ? command : L"unchanged", ok ? L"ok (add)" : L"failed: " + err, true);
     return ok;
+}
+
+// ---------- delayed launch (managed per-user scheduled task; original is disabled, never deleted) ----------
+static wstring XmlEsc(const wstring& s) { wstring o; for (wchar_t c : s) { if (c == L'&') o += L"&amp;"; else if (c == L'<') o += L"&lt;"; else if (c == L'>') o += L"&gt;"; else if (c == L'"') o += L"&quot;"; else if (c == L'\'') o += L"&apos;"; else o += c; } return o; }
+static wstring CurrentUserSam() { wchar_t u[256], d[256]; DWORD n = 256, m = 256; GetUserNameW(u, &n); GetEnvironmentVariableW(L"USERDOMAIN", d, m); return wstring(d) + L"\\" + u; }
+
+bool CanDelay(const StartupEntry& e) { return e.type == L"Registry" && e.root == HKEY_CURRENT_USER && e.state == L"Enabled" && !e.runOnce; }
+
+static ITaskFolder* OpenRoot(ITaskService** psvc) {
+    ITaskService* svc = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_TaskScheduler, nullptr, CLSCTX_INPROC_SERVER, IID_ITaskService, (void**)&svc)) || !svc) return nullptr;
+    VARIANT v; VariantInit(&v);
+    if (FAILED(svc->Connect(v, v, v, v))) { svc->Release(); return nullptr; }
+    ITaskFolder* root = nullptr; BSTR r = SysAllocString(L"\\"); HRESULT hr = svc->GetFolder(r, &root); SysFreeString(r);
+    if (FAILED(hr)) { svc->Release(); return nullptr; }
+    *psvc = svc; return root;
+}
+
+bool DelayStartup(const StartupEntry& e, int seconds, wstring& err) {
+    if (!CanDelay(e)) { err = L"Only enabled current-user Run entries can be delayed."; return false; }
+    if (seconds < 5 || seconds > 3600) { err = L"Delay must be 5 to 3600 seconds."; return false; }
+    if (!JournalWritable()) { err = L"Cannot write the change journal; nothing was changed."; return false; }
+    auto pc = ParseCommand(ExpandEnv(e.command), FileExistsExpanded);
+    if (pc.exe.empty()) { err = L"The command could not be understood; not delayed."; return false; }
+    wstring workDir; size_t sl = pc.exe.find_last_of(L"\\/"); if (sl != wstring::npos) workDir = pc.exe.substr(0, sl);
+    wstring safe = e.name; for (auto& c : safe) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+    wstring taskName = L"Delay - " + safe, user = CurrentUserSam();
+    wstring marker = L"FSU-DELAY1|HKCU|" + wstring(e.view == KEY_WOW64_32KEY ? L"32" : L"64") + L"|" + e.subKey + L"|" + e.valueName + L"|" + e.command;
+    wstring xml = L"<?xml version=\"1.0\" encoding=\"UTF-16\"?><Task version=\"1.2\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\"><RegistrationInfo><Description>" + XmlEsc(marker) +
+        L"</Description><Author>Feather System Utilities</Author></RegistrationInfo><Triggers><LogonTrigger><Enabled>true</Enabled><UserId>" + XmlEsc(user) + L"</UserId><Delay>PT" + std::to_wstring(seconds) +
+        L"S</Delay></LogonTrigger></Triggers><Principals><Principal id=\"A\"><UserId>" + XmlEsc(user) + L"</UserId><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>"
+        L"<Settings><MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy><DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries><StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>"
+        L"<ExecutionTimeLimit>PT0S</ExecutionTimeLimit><StartWhenAvailable>true</StartWhenAvailable><Enabled>true</Enabled></Settings><Actions Context=\"A\"><Exec><Command>" + XmlEsc(pc.exe) + L"</Command>" +
+        (pc.args.empty() ? L"" : L"<Arguments>" + XmlEsc(pc.args) + L"</Arguments>") + (workDir.empty() ? L"" : L"<WorkingDirectory>" + XmlEsc(workDir) + L"</WorkingDirectory>") + L"</Exec></Actions></Task>";
+    ITaskService* svc = nullptr; ITaskFolder* root = OpenRoot(&svc);
+    if (!root) { err = L"Task Scheduler is unavailable."; return false; }
+    ITaskFolder* f = nullptr; BSTR fn = SysAllocString(L"\\FeatherSystemUtilities");
+    if (FAILED(root->GetFolder(fn, &f))) { VARIANT sd; VariantInit(&sd); BSTR nn = SysAllocString(L"FeatherSystemUtilities"); root->CreateFolder(nn, sd, &f); SysFreeString(nn); }
+    SysFreeString(fn);
+    bool ok = false;
+    if (!f) err = L"Could not create the task folder (try again; no changes were made).";
+    else {
+        BSTR tn = SysAllocString(taskName.c_str()), tx = SysAllocString(xml.c_str()); VARIANT e1, e2, e3; VariantInit(&e1); VariantInit(&e2); VariantInit(&e3);
+        IRegisteredTask* rt = nullptr; HRESULT hr = f->RegisterTask(tn, tx, TASK_CREATE_OR_UPDATE, e1, e2, TASK_LOGON_INTERACTIVE_TOKEN, e3, &rt);
+        SysFreeString(tn); SysFreeString(tx);
+        if (FAILED(hr) || !rt) err = L"Task Scheduler refused the delayed task (0x" + std::to_wstring((unsigned)hr) + L"). The original entry is unchanged.";
+        else {
+            rt->Release(); wstring e2s;
+            if (SetStartupEnabled(e, false, e2s)) ok = true;
+            else { err = L"Could not disable the original entry: " + e2s; VARIANT_BOOL dummy; (void)dummy; BSTR tn2 = SysAllocString(taskName.c_str()); f->DeleteTask(tn2, 0); SysFreeString(tn2); }   // compensate
+        }
+        f->Release();
+    }
+    root->Release(); svc->Release();
+    WriteJournal(e.name, L"delayed launch", L"Run key (enabled)", ok ? L"managed task, " + std::to_wstring(seconds) + L" s after sign-in; original disabled" : L"unchanged", ok ? L"ok" : L"failed: " + err, true);
+    return ok;
+}
+
+bool RemoveDelay(const StartupEntry& t, wstring& err) {
+    if (!t.managedDelay) { err = L"Not a delayed entry made by this app."; return false; }
+    if (!JournalWritable()) { err = L"Cannot write the change journal; nothing was changed."; return false; }
+    // marker: FSU-DELAY1|HKCU|64|subKey|valueName|command
+    std::vector<wstring> p; size_t pos = 0; wstring d = t.delayNote;
+    for (int i = 0; i < 5; ++i) { size_t n = d.find(L'|', pos); if (n == wstring::npos) break; p.push_back(d.substr(pos, n - pos)); pos = n + 1; } p.push_back(d.substr(pos));
+    if (p.size() < 6 || p[0] != L"FSU-DELAY1" || p[1] != L"HKCU" || !IsRunSubKey(p[3])) { err = L"The task's restore information is missing or invalid; use Delete in Task Scheduler instead."; return false; }
+    StartupEntry orig; orig.root = HKEY_CURRENT_USER; orig.view = p[2] == L"32" ? KEY_WOW64_32KEY : KEY_WOW64_64KEY; orig.subKey = p[3]; orig.valueName = p[4]; orig.name = p[4]; orig.location = L"HKCU\\" + p[3];
+    orig.type = L"Registry"; orig.toggle = Toggle::RunApproved; orig.command = p[5];
+    HKEY k; bool exists = false;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, orig.subKey.c_str(), 0, KEY_QUERY_VALUE | KEY_SET_VALUE | orig.view, &k) == ERROR_SUCCESS) {
+        exists = RegQueryValueExW(k, orig.valueName.c_str(), nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS;
+        if (!exists) RegSetValueExW(k, orig.valueName.c_str(), 0, REG_SZ, (const BYTE*)orig.command.c_str(), (DWORD)((orig.command.size() + 1) * 2));   // original was deleted meanwhile: recreate it
+        RegCloseKey(k);
+    }
+    wstring e2; if (!SetStartupEnabled(orig, true, e2)) { err = L"Could not re-enable the original entry: " + e2 + L" The delay task was kept so nothing is lost."; return false; }
+    ITaskService* svc = nullptr; ITaskFolder* root = OpenRoot(&svc); bool ok = false;
+    if (root) { BSTR tp = SysAllocString(t.taskPath.c_str()); ok = SUCCEEDED(root->DeleteTask(tp, 0)); SysFreeString(tp); root->Release(); svc->Release(); }
+    if (!ok) err = L"The original was restored but the delay task could not be deleted; remove it in Task Scheduler.";
+    WriteJournal(t.name, L"delayed launch", L"managed task", ok ? L"original restored, task removed" : L"original restored, task remains", ok ? L"ok" : L"partial: " + err, false);
+    return ok;
+}
+
+int CleanupManagedTasks(wstring& report) {
+    int n = 0; auto scan = ScanStartup();
+    for (auto& e : scan.entries) if (e.managedDelay) { wstring err; if (RemoveDelay(e, err)) ++n; else report += e.name + L": " + err + L"\n"; }
+    ITaskService* svc = nullptr; ITaskFolder* root = OpenRoot(&svc);
+    if (root) { BSTR fn = SysAllocString(L"FeatherSystemUtilities"); root->DeleteFolder(fn, 0); SysFreeString(fn); root->Release(); svc->Release(); }   // only succeeds if empty
+    return n;
 }
 
 } // namespace fsu

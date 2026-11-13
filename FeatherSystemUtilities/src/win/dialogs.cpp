@@ -6,6 +6,7 @@
 #include <shellapi.h>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
 
 namespace fsu {
 using std::wstring;
@@ -15,7 +16,7 @@ void SetDarkTitleBar(HWND h, bool dark) { BOOL v = dark; DwmSetWindowAttribute(h
 // ---------- shell actions ----------
 void OpenFileLocation(const wstring& program) {
     wstring p = ExpandEnv(program);
-    if (p.empty() || GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) { MessageBoxW(nullptr, L"The file was not found, so its location cannot be opened.", L"Open file location", MB_OK | MB_ICONINFORMATION); return; }
+    if (p.empty() || GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) { DarkMsg(nullptr, L"Open file location", L"The file was not found, so its location cannot be opened.", 0); return; }
     wstring args = L"/select,\"" + p + L"\"";                              // arguments array-style: quoted path, no shell interpretation of the target
     ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
 }
@@ -50,25 +51,24 @@ void OnlineLookup(HWND owner, bool vt, const wstring& program, const wstring& na
     wstring url, what;
     if (vt) {
         wstring h = Sha256(ExpandEnv(program));
-        if (h.empty()) { MessageBoxW(owner, L"The file cannot be read, so its fingerprint cannot be computed.", L"Check on VirusTotal", MB_OK | MB_ICONINFORMATION); return; }
+        if (h.empty()) { DarkMsg(owner, L"Check on VirusTotal", L"The file cannot be read, so its fingerprint cannot be computed.", 0); return; }
         url = L"https://www.virustotal.com/gui/file/" + h; what = L"This computes the file's SHA-256 here and opens VirusTotal in your web browser with that hash. The file itself is not uploaded.";
     } else { url = L"https://www.bing.com/search?q=" + UrlEncode(name.empty() ? program : name); what = L"This opens your web browser and sends the name \"" + name + L"\" to Bing."; }
     wstring msg = what + L"\r\n\r\nFeather System Utilities itself stays offline. Continue?";
-    if (MessageBoxW(owner, msg.c_str(), vt ? L"Check on VirusTotal" : L"Search online", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) == IDYES)
+    if (DarkMsg(owner, vt ? L"Check on VirusTotal" : L"Search online", msg, 2) == IDYES)
         ShellExecuteW(nullptr, L"open", url.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 
 wstring StartupDetailsText(const StartupEntry& e) {
     wstring t = e.name + L"\r\n\r\nSTATUS\r\n" + e.state + L"\r\nStarts: " + e.starts + L"\r\n\r\nWHERE IT IS SET\r\nType: " + e.type + L"\r\nFor: " + e.scope + L"\r\n";
     if (e.type.rfind(L"Registry", 0) == 0) t += L"Registry key: " + e.location + L"\r\nValue name: " + e.valueName + L"\r\n";
-    else if (e.type == L"Scheduled task") t += L"Task: " + e.taskPath + L"\r\n";
+    else if (e.type.rfind(L"Scheduled task", 0) == 0) t += L"Task: " + e.taskPath + L"\r\n";
     else if (e.type == L"Startup folder") t += L"Folder: " + e.location + L"\r\n";
     else t += L"Registry key: " + e.location + L"\r\nCOM class: " + e.clsid + L"\r\n";
-    t += L"First seen: " + e.firstSeen + L"\r\n\r\nWHAT IT RUNS\r\nCommand: " + e.command + L"\r\nProgram: " + e.program + L"\r\nPublisher: " + e.publisher + L"\r\nVersion: " + e.version +
+    t += L"First seen: " + e.firstSeen + (e.managedDelay ? L"\r\nDelay: managed by Feather System Utilities (original Run entry is kept, disabled, and restored by \"Remove delay\")" : L"") + L"\r\n\r\nWHAT IT RUNS\r\nCommand: " + e.command + L"\r\nProgram: " + e.program + L"\r\nPublisher: " + e.publisher + L"\r\nVersion: " + e.version +
          L"\r\nDigital signature: " + e.signature + L"\r\n\r\nWARNINGS\r\n" + (e.warnings.empty() ? wstring(L"None.") : e.warnings) + L"\r\n";
     return t;
 }
-wstring StartupCopyText(const StartupEntry& e) { return StartupDetailsText(e); }
 
 // ---------- report dialog (warm light theme, as in the original apps) ----------
 struct RD { std::vector<ReportTab> tabs; std::vector<ReportBtn> btns; HWND edit = nullptr, tab = nullptr; std::vector<HWND> bs; HFONT font = nullptr; HBRUSH br = nullptr; bool done = false; int closeId = 0; };
@@ -80,17 +80,20 @@ static LRESULT CALLBACK RDProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCTW*)l)->lpCreateParams); break;
     case WM_SIZE: if (d && d->edit) {
         int W = LOWORD(l), H = HIWORD(l), pad = 12, bh = 28, top = pad;
+        // buttons wrap onto rows by text width
+        std::vector<int> bw; int rows = 1, x = pad; for (size_t i = 0; i < d->bs.size(); ++i) { wchar_t t[128]; GetWindowTextW(d->bs[i], t, 128); int w2 = 28 + 7 * (int)wcslen(t); if (w2 < 80) w2 = 80; bw.push_back(w2); }
+        for (int w2 : bw) { if (x + w2 > W - pad && x > pad) { ++rows; x = pad; } x += w2 + 6; }
+        int btnArea = rows * (bh + 6) + pad;
         if (d->tab) { MoveWindow(d->tab, pad, pad, W - 2 * pad, 26, TRUE); top = pad + 30; }
-        MoveWindow(d->edit, pad, top, W - 2 * pad, H - top - bh - 2 * pad, TRUE);
-        int x = pad; for (size_t i = 0; i < d->bs.size(); ++i) { bool last = i + 1 == d->bs.size(); int bw = last ? 80 : 124;
-            if (last) { MoveWindow(d->bs[i], W - pad - bw, H - bh - pad, bw, bh, TRUE); } else { MoveWindow(d->bs[i], x, H - bh - pad, bw, bh, TRUE); x += bw + 6; } }
+        MoveWindow(d->edit, pad, top, W - 2 * pad, H - top - btnArea - pad, TRUE);
+        x = pad; int row = 0; for (size_t i = 0; i < d->bs.size(); ++i) { if (x + bw[i] > W - pad && x > pad) { ++row; x = pad; } MoveWindow(d->bs[i], x, H - btnArea - pad / 2 + 6 + row * (bh + 6), bw[i], bh, TRUE); x += bw[i] + 6; }
         return 0; } break;
     case WM_NOTIFY: if (d && ((NMHDR*)l)->hwndFrom == d->tab && ((NMHDR*)l)->code == TCN_SELCHANGE) { int s = TabCtrl_GetCurSel(d->tab); if (s >= 0 && s < (int)d->tabs.size()) SetWindowTextW(d->edit, d->tabs[s].text.c_str()); } return 0;
     case WM_CTLCOLORSTATIC: case WM_CTLCOLOREDIT: { HDC dc = (HDC)w; SetTextColor(dc, kWarmTx); SetBkColor(dc, kWarmBg); return (LRESULT)d->br; }
     case WM_ERASEBKGND: { RECT r; GetClientRect(h, &r); FillRect((HDC)w, &r, d->br); return 1; }
     case WM_COMMAND: if (d) { int id = LOWORD(w);
         if (id == IDCANCEL) { d->done = true; return 0; }
-        if (id >= 2000 && id < 2000 + (int)d->btns.size()) { wstring cur; wchar_t b[65536]; GetWindowTextW(d->edit, b, 65536); cur = b; auto fn = d->btns[id - 2000].fn; if (fn) fn(cur); else d->done = true; } return 0; } break;
+        if (id >= 2000 && id < 2000 + (int)d->btns.size()) { wstring cur; wchar_t b[65536]; GetWindowTextW(d->edit, b, 65536); cur = b; auto fn = d->btns[id - 2000].fn; if (fn) fn(cur); if (!fn || d->btns[id - 2000].closes) d->done = true; } return 0; } break;
     case WM_CLOSE: if (d) d->done = true; return 0;
     }
     return DefWindowProcW(h, m, w, l);
@@ -103,7 +106,7 @@ void ShowReport(HWND owner, const wstring& title, const std::vector<ReportTab>& 
     UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
     d.font = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     RECT orc{0, 0, 0, 0}; if (owner) GetWindowRect(owner, &orc);
-    int W = S(740), H = S(600), x = owner ? orc.left + ((orc.right - orc.left) - W) / 2 : CW_USEDEFAULT, y = owner ? orc.top + ((orc.bottom - orc.top) - H) / 2 : CW_USEDEFAULT;
+    int W = S(780), H = S(640), x = owner ? orc.left + ((orc.right - orc.left) - W) / 2 : CW_USEDEFAULT, y = owner ? orc.top + ((orc.bottom - orc.top) - H) / 2 : CW_USEDEFAULT;
     HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FsuReportDlg", title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_CLIPCHILDREN, x, y, W, H, owner, nullptr, GetModuleHandleW(nullptr), &d);
     SetDarkTitleBar(h, true);
     if (tabs.size() > 1) { d.tab = CreateWindowExW(0, WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE | WS_TABSTOP | TCS_FOCUSNEVER, 0, 0, 10, 10, h, nullptr, nullptr, nullptr);
@@ -124,38 +127,89 @@ void ShowReport(HWND owner, const wstring& title, const std::vector<ReportTab>& 
     DestroyWindow(h); DeleteObject(d.font); DeleteObject(d.br);
 }
 
-// ---------- two-field input ----------
-struct AD { wstring l1, l2, v1, v2; HWND e1, e2; bool ok = false, done = false; HBRUSH br; };
-static LRESULT CALLBACK ADProc(HWND h, UINT m, WPARAM w, LPARAM l) {
-    AD* d = (AD*)GetWindowLongPtrW(h, GWLP_USERDATA);
+// ---------- message box (replaces MessageBoxW so every dialog matches the app) ----------
+struct MD { HBRUSH br; bool done = false; int result = IDNO; int kind; };
+static LRESULT CALLBACK MDProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    MD* d = (MD*)GetWindowLongPtrW(h, GWLP_USERDATA);
     switch (m) {
     case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCTW*)l)->lpCreateParams); break;
-    case WM_CTLCOLORSTATIC: { SetTextColor((HDC)w, kWarmTx); SetBkColor((HDC)w, kWarmBg); return (LRESULT)d->br; }
+    case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: SetTextColor((HDC)w, kWarmTx); SetBkColor((HDC)w, kWarmBg); return (LRESULT)d->br;
     case WM_ERASEBKGND: { RECT r; GetClientRect(h, &r); FillRect((HDC)w, &r, d->br); return 1; }
-    case WM_COMMAND: if (LOWORD(w) == IDOK) { wchar_t a[2048], b[2048]; GetWindowTextW(d->e1, a, 2048); GetWindowTextW(d->e2, b, 2048); d->v1 = a; d->v2 = b; d->ok = d->done = true; return 0; }
+    case WM_COMMAND: { int id = LOWORD(w); if (id == IDOK || id == IDYES || id == IDNO || id == IDCANCEL) { d->result = id == IDCANCEL ? (d->kind == 2 ? IDNO : IDOK) : id; d->done = true; return 0; } break; }
+    case WM_CLOSE: d->result = d->kind == 2 ? IDNO : IDOK; d->done = true; return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+int DarkMsg(HWND owner, const wstring& title, const wstring& text, int kind) {
+    static bool reg = false;
+    if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = MDProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuMsgDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
+    MD d; d.br = CreateSolidBrush(kWarmBg); d.kind = kind;
+    UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
+    HFONT f = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
+    int tw = S(460); HDC dc = GetDC(nullptr); HFONT of = (HFONT)SelectObject(dc, f); RECT cr{0, 0, tw, 0}; DrawTextW(dc, text.c_str(), -1, &cr, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX); SelectObject(dc, of); ReleaseDC(nullptr, dc);
+    int th = std::min<int>(cr.bottom, S(420)); int W = tw + S(48), H = th + S(120);
+    RECT orc{}; if (owner) GetWindowRect(owner, &orc); else { orc = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)}; }
+    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FsuMsgDlg", title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU, orc.left + ((orc.right - orc.left) - W) / 2, orc.top + ((orc.bottom - orc.top) - H) / 2, W, H, owner, nullptr, GetModuleHandleW(nullptr), &d);
+    SetDarkTitleBar(h, true);
+    HWND st = CreateWindowExW(0, L"STATIC", text.c_str(), WS_CHILD | WS_VISIBLE | SS_NOPREFIX, S(20), S(18), tw, th + S(4), h, nullptr, nullptr, nullptr); SendMessageW(st, WM_SETFONT, (WPARAM)f, TRUE);
+    auto btn = [&](const wchar_t* t, int id, int x, bool def) { HWND b = CreateWindowExW(0, L"BUTTON", t, WS_CHILD | WS_VISIBLE | WS_TABSTOP | (def ? BS_DEFPUSHBUTTON : BS_PUSHBUTTON), x, th + S(46), S(90), S(28), h, (HMENU)(INT_PTR)id, nullptr, nullptr); SendMessageW(b, WM_SETFONT, (WPARAM)f, TRUE); return b; };
+    HWND focus;
+    if (kind == 2) { btn(L"Yes", IDYES, W - S(20) - S(190) - S(8), false); focus = btn(L"No", IDNO, W - S(20) - S(100) - S(8) + S(0), true); } else focus = btn(L"OK", IDOK, W - S(20) - S(100) - S(8), true);
+    if (owner) EnableWindow(owner, FALSE); ShowWindow(h, SW_SHOW); SetFocus(focus);
+    MSG msg; while (!d.done && GetMessageW(&msg, nullptr, 0, 0)) {
+        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) { d.result = kind == 2 ? IDNO : IDOK; break; }
+        if (!IsDialogMessageW(h, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); } }
+    if (owner) { EnableWindow(owner, TRUE); SetForegroundWindow(owner); }
+    DestroyWindow(h); DeleteObject(f); DeleteObject(d.br); return d.result;
+}
+
+// ---------- generic form (edit / combo / checkbox) ----------
+struct FD { std::vector<FormField>* fields; std::vector<HWND> ctl; HBRUSH br; bool ok = false, done = false; };
+static LRESULT CALLBACK FDProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    FD* d = (FD*)GetWindowLongPtrW(h, GWLP_USERDATA);
+    switch (m) {
+    case WM_NCCREATE: SetWindowLongPtrW(h, GWLP_USERDATA, (LONG_PTR)((CREATESTRUCTW*)l)->lpCreateParams); break;
+    case WM_CTLCOLORSTATIC: case WM_CTLCOLORBTN: SetTextColor((HDC)w, kWarmTx); SetBkColor((HDC)w, kWarmBg); return (LRESULT)d->br;
+    case WM_ERASEBKGND: { RECT r; GetClientRect(h, &r); FillRect((HDC)w, &r, d->br); return 1; }
+    case WM_COMMAND:
+        if (LOWORD(w) == IDOK) { for (size_t i = 0; i < d->ctl.size(); ++i) { auto& f = (*d->fields)[i];
+                if (f.type == 1) f.value = std::to_wstring((int)SendMessageW(d->ctl[i], CB_GETCURSEL, 0, 0)); else if (f.type == 2) f.value = SendMessageW(d->ctl[i], BM_GETCHECK, 0, 0) == BST_CHECKED ? L"1" : L"0";
+                else { wchar_t b[4096]; GetWindowTextW(d->ctl[i], b, 4096); f.value = b; } }
+            d->ok = d->done = true; return 0; }
         if (LOWORD(w) == IDCANCEL) { d->done = true; return 0; } break;
     case WM_CLOSE: d->done = true; return 0;
     }
     return DefWindowProcW(h, m, w, l);
 }
-bool AskTwo(HWND owner, const wstring& title, const wstring& l1, const wstring& l2, wstring& v1, wstring& v2) {
+bool FormDialog(HWND owner, const wstring& title, const wstring& okText, std::vector<FormField>& fields, const wstring& note) {
     static bool reg = false;
-    if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = ADProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuAskDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
-    AD d; d.br = CreateSolidBrush(kWarmBg);
+    if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = FDProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuFormDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
+    FD d; d.fields = &fields; d.br = CreateSolidBrush(kWarmBg);
     UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
     HFONT f = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
-    RECT orc{}; if (owner) GetWindowRect(owner, &orc); int W = S(560), H = S(210);
-    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FsuAskDlg", title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU, orc.left + ((orc.right - orc.left) - W) / 2, orc.top + ((orc.bottom - orc.top) - H) / 2, W, H, owner, nullptr, GetModuleHandleW(nullptr), &d);
+    int W = S(584), y = S(14), nlines = note.empty() ? 0 : (int)(note.size() / 80) + 2;
+    RECT orc{}; if (owner) GetWindowRect(owner, &orc); else orc = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};
+    HWND h = CreateWindowExW(WS_EX_DLGMODALFRAME, L"FsuFormDlg", title.c_str(), WS_POPUP | WS_CAPTION | WS_SYSMENU, 0, 0, W, S(200), owner, nullptr, GetModuleHandleW(nullptr), &d);
     SetDarkTitleBar(h, true);
-    auto mk = [&](const wchar_t* cls, const wstring& t, DWORD st, int x, int y, int w, int hh, int id) { HWND c = CreateWindowExW(0, cls, t.c_str(), WS_CHILD | WS_VISIBLE | st, S(x), S(y), S(w), S(hh), h, (HMENU)(INT_PTR)id, nullptr, nullptr); SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE); return c; };
-    mk(L"STATIC", l1, 0, 14, 14, 520, 18, 0); d.e1 = mk(L"EDIT", v1, WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 14, 34, 520, 24, 0);
-    mk(L"STATIC", l2, 0, 14, 68, 520, 18, 0); d.e2 = mk(L"EDIT", v2, WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, 14, 88, 520, 24, 0);
-    mk(L"BUTTON", L"Add", BS_DEFPUSHBUTTON | WS_TABSTOP, 360, 130, 84, 28, IDOK); mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, 450, 130, 84, 28, IDCANCEL);
-    if (owner) EnableWindow(owner, FALSE); ShowWindow(h, SW_SHOW); SetFocus(d.e1);
-    MSG msg; while (!d.done && GetMessageW(&msg, nullptr, 0, 0)) { if (!IsDialogMessageW(h, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); } }
+    auto mk = [&](const wchar_t* cls, const wstring& t, DWORD st, int x, int yy, int w, int hh, DWORD ex = 0) { HWND c = CreateWindowExW(ex, cls, t.c_str(), WS_CHILD | WS_VISIBLE | st, x, yy, w, hh, h, nullptr, nullptr, nullptr); SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE); return c; };
+    if (!note.empty()) { mk(L"STATIC", note, SS_NOPREFIX, S(18), y, W - S(52), S(16) * nlines); y += S(16) * nlines + S(8); }
+    for (auto& fl : fields) {
+        HWND c;
+        if (fl.type == 2) { c = mk(L"BUTTON", fl.label, BS_AUTOCHECKBOX | WS_TABSTOP, S(18), y, W - S(52), S(22)); SendMessageW(c, BM_SETCHECK, fl.value == L"1" ? BST_CHECKED : BST_UNCHECKED, 0); y += S(30); }
+        else { mk(L"STATIC", fl.label, SS_NOPREFIX, S(18), y, W - S(52), S(18)); y += S(20);
+            if (fl.type == 1) { c = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_TABSTOP | WS_VSCROLL, S(18), y, W - S(52), S(300)); for (auto& o : fl.options) SendMessageW(c, CB_ADDSTRING, 0, (LPARAM)o.c_str()); SendMessageW(c, CB_SETCURSEL, _wtoi(fl.value.c_str()), 0); }
+            else c = mk(L"EDIT", fl.value, WS_BORDER | WS_TABSTOP | ES_AUTOHSCROLL, S(18), y, W - S(52), S(24));
+            y += S(34); }
+        d.ctl.push_back(c);
+    }
+    HWND ok = mk(L"BUTTON", okText, BS_DEFPUSHBUTTON | WS_TABSTOP, W - S(18) - S(190) - S(8), y + S(6), S(90), S(28)); SetWindowLongPtrW(ok, GWLP_ID, IDOK);
+    HWND cn = mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, W - S(18) - S(100) - S(8), y + S(6), S(90), S(28)); SetWindowLongPtrW(cn, GWLP_ID, IDCANCEL);
+    RECT wr{0, 0, W, y + S(60)}; AdjustWindowRectEx(&wr, WS_POPUP | WS_CAPTION | WS_SYSMENU, FALSE, WS_EX_DLGMODALFRAME);
+    int ww = wr.right - wr.left, hh = wr.bottom - wr.top; SetWindowPos(h, nullptr, orc.left + ((orc.right - orc.left) - ww) / 2, orc.top + ((orc.bottom - orc.top) - hh) / 2, ww, hh, SWP_NOZORDER);
+    if (owner) EnableWindow(owner, FALSE); ShowWindow(h, SW_SHOW); if (!d.ctl.empty()) SetFocus(d.ctl[0]);
+    MSG msg; while (!d.done && GetMessageW(&msg, nullptr, 0, 0)) { if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE) break; if (!IsDialogMessageW(h, &msg)) { TranslateMessage(&msg); DispatchMessageW(&msg); } }
     if (owner) { EnableWindow(owner, TRUE); SetForegroundWindow(owner); }
-    DestroyWindow(h); DeleteObject(f); DeleteObject(d.br);
-    if (d.ok) { v1 = d.v1; v2 = d.v2; } return d.ok;
+    DestroyWindow(h); DeleteObject(f); DeleteObject(d.br); return d.ok;
 }
 
 } // namespace fsu

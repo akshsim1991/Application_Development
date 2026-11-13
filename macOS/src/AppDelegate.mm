@@ -70,6 +70,11 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
     // The build check (FEATHER_UI_CHECK=folder): after a moment, report the windows and keep a picture of the first one.
     if (const char* dir = getenv("FEATHER_UI_CHECK")) {
         NSString* out = [NSString stringWithUTF8String:dir];
+        {   // the build check: what the recent list holds at start (it must survive the app being replaced by an update)
+            NSMutableArray* names = [NSMutableArray array];
+            for (NSURL* u in [NSDocumentController sharedDocumentController].recentDocumentURLs) [names addObject:u.lastPathComponent];
+            FPTrace(@"recent documents %lu: %@", (unsigned long)names.count, [names componentsJoinedByString:@", "]);
+        }
         if (self.filesToOpen.count == 0) [[FPStartWindowController shared] showIfNoDocuments];
         // FEATHER_UI_ACTION=showProperties: (a menu command) is chosen after 3 s, so the picture shows what it opens.
         // FEATHER_UI_CONVERT=file: the Finder's Convert to PDF, given that file (as the Services menu gives it)

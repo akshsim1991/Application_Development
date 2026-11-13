@@ -136,6 +136,23 @@ jobs:
           grep -q "sensitive: found 10" ui-sensitive/trace.txt && grep -q "sensitive: marked 10 items" ui-sensitive/trace.txt   # both forms, every item marked
           grep -q "press: sheet 1 button Recognise" ui-ocrrun/trace.txt && grep -q "^documents 1" ui-ocrrun/report.txt && grep -q "ocr words [1-9]" ui-ocrrun/trace.txt   # OCR from its form: words found, no crash
 
+      - name: Recent files and settings survive an update (the app replaced as the updater replaces it)
+        run: |
+          app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
+          bundle="build-mac/Feather PDF.app"
+          in="$PWD/tests/engine/golden/in"
+          defaults write com.featherpdf.mac pageColours -int 2
+          env FEATHER_UI_CHECK="$PWD/ui-recent1" "$app" "$in/qp.pdf" || true
+          cat ui-recent1/trace.txt | grep "recent documents" || true
+          # the update: the app moved aside, the new one copied in its place (macOS/src/Updater.mm), then started
+          ditto "$bundle" /tmp/FeatherPDF-new.app
+          mv "$bundle" "$bundle.old" && ditto /tmp/FeatherPDF-new.app "$bundle" && rm -rf "$bundle.old"
+          env FEATHER_UI_CHECK="$PWD/ui-recent2" "$app" || true
+          cat ui-recent2/trace.txt | grep "recent documents"
+          grep -q "recent documents [1-9].*qp.pdf" ui-recent2/trace.txt   # the recent list kept
+          [ "$(defaults read com.featherpdf.mac pageColours)" = "2" ]       # and a setting
+          defaults write com.featherpdf.mac pageColours -int 0
+
       - name: Disk image
         run: cmake --build build-mac --target dmg
 

@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.20.0 "Aspire" (13 November 2026)
+
+- **Edit PDF in one click**, as in other modern PDF editors (both apps). Clicking Edit PDF turns editing on at once:
+  every paragraph gets a thin outline and every picture a dashed one, and the one under the pointer lights up. Click
+  into any text and type: it is edited in place, with the cursor where you clicked and the font, size, bold, italic,
+  colour and alignment bar above it. Click a picture to pick it, then drag it to move it or a corner to resize it.
+  There is no longer a separate "edit a line" and "edit a paragraph": Feather PDF finds the block itself (a line in
+  another colour is a block of its own).
+- While editing, a second toolbar row (on the Mac a bar under the toolbar) holds Add text, Insert picture, Insert
+  table, Find and replace, Redact an area and More editing tools (every other tool, as the Edit PDF menu had them),
+  with Done on the right. Esc, Done or Edit PDF again ends editing. Ctrl+E / F2 (Mac: ⌘E) do the same.
+
 ## 2.19.2 (13 November 2026)
 
 - Fixed: **Feather PDF did not start on Windows 7** ("The procedure entry point BCryptHash could not be located in

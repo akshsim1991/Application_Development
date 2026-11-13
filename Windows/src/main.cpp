@@ -88,7 +88,10 @@ constexpr UINT kMsgSpeech = WM_APP + 8;           // the voice reading aloud has
 // kind: a toolbar button, or one of the window buttons (minimise, maximise, close) drawn in the tab row
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
 enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU,
-           C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE, C_TAB = 2000 /* + tab index: hover and tips */, C_TABCLOSE = 3000 /* + tab index */ };
+           C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE,
+           // the edit row, under the toolbar while Edit PDF is on
+           C_ER_EDIT = 160, C_ER_ADDTEXT, C_ER_PICTURE, C_ER_TABLE, C_ER_REPLACE, C_ER_REDACT, C_ER_MORE, C_ER_DONE,
+           C_TAB = 2000 /* + tab index: hover and tips */, C_TABCLOSE = 3000 /* + tab index */ };
 enum { ID_PAGE_BOX = 220, ID_ZOOM_BOX };
 
 struct App {
@@ -175,7 +178,12 @@ int toolH() { return px(48); }
 int findH() { return px(42); }
 int statusH() { return px(26); }
 int sideW() { return px(230); }
-int headerH() { return tabH() + toolH(); }
+int activeGroup();
+Document* activeDoc();
+// The edit row: a second toolbar row while an Edit PDF tool is on (edit mode first of all), with the other editing tools.
+bool editRowShown() { return activeDoc() && activeGroup() == C_EDITPDF; }
+int editRowH() { return editRowShown() ? px(42) : 0; }
+int headerH() { return tabH() + toolH() + editRowH(); }
 
 
 // features implemented further down
@@ -1419,6 +1427,7 @@ const wchar_t* toolHint(Viewer::Tool t) {
         case T::AddText: return L"Click where the text should start. Esc stops.";
         case T::EditText: return L"Click a line of text to change it. Esc stops.";
         case T::EditPara: return L"Click a paragraph to change it. Esc stops.";
+        case T::EditAll: return L"Editing: click any outlined text to change it there, or a picture to move or resize it. Esc or Done stops.";
         case T::Link: return L"Drag a box over the text or area that should become a link. Esc stops.";
         case T::CopyArea: return L"Drag a box around the area to copy as a picture. Esc stops.";
         case T::CropBox: return L"Drag a box around the part of the page to keep. Esc stops.";
@@ -1441,6 +1450,8 @@ void setTool(Viewer::Tool t) {
     if (app.inlineEd.active()) app.inlineEd.commit();
     app.tool = (app.tool == t) ? Viewer::Tool::None : t;   // choosing the active tool again switches it off
     app.viewer.setTool(app.tool);
+    static bool rowWas = false;   // the edit row came or went: the pages move down or up under it
+    if (editRowShown() != rowWas) { rowWas = editRowShown(); relayoutChildren(); }
     InvalidateRect(app.wnd, nullptr, FALSE);   // the toolbar group of the tool and the status bar show it
     if (const wchar_t* hint = toolHint(app.tool)) notice(hint);
     if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
@@ -3448,8 +3459,7 @@ void toolsDispatch(int cmd) {
         case T_SHOWSIGS: showSignatures(*d); break;
         case T_PROTECT: doProtect(*d); break;
         case T_UNPROTECT: doUnprotect(*d); break;
-        case T_EDIT_TEXT: setTool(Viewer::Tool::EditText); break;
-        case N_EDITPARA: setTool(Viewer::Tool::EditPara); break;
+        case T_EDIT_TEXT: case N_EDITPARA: setTool(Viewer::Tool::EditAll); break;   // one edit mode: lines and paragraphs alike
         case N_SELECTOBJ: setTool(Viewer::Tool::Select); break;
         case T_ADD_TEXT: setTool(Viewer::Tool::AddText); break;
         case T_TEXT_STYLE: textStyleDialog(); break;
@@ -3494,8 +3504,7 @@ void showToolsMenu(const RECT& anchor) {
     HMENU m = CreatePopupMenu();
     auto add = [&](UINT id, const wchar_t* t, bool on = true, bool check = false) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED) | (check ? MF_CHECKED : 0), id, t); };
     auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
-    add(T_EDIT_TEXT, L"Edit text (one line)\tCtrl+E", true, app.tool == Viewer::Tool::EditText);
-    add(N_EDITPARA, L"Edit paragraph (font, size, bold, italic)\tF2", true, app.tool == Viewer::Tool::EditPara);
+    add(T_EDIT_TEXT, L"Edit text and pictures (click to edit)\tCtrl+E", true, app.tool == Viewer::Tool::EditAll);
     add(N_SELECTOBJ, L"Move or resize pictures, paragraphs and tables", true, app.tool == Viewer::Tool::Select);
     { HMENU pm = CreatePopupMenu(); addPictureItems(pm); AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pm), L"Picture (turn, crop, brightness...)"); }
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
@@ -3701,6 +3710,14 @@ void runCommand(int id) {
         case C_FITW: app.viewer.fitWidth(); break;
         case C_FITP: app.viewer.fitPage(); break;
         case C_FIND: if (d) toggleFind(!app.findVisible); break;
+        // the edit row
+        case C_ER_EDIT: if (d && app.tool != Viewer::Tool::EditAll) setTool(Viewer::Tool::EditAll); break;
+        case C_ER_ADDTEXT: if (d) toolsDispatch(T_ADD_TEXT); break;
+        case C_ER_PICTURE: if (d) startPicture(); break;
+        case C_ER_TABLE: if (d) tableInsert(); break;
+        case C_ER_REPLACE: if (d) doFindReplace(); break;
+        case C_ER_REDACT: if (d) toolsDispatch(T_RED_AREA); break;
+        case C_ER_DONE: if (app.inlineEd.active()) app.inlineEd.commit(); if (app.tool != Viewer::Tool::None) setTool(Viewer::Tool::None); break;
         case C_PANEL: showSidebar(Sidebar::Mode::Bookmarks); break;
         case C_GOTO: goToPageDialog(); break;
         case C_SAVE: saveActive(); break;
@@ -4988,6 +5005,25 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             app.viewer.setObjectSelection(e.page, &r, gx, gy);
             return true;
         }
+        case Viewer::Tool::EditAll: {
+            // edit mode: a picture is picked (handles to move and resize it); text is edited where it was clicked
+            const double x = e.pts.front().x, y = e.pts.front().y;
+            pageobj::GroupHit g = pageobj::groupAt(d, e.page, x, y);
+            pageobj::ParagraphHit hit;
+            if (!g.found || g.kind != pageobj::GroupHit::Picture) hit = pageobj::paragraphAt(d, e.page, x, y);
+            if (g.found && g.kind == pageobj::GroupHit::Picture && !hit.found) {
+                app.sel.page = e.page; app.sel.objects = g.objects;
+                std::vector<double> gx, gy;
+                pageobj::snapGuides(d, e.page, g.objects, gx, gy);
+                annot::RectD r{g.left, g.bottom, g.right, g.top};
+                app.viewer.setObjectSelection(e.page, &r, gx, gy);
+                return true;
+            }
+            app.sel.page = -1; app.sel.objects.clear();
+            app.viewer.setObjectSelection(-1, nullptr);
+            if (hit.found) editParagraphInPlace(d, hit, clickPoint(e.page, e.pts.front()));
+            return true;
+        }
         case Viewer::Tool::EditPara: {
             pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, e.pts.front().x, e.pts.front().y);
             if (!hit.found) {
@@ -6205,12 +6241,20 @@ int activeGroup() {
         case T::None: case T::CopyArea: return 0;
         case T::Comment: return C_COMMENT;
         case T::Ruler: case T::Protractor: return C_GEOM;
-        case T::AddText: case T::Rectangle: case T::Ellipse: case T::Line: case T::Arrow: case T::Pen: case T::Polygon:
-        case T::Cloud: case T::Callout: case T::Stamp: case T::Picture: case T::Link: return C_ANNOT;
+        case T::Rectangle: case T::Ellipse: case T::Line: case T::Arrow: case T::Pen: case T::Polygon:
+        case T::Cloud: case T::Callout: case T::Stamp: case T::Link: return C_ANNOT;
         default: return C_EDITPDF;
     }
 }
-bool highlighted(int id) { return (id != 0 && id == activeGroup()) || (id == C_SBS && app.sbs); }
+bool highlighted(int id) {
+    using T = Viewer::Tool;
+    switch (id) {   // the edit row: the tool in use
+        case C_ER_EDIT: return app.tool == T::EditAll || app.tool == T::EditText || app.tool == T::EditPara || app.tool == T::Select;
+        case C_ER_REDACT: return app.tool == T::Redact;
+        case C_ER_DONE: return true;   // the way out, always marked
+    }
+    return (id != 0 && id == activeGroup()) || (id == C_SBS && app.sbs);
+}
 
 const wchar_t* toolName(Viewer::Tool t) {
     using T = Viewer::Tool;
@@ -6220,7 +6264,7 @@ const wchar_t* toolName(Viewer::Tool t) {
         case T::AddText: return L"Add text"; case T::EditText: return L"Edit text"; case T::Picture: return L"Insert picture";
         case T::Stamp: return L"Stamp"; case T::Link: return L"Link"; case T::CopyArea: return L"Copy area"; case T::CropBox: return L"Crop";
         case T::TableDelete: return L"Delete table"; case T::TablePlace: return L"Insert table"; case T::TableEdit: return L"Edit table";
-        case T::EditPara: return L"Edit paragraph"; case T::Select: return L"Move or resize"; case T::Polygon: return L"Polygon";
+        case T::EditPara: return L"Edit paragraph"; case T::EditAll: return L"Editing"; case T::Select: return L"Move or resize"; case T::Polygon: return L"Polygon";
         case T::Cloud: return L"Cloud"; case T::Callout: return L"Callout"; case T::FormRadio: return L"Radio button";
         case T::FormList: return L"List field"; case T::FormDate: return L"Date field"; case T::FormText: return L"Text field";
         case T::FormCheck: return L"Check box"; case T::FormCombo: return L"Drop-down list"; case T::Ruler: return L"Ruler";
@@ -6254,6 +6298,14 @@ std::wstring tipFor(int id) {
         case C_ZOOMIN: return L"Zoom in";
         case C_ZOOMMENU: return L"Zoom presets, fit width, fit page";
         case C_FIND: return L"Find in the document (Ctrl+F)";
+        case C_ER_EDIT: return L"Click any outlined text to change it there, or a picture to move or resize it (Ctrl+E)";
+        case C_ER_ADDTEXT: return L"Click where new text should start";
+        case C_ER_PICTURE: return L"Put a picture on the page";
+        case C_ER_TABLE: return L"Draw a new table on the page";
+        case C_ER_REPLACE: return L"Find a word and change it everywhere (Ctrl+Shift+H)";
+        case C_ER_REDACT: return L"Drag a box over what must be removed for good";
+        case C_ER_MORE: return L"Every editing tool: pages, forms, redaction, watermark, OCR, signatures...";
+        case C_ER_DONE: return L"Stop editing (Esc)";
         case C_MENU: return L"More: files, view, settings and help";
         case C_NEWTAB: return L"Open a PDF in a new tab (Ctrl+O)";
         case C_CAPMIN: return L"Minimise";
@@ -6419,6 +6471,22 @@ void layoutHeader(HDC dc, int width) {
     rx -= ofW; app.ofRect = {rx, top, rx + ofW, bottom};
     rx -= px(50); app.pageRect = {rx, top + px(3), rx + px(50), bottom - px(3)};
     rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_PREV, d != nullptr, I_PREV});
+    // the edit row: what Edit PDF does, one click each, and Done
+    if (editRowShown()) {
+        const int et = th + toolH() + (px(42) - px(30)) / 2, eb = et + px(30);
+        static const struct { const wchar_t* label; int id; } row[] = {
+            {L"Edit text and pictures", C_ER_EDIT}, {L"Add text", C_ER_ADDTEXT}, {L"Insert picture", C_ER_PICTURE}, {L"Insert table", C_ER_TABLE},
+            {L"Find and replace", C_ER_REPLACE}, {L"Redact an area", C_ER_REDACT}, {L"More editing tools...", C_ER_MORE}};
+        int ex = px(8);
+        for (const auto& r : row) {
+            const int w = textWidth(dc, app.font, r.label) + px(24);
+            if (ex + w > width - px(100)) break;   // a narrow window: the rest are in More (and Done stays)
+            app.buttons.push_back({r.label, {ex, et, ex + w, eb}, r.id, true, I_NONE});
+            ex += w + px(4);
+        }
+        const int dw = textWidth(dc, app.font, L"Done") + px(32);
+        app.buttons.push_back({L"Done", {width - px(10) - dw, et, width - px(10), eb}, C_ER_DONE, true, I_NONE});
+    }
     placeBox(app.pageBox, app.pageRect, 0);
     placeBox(app.zoomBox, app.zoomRect, px(24));
     syncTips();
@@ -6643,14 +6711,19 @@ void paintHeader(HDC dc, const RECT& client) {
         const COLORREF iconCol = app.colourIcons && b.enabled ? iconColour(b.icon, behind) : col;
         const int ic = px(20);
         if (b.label.empty()) icons::draw(dc, b.rc, b.icon, iconCol, ic);
-        else {
+        else if (b.icon == I_NONE) {   // the edit row: words only
+            SetTextColor(dc, col);
+            RECT t = b.rc;
+            DrawTextW(dc, b.label.c_str(), -1, &t, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+        } else {
             icons::draw(dc, RECT{b.rc.left + px(12), b.rc.top, b.rc.left + px(12) + ic, b.rc.bottom}, b.icon, iconCol, ic);
             RECT t{b.rc.left + px(12) + ic + px(7), b.rc.top, b.rc.right, b.rc.bottom};
             SetTextColor(dc, col);
             DrawTextW(dc, b.label.c_str(), -1, &t, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         }
     }
-    for (int sx : g_separators) vline(dc, sx, th + px(14), headerH() - px(14), P.line);
+    for (int sx : g_separators) vline(dc, sx, th + px(14), th + toolH() - px(14), P.line);
+    if (editRowShown()) hline(dc, 0, client.right, th + toolH() - 1, P.line);   // the edit row below the toolbar
 
     // the page and zoom boxes (their numbers are edit controls on top)
     Document* d = activeDoc();
@@ -6858,6 +6931,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.viewer.setOnChange(onViewerChange, nullptr);
             restartAutosave();
             app.viewer.onEvent = onViewerEvent;
+            app.viewer.editingNow = [] { return app.inlineEd.active(); };
             app.viewer.tableOutlines = tableOutlines;
             app.viewer.onJump = onJump;
             app.viewer.onUri = openUri;
@@ -7060,7 +7134,11 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (b.id == C_CAPMAX) { g_menuExclude = RECT{}; ShowWindow(h, IsZoomed(h) ? SW_RESTORE : SW_MAXIMIZE); return 0; }
                 if (b.id == C_CAPCLOSE) { g_menuExclude = RECT{}; PostMessageW(h, WM_CLOSE, 0, 0); return 0; }
                 if (b.id == C_ANNOT) showAnnotateMenu(b.rc);
-                else if (b.id == C_EDITPDF) showToolsMenu(b.rc);
+                else if (b.id == C_EDITPDF) {   // one click: edit mode on (the outlines show), or off again
+                    g_menuExclude = RECT{};
+                    setTool(editRowShown() ? Viewer::Tool::None : Viewer::Tool::EditAll);
+                }
+                else if (b.id == C_ER_MORE) showToolsMenu(b.rc);
                 else if (b.id == C_COMMENT) showCommentMenu(b.rc);
                 else if (b.id == C_GEOM) showGeometryMenu(b.rc);
                 else if (b.id == C_SBS) showSideBySideMenu(b.rc);
@@ -7222,7 +7300,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                     case 'N': launchWindow({}); return 0;   // a new window of its own
                     case 'L': rotateView(-1); return 0;
                     case 'R': rotateView(1); return 0;
-                    case 'E': if (d) setTool(Viewer::Tool::EditText); return 0;
+                    case 'E': if (d) setTool(app.tool == Viewer::Tool::EditAll ? Viewer::Tool::None : Viewer::Tool::EditAll); return 0;
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
                     case 'P': printDocument(); return 0;   // Ctrl+Shift+P (the old print preview) opens the same window
                     case 'D': showProperties(); return 0;
@@ -7273,7 +7351,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             switch (w) {
                 case VK_F11: setFullscreen(!app.fullscreen, false); return 0;
                 case VK_F5: setFullscreen(true, true); return 0;
-                case VK_F2: setTool(Viewer::Tool::EditPara); return 0;
+                case VK_F2: setTool(Viewer::Tool::EditAll); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
                 case VK_DELETE:
                     if (app.tool == Viewer::Tool::Select && app.sel.page >= 0) {

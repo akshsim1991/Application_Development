@@ -17,6 +17,13 @@ NSNotificationName const FPPageColoursChanged = @"FPPageColoursChanged";
 static NSToolbarItemIdentifier const kPagesItem = @"pages";
 static NSToolbarItemIdentifier const kSidebarItem = @"sidebar";
 static NSToolbarItemIdentifier const kFindItem = @"find";
+static NSToolbarItemIdentifier const kEditItem = @"editpdf";
+extern BOOL FPInlineEditing();   // Editing.mm: a paragraph is being typed in
+
+@interface FPWindowController (EditingCalls)   // Editing.mm
+- (IBAction)chooseEditTool:(NSMenuItem*)sender;
+- (void)endInlineEdit:(BOOL)apply;
+@end
 static NSToolbarItemIdentifier const kPageItem = @"page";
 static NSToolbarItemIdentifier const kZoomItem = @"zoom";
 
@@ -47,6 +54,9 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     NSTextField* _pageField;
     NSTextField* _pageCount;
     NSComboBox* _zoomMenu;
+    NSView* _editBar;                  // under the toolbar while editing: the editing tools, one click each, and Done
+    NSLayoutConstraint* _splitTop;     // the pages start below it
+    NSButton* _editButton;             // Edit PDF in the toolbar
 }
 
 - (instancetype)init {
@@ -105,7 +115,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
         [content addSubview:_split];
         [content addSubview:_status];
         [NSLayoutConstraint activateConstraints:@[
-            [_split.topAnchor constraintEqualToAnchor:content.topAnchor],
+            _splitTop = [_split.topAnchor constraintEqualToAnchor:content.topAnchor],
             [_split.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
             [_split.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
             [_split.bottomAnchor constraintEqualToAnchor:content.bottomAnchor constant:-24],
@@ -113,6 +123,7 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
             [_status.trailingAnchor constraintLessThanOrEqualToAnchor:content.trailingAnchor constant:-12],
             [_status.centerYAnchor constraintEqualToAnchor:content.bottomAnchor constant:-12],
         ]];
+        [self makeEditBarIn:content];
         w.contentView = content;
         [w setContentBorderThickness:24 forEdge:NSRectEdgeMinY];
         [_split setPosition:180 ofDividerAtIndex:0];
@@ -161,14 +172,106 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     [self.window makeFirstResponder:_view];
 }
 
+// ---- edit mode: the Edit PDF button and the edit bar under the toolbar ----
+
+static BOOL editBarTool(FPTool t) {   // the tools of Edit PDF: the bar stays while one of them is in use
+    return t == FPToolEditAll || t == FPToolEditText || t == FPToolEditPara || t == FPToolSelectObject || t == FPToolTextBox ||
+           t == FPToolPicture || t == FPToolEditTable || t == FPToolPlaceTable || t == FPToolRedact || t == FPToolCrop;
+}
+
+- (void)makeEditBarIn:(NSView*)content {
+    NSStackView* row = [[NSStackView alloc] init];
+    row.orientation = NSUserInterfaceLayoutOrientationHorizontal;
+    row.spacing = 4;
+    auto button = [&](NSString* title, SEL action, NSInteger tag) {
+        NSButton* b = [NSButton buttonWithTitle:title target:self action:action];
+        b.bezelStyle = NSBezelStyleRecessed;
+        b.showsBorderOnlyWhileMouseInside = YES;
+        b.tag = tag;
+        [row addArrangedSubview:b];
+        return b;
+    };
+    button(@"Edit Text and Pictures", @selector(editBarEdit:), 0);
+    button(@"Add Text", @selector(chooseEditTool:), FPToolTextBox);
+    button(@"Insert Picture…", @selector(insertPicture:), 0);
+    button(@"Add a Table…", @selector(addNewTable:), 0);
+    button(@"Find and Replace…", @selector(findAndReplace:), 0);
+    button(@"Redact an Area", @selector(chooseTool:), FPToolRedact);
+    button(@"More Editing Tools…", @selector(editBarMore:), 0);
+    NSButton* done = [NSButton buttonWithTitle:@"Done" target:self action:@selector(editBarDone:)];
+    done.bezelStyle = NSBezelStyleRounded;
+    done.keyEquivalent = @"";
+    _editBar = [[NSView alloc] init];
+    _editBar.wantsLayer = YES;
+    _editBar.layer.backgroundColor = [NSColor.windowBackgroundColor colorWithAlphaComponent:0.97].CGColor;
+    NSBox* line = [[NSBox alloc] init];
+    line.boxType = NSBoxSeparator;
+    for (NSView* v in @[ row, done, line ]) { v.translatesAutoresizingMaskIntoConstraints = NO; [_editBar addSubview:v]; }
+    _editBar.translatesAutoresizingMaskIntoConstraints = NO;
+    _editBar.hidden = YES;
+    [content addSubview:_editBar];
+    [NSLayoutConstraint activateConstraints:@[
+        [_editBar.topAnchor constraintEqualToAnchor:content.topAnchor],
+        [_editBar.leadingAnchor constraintEqualToAnchor:content.leadingAnchor],
+        [_editBar.trailingAnchor constraintEqualToAnchor:content.trailingAnchor],
+        [_editBar.heightAnchor constraintEqualToConstant:36],
+        [row.leadingAnchor constraintEqualToAnchor:_editBar.leadingAnchor constant:10],
+        [row.centerYAnchor constraintEqualToAnchor:_editBar.centerYAnchor],
+        [row.trailingAnchor constraintLessThanOrEqualToAnchor:done.leadingAnchor constant:-12],
+        [done.trailingAnchor constraintEqualToAnchor:_editBar.trailingAnchor constant:-12],
+        [done.centerYAnchor constraintEqualToAnchor:_editBar.centerYAnchor],
+        [line.leadingAnchor constraintEqualToAnchor:_editBar.leadingAnchor],
+        [line.trailingAnchor constraintEqualToAnchor:_editBar.trailingAnchor],
+        [line.bottomAnchor constraintEqualToAnchor:_editBar.bottomAnchor],
+    ]];
+    [row setContentCompressionResistancePriority:NSLayoutPriorityDefaultLow forOrientation:NSLayoutConstraintOrientationHorizontal];
+    _view.editingNow = ^BOOL { return FPInlineEditing(); };
+}
+
+// The bar follows the tool: shown while an Edit PDF tool is in use, the pages below it.
+- (void)updateEditBar {
+    const BOOL on = _view.document && editBarTool(_view.tool);
+    if (_editBar.hidden == !on) { _editButton.state = on ? NSControlStateValueOn : NSControlStateValueOff; return; }
+    _editBar.hidden = !on;
+    _splitTop.constant = on ? 36 : 0;
+    _editButton.state = on ? NSControlStateValueOn : NSControlStateValueOff;
+    FPTrace(@"edit bar %d", on);
+}
+
+- (IBAction)editPdfClicked:(id)sender {
+    if (!self.pdf) return;
+    NSMenuItem* m = [[NSMenuItem alloc] init];
+    m.tag = FPToolEditAll;   // chooseEditTool: turns edit mode off when it is on
+    if (editBarTool(_view.tool) && _view.tool != FPToolEditAll) m.tag = FPToolNone;
+    if (m.tag == FPToolNone) { [self editBarDone:sender]; return; }
+    [self chooseEditTool:m];
+}
+
+- (IBAction)editBarEdit:(id)sender {
+    if (_view.tool == FPToolEditAll) return;
+    NSMenuItem* m = [[NSMenuItem alloc] init];
+    m.tag = FPToolEditAll;
+    [self chooseEditTool:m];
+}
+
+- (IBAction)editBarDone:(id)sender {
+    [self endInlineEdit:YES];
+    _view.tool = FPToolNone;
+}
+
+- (IBAction)editBarMore:(NSButton*)sender {   // the whole Edit Text menu, under the button
+    NSMenu* m = [[NSApp.mainMenu itemWithTitle:@"Edit Text"].submenu copy];
+    if (m) [m popUpMenuPositioningItem:nil atLocation:NSMakePoint(0, NSHeight(sender.bounds) + 4) inView:sender];
+}
+
 // ---- the toolbar ----
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem, kFindItem ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem, kFindItem ];
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kPagesItem, kPageItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
 static NSImage* symbol(NSString* name, NSString* description) {
@@ -188,6 +291,14 @@ static NSImage* symbol(NSString* name, NSString* description) {
         [_find.widthAnchor constraintEqualToConstant:200].active = YES;
         item.view = _find;
         item.label = @"Find";
+    } else if ([ident isEqualToString:kEditItem]) {   // one click: edit mode, with every paragraph and picture outlined
+        _editButton = [NSButton buttonWithTitle:@"Edit PDF" image:symbol(@"pencil", @"Edit PDF") target:self action:@selector(editPdfClicked:)];
+        _editButton.imagePosition = NSImageLeading;
+        _editButton.bezelStyle = NSBezelStyleTexturedRounded;
+        [_editButton setButtonType:NSButtonTypePushOnPushOff];
+        _editButton.toolTip = @"Edit the text and pictures of the page: click any outlined text to change it (⌘E)";
+        item.view = _editButton;
+        item.label = @"Edit PDF";
     } else if ([ident isEqualToString:kSidebarItem]) {
         NSButton* b = [NSButton buttonWithImage:symbol(@"sidebar.left", @"Thumbnails and bookmarks") target:self action:@selector(toggleThumbnails:)];
         b.bezelStyle = NSBezelStyleTexturedRounded;
@@ -274,6 +385,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 // The page number, page count, zoom and the window's subtitle follow the view.
 - (void)viewChanged:(NSNotification*)n {
+    [self updateEditBar];
     [_sidebar setCurrentPage:[_view currentPage]];
     Document* d = _view.document;
     const int count = d ? d->pageCount() : 0;

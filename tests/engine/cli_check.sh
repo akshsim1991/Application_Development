@@ -445,6 +445,22 @@ check "original: red stays red"           "python3 -c \"from PIL import Image;r,
 check "original: picture as it is"        "[ \"\$(pix $W/bb_orig.ppm 200 400)\" = '30 120 200' ] && grep -q pictures=1 '$W/bb_orig.ppm.txt'"
 check "original: highlight a dark tint"   "python3 -c \"from PIL import Image;r,g,b=Image.open('$W/bb_orig.ppm').getpixel((520,90));assert 100<r<160 and 100<g<160 and b<10\""
 
+echo "edit mode: the outlined blocks"
+run --blocks "$W/rich.pdf" "$W/blocks.txt"
+check "every paragraph of the report outlined, as a click edits it" "grep -q 'pictures=0 text=15 same=15' '$W/blocks.txt' && grep -q '^text .* same Quarterly Report' '$W/blocks.txt'"
+run --blocks "$W/bb.pdf" "$W/blocks2.txt"
+check "the picture outlined"  "grep -q '^picture 50 50 150 150' '$W/blocks2.txt'"
+python3 - "$W" <<'PY'
+import sys
+from reportlab.pdfgen import canvas
+c=canvas.Canvas(sys.argv[1]+'/colours.pdf',pagesize=(400,300)); c.setFont('Helvetica',14)
+for i,(col,t) in enumerate([((0,0,0),'Black line one'),((0,0,0),'Black line two'),((0.85,0.1,0.1),'Red line'),((0,0,0),'Black again')]):
+    c.setFillColorRGB(*col); c.drawString(40,250-i*17,t)
+c.save()
+PY
+run --blocks "$W/colours.pdf" "$W/blocks3.txt"
+check "a line in another colour is a paragraph of its own" "grep -q 'text=3 same=3' '$W/blocks3.txt' && grep -q 'same Black line one Black line two' '$W/blocks3.txt'"
+
 echo "convert to PDF (the right-click menu)"
 mkdir -p "$W/conv"
 python3 -c "from PIL import Image;Image.new('RGB',(1200,900),(200,50,50)).save('$W/conv/Photo.png')"

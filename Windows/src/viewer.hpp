@@ -4,6 +4,7 @@
 #include <map>
 #include "annot.hpp"
 #include "document.hpp"
+#include "pageobjects.hpp"
 
 // Child window that shows the pages of one Document in a continuous vertical layout,
 // with text selection and highlighting of search matches.
@@ -49,7 +50,8 @@ public:
     bool copySelection();                // puts the selected text on the clipboard
 
     // ---- annotation tools ----
-    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, Select, Polygon, Cloud, Callout, FormRadio, FormList, FormDate, FormText, FormCheck, FormCombo, Ruler, Protractor, PicCrop };
+    enum class Tool { None, Comment, Rectangle, Ellipse, Line, Arrow, Pen, Redact, AddText, EditText, Picture, Stamp, Link, CopyArea, CropBox, TableDelete, TablePlace, TableEdit, EditPara, Select, Polygon, Cloud, Callout, FormRadio, FormList, FormDate, FormText, FormCheck, FormCombo, Ruler, Protractor, PicCrop,
+                      EditAll };   // EditAll: edit mode (every paragraph and picture outlined; a click edits or picks it)
     struct Event {
         enum Kind { Draw, Click, DoubleClick, ContextMenu } kind = Draw;
         Tool tool = Tool::None;
@@ -62,6 +64,9 @@ public:
     std::function<void(const Event&)> onEvent;
     // The tables of a page (page coordinates), outlined while the Edit table or Delete table tool is chosen.
     std::function<std::vector<annot::RectD>(int page)> tableOutlines;
+    // Edit mode: the editable block (paragraph or picture) at a window point; -1 when none. `page` is set either way.
+    int editBlockAt(int cx, int cy, int& page, pageobj::EditBlock* out = nullptr);
+    std::function<bool()> editingNow;   // edit mode: true while a block is being typed in (the frames step aside)
     // Called before a mouse press is handled; returning true swallows it (side by side: the press makes this pane the active one).
     std::function<bool(UINT msg, WPARAM w, LPARAM l)> onPress;
     void setTool(Tool t);
@@ -194,6 +199,12 @@ private:
     Tool tool_ = Tool::None;
     int cacheLimit_ = 6;
     Colours colours_ = Colours::Normal;
+    // edit mode: the blocks of each page (worked out once per page and document state), the one under the pointer
+    std::map<int, std::vector<pageobj::EditBlock>> blockCache_;
+    const Document* blockDoc_ = nullptr;
+    int blockRev_ = -1;
+    int hoverPage_ = -1, hoverBlock_ = -1;
+    const std::vector<pageobj::EditBlock>& blocksOf(int page);
     std::wstring emptyText_ = L"Open a PDF with Ctrl+O, or drop a file here.";
     const std::vector<RedactMark>* marks_ = nullptr;
     void filterPixels(void* bits, int w, int h, int page, int ox, int oy, int pw, int ph) const;

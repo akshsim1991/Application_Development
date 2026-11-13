@@ -1088,3 +1088,22 @@ Requested 11 November: combine the PDFs open in the app into one, and Convert to
   cannot reach GitHub's servers and says why ("the secure connection failed").
 
 2.19.2 published; both downloads match latest.json.
+
+## Version 2.20.0 "Aspire" (both apps): Edit PDF in one click
+
+Requested 13 November: editing as in modern PDF editors. One click on Edit PDF shows the outlines of what can be edited,
+and a click in text edits it directly, without choosing "line" or "paragraph" first.
+
+| What | How | Verified |
+|---|---|---|
+| The outlines | pageobj::editableBlocks: each paragraph, grouped by the same rule as the paragraph a click edits (one shared function), and each picture (also inside groups) | engine: all 15 paragraphs of the report sample outlined, each the same block a click in it edits; the picture of a sample outlined |
+| Windows edit mode | Edit PDF switches it on and off; a frame round each block, the one under the pointer stronger and tinted; text cursor over text, move cursor over a picture; a click in text opens the in-place editor with the caret there; a click on a picture picks it with handles (move, resize); the frames step aside while typing | under Wine: one click showed the second row and every frame; the red line lit up under the pointer; a click opened the editor there; typing and Ctrl+Enter changed it (the lines below moved down); the picture was picked and dragged; Esc ended editing and the row went |
+| The second row | Edit text and pictures, Add text, Insert picture, Insert table, Find and replace, Redact an area, More editing tools (the whole former Edit PDF menu), Done | under Wine (each button's command is the menu's own) |
+| Mac edit mode | Edit PDF in the toolbar; a bar under it with the same tools and Done; the same outlines, hover, cursors, caret at the click and picture dragging | the Mac build check opens edit mode, finds the blocks and clicks into a paragraph: the editor opens with the caret inside the text |
+
+### B-076 Lines in different colours were taken as one paragraph
+- **Status:** Fixed (2.20.0)
+- **Root cause:** a paragraph was lines of the same size, spacing and column; a red line under a black one joined it.
+- **Fix:** a line in another text colour starts a paragraph of its own (for editing and for the outlines alike).
+- **Verified:** engine check: black, black, red, black lines give three blocks, the two black lines together; the demo
+  page's black, red and blue lines are separate blocks.

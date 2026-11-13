@@ -3,6 +3,7 @@
 // Windows-only use parts of the engine that have no Mac version yet (macOS/PORTING.md).
 #include "cli.hpp"
 #include <algorithm>
+#include <cmath>
 #include <memory>
 #include <cstdio>
 #include <cstring>
@@ -591,6 +592,30 @@ int run(std::vector<std::wstring> files) {
         std::string rep = "pictures=" + std::to_string(keep.size()) + "\n";
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--blocks") {   // --blocks in.pdf out.txt [page] : what edit mode outlines, and whether a click in each text block edits that block
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const int page = files.size() > 3 ? wint(files[3].c_str()) - 1 : 0;
+        const auto blocks = pageobj::editableBlocks(doc, page);
+        std::string rep;
+        int text = 0, same = 0, pics = 0;
+        for (const auto& b : blocks) {
+            char line[200];
+            if (b.kind == pageobj::EditBlock::Picture) { ++pics; std::snprintf(line, sizeof line, "picture %.0f %.0f %.0f %.0f\n", b.left, b.bottom, b.right, b.top); rep += line; continue; }
+            ++text;
+            // a click in the middle of the block's first line
+            const pageobj::ParagraphHit h = pageobj::paragraphAt(doc, page, (b.left + b.right) / 2, b.top - 2);
+            const bool ok = h.found && std::fabs(h.left - b.left) < 1 && std::fabs(h.top - b.top) < 1 && std::fabs(h.left + h.width - b.right) < 1;
+            if (ok) ++same;
+            std::snprintf(line, sizeof line, "text %.0f %.0f %.0f %.0f %s %s\n", b.left, b.bottom, b.right, b.top, ok ? "same" : "DIFFERENT",
+                          platform::utf8(h.text.substr(0, 40)).c_str());
+            rep += line;
+        }
+        rep += "pictures=" + std::to_string(pics) + " text=" + std::to_string(text) + " same=" + std::to_string(same) + "\n";
+        Document::writeFile(files[2], std::vector<unsigned char>(rep.begin(), rep.end()));
+        return 0;
     }
     if (!files.empty() && files[0] == L"--convert") {   // --convert file [file ...] : each made into a PDF next to it ("Photo.jpg" -> "Photo.pdf")
         if (files.size() < 2) return 2;

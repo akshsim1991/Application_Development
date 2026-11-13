@@ -2,6 +2,7 @@
 #import "Render.h"
 #import "Settings.h"
 #include "platform.hpp"
+#include "pageobjects.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cwctype>
@@ -44,6 +45,9 @@ constexpr size_t kCachedPages = 10;
     int _annotPage, _annotIndex;
     BOOL _formFocus, _formCapture;                // a form field has the keyboard / the mouse
     int _formPage;
+    std::map<int, std::vector<pageobj::EditBlock>> _blocks;   // edit mode: each page's paragraphs and pictures
+    const Document* _blocksDoc;
+    int _blocksRev, _hoverPage, _hoverBlock;
     int _objPage;                                 // the selected object (Select tool)
     annot::RectD _objRect;
     FPToolEvent::Drag _objDrag;
@@ -187,6 +191,7 @@ constexpr size_t kCachedPages = 10;
 
 - (void)setTool:(FPTool)tool {
     _tool = tool;
+    _hoverPage = _hoverBlock = -1;
     _objPage = -1;
     [[NSNotificationCenter defaultCenter] postNotificationName:FPPageViewChanged object:self];   // the status bar names the tool
     _toolDown = NO;
@@ -225,6 +230,7 @@ constexpr size_t kCachedPages = 10;
         _spokenPage = -1;
         _annotPage = _annotIndex = -1;
         _objPage = -1;
+        _blocksDoc = nullptr; _blocksRev = -1; _hoverPage = _hoverBlock = -1;
         _lineWidthPt = 2;
         [self registerForDraggedTypes:@[ NSPasteboardTypeFileURL ]];
     }
@@ -718,7 +724,7 @@ constexpr size_t kCachedPages = 10;
     double x, y;
     if (![self pageAt:p page:&page x:&x y:&y]) return;
     _objDrag = FPToolEvent::None;
-    if (_tool == FPToolSelectObject && _objPage == page) {   // on the selected object: move it, or resize it by its handle
+    if ((_tool == FPToolSelectObject || _tool == FPToolEditAll) && _objPage == page) {   // on the selected object: move it, or resize it by its handle
         if (NSPointInRect(p, NSInsetRect([self objectHandle], -3, -3))) _objDrag = FPToolEvent::Resize;
         else if (NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) _objDrag = FPToolEvent::Move;
     }
@@ -810,12 +816,63 @@ constexpr size_t kCachedPages = 10;
     [self setNeedsDisplay:YES];
 }
 
+// ---- edit mode: the outlines ----
+
+- (const std::vector<pageobj::EditBlock>*)blocksOf:(int)page {
+    if (_blocksDoc != _doc || _blocksRev != (_doc ? _doc->revision() : -1)) { _blocks.clear(); _blocksDoc = _doc; _blocksRev = _doc ? _doc->revision() : -1; }
+    auto it = _blocks.find(page);
+    if (it == _blocks.end()) it = _blocks.emplace(page, _doc ? pageobj::editableBlocks(*_doc, page) : std::vector<pageobj::EditBlock>{}).first;
+    return &it->second;
+}
+
+// The block under a view point (text over a picture behind it, else the smallest); -1 when none.
+- (int)editBlockAt:(NSPoint)p page:(int*)page kind:(pageobj::EditBlock::Kind*)kind {
+    double x, y;
+    if (!_doc || ![self pageAt:p page:page x:&x y:&y]) return -1;
+    const auto& bs = *[self blocksOf:*page];
+    const double m = 3.0 / _zoom;
+    int best = -1;
+    double bestArea = 1e18;
+    for (size_t i = 0; i < bs.size(); ++i) {
+        const auto& b = bs[i];
+        if (x < b.left - m || x > b.right + m || y < b.bottom - m || y > b.top + m) continue;
+        const double area = (b.right - b.left) * (b.top - b.bottom) * (b.kind == pageobj::EditBlock::Picture ? 4 : 1);
+        if (area < bestArea) { bestArea = area; best = static_cast<int>(i); }
+    }
+    if (best >= 0 && kind) *kind = bs[static_cast<size_t>(best)].kind;
+    return best;
+}
+
+- (void)drawEditOutlines {
+    if (_tool != FPToolEditAll || !_doc || (self.editingNow && self.editingNow())) return;
+    const NSRect visible = self.visibleRect;
+    for (int page = 0; page < static_cast<int>(_rects.size()); ++page) {
+        if (!NSIntersectsRect(_rects[static_cast<size_t>(page)], visible)) continue;
+        const auto& bs = *[self blocksOf:page];
+        for (size_t i = 0; i < bs.size(); ++i) {
+            const auto& b = bs[i];
+            const NSRect r = NSInsetRect([self viewRectOnPage:page rect:annot::RectD{b.left, b.bottom, b.right, b.top}], -3, -3);
+            const bool hot = page == _hoverPage && static_cast<int>(i) == _hoverBlock;
+            const bool pic = b.kind == pageobj::EditBlock::Picture;
+            NSColor* c = hot ? NSColor.controlAccentColor : pic ? [NSColor colorWithSRGBRed:0.88 green:0.54 blue:0.12 alpha:1]
+                                                               : [NSColor colorWithSRGBRed:0.42 green:0.65 blue:0.94 alpha:1];
+            if (hot) { [[c colorWithAlphaComponent:0.09] setFill]; NSRectFillUsingOperation(r, NSCompositingOperationSourceOver); }
+            NSBezierPath* path = [NSBezierPath bezierPathWithRect:NSInsetRect(r, 0.5, 0.5)];
+            path.lineWidth = hot ? 2 : 1;
+            if (pic && !hot) { const CGFloat dash[2] = {5, 3}; [path setLineDash:dash count:2 phase:0]; }
+            [c setStroke];
+            [path stroke];
+        }
+    }
+}
+
 // The shape being drawn, before it is added.
 - (void)drawToolPreview {
+    [self drawEditOutlines];
     [self drawObjectBox];
     if (_objDrag != FPToolEvent::None) return;
     if (!_toolDown && !((_tool == FPToolPolygon || _tool == FPToolProtractor) && !_toolPathView.empty())) return;
-    if (_tool == FPToolSelectObject || _tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable) return;
+    if (_tool == FPToolSelectObject || _tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable || _tool == FPToolEditAll) return;
     NSColor* c = _tool == FPToolRedact ? NSColor.blackColor
                : _tool == FPToolRuler || _tool == FPToolProtractor ? [NSColor colorWithSRGBRed:0 green:0.56 blue:0.38 alpha:1]
                                                                    : NSColor.controlAccentColor;
@@ -1101,6 +1158,18 @@ constexpr size_t kCachedPages = 10;
 
 // The pointer: a hand over a link, the text bar over text.
 - (void)mouseMoved:(NSEvent*)e {
+    if (_tool == FPToolEditAll) {   // edit mode: the block under the pointer lights up; text bar over text, a hand over a picture
+        const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+        int page = -1;
+        pageobj::EditBlock::Kind kind = pageobj::EditBlock::Text;
+        const int b = [self editBlockAt:p page:&page kind:&kind];
+        if (b != _hoverBlock || (b >= 0 && page != _hoverPage)) { _hoverBlock = b; _hoverPage = b >= 0 ? page : -1; [self setNeedsDisplay:YES]; }
+        if (_objPage >= 0 && NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) [NSCursor.openHandCursor set];
+        else if (b < 0) [NSCursor.arrowCursor set];
+        else if (kind == pageobj::EditBlock::Picture) [NSCursor.openHandCursor set];
+        else [NSCursor.IBeamCursor set];
+        return;
+    }
     if (_tool != FPToolNone) { [NSCursor.crosshairCursor set]; return; }
     {
         int fp;

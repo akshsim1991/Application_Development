@@ -393,8 +393,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     add(m, @"Flatten: Make Comments and Fields Part of the Page\u2026", @selector(flattenComments:), nil);
 
     m = submenu(bar, @"Edit Text");
-    add(m, @"Edit a Line of Text", @selector(chooseEditTool:), @"e").tag = FPToolEditText;
-    add(m, @"Edit a Paragraph", @selector(chooseEditTool:), @"e", NSEventModifierFlagCommand | NSEventModifierFlagOption).tag = FPToolEditPara;
+    add(m, @"Edit Text and Pictures", @selector(chooseEditTool:), @"e").tag = FPToolEditAll;   // edit mode: click any outlined text or picture
     add(m, @"Find and Replace Text\u2026", @selector(findAndReplace:), @"f", NSEventModifierFlagCommand | NSEventModifierFlagOption);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Add a Text Box", @selector(chooseEditTool:), @"t", NSEventModifierFlagCommand | NSEventModifierFlagOption).tag = FPToolTextBox;

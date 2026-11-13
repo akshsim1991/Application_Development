@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.19.2"
+VERSION = "2.20.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -200,7 +200,7 @@ story += [P("What's new in %s" % VERSION, "h2")]
 story += [P("Version %s is a quality release: every reported problem was traced to its cause, fixed and tested, and a "
             "search for hidden defects found and fixed more. The full list is in the bug log that comes with the source." % VERSION)]
 story += bullets([
-    "<b>Editing keeps the page as it was.</b> Edit paragraph and Edit text break lines exactly where the page will, in the document's own font; "
+    "<b>Editing keeps the page as it was.</b> Edited text breaks its lines exactly where the page will, in the document's own font; "
     "applied text keeps its font, size, colour, baselines and justification. New letters a document's font lacks are set in the same installed font. "
     "A paragraph that grows moves the text below it down instead of covering it.",
     "<b>Other text no longer shifts</b> when you edit a page: justified and letter-spaced lines elsewhere keep their exact places.",
@@ -312,14 +312,16 @@ story += bullets([
 ])
 
 story += [P("Editing text in place", "h2")]
-story += [P("Choose <b>Edit PDF > Edit text</b> (Ctrl+E) for a single line, or <b>Edit paragraph</b> (F2) for a whole paragraph, "
-            "then click the text. An edit box opens exactly over it, on the same baseline, in the document's own font when it is installed "
+story += [P("Click <b>Edit PDF</b> in the toolbar (Ctrl+E; on the Mac \u2318E). Every paragraph on the page gets a thin blue outline and "
+            "every picture a dashed orange one; the one under the pointer is drawn stronger. Click into any outlined text and type: an edit box opens exactly over it, on the same baseline, in the document's own font when it is installed "
             "(else a matching one), at the same size and colour, with the cursor where you clicked. Lines in the box break where they will "
             "break on the page. Type your changes directly.")]
 story += [picture("para.png", 160, "Editing a paragraph in place, with the style bar above it.")]
 story += bullets([
     "For paragraphs, the <b>style bar</b> above the box changes the font, size, bold, italic, colour and alignment. The box shows the result at once.",
-    "<b>Enter</b> applies a line; <b>Ctrl+Enter</b> or <b>Apply</b> applies a paragraph. <b>Esc</b> cancels.",
+    "<b>Ctrl+Enter</b> or <b>Apply</b> applies the change. <b>Esc</b> cancels it; Esc again (or <b>Done</b>) leaves editing.",
+    "Click a <b>picture</b> to pick it: drag it to move it, drag a corner to resize it.",
+    "While editing, a second toolbar row offers Add text, Insert picture, Insert table, Find and replace, Redact an area and <b>More editing tools</b> (pages, forms, watermark, OCR, signatures...), with <b>Done</b> on the right.",
     "Clicking anywhere else applies the change, so you can click straight on the next line to keep editing.",
     "The paragraph is set again in the same width and on the same baselines, in its own font, size and colour; a justified paragraph stays justified. "
     "Letters the document's font does not contain are set in the same font installed on your PC (or the closest standard font).",
@@ -450,6 +452,10 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.20 \u201cAspire\u201d", "h2")]
+story += bullets([
+    "<b>Edit PDF in one click</b>: the button turns editing on at once. Every paragraph and picture is outlined; click into any text to change it there (the cursor where you clicked), or a picture to move or resize it. No more choosing between editing a line and a paragraph first. The other editing tools are in a second toolbar row while editing, with Done to finish.",
+])
 story += [P("New in 2.19 \u201cEndeavour\u201d", "h2")]
 story += bullets([
     "<b>Convert to PDF</b> in File Explorer now also takes PowerPoint, Word and Excel files (.ppt, .pptx, .doc, .docx, .rtf, .xls, .xlsx and the OpenDocument kinds). The office program on the PC makes the PDF: Microsoft Office, else WPS Office, else LibreOffice. Without any of them Feather PDF says so.",
@@ -535,8 +541,8 @@ keys = [
     ("View", [("Ctrl+2", "Fit width"), ("Ctrl+0", "Fit page"), ("Ctrl+1", "Actual size"), ("Ctrl+wheel", "Zoom"), ("Ctrl+L / Ctrl+R", "Rotate view"),
               ("F11", "Full screen"), ("F5", "Presentation")]),
     ("Finding", [("Ctrl+F", "Find"), ("F3 / Shift+F3", "Next / previous match"), ("Ctrl+Shift+H", "Find and replace"), ("Ctrl+K", "Command palette")]),
-    ("Editing", [("Ctrl+Z / Ctrl+Y", "Undo / redo"), ("Ctrl+E", "Edit text (a line)"), ("F2", "Edit paragraph"),
-                 ("Enter / Ctrl+Enter", "Apply a line / a paragraph"), ("Esc", "Cancel"), ("Ctrl+C / Ctrl+A", "Copy / select all"),
+    ("Editing", [("Ctrl+Z / Ctrl+Y", "Undo / redo"), ("Ctrl+E / F2", "Edit text and pictures (on and off)"),
+                 ("Ctrl+Enter", "Apply the change"), ("Esc", "Cancel"), ("Ctrl+C / Ctrl+A", "Copy / select all"),
                  ("Ctrl+V", "Paste a picture (or pages in the thumbnails)"), ("Del", "Delete the selected annotation or object")]),
     ("Annotating", [("Ctrl+H", "Highlight"), ("Ctrl+U", "Underline"), ("Ctrl+Shift+K", "Strikethrough"), ("Ctrl+M", "Comment"),
                     ("Ctrl+Shift+M", "Comment on selected text"), ("Ctrl+Shift+U", "Read aloud")]),

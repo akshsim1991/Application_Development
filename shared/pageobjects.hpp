@@ -88,6 +88,13 @@ struct ParagraphHit {
     bool upright = true;            // the text runs left to right, not turned
     std::string fontName;           // the PDF's name for that font
 };
+// What can be edited on a page, for the outlines of edit mode: each paragraph (grouped as paragraphAt groups lines, so the
+// outline is what a click there edits) and each picture. Page coordinates.
+struct EditBlock {
+    enum Kind { Text, Picture } kind = Text;
+    double left = 0, bottom = 0, right = 0, top = 0;
+};
+std::vector<EditBlock> editableBlocks(Document& d, int page);
 // The paragraph (consecutive lines with the same size and left edge) around a page point; with `lineOnly`, only the line
 // there (every text object on that baseline that belongs to it).
 ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnly = false);

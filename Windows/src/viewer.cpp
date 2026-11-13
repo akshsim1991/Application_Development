@@ -520,7 +520,55 @@ std::vector<RECT> Viewer::hitRects(const TextHit& h) const {
     return {r};
 }
 
+const std::vector<pageobj::EditBlock>& Viewer::blocksOf(int page) {
+    if (blockDoc_ != doc_ || blockRev_ != (doc_ ? doc_->revision() : -1)) { blockCache_.clear(); blockDoc_ = doc_; blockRev_ = doc_ ? doc_->revision() : -1; }
+    auto it = blockCache_.find(page);
+    if (it == blockCache_.end()) it = blockCache_.emplace(page, doc_ ? pageobj::editableBlocks(*doc_, page) : std::vector<pageobj::EditBlock>{}).first;
+    return it->second;
+}
+
+int Viewer::editBlockAt(int cx, int cy, int& page, pageobj::EditBlock* out) {
+    page = -1;
+    annot::PointD pt;
+    if (!doc_ || !pageAt(cx, cy, page) || !toPage(cx, cy, page, pt)) return -1;
+    const auto& bs = blocksOf(page);
+    const double m = 3.0 / pxPerPt();   // the outline is drawn a little outside the block: so is its edge
+    int best = -1;
+    double bestArea = 1e18;
+    for (size_t i = 0; i < bs.size(); ++i) {
+        const auto& b = bs[i];
+        if (pt.x < b.left - m || pt.x > b.right + m || pt.y < b.bottom - m || pt.y > b.top + m) continue;
+        // text over a picture behind it wins; otherwise the smallest
+        const double area = (b.right - b.left) * (b.top - b.bottom) * (b.kind == pageobj::EditBlock::Picture ? 4 : 1);
+        if (area < bestArea) { bestArea = area; best = static_cast<int>(i); }
+    }
+    if (best >= 0 && out) *out = bs[static_cast<size_t>(best)];
+    return best;
+}
+
 void Viewer::drawOverlays(HDC dc, int page, int, int, int, int, const RECT& clip) {
+    // edit mode: a light frame round every paragraph and picture, the one under the pointer stronger and tinted
+    if (tool_ == Tool::EditAll && doc_ && !(editingNow && editingNow())) {
+        const auto& bs = blocksOf(page);
+        for (size_t i = 0; i < bs.size(); ++i) {
+            const auto& b = bs[i];
+            RECT r = annotScreenRect(page, {b.left, b.bottom, b.right, b.top});
+            InflateRect(&r, 3, 3);
+            RECT v;
+            if (!IntersectRect(&v, &r, &clip)) continue;
+            const bool hot = page == hoverPage_ && static_cast<int>(i) == hoverBlock_;
+            const bool pic = b.kind == pageobj::EditBlock::Picture;
+            const COLORREF col = hot ? RGB(0x1F, 0x6F, 0xEB) : pic ? RGB(0xE0, 0x8A, 0x1E) : RGB(0x6C, 0xA6, 0xF0);
+            if (hot) fillAlpha(dc, v, col, 22);
+            LOGBRUSH lb{BS_SOLID, col, 0};
+            const DWORD dash[2] = {5, 3};
+            HPEN pen = pic && !hot ? ExtCreatePen(PS_GEOMETRIC | PS_USERSTYLE | PS_ENDCAP_FLAT, 1, &lb, 2, dash) : CreatePen(PS_SOLID, hot ? 2 : 1, col);
+            HGDIOBJ op = SelectObject(dc, pen), ob = SelectObject(dc, GetStockObject(NULL_BRUSH));
+            Rectangle(dc, r.left, r.top, r.right, r.bottom);
+            SelectObject(dc, ob); SelectObject(dc, op);
+            DeleteObject(pen);
+        }
+    }
     // the tables found on the page, while a table tool is chosen: a dashed frame and a light tint, so it is clear what can
     // be clicked
     if (tableOutlines && (tool_ == Tool::TableEdit || tool_ == Tool::TableDelete)) {
@@ -831,6 +879,7 @@ void Viewer::filterPixels(void* bits, int w, int h, int page, int ox, int oy, in
 
 void Viewer::setTool(Tool t) {
     tool_ = t;
+    hoverBlock_ = hoverPage_ = -1;
     polyPts_.clear(); polyPage_ = -1;
     drawing_ = false;
     if (t != Tool::None) clearSelection();
@@ -1125,6 +1174,14 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
         case WM_SETCURSOR:
             if (LOWORD(l) == HTCLIENT && doc_) {
                 LPCWSTR cur = tool_ == Tool::None ? IDC_IBEAM : IDC_CROSS;
+                if (tool_ == Tool::EditAll) {   // edit mode: a text cursor over text, the move cursor over a picture
+                    POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
+                    int pg; pageobj::EditBlock b;
+                    cur = objHit(p.x, p.y) != ObjDrag::None ? IDC_SIZEALL : editBlockAt(p.x, p.y, pg, &b) < 0 ? IDC_ARROW
+                        : b.kind == pageobj::EditBlock::Picture ? IDC_SIZEALL : IDC_IBEAM;
+                    SetCursor(LoadCursor(nullptr, cur));
+                    return TRUE;
+                }
                 if (tool_ == Tool::None && doc_->hasForm()) {
                     POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
                     int pg; annot::PointD pt;
@@ -1180,14 +1237,14 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 InvalidateRect(hwnd_, nullptr, FALSE);
                 return 0;
             }
-            if (tool_ == Tool::Select) {
+            if (tool_ == Tool::Select || tool_ == Tool::EditAll) {   // edit mode picks pictures and moves them as Select does
                 ObjDrag m = objHit(cx, cy);
                 annot::PointD pt;
                 if (m != ObjDrag::None && pageUnclamped(cx, cy, objSelPage_, pt)) {
                     objDrag_ = m; objDragStart_ = pt; objCur_ = objSel_; snappedX_ = snappedY_ = false;
                     SetCapture(hwnd_);
                 } else if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt) && onEvent) {
-                    Event e; e.kind = Event::Click; e.tool = Tool::Select; e.page = page; e.pts = {pt};
+                    Event e; e.kind = Event::Click; e.tool = tool_; e.page = page; e.pts = {pt};
                     onEvent(e);
                 }
                 return 0;
@@ -1318,6 +1375,11 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             break;
         }
         case WM_MOUSEMOVE:
+            if (tool_ == Tool::EditAll && objDrag_ == ObjDrag::None) {   // edit mode: the block under the pointer lights up
+                int pg = -1;
+                const int b = editBlockAt(GET_X_LPARAM(l), GET_Y_LPARAM(l), pg);
+                if (b != hoverBlock_ || (b >= 0 && pg != hoverPage_)) { hoverBlock_ = b; hoverPage_ = b >= 0 ? pg : -1; InvalidateRect(hwnd_, nullptr, FALSE); }
+            }
             if ((tool_ == Tool::Polygon && polyPage_ >= 0) || tool_ == Tool::Protractor) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
             if (objDrag_ != ObjDrag::None && doc_) {
                 annot::PointD now;

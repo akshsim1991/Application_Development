@@ -12,7 +12,8 @@ enum FPTool { FPToolNone, FPToolNote, FPToolRectangle, FPToolEllipse, FPToolLine
               FPToolCloud, FPToolCallout, FPToolStamp, FPToolRedact, FPToolTextBox, FPToolPicture, FPToolCrop, FPToolLink,
               FPToolFormText, FPToolFormCheck, FPToolFormCombo, FPToolFormRadio, FPToolFormList, FPToolFormDate,
               FPToolSelectObject, FPToolEditText, FPToolEditPara, FPToolEditTable, FPToolPlaceTable,
-              FPToolRuler, FPToolProtractor };   // measuring (Tools > Measure): a drag; three clicks (corner, then each side)
+              FPToolRuler, FPToolProtractor,   // measuring (Tools > Measure): a drag; three clicks (corner, then each side)
+              FPToolEditAll };                 // edit mode: every paragraph and picture outlined; a click edits or picks it
 
 // A measurement shown over the page (not part of the document until kept): a distance a-b, or an angle at a between b and c.
 struct FPMeasure {
@@ -67,6 +68,8 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 @property(nonatomic, copy) void (^jumped)(int fromPage);
 
 @property(nonatomic) FPTool tool;
+// Edit mode: true while a block is being typed in (the outlines step aside); set by the window.
+@property(nonatomic, copy) BOOL (^editingNow)(void);
 @property(nonatomic) BOOL presenting;                    // presentation: a click shows the next page
 @property(nonatomic) double lineWidthPt;                 // for the preview of shapes
 @property(nonatomic) std::function<void(const FPToolEvent&)> onToolEvent;
@@ -79,6 +82,7 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 - (void)invalidatePage:(int)page;   // a form field on it changed how it looks
 // The selected object (Select tool): a frame with a handle at the bottom-right corner; page < 0 for none.
 - (void)setObjectBox:(int)page rect:(annot::RectD)rect;
+- (NSPoint)viewPointOnPage:(int)page x:(double)x y:(double)y;   // a page point in this view's coordinates
 @property(nonatomic, readonly) int objectPage;
 // A rectangle of a page (PDF units) in this view.
 - (NSRect)viewRectOnPage:(int)page rect:(annot::RectD)r;

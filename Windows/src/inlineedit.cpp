@@ -40,6 +40,7 @@ void Editor::start(const Spec& spec, Locate locate, Commit commit) {
     wnd_ = CreateWindowExW(0, L"FeatherInlineEdit", L"", WS_CHILD | WS_CLIPCHILDREN, 0, 0, 10, 10, viewer_, nullptr, inst_, this);
     if (!wnd_) return;
     g_current = this;
+    InvalidateRect(viewer_, nullptr, FALSE);   // what the page shows for edit mode (the frames) steps aside while typing
     auto mk = [&](const wchar_t* cls, const wchar_t* text, DWORD style, int id, int w) {
         HWND c = CreateWindowExW(0, cls, text, WS_CHILD | WS_VISIBLE | style, 0, 0, w, 24, wnd_, reinterpret_cast<HMENU>(static_cast<INT_PTR>(id)), inst_, nullptr);
         SendMessageW(c, WM_SETFONT, reinterpret_cast<WPARAM>(uiFont_), TRUE);
@@ -278,6 +279,7 @@ void Editor::close() {
     edit_ = nullptr;
     g_current = nullptr;
     DestroyWindow(w);
+    InvalidateRect(viewer_, nullptr, FALSE);   // and comes back
     if (textFont_) { DeleteObject(textFont_); textFont_ = nullptr; }
     SetFocus(viewer_);
 }

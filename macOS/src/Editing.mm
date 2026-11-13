@@ -100,6 +100,8 @@ pageobj::TableSpec g_newTable;
 
 static EditState g_edit;
 static FPInlineEditor* g_editor = nil;
+static NSPoint g_editClick = {-1, -1};   // edit mode: where the text was clicked (page view points): the caret goes there
+BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
 
 @implementation FPInlineEditor
 - (void)end:(BOOL)apply {
@@ -141,10 +143,14 @@ static FPInlineEditor* g_editor = nil;
 
 - (IBAction)chooseEditTool:(NSMenuItem*)sender {
     if (!self.pdf) return;
-    const FPTool t = static_cast<FPTool>(sender.tag);
+    FPTool t = static_cast<FPTool>(sender.tag);
+    if (t == FPToolEditText || t == FPToolEditPara) t = FPToolEditAll;   // one edit mode: lines and paragraphs alike
+    if (t == FPToolEditAll && self.pageView.tool == FPToolEditAll) t = FPToolNone;   // chosen again: edit mode off
+    [self endInlineEdit:YES];
     self.pageView.tool = t;
     g_sel = Selection{};
     switch (t) {
+        case FPToolEditAll: break;   // the outlines and the edit bar say it
         case FPToolTextBox: [self edNote:L"Click where the text should start."]; break;
         case FPToolEditText: [self edNote:L"Click a line of text to change it. Return applies, Esc cancels."]; break;
         case FPToolEditPara: [self edNote:L"Click a paragraph to change it. ⌘Return applies (Return starts a new line), Esc cancels."]; break;
@@ -212,6 +218,28 @@ static FPInlineEditor* g_editor = nil;
             [self beginInlineEdit:hit paragraph:para];
             break;
         }
+        case FPToolEditAll: {
+            if (e.drag == FPToolEvent::None) {
+                if (e.kind != FPToolEvent::Click) break;
+                // a picture is picked (drag it to move it, its corner to resize it); text is edited where it was clicked
+                const pageobj::GroupHit g = pageobj::groupAt(*d, e.page, p.x, p.y);
+                pageobj::ParagraphHit hit;
+                if (!g.found || g.kind != pageobj::GroupHit::Picture) hit = pageobj::paragraphAt(*d, e.page, p.x, p.y);
+                if (g.found && g.kind == pageobj::GroupHit::Picture && !hit.found) {
+                    g_sel.page = e.page;
+                    g_sel.group = g;
+                    [self.pageView setObjectBox:e.page rect:annot::RectD{g.left, g.bottom, g.right, g.top}];
+                    break;
+                }
+                g_sel.page = -1;
+                [self.pageView setObjectBox:-1 rect:annot::RectD{}];
+                if (!hit.found || !hit.upright) break;
+                g_editClick = [self.pageView viewPointOnPage:e.page x:p.x y:p.y];
+                [self beginInlineEdit:hit paragraph:YES];
+                break;
+            }
+        }
+        [[fallthrough]];
         case FPToolSelectObject: {
             if (e.drag != FPToolEvent::None && g_sel.group.found && e.pts.size() >= 2) {   // moved or resized
                 const auto& g = g_sel.group;
@@ -406,6 +434,13 @@ NSTextAlignment textAlignment(pageobj::Align a) {
     [self restyleInlineEditor];
     [v.window makeFirstResponder:tv];
     [tv setSelectedRange:NSMakeRange(tv.string.length, 0)];
+    if (g_editClick.x >= 0) {   // edit mode: the caret where the text was clicked
+        [tv.layoutManager ensureLayoutForTextContainer:tv.textContainer];
+        const NSUInteger at = [tv characterIndexForInsertionAtPoint:[tv convertPoint:g_editClick fromView:v]];
+        if (at <= tv.string.length) [tv setSelectedRange:NSMakeRange(at, 0)];
+        g_editClick = NSMakePoint(-1, -1);
+    }
+    [v setNeedsDisplay:YES];   // the outlines step aside while typing
     // another zoom: the box would no longer sit on the text, so the edit is applied
     __weak FPWindowController* weak = self;
     ed.zoomWatch = [NSNotificationCenter.defaultCenter addObserverForName:FPPageViewChanged object:v queue:nil usingBlock:^(NSNotification*) {
@@ -502,6 +537,30 @@ NSTextAlignment textAlignment(pageobj::Align a) {
 
 - (void)endInlineEdit:(BOOL)apply {
     if (g_editor && !g_editor.finished) [g_editor end:apply];
+}
+
+// For the build check: edit mode on (as the Edit PDF button), then FEATHER_UI_EDITMODE="x y" clicks there on the first page.
+- (IBAction)uiEditMode:(id)sender {
+    Document* d = self.pdf;
+    if (!d) return;
+    [self.pageView showPage:0];
+    NSMenuItem* m = [[NSMenuItem alloc] init];
+    m.tag = FPToolEditAll;
+    [self chooseEditTool:m];
+    FPTrace(@"edit mode: tool %d, page 1 blocks %lu", static_cast<int>(self.pageView.tool), (unsigned long)pageobj::editableBlocks(*d, 0).size());
+    const char* at = getenv("FEATHER_UI_EDITMODE");
+    double x = 0, y = 0;
+    if (!at || sscanf(at, "%lf %lf", &x, &y) < 2) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, NSEC_PER_SEC), dispatch_get_main_queue(), ^{
+        FPToolEvent e;
+        e.kind = FPToolEvent::Click;
+        e.page = 0;
+        e.pts = {{x, y}};
+        [self editEvent:e];
+        NSTextView* tv = g_editor.textView;
+        FPTrace(@"edit mode click at %.0f,%.0f: editor %d, caret %lu of %lu, text %s", x, y, FPInlineEditing(),
+                (unsigned long)tv.selectedRange.location, (unsigned long)tv.string.length, tv.string.UTF8String ?: "");
+    });
 }
 
 - (void)inlineFinished:(FPInlineEditor*)ed apply:(BOOL)apply {

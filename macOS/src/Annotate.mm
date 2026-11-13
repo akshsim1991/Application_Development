@@ -231,7 +231,7 @@ COLORREF g_stampColour = RGB(0xE5, 0x39, 0x35);
         case FPToolCrop: if (![self cropPictureWith:e]) [self cropDrawn:e]; break;
         case FPToolRuler: case FPToolProtractor: [self measureDrawn:e]; break;
         case FPToolTextBox: case FPToolPicture: case FPToolSelectObject: case FPToolEditText: case FPToolEditPara:
-        case FPToolEditTable: case FPToolPlaceTable:
+        case FPToolEditTable: case FPToolPlaceTable: case FPToolEditAll:
             [self editEvent:e];
             break;
         default:

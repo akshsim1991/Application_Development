@@ -6,6 +6,7 @@
 #include "platform.hpp"
 #endif
 #include <algorithm>
+#include <functional>
 #include <chrono>
 #include <ctime>
 #include <cmath>
@@ -614,6 +615,7 @@ struct Line {
     double l, b, r, t, size; std::wstring text; std::vector<int> idx; FPDF_PAGEOBJECT first;
     bool startsItem = false;   // the first line of a list item (a number or bullet before it, or at its start)
     bool marker = false;       // only a list number or bullet ("3.", "a)", "iv.", "•")
+    unsigned rgb = 0;          // the colour of its text: a line in another colour is another paragraph
 };
 
 // A list number or bullet on its own: "3.", "12)", "(a)", "b.", "iv.", "•", "–", "▪".
@@ -752,14 +754,28 @@ Setter ownFont(Document& d, FPDF_PAGEOBJECT first) {
 }
 } // namespace
 
-ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnly) {
-    ParagraphHit hit;
-    FPDF_PAGE pg = d.page(page);
-    FPDF_TEXTPAGE tp = d.text(page);
-    if (!pg || !tp) return hit;
+// The paragraph around line `hitLine`: its first and last line (neighbouring lines of the same size, spacing and column).
+static void paragraphSpan(const std::vector<Line>& lines, int hitLine, bool lineOnly, int& first, int& last) {
+    auto joins = [&](const Line& above, const Line& below) {
+        const double size = above.size;
+        if (std::fabs(above.size - below.size) > 0.1 * size) return false;
+        if (above.rgb != below.rgb) return false;   // a red line under a black one is not the same paragraph
+        const double step = above.b - below.b;
+        if (step < 0.8 * size || step > 2.1 * size) return false;
+        const double indent = below.l - above.l;
+        if (std::fabs(indent) > 0.6 * size && !(indent > 0 && indent < 3.5 * size) && !(indent < 0 && indent > -3.5 * size)) return false;
+        return below.r >= above.l && below.l <= above.r;
+    };
+    first = hitLine; last = hitLine;
+    while (!lineOnly && first > 0 && !lines[first].startsItem && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
+    while (!lineOnly && last + 1 < static_cast<int>(lines.size()) && !lines[last + 1].startsItem && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
+}
+
+// The text lines of a page, top to bottom (list numbers and bullets left out, the lines they start marked).
+static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vector<Line>& lines) {
     const auto& api = pdfium::api();
     // 1. every text object, with its size taken from the font size and the text matrix
-    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; };
+    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; unsigned rgb; };
     std::vector<Obj> objs;
     const int n = api.FPDFPage_CountObjects(pg);
     for (int i = 0; i < n; ++i) {
@@ -784,10 +800,12 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         FS_MATRIX m{1, 0, 0, 1, 0, 0};
         api.FPDFPageObj_GetMatrix(o, &m);
         const double scale = std::sqrt(static_cast<double>(m.b) * m.b + static_cast<double>(m.d) * m.d);
-        objs.push_back({i, l, b, r, t, sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0), text, o});
+        unsigned cr = 0, cg = 0, cb = 0, ca = 255;
+        api.FPDFPageObj_GetFillColor(o, &cr, &cg, &cb, &ca);
+        objs.push_back({i, l, b, r, t, sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0), text, o, (cr << 16) | (cg << 8) | cb});
     }
     // 2. lines: objects on one baseline, left to right
-    std::vector<Line> lines;
+    lines.clear();
     std::vector<char> used(objs.size(), 0);
     std::vector<size_t> order(objs.size());
     for (size_t i = 0; i < order.size(); ++i) order[i] = i;
@@ -797,6 +815,7 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     for (size_t oi : order) {
         if (used[oi]) continue;
         Line ln{objs[oi].l, objs[oi].b, objs[oi].r, objs[oi].t, objs[oi].size, objs[oi].text, {objs[oi].idx}, objs[oi].o};
+        ln.rgb = objs[oi].rgb;
         used[oi] = 1;
         std::vector<size_t> same;
         for (size_t oj : order) if (!used[oj] && std::fabs(objs[oj].b - objs[oi].b) < 0.4 * objs[oi].size && std::fabs(objs[oj].size - objs[oi].size) < 0.15 * objs[oi].size) same.push_back(oj);
@@ -829,6 +848,57 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         if (!ln.marker && sp != std::wstring::npos && sp > 0 && isListMarker(ln.text.substr(0, sp))) ln.startsItem = true;
     }
     lines.erase(std::remove_if(lines.begin(), lines.end(), [](const Line& ln) { return ln.marker; }), lines.end());
+}
+
+std::vector<EditBlock> editableBlocks(Document& d, int page) {
+    std::vector<EditBlock> out;
+    FPDF_PAGE pg = d.page(page);
+    FPDF_TEXTPAGE tp = d.text(page);
+    if (!pg) return out;
+    const auto& api = pdfium::api();
+    // pictures (a group holding pictures counts as one)
+    std::function<bool(FPDF_PAGEOBJECT, int)> hasImage = [&](FPDF_PAGEOBJECT o, int depth) {
+        const int t = api.FPDFPageObj_GetType(o);
+        if (t == FPDF_PAGEOBJ_IMAGE) return true;
+        if (t != FPDF_PAGEOBJ_FORM || depth > 6) return false;
+        const int n = api.FPDFFormObj_CountObjects(o);
+        for (int i = 0; i < n; ++i) if (hasImage(api.FPDFFormObj_GetObject(o, static_cast<unsigned long>(i)), depth + 1)) return true;
+        return false;
+    };
+    const int n = api.FPDFPage_CountObjects(pg);
+    for (int i = 0; i < n; ++i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float l, b, r, t;
+        if (o && hasImage(o, 0) && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && r - l > 2 && t - b > 2) out.push_back({EditBlock::Picture, l, b, r, t});
+    }
+    if (!tp) return out;
+    // paragraphs, grouped as paragraphAt groups them, so an outline is what a click there edits
+    std::vector<Line> lines;
+    collectLines(d, pg, tp, lines);
+    std::vector<char> done(lines.size(), 0);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        if (done[i]) continue;
+        int first = static_cast<int>(i), last = first;
+        paragraphSpan(lines, first, false, first, last);
+        EditBlock b{EditBlock::Text, 1e9, 1e9, -1e9, -1e9};
+        for (int k = first; k <= last; ++k) {
+            done[static_cast<size_t>(k)] = 1;
+            b.left = std::min(b.left, lines[k].l); b.bottom = std::min(b.bottom, lines[k].b);
+            b.right = std::max(b.right, lines[k].r); b.top = std::max(b.top, lines[k].t);
+        }
+        out.push_back(b);
+    }
+    return out;
+}
+
+ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnly) {
+    ParagraphHit hit;
+    FPDF_PAGE pg = d.page(page);
+    FPDF_TEXTPAGE tp = d.text(page);
+    if (!pg || !tp) return hit;
+    const auto& api = pdfium::api();
+    std::vector<Line> lines;
+    collectLines(d, pg, tp, lines);
     // 3. the line under the click
     int hitLine = -1;
     double best = 1e18;
@@ -840,18 +910,8 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     }
     if (hitLine < 0) return hit;
     // 4. neighbouring lines of the same paragraph
-    auto joins = [&](const Line& above, const Line& below) {
-        const double size = above.size;
-        if (std::fabs(above.size - below.size) > 0.1 * size) return false;
-        const double step = above.b - below.b;
-        if (step < 0.8 * size || step > 2.1 * size) return false;
-        const double indent = below.l - above.l;
-        if (std::fabs(indent) > 0.6 * size && !(indent > 0 && indent < 3.5 * size) && !(indent < 0 && indent > -3.5 * size)) return false;
-        return below.r >= above.l && below.l <= above.r;
-    };
     int first = hitLine, last = hitLine;
-    while (!lineOnly && first > 0 && !lines[first].startsItem && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
-    while (!lineOnly && last + 1 < static_cast<int>(lines.size()) && !lines[last + 1].startsItem && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
+    paragraphSpan(lines, hitLine, lineOnly, first, last);
     hit.found = true;
     hit.page = page;
     hit.lines = last - first + 1;

@@ -165,6 +165,7 @@ struct App {
     double pendingPictureWidth = 0;
     struct Pos { std::wstring path; double zoom; int scrollY; bool fit; };
     std::vector<Pos> positions;                       // where each file was last read, most recent first
+    std::vector<std::wstring> positionsTouched;       // the files whose place this window changed (only these are written)
 
     HBRUSH ctlBrush = nullptr;
 } app;
@@ -411,6 +412,7 @@ bool confirmClose(Document& d);
 
 void rememberPosition(const Document& d) {
     if (d.path().empty()) return;
+    app.positionsTouched.push_back(d.path());
     app.positions.erase(std::remove_if(app.positions.begin(), app.positions.end(), [&](const App::Pos& p) { return _wcsicmp(p.path.c_str(), d.path().c_str()) == 0; }), app.positions.end());
     app.positions.insert(app.positions.begin(), {d.path(), d.zoom, d.scrollY, d.fitWidth});
     if (app.positions.size() > 100) app.positions.resize(100);
@@ -534,6 +536,7 @@ void openInNewWindow(int i, const POINT* at) {
     writeSession();
 }
 
+void saveSettings();
 void closeTab(int i, bool ask) {
     if (i < 0 || i >= static_cast<int>(app.tabs.size())) return;
     if (ask && !confirmClose(*app.tabs[i])) return;
@@ -541,6 +544,7 @@ void closeTab(int i, bool ask) {
     Document* survivor = endsSbs ? (app.tabs[i].get() == app.sbsDoc ? activeDoc() : app.sbsDoc) : nullptr;
     if (endsSbs) endSideBySide();   // back to one document
     rememberPosition(*app.tabs[i]);
+    saveSettings();   // its place is kept now, not only when the window closes
     const bool wasActive = i == app.active;
     if (wasActive) setActiveDocument(nullptr);   // viewer and sidebar must let go before the document dies
     app.tabs.erase(app.tabs.begin() + i);
@@ -655,16 +659,158 @@ bool askPassword(const std::wstring& prompt, std::string& out) {
 
 // ---- settings: recent files and preferences, kept in %APPDATA%\FeatherPDF\settings.ini ----
 
+// settings.ini is kept as UTF-16 (it starts with a byte order mark): Windows then reads and writes every name as it is.
+// A file without the mark is in the old 8-bit code page, and a name in another script (Kannada, Hindi, Chinese ...) was
+// written as "?????" and could not be opened again from the recent list (B-083). An older file is turned into UTF-16 once,
+// its text kept (read in the code page it was written in); a new one starts as UTF-16.
+void makeIniUnicode(const std::wstring& file) {
+    HANDLE m = CreateMutexW(nullptr, FALSE, L"Local\\FeatherPDF.Settings");   // as SettingsLock (defined below)
+    if (m) WaitForSingleObject(m, 5000);
+    std::vector<unsigned char> raw;
+    const bool exists = GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES;
+    if (!exists || (platform::readFile(file, raw) && !(raw.size() >= 2 && raw[0] == 0xFF && raw[1] == 0xFE))) {
+        std::wstring text;
+        if (!raw.empty()) {
+            const int n = MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<const char*>(raw.data()), static_cast<int>(raw.size()), nullptr, 0);
+            text.resize(static_cast<size_t>(std::max(0, n)));
+            if (n > 0) MultiByteToWideChar(CP_ACP, 0, reinterpret_cast<const char*>(raw.data()), static_cast<int>(raw.size()), text.data(), n);
+        }
+        std::vector<unsigned char> out{0xFF, 0xFE};
+        for (wchar_t c : text) { out.push_back(static_cast<unsigned char>(c & 0xFF)); out.push_back(static_cast<unsigned char>(c >> 8)); }
+        // written beside it, then put in its place in one step: an interruption leaves the old file, never half a file
+        const std::wstring tmp = file + L".new";
+        if (Document::writeFile(tmp, out) == SaveResult::Ok && !MoveFileExW(tmp.c_str(), file.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+            DeleteFileW(tmp.c_str());
+    }
+    if (m) { ReleaseMutex(m); CloseHandle(m); }
+}
+
 std::wstring settingsPath() {
     wchar_t base[MAX_PATH];
     if (GetEnvironmentVariableW(L"APPDATA", base, MAX_PATH) == 0) return L"";
     std::wstring dir = std::wstring(base) + L"\\FeatherPDF";
     CreateDirectoryW(dir.c_str(), nullptr);
-    return dir + L"\\settings.ini";
+    const std::wstring file = dir + L"\\settings.ini";
+    static bool checked = false;
+    if (!checked) { checked = true; makeIniUnicode(file); }
+    return file;
 }
 
-void updateEmptyText() {   // the start page lists the recent files
+// Every window is a program of its own, and all of them share settings.ini. So the shared lists (recent files, reading
+// positions) are read from the file, changed and written back at once, one window at a time; and a window writes only the
+// preferences it changed. Before, each window kept the copy it read at its start and wrote it all back when it closed:
+// the last window to close (an update closes them all) put back its old list over the others' (B-082).
+struct SettingsLock {
+    HANDLE m = nullptr;
+    SettingsLock() { m = CreateMutexW(nullptr, FALSE, L"Local\\FeatherPDF.Settings"); if (m) WaitForSingleObject(m, 5000); }
+    ~SettingsLock() { if (m) { ReleaseMutex(m); CloseHandle(m); } }
+    SettingsLock(const SettingsLock&) = delete;
+    SettingsLock& operator=(const SettingsLock&) = delete;
+};
+
+// A name written as "?????" by the old 8-bit settings file (B-083): a Windows path never holds '?', past a \\?\ prefix.
+bool damagedName(const std::wstring& path) {
+    const std::wstring rest = path.rfind(L"\\\\?\\", 0) == 0 ? path.substr(4) : path;
+    return rest.find(L'?') != std::wstring::npos;
+}
+
+std::vector<std::wstring> readRecentFile() {
+    std::vector<std::wstring> list;
+    const std::wstring p = settingsPath();
+    if (p.empty()) return list;
+    for (int i = 0; i < 10; ++i) {
+        wchar_t key[16], buf[MAX_PATH * 2];
+        swprintf(key, 16, L"file%d", i);
+        GetPrivateProfileStringW(L"recent", key, L"", buf, MAX_PATH * 2, p.c_str());
+        if (buf[0] && !damagedName(buf)) list.push_back(buf);
+    }
+    return list;
+}
+
+void writeRecentFile(const std::vector<std::wstring>& list) {
+    const std::wstring p = settingsPath();
+    if (p.empty()) return;
+    WritePrivateProfileStringW(L"recent", nullptr, nullptr, p.c_str());   // the whole section, written again
+    for (size_t i = 0; i < list.size() && i < 10; ++i) {
+        wchar_t key[16];
+        swprintf(key, 16, L"file%d", static_cast<int>(i));
+        WritePrivateProfileStringW(L"recent", key, list[i].c_str(), p.c_str());
+    }
+}
+
+// The recent files as the file has them now, changed by `change` and written back at once.
+void changeRecent(const std::function<void(std::vector<std::wstring>&)>& change) {
+    if (app.testMode) return;
+    {
+        SettingsLock lock;
+        std::vector<std::wstring> list = readRecentFile();
+        change(list);
+        if (list.size() > 10) list.resize(10);
+        writeRecentFile(list);
+        app.recent = list;
+    }
     if (app.startPage) startpage::setRecent(app.startPage, app.recent);
+}
+
+void removeRecent(const std::wstring& path) {
+    changeRecent([&](std::vector<std::wstring>& l) {
+        l.erase(std::remove_if(l.begin(), l.end(), [&](const std::wstring& r) { return _wcsicmp(r.c_str(), path.c_str()) == 0; }), l.end());
+    });
+}
+void clearRecent() { changeRecent([](std::vector<std::wstring>& l) { l.clear(); }); }
+
+void updateEmptyText() {   // the start page lists the recent files (as every window has left them)
+    if (!app.testMode) app.recent = readRecentFile();
+    if (app.startPage) startpage::setRecent(app.startPage, app.recent);
+}
+
+std::vector<App::Pos> readPositionsFile() {
+    std::vector<App::Pos> list;
+    const std::wstring p = settingsPath();
+    if (p.empty()) return list;
+    for (int i = 0; i < 100; ++i) {
+        wchar_t key[16], buf[MAX_PATH * 2 + 64];
+        swprintf(key, 16, L"p%d", i);
+        GetPrivateProfileStringW(L"positions", key, L"", buf, MAX_PATH * 2 + 64, p.c_str());
+        if (!buf[0]) break;
+        std::wstring v = buf;
+        size_t a = v.rfind(L'|'), b = a == std::wstring::npos ? a : v.rfind(L'|', a - 1), c = b == std::wstring::npos ? b : v.rfind(L'|', b - 1);
+        if (c == std::wstring::npos || damagedName(v.substr(0, c))) continue;
+        list.push_back({v.substr(0, c), wcstod(v.substr(c + 1, b - c - 1).c_str(), nullptr), static_cast<int>(wcstol(v.substr(b + 1, a - b - 1).c_str(), nullptr, 10)), v.substr(a + 1) == L"1"});
+    }
+    return list;
+}
+
+// The preferences as [view] key = value, in one place for reading the snapshot and for writing.
+std::map<std::wstring, std::wstring> g_prefsOnDisk;   // the values this window knows the file to hold
+void forEachPref(const std::function<void(const wchar_t*, const std::wstring&)>& f) {
+    auto n = [&](const wchar_t* key, int v) { f(key, std::to_wstring(v)); };
+    n(L"highlightColour", app.hlColour);
+    n(L"drawingColour", app.drawColour);
+    n(L"lineWidth", app.widthIdx);
+    n(L"readingSpeed", app.readRate);
+    n(L"pageColours", static_cast<int>(app.viewer.colours()));
+    n(L"theme", app.theme);
+    n(L"colourIcons", app.colourIcons);
+    n(L"tabColours", app.tabColours);
+    n(L"tabNumbers", app.tabNumbers);
+    n(L"duplicateOpen", app.dupMode);
+    n(L"checkUpdates", app.checkUpdates);
+    n(L"ownWindows", app.ownWindows);
+    f(L"skipVersion", app.skipVersion);
+    n(L"restorePositions", app.restorePositions);
+    n(L"pageCache", app.cacheIdx);
+    n(L"recoveryCopy", app.autosaveIdx);
+    n(L"layout", app.layout);
+    n(L"cover", app.cover);
+    n(L"units", app.units);
+    n(L"sideBySideLinked", app.sbsLinked);
+    n(L"sideBySideStacked", app.sbsStacked);
+    n(L"scale", app.scaleIdx);
+    n(L"textFont", static_cast<int>(app.textStyle.family));
+    n(L"textBold", app.textStyle.bold);
+    n(L"textItalic", app.textStyle.italic);
+    n(L"textSize", static_cast<int>(app.textStyle.sizePt));
 }
 
 void loadSettings() {
@@ -704,78 +850,56 @@ void loadSettings() {
     app.textStyle.bold = num(L"textBold", 0) != 0;
     app.textStyle.italic = num(L"textItalic", 0) != 0;
     app.textStyle.sizePt = std::clamp(num(L"textSize", 14), 6, 144);
-    app.positions.clear();
-    for (int i = 0; i < 100; ++i) {
-        wchar_t key[16], buf[MAX_PATH * 2 + 64];
-        swprintf(key, 16, L"p%d", i);
-        GetPrivateProfileStringW(L"positions", key, L"", buf, MAX_PATH * 2 + 64, p.c_str());
-        if (!buf[0]) break;
-        std::wstring v = buf;
-        size_t a = v.rfind(L'|'), b = a == std::wstring::npos ? a : v.rfind(L'|', a - 1), c = b == std::wstring::npos ? b : v.rfind(L'|', b - 1);
-        if (c == std::wstring::npos) continue;
-        app.positions.push_back({v.substr(0, c), wcstod(v.substr(c + 1, b - c - 1).c_str(), nullptr), static_cast<int>(wcstol(v.substr(b + 1, a - b - 1).c_str(), nullptr, 10)), v.substr(a + 1) == L"1"});
-    }
-    app.recent.clear();
-    for (int i = 0; i < 10; ++i) {
-        wchar_t key[16], buf[MAX_PATH * 2];
-        swprintf(key, 16, L"file%d", i);
-        GetPrivateProfileStringW(L"recent", key, L"", buf, MAX_PATH * 2, p.c_str());
-        if (buf[0]) app.recent.push_back(buf);
-    }
+    app.positions = readPositionsFile();
+    app.positionsTouched.clear();
+    app.recent = readRecentFile();
+    forEachPref([](const wchar_t* key, const std::wstring& v) { g_prefsOnDisk[key] = v; });   // what the file holds now
 }
 
 void saveSettings() {
     if (app.testMode) return;
     const std::wstring p = settingsPath();
     if (p.empty()) return;
-    auto put = [&](const wchar_t* sec, const wchar_t* key, int v) { WritePrivateProfileStringW(sec, key, std::to_wstring(v).c_str(), p.c_str()); };
-    put(L"view", L"highlightColour", app.hlColour);
-    put(L"view", L"drawingColour", app.drawColour);
-    put(L"view", L"lineWidth", app.widthIdx);
-    put(L"view", L"readingSpeed", app.readRate);
-    put(L"view", L"pageColours", static_cast<int>(app.viewer.colours()));
-    put(L"view", L"theme", app.theme);
-    put(L"view", L"colourIcons", app.colourIcons);
-    put(L"view", L"tabColours", app.tabColours);
-    put(L"view", L"tabNumbers", app.tabNumbers);
-    put(L"view", L"duplicateOpen", app.dupMode);
-    put(L"view", L"checkUpdates", app.checkUpdates);
-    put(L"view", L"ownWindows", app.ownWindows);
-    WritePrivateProfileStringW(L"view", L"skipVersion", app.skipVersion.c_str(), p.c_str());
-    put(L"view", L"restorePositions", app.restorePositions);
-    put(L"view", L"pageCache", app.cacheIdx);
-    put(L"view", L"recoveryCopy", app.autosaveIdx);
-    put(L"view", L"layout", app.layout);
-    put(L"view", L"cover", app.cover);
-    put(L"view", L"units", app.units);
-    put(L"view", L"sideBySideLinked", app.sbsLinked);
-    put(L"view", L"sideBySideStacked", app.sbsStacked);
-    put(L"view", L"scale", app.scaleIdx);
-    put(L"view", L"textFont", static_cast<int>(app.textStyle.family));
-    put(L"view", L"textBold", app.textStyle.bold);
-    put(L"view", L"textItalic", app.textStyle.italic);
-    put(L"view", L"textSize", static_cast<int>(app.textStyle.sizePt));
-    WritePrivateProfileStringW(L"positions", nullptr, nullptr, p.c_str());
-    for (size_t i = 0; i < app.positions.size() && i < 100; ++i) {
-        wchar_t key[16], val[MAX_PATH * 2 + 64];
-        swprintf(key, 16, L"p%d", static_cast<int>(i));
-        swprintf(val, MAX_PATH * 2 + 64, L"%ls|%.4f|%d|%d", app.positions[i].path.c_str(), app.positions[i].zoom, app.positions[i].scrollY, app.positions[i].fit ? 1 : 0);
-        WritePrivateProfileStringW(L"positions", key, val, p.c_str());
+    SettingsLock lock;
+    // the preferences this window changed (another window's changes to the others stay)
+    forEachPref([&](const wchar_t* key, const std::wstring& v) {
+        auto it = g_prefsOnDisk.find(key);
+        if (it != g_prefsOnDisk.end() && it->second == v) return;
+        WritePrivateProfileStringW(L"view", key, v.c_str(), p.c_str());
+        g_prefsOnDisk[key] = v;
+    });
+    // the reading positions: the file's list, with the files this window read put first
+    if (!app.positionsTouched.empty()) {
+        std::vector<App::Pos> list = readPositionsFile();
+        auto touched = [&](const std::wstring& path) {
+            for (const auto& t : app.positionsTouched) if (_wcsicmp(t.c_str(), path.c_str()) == 0) return true;
+            return false;
+        };
+        for (auto it = app.positions.rbegin(); it != app.positions.rend(); ++it) {
+            if (!touched(it->path)) continue;
+            const std::wstring path = it->path;
+            list.erase(std::remove_if(list.begin(), list.end(), [&](const App::Pos& q) { return _wcsicmp(q.path.c_str(), path.c_str()) == 0; }), list.end());
+            list.insert(list.begin(), *it);
+        }
+        if (list.size() > 100) list.resize(100);
+        WritePrivateProfileStringW(L"positions", nullptr, nullptr, p.c_str());
+        for (size_t i = 0; i < list.size(); ++i) {
+            wchar_t key[16], val[MAX_PATH * 2 + 64];
+            swprintf(key, 16, L"p%d", static_cast<int>(i));
+            swprintf(val, MAX_PATH * 2 + 64, L"%ls|%.4f|%d|%d", list[i].path.c_str(), list[i].zoom, list[i].scrollY, list[i].fit ? 1 : 0);
+            WritePrivateProfileStringW(L"positions", key, val, p.c_str());
+        }
+        app.positions = list;
+        app.positionsTouched.clear();
     }
-    WritePrivateProfileStringW(L"recent", nullptr, nullptr, p.c_str());   // rewrite the whole section
-    for (size_t i = 0; i < app.recent.size() && i < 10; ++i) {
-        wchar_t key[16];
-        swprintf(key, 16, L"file%d", static_cast<int>(i));
-        WritePrivateProfileStringW(L"recent", key, app.recent[i].c_str(), p.c_str());
-    }
+    // the recent files are written when they change (changeRecent), never from this window's copy
 }
 
-void addRecent(const std::wstring& path) {
-    if (app.testMode) return;
-    app.recent.erase(std::remove_if(app.recent.begin(), app.recent.end(), [&](const std::wstring& r) { return _wcsicmp(r.c_str(), path.c_str()) == 0; }), app.recent.end());
-    app.recent.insert(app.recent.begin(), path);
-    if (app.recent.size() > 10) app.recent.resize(10);
-    updateEmptyText();
+void addRecent(const std::wstring& path) {   // written at once: a window closed by Windows, or a crash, keeps it
+    changeRecent([&](std::vector<std::wstring>& l) {
+        l.erase(std::remove_if(l.begin(), l.end(), [&](const std::wstring& r) { return _wcsicmp(r.c_str(), path.c_str()) == 0; }), l.end());
+        l.insert(l.begin(), path);
+    });
 }
 
 // ---- opening files ----
@@ -3126,22 +3250,21 @@ void openRecent(size_t i) {
     const std::wstring p = app.recent[i];
     if (GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) {
         MessageBoxW(app.wnd, (L"\"" + p + L"\" no longer exists, so it was removed from the list.").c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
-        app.recent.erase(app.recent.begin() + static_cast<std::ptrdiff_t>(i));
-        updateEmptyText();
-        saveSettings();
+        removeRecent(p);
         return;
     }
     openFile(p);
 }
 
 void openRecentMenu(POINT screenPt) {
+    updateEmptyText();   // the list as every window has left it
     HMENU m = CreatePopupMenu();
     if (app.recent.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 0, L"No recent files");
     for (size_t i = 0; i < app.recent.size(); ++i) AppendMenuW(m, MF_STRING, T_RECENT + i, recentLabel(i, true).c_str());
     if (!app.recent.empty()) { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); AppendMenuW(m, MF_STRING, T_RECENT_CLEAR, L"Clear the list"); }
     int cmd = trackMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, screenPt.x, screenPt.y, 0, app.wnd, nullptr);
     DestroyMenu(m);
-    if (cmd == T_RECENT_CLEAR) { app.recent.clear(); updateEmptyText(); saveSettings(); }
+    if (cmd == T_RECENT_CLEAR) clearRecent();
     else if (cmd >= T_RECENT && cmd < T_RECENT + 10) openRecent(static_cast<size_t>(cmd - T_RECENT));
 }
 
@@ -3897,7 +4020,7 @@ void showSettings(int first) {
         button(L"Default PDF application", L"Opens the Windows settings where you choose the app that opens PDF files.", L"Set as default\x2026", [] { registerAsViewer(); }),
         button(L"Recent files", L"The list on the start page and in Open recent.", L"Clear the list", [] {
             if (MessageBoxW(GetActiveWindow(), L"Clear the list of recent files?", L"Settings", MB_YESNO | MB_ICONQUESTION) != IDYES) return;
-            app.recent.clear(); updateEmptyText(); saveSettings(); }),
+            clearRecent(); }),
         button(L"Settings folder", L"Where Feather PDF keeps its settings and recovery copies.", L"Open the folder", [] {
             std::wstring dir = settingsPath();
             dir = dir.substr(0, dir.find_last_of(L'\\'));
@@ -4028,6 +4151,7 @@ void saveWorkspace() {
     if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES &&
         MessageBoxW(app.wnd, (L"A workspace named \"" + name + L"\" exists. Replace it?").c_str(), kAppName, MB_YESNO | MB_ICONQUESTION) != IDYES) return;
     DeleteFileW(file.c_str());
+    makeIniUnicode(file);   // names in any script kept (B-083)
     int n = 0;
     for (size_t i = 0; i < app.tabs.size(); ++i) {
         const Document& d = *app.tabs[i];
@@ -4107,6 +4231,7 @@ void showMainMenu(const RECT& anchor) {
     const bool has = d != nullptr;
     // Only what the toolbar, the zoom box, the tool menus and the right-click menu do not already offer.
     add(MM_OPEN, L"Open...\tCtrl+O");
+    updateEmptyText();   // the recent files as every window has left them
     HMENU rec = CreatePopupMenu();
     for (size_t i = 0; i < app.recent.size(); ++i) AppendMenuW(rec, MF_STRING, MM_RECENT + i, recentLabel(i, false).c_str());
     if (app.recent.empty()) AppendMenuW(rec, MF_STRING | MF_GRAYED, 0, L"(none)");
@@ -4330,6 +4455,7 @@ void writeSession() {
         wchar_t sec[32], v[64];
         swprintf(sec, 32, L"tab%d", n++);
         const std::wstring ps = (dir + L"\\session.ini");
+        if (n == 1) makeIniUnicode(ps);   // names in any script kept (B-083)
         WritePrivateProfileStringW(sec, L"path", d.path().c_str(), ps.c_str());
         WritePrivateProfileStringW(sec, L"name", d.title().c_str(), ps.c_str());
         WritePrivateProfileStringW(sec, L"recovery", rec.c_str(), ps.c_str());
@@ -6990,8 +7116,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             app.startPage = startpage::create(h, app.inst, {
                 [] { openDialog(); },
                 [](size_t i) { openRecent(i); },
-                [](size_t i) { if (i < app.recent.size()) { app.recent.erase(app.recent.begin() + static_cast<std::ptrdiff_t>(i)); updateEmptyText(); saveSettings(); } },
-                [] { app.recent.clear(); updateEmptyText(); saveSettings(); }});
+                [](size_t i) { if (i < app.recent.size()) removeRecent(app.recent[i]); },
+                [] { clearRecent(); }});
             startpage::setDpi(app.startPage, app.dpi);
             app.tips = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr, WS_POPUP | TTS_ALWAYSTIP | TTS_NOPREFIX, CW_USEDEFAULT, CW_USEDEFAULT,
                                        CW_USEDEFAULT, CW_USEDEFAULT, h, nullptr, app.inst, nullptr);
@@ -7393,6 +7519,14 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_CLOSE:
             for (auto& t : app.tabs) if (!confirmClose(*t)) return 0;
             DestroyWindow(h);
+            return 0;
+        case WM_QUERYENDSESSION: return TRUE;
+        case WM_ENDSESSION:   // Windows shuts down, restarts or signs out: no WM_CLOSE comes; keep what would be lost
+            if (w) {
+                for (auto& t : app.tabs) rememberPosition(*t);
+                saveSettings();
+                writeSession();   // unsaved changes: recovery copies, offered at the next start
+            }
             return 0;
         case WM_DESTROY:
             KillTimer(h, TIMER_AUTOSAVE);

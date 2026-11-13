@@ -1,0 +1,50 @@
+// Portable (no Windows headers) helpers. Unit-tested on any OS.
+#pragma once
+#include <string>
+#include <vector>
+#include <functional>
+#include <map>
+
+namespace fsu {
+
+// F035: parse a raw startup/service command line without executing it.
+struct ParsedCommand {
+    std::wstring exe;        // resolved executable/script path ("" if unparseable)
+    std::wstring args;       // remaining arguments, untouched
+    bool quoted = false;
+    bool exeExists = false;  // only meaningful if an exists-probe was supplied
+};
+using ExistsFn = std::function<bool(const std::wstring&)>;
+ParsedCommand ParseCommand(const std::wstring& raw, const ExistsFn& exists = nullptr);
+
+// F197: CSV field escaping with spreadsheet-formula neutralisation.
+std::wstring CsvField(const std::wstring& v, bool neutraliseFormulas = true);
+std::wstring CsvRow(const std::vector<std::wstring>& f, bool neutraliseFormulas = true);
+
+// F014: case-insensitive substring match across fields. Empty query matches.
+bool MatchesQuery(const std::vector<std::wstring>& fields, const std::wstring& query);
+
+// F111: dependency ordering. deps[name] = services that `name` requires.
+// StartOrder: prerequisites first. StopOrder: dependents first.
+// Returns false and fills `cycle` if a cycle exists. Unknown deps are reported in `missing`.
+struct OrderResult { std::vector<std::wstring> order, missing, cycle; bool ok = true; };
+OrderResult StartOrder(const std::vector<std::wstring>& targets,
+                       const std::map<std::wstring, std::vector<std::wstring>>& deps);
+OrderResult StopOrder(const std::vector<std::wstring>& targets,
+                      const std::map<std::wstring, std::vector<std::wstring>>& deps);
+
+// F158: one journal line (JSON). Fields are escaped; secrets must never be passed in.
+struct JournalEntry {
+    std::wstring timeUtc, actor, target, source, before, after, result;
+    bool reversible = false;
+};
+std::string JournalLine(const JournalEntry& e);
+
+// F203: atomic write (temp file + rename). Returns false on failure; original untouched.
+bool AtomicWrite(const std::wstring& path, const std::string& bytes);
+
+std::string ToUtf8(const std::wstring& w);
+std::wstring FromUtf8(const std::string& s);
+std::wstring Lower(const std::wstring& s);
+
+} // namespace fsu

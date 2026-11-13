@@ -1166,3 +1166,5 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
   whole extent then refused a word lying inside it.
 - **Fix:** the gap is measured to the nearest object of the line.
 - **Verified:** engine check: a second edit on the same page finds its paragraph whole (both lines).
+
+2.20.2 published for both apps; both downloads match latest.json.

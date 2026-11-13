@@ -1107,3 +1107,5 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
 - **Fix:** a line in another text colour starts a paragraph of its own (for editing and for the outlines alike).
 - **Verified:** engine check: black, black, red, black lines give three blocks, the two black lines together; the demo
   page's black, red and blue lines are separate blocks.
+
+2.20.0 "Aspire" published; both downloads match latest.json. The releases page now also links each file from the jsDelivr mirror (at the release commit), for networks that block raw.githubusercontent.com.

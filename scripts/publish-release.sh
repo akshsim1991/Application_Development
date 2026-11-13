@@ -24,7 +24,7 @@ latest = {"version": version, "date": datetime.date.today().strftime("%-d %B %Y"
 open(os.path.join(dest, "latest.json"), "w").write(json.dumps(latest, indent=2, ensure_ascii=True) + "\n")
 print(json.dumps(latest, indent=2))
 PY
-mirror="https://cdn.jsdelivr.net/gh/akshsim1991/FeatherPDF-releases@v$version"   # jsDelivr, from the release's tag
+mirror="https://cdn.jsdelivr.net/gh/akshsim1991/FeatherPDF-releases@RELEASE"   # jsDelivr; RELEASE becomes the release commit once pushed
 cat > "$dest/README.md" <<MD
 # Feather PDF
 
@@ -46,4 +46,8 @@ git add -A
 [ -n "${NO_COMMIT:-}" ] && { echo "files ready in $dest (NO_COMMIT: not committed)"; exit 0; }
 git commit -q -m "Feather PDF $version"
 git push origin HEAD:main
-git tag -f "v$version" && git push -f origin "v$version"   # the mirror serves the files of this tag
+# the mirror links name the commit that holds the files (jsDelivr serves a commit at once; tags cannot be pushed from every network)
+sha=$(git rev-parse HEAD)
+sed -i "s|FeatherPDF-releases@RELEASE|FeatherPDF-releases@$sha|g" README.md
+git commit -q -am "Mirror links point at the $version release commit"
+git push origin HEAD:main

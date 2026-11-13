@@ -474,7 +474,7 @@ for f in p.pages[0].Resources.Font.values():
 p.save(d+'/tex.pdf')
 PY
 if [ -f "$W/tex.pdf" ]; then
-run --paratest "$W/tex.pdf" "$W/tex_e.pdf" "$W/tex.txt" 120 740 append "- Revised"
+run --paratest "$W/tex.pdf" "$W/tex_e.pdf" "$W/tex.txt" 120 740 append "Revised"   # (no leading "-": the Mac app takes "-word" for a setting)
 check "a LaTeX bold heading is a bold serif" "grep -q 'style family=1 bold=1 italic=0 size=17.0 font=NimbusRomNo9L-Medi' '$W/tex.txt'"
 run --paratest "$W/tex.pdf" "$W/tex_b.pdf" "$W/tex2.txt" 120 703 same
 check "its body text a regular serif"      "grep -q 'style family=1 bold=0 italic=0' '$W/tex2.txt'"

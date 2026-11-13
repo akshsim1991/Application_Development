@@ -478,7 +478,7 @@ run --paratest "$W/tex.pdf" "$W/tex_e.pdf" "$W/tex.txt" 120 740 append "- Revise
 check "a LaTeX bold heading is a bold serif" "grep -q 'style family=1 bold=1 italic=0 size=17.0 font=NimbusRomNo9L-Medi' '$W/tex.txt'"
 run --paratest "$W/tex.pdf" "$W/tex_b.pdf" "$W/tex2.txt" 120 703 same
 check "its body text a regular serif"      "grep -q 'style family=1 bold=0 italic=0' '$W/tex2.txt'"
-check "a heading grows along its line, not onto a second" "text '$W/tex_e.pdf' | grep -qx 'Module 5 (b) - Revised'"
+check "a heading grows along its line, not onto a second" "python3 '$root/tests/engine/sameline.py' '$W/tex_e.pdf' Module Revised"
 fi
 
 echo "edit mode: the outlined blocks"

@@ -1,14 +1,13 @@
 # Project state (update after milestones)
-Last verified: 2026-11-13. Branch `claude/new-session-ann5h4`.
-## Done
-- Core lib + 26 native unit checks passing (ParseCommand, CSV formula-safe, filter, dep topo/cycles, journal line, atomic write, UTF-8).
-- Win32 shell compiles (3.1 MB static exe): sidebar (Dashboard/Startup/Services/History/Settings), virtual ListView, live search, column sort, copy, CSV export, details, single-instance + `--startup/--services`, async scan w/ generation IDs, target/rights indicator in title, per-monitor DPI manifest.
-- Read-only startup scan: HKCU/HKLM Run+RunOnce (64/32 views), Startup folders, StartupApproved state (read), target-missing warning.
-- Read-only services scan: SCM enum, state, start type (+delayed, trigger flag), PID, account, path, per-user/shared labels.
-## Not verified
-Everything Win32 is UNTESTED at runtime (no Windows here). Needs VM smoke test.
-## Next (in order)
-1. Windows VM smoke test of the exe (owner or CI runner); fix runtime bugs.
-2. Change pipeline (`src/changes`): plan→backup→apply→verify→journal; startup enable/disable (HKCU StartupApproved) first, then service start-type/start/stop with dependency plan (core StartOrder/StopOrder ready).
-3. Dark theme + accessible toolbar; settings persistence; scheduled tasks provider; bundled offline service advice.
-4. Offline installer (tool choice needs licence review), migration of old `HKCU\Software\StartupManager`/`WindowsServicesManager` data.
+Last verified: 2026-11-13. Branch `claude/new-session-ann5h4`. Release: `releases/v0.2.0`.
+## Done (verified = ran under Wine+Xvfb with synthetic data; NOT real Windows)
+- Core lib + 26 native unit checks (ParseCommand, CSV, filter, dep topo, journal line, atomic write, UTF-8).
+- Dark shell matching old apps: rail nav, owner-drawn toolbar, filter dropdown, More menu, right-click menus, header/list custom draw, status bar w/ result messages. Verified in Wine screenshots.
+- Startup: Run/RunOnce (64/32 views), Startup folders (+.lnk resolve), scheduled tasks (logon/boot), Explorer context-menu/overlay add-ons, publisher/signature (offline Authenticode+catalog), warnings, first-seen. Enable/Disable (StartupApproved, tasks, Shell Blocked), Delete+backup, Restore, Add (HKCU), Undo, multi-select with confirm. Verified in Wine: Run-key disable + journal + read-back, multi-select confirm, details dialog.
+- Services: full inventory (safety, warnings, description), Start/Stop/Restart/Pause/Resume (worker thread, dependency order, critical blocklist), Start type (incl. delayed) with read-back + undo, Properties tabs. Verified in Wine: list, multi-select, Start type menu, Properties. Actual service control NOT exercised.
+## Not verified / missing
+Real Windows runtime; scheduled-task & shell-extension & service mutations; dark scrollbars/menus (rely on Win10+/11 uxtheme); UIA for toolbar; high-DPI visuals.
+Missing: Start later, Profiles, Drivers, Kill process, remote, themes, settings persistence, installer, offline service advice, boot metrics.
+## Next
+1. Owner smoke test on Windows 11; fix reported issues.
+2. Settings persistence + themes; Start later (managed task, spec 5.5); service profiles/snapshots; installer + migration of old HKCU\Software\StartupManager / WindowsServicesManager data.

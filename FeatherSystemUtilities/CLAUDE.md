@@ -15,3 +15,6 @@ Env: Linux container, `g++-mingw-w64-x86-64` (apt). No Windows/wine: Win32 code 
 - Never execute/load inspected targets. No secrets in logs/journal. Atomic writes for config/exports.
 - Don't claim a feature works unless verified; Win32 paths are "compiles, untested on Windows".
 - Old-app source (`akshsim1991/Project_1`) was not accessible; engines are reimplemented from the spec.
+## Testing under Wine (no Windows here)
+`apt-get install wine xvfb xdotool imagemagick`; `tests/smoke-wine.sh` seeds synthetic Run entries, runs the exe in Xvfb, saves screenshots. Wine != Windows: dark scrollbars/menus and Task Scheduler/shell-ext paths are not representative.
+Files: `src/win/{main,startup,services,inspect,dialogs}.cpp`, `app.h` (shared decls).

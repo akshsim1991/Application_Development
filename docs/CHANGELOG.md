@@ -2,6 +2,15 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.20.1 (13 November 2026)
+
+- Fixed: **editing text of LaTeX documents** (question papers, theses ...): a bold serif heading opened as plain
+  sans-serif, its box wider than the line, so it broke onto two lines and covered the line below. Fonts such as
+  "NimbusRomNo9L-Medi" (LaTeX's bold Times), "CMBX12" or "LMRoman12-Bold" are now known as serif and bold; the weight and
+  slant the font itself gives count too.
+- A line on its own (a heading, a short item) now grows along its line as you type, to the right edge of its column,
+  before it wraps; before, it wrapped at its old length. (Both apps.)
+
 ## 2.20.0 "Aspire" (13 November 2026)
 
 - **Edit PDF in one click**, as in other modern PDF editors (both apps). Clicking Edit PDF turns editing on at once:

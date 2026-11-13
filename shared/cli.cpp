@@ -809,8 +809,8 @@ int run(std::vector<std::wstring> files) {
         std::wstring why;
         const bool ok = pageobj::replaceParagraph(doc, h, text, h.style, h.align, &why);
         char line[512];
-        snprintf(line, sizeof line, "lines=%d align=%d wrap=%.2f step=%.2f origin=%.2f,%.2f result=%s\n", h.lines, static_cast<int>(h.align), h.wrapWidth, h.lineStep,
-                 h.originX, h.baseline, ok ? "ok" : "refused");
+        snprintf(line, sizeof line, "lines=%d align=%d wrap=%.2f step=%.2f origin=%.2f,%.2f result=%s\nstyle family=%d bold=%d italic=%d size=%.1f font=%s\n", h.lines, static_cast<int>(h.align), h.wrapWidth, h.lineStep,
+                 h.originX, h.baseline, ok ? "ok" : "refused", static_cast<int>(h.style.family), h.style.bold, h.style.italic, h.style.sizePt, h.fontName.c_str());
         const std::string rep = line + std::string(why.begin(), why.end()) + "\ntext=" + platform::utf8(h.text) + "\n";
         Document::writeFile(files[3], std::vector<unsigned char>(rep.begin(), rep.end()));
         if (!ok) return 6;

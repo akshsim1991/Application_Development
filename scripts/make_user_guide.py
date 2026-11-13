@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.20.0"
+VERSION = "2.20.1"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))

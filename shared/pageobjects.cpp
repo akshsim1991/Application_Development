@@ -17,6 +17,34 @@
 #include <cwctype>
 
 namespace pageobj {
+
+// The closest standard family, weight and slant of a font, from its PDF name (the subset prefix "ABCDEF+" left out), its
+// flags and the weight and slant it gives. Knows the names TeX, Office and the usual type foundries give their fonts:
+// "NimbusRomNo9L-Medi" (LaTeX's Times, bold), "CMBX12", "LMRoman12-Bold", "TimesNewRomanPS-BoldMT", "Arial-ItalicMT" ...
+static void guessFontStyle(FPDF_FONT font, const std::string& name, Family& fam, bool& bold, bool& italic) {
+    const auto& api = pdfium::api();
+    const unsigned long flags = font ? static_cast<unsigned long>(api.FPDFFont_GetFlags(font)) : 0;
+    std::string lo = name;
+    const size_t plus = lo.find('+');
+    if (plus == 6) lo = lo.substr(7);
+    for (auto& ch : lo) ch = static_cast<char>(tolower(static_cast<unsigned char>(ch)));
+    auto has = [&](const char* s) { return lo.find(s) != std::string::npos; };
+    auto any = [&](std::initializer_list<const char*> l) { for (const char* s : l) if (has(s)) return true; return false; };
+    auto starts = [&](std::initializer_list<const char*> l) { for (const char* s : l) if (lo.rfind(s, 0) == 0) return true; return false; };
+    const bool mono = any({"courier", "mono", "consolas", "inconsolata", "menlo", "lucidaconsole", "nimbusmon"}) || starts({"cmtt", "sftt"}) || (flags & 1);
+    const bool sans = any({"sans", "helvet", "arial", "nimbussan", "calibri", "verdana", "tahoma", "segoe", "gill", "futura", "frutiger",
+                           "myriad", "roboto", "lato", "candara", "trebuchet", "franklin", "univers", "avenir", "corbel", "lucida grande"}) || starts({"cmss", "sfss"});
+    const bool serif = any({"times", "serif", "georgia", "garamond", "cambria", "minion", "palatino", "roman", "nimbusrom", "termes", "pagella",
+                            "bookman", "antiqua", "century", "schoolbook", "baskerville", "caslon", "didot", "bodoni", "charter", "utopia",
+                            "libertine", "constantia", "sabon", "mincho", "sylfaen", "book"}) || starts({"cmr", "cmbx", "cmti", "cmsl", "cmb", "sfrm", "sfbx", "sfti"}) || (flags & 2);
+    fam = mono ? Family::Mono : sans ? Family::Sans : serif ? Family::Serif : Family::Sans;
+    const int weight = font ? api.FPDFFont_GetWeight(font) : -1;
+    bold = any({"bold", "black", "heavy", "semibold", "demi", "-medi", "-bd", "extrabold"}) || starts({"cmbx", "cmb10", "sfbx"}) || (flags & 262144) || weight >= 600;
+    int angle = 0;
+    if (font) api.FPDFFont_GetItalicAngle(font, &angle);
+    italic = any({"italic", "oblique", "ital", "slanted"}) || starts({"cmti", "cmsl", "sfti", "sfsl"}) || (flags & 64) || angle != 0;
+}
+
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
@@ -343,18 +371,13 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool 
     // Replacement in a similar standard font at the same place, size and colour.
     if (!isLatin(text)) { if (track) d.cancelChange(); return false; }
     std::string fname;
-    unsigned long flags = 0;
     if (font) {
-        flags = static_cast<unsigned long>(api.FPDFFont_GetFlags(font));
         size_t len = api.FPDFFont_GetBaseFontName(font, nullptr, 0);
         if (len > 1) { fname.assign(len, '\0'); api.FPDFFont_GetBaseFontName(font, fname.data(), len); fname.resize(strlen(fname.c_str())); }
     }
-    auto has = [&](const char* s) { std::string lo = fname; for (auto& ch : lo) ch = static_cast<char>(tolower(ch)); return lo.find(s) != std::string::npos; };
     Family fam = Family::Sans;
-    if (has("courier") || has("mono") || has("consolas") || (flags & 1)) fam = Family::Mono;
-    else if (has("times") || has("serif") || has("georgia") || has("garamond") || has("cambria") || (flags & 2)) fam = (has("sans") ? Family::Sans : Family::Serif);
-    const bool bold = has("bold") || has("black") || (flags & 262144);
-    const bool italic = has("italic") || has("oblique") || (flags & 64);
+    bool bold = false, italic = false;
+    guessFontStyle(font, fname, fam, bold, italic);
     float size = 12;
     api.FPDFTextObj_GetFontSize(o, &size);
     unsigned R = 0, G = 0, B = 0, A = 255;
@@ -706,14 +729,7 @@ void styleOfObject(FPDF_PAGEOBJECT o, double size, TextStyle& st, std::string& f
     const auto& api = pdfium::api();
     FPDF_FONT font = api.FPDFTextObj_GetFont(o);
     fontName = baseFontName(font);
-    const unsigned long flags = font ? static_cast<unsigned long>(api.FPDFFont_GetFlags(font)) : 0;
-    auto has = [&](const char* s) { std::string lo = fontName; for (auto& ch : lo) ch = static_cast<char>(tolower(ch)); return lo.find(s) != std::string::npos; };
-    Family fam = Family::Sans;
-    if (has("courier") || has("mono") || has("consolas") || (flags & 1)) fam = Family::Mono;
-    else if (has("times") || has("serif") || has("georgia") || has("garamond") || has("cambria") || has("minion") || has("palatino") || (flags & 2)) fam = has("sans") ? Family::Sans : Family::Serif;
-    st.family = fam;
-    st.bold = has("bold") || has("black") || has("heavy") || (flags & 262144);
-    st.italic = has("italic") || has("oblique") || (flags & 64);
+    guessFontStyle(font, fontName, st.family, st.bold, st.italic);
     st.sizePt = std::round(size * 2) / 2;
     unsigned R = 0, G = 0, B = 0, A = 255;
     api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
@@ -994,6 +1010,15 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
             for (const Line& ln : lines) if (std::fabs(ln.r - column) < 0.6 + 0.002 * widest && std::fabs(ln.l - lines[last].l) < 3.6 * size) ++reach;
             if (reach >= 2) hit.align = Align::Justify;
         }
+    }
+    // A line on its own (a heading, a short item) grows to the right edge of its column before it wraps, as in other PDF
+    // editors: the farthest any line that starts at the same left edge reaches on this page (so it stays in its column).
+    if (last == first && hit.align == Align::Left && hit.upright) {
+        const double size = lines[first].size;
+        double column = lines[first].r;
+        for (const Line& ln : lines)
+            if (std::fabs(ln.l - lines[first].l) < 3.6 * size) column = std::max(column, ln.r);
+        hit.wrapWidth = std::max(widest, column - hit.originX);
     }
     // style from the first line's first object
     styleOfObject(lines[first].first, lines[first].size, hit.style, hit.fontName);

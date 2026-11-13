@@ -1109,3 +1109,25 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
   page's black, red and blue lines are separate blocks.
 
 2.20.0 "Aspire" published; both downloads match latest.json. The releases page now also links each file from the jsDelivr mirror (at the release commit), for networks that block raw.githubusercontent.com.
+
+## Version 2.20.1 (both apps)
+
+### B-077 A LaTeX bold heading opened for editing as plain sans-serif, on two lines, over the next line
+- **Status:** Fixed (2.20.1)
+- **Reported:** 13 November, screenshot: "Module 5 (b)" (bold serif) in the editor as Sans-serif, not bold, broken
+  after "Module 5", the box covering "1. Define a material handling system."
+- **Root cause:** the style of a font was guessed from a few words in its name ("times", "serif", "bold"); LaTeX's fonts
+  are called "NimbusRomNo9L-Medi" (bold), "NimbusRomNo9L-Regu", "CMBX12", "LMRoman12-Bold" ..., with flags that do not
+  say serif. The heading was taken as regular sans, wider than its bold serif original, so it broke into two lines.
+- **Fix:** one style guess for both places that used it: the subset prefix left out; TeX, Nimbus, TeX Gyre, Latin
+  Modern, Office and common foundry names; the font's own weight (600 and more is bold) and italic angle.
+- **Verified:** engine checks on a page whose fonts are named as pdfTeX names them (flags 4): the heading is a bold
+  serif, the body a regular serif; under Wine the editor opens on one line with Serif and B on, and the saved file
+  keeps the heading's own bold font (Times Bold for letters its subset lacks), every other line where it was.
+
+### B-078 A one-line heading broke onto a second line as soon as it got longer
+- **Status:** Fixed (2.20.1)
+- **Root cause:** a paragraph wraps at its widest line; a single line has no room to grow.
+- **Fix:** a single left-aligned line wraps at the right edge of its column (the farthest any line starting at the same
+  left edge reaches on the page).
+- **Verified:** engine check: "Module 5 (b)" + " - Revised" stays one line; under Wine the same in the app.

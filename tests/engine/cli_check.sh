@@ -445,6 +445,34 @@ check "original: red stays red"           "python3 -c \"from PIL import Image;r,
 check "original: picture as it is"        "[ \"\$(pix $W/bb_orig.ppm 200 400)\" = '30 120 200' ] && grep -q pictures=1 '$W/bb_orig.ppm.txt'"
 check "original: highlight a dark tint"   "python3 -c \"from PIL import Image;r,g,b=Image.open('$W/bb_orig.ppm').getpixel((520,90));assert 100<r<160 and 100<g<160 and b<10\""
 
+echo "LaTeX fonts: the style a paragraph is edited in"
+python3 - "$W" <<'PY'
+import sys, pikepdf
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+d=sys.argv[1]
+pdfmetrics.registerFont(TTFont('SB','/usr/share/fonts/truetype/liberation/LiberationSerif-Bold.ttf'))
+pdfmetrics.registerFont(TTFont('SR','/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf'))
+c=canvas.Canvas(d+'/texraw.pdf',pagesize=(595,842))
+c.setFont('SR',17); c.drawString(72,780,'2. Enumerate the limitations of both online and offline')
+c.setFont('SB',17); c.drawString(72,735,'Module 5 (b)')
+c.setFont('SR',17); c.drawString(72,700,'1. Define a material handling system.')
+c.save()
+p=pikepdf.open(d+'/texraw.pdf')   # the fonts named as pdfTeX names LaTeX's Times (bold "Medi"), with its font flags
+for f in p.pages[0].Resources.Font.values():
+    new=pikepdf.Name('/ABCDEF+NimbusRomNo9L-Medi' if 'Bold' in str(f.BaseFont) else '/GHIJKL+NimbusRomNo9L-Regu')
+    for x in [f]+list(f.get('/DescendantFonts') or []):
+        x.BaseFont=new
+        if '/FontDescriptor' in x: x.FontDescriptor.FontName=new; x.FontDescriptor.Flags=4
+p.save(d+'/tex.pdf')
+PY
+run --paratest "$W/tex.pdf" "$W/tex_e.pdf" "$W/tex.txt" 120 740 append "- Revised"
+check "a LaTeX bold heading is a bold serif" "grep -q 'style family=1 bold=1 italic=0 size=17.0 font=NimbusRomNo9L-Medi' '$W/tex.txt'"
+run --paratest "$W/tex.pdf" "$W/tex_b.pdf" "$W/tex2.txt" 120 703 same
+check "its body text a regular serif"      "grep -q 'style family=1 bold=0 italic=0' '$W/tex2.txt'"
+check "a heading grows along its line, not onto a second" "text '$W/tex_e.pdf' | grep -qx 'Module 5 (b) - Revised'"
+
 echo "edit mode: the outlined blocks"
 run --blocks "$W/rich.pdf" "$W/blocks.txt"
 check "every paragraph of the report outlined, as a click edits it" "grep -q 'pictures=0 text=15 same=15' '$W/blocks.txt' && grep -q '^text .* same Quarterly Report' '$W/blocks.txt'"

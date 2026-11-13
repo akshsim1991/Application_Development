@@ -170,6 +170,8 @@
     X(FPDFFont_GetIsEmbedded)    \
     X(FPDFFont_GetFontData) \
     X(FPDFFont_GetFlags)         \
+    X(FPDFFont_GetWeight)        \
+    X(FPDFFont_GetItalicAngle)   \
     X(FPDFPageObj_GetMatrix)     \
     X(FPDFPageObj_SetMatrix)     \
     X(FPDFPageObj_GetFillColor)  \

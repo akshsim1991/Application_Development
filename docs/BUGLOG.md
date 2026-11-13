@@ -1135,3 +1135,34 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
 2.20.1 published for Windows (13 November, at the user's request, before the Mac build check finished): the installer matches latest.json; latest.json gives the Mac no new version until its 2.20.1 is built, so Macs on 2.20.0 are not offered the same disk image again.
 
 2.20.1 published for macOS too (the Mac build check passed once its test stopped passing "-word" arguments, which the Mac app reads as settings): both downloads match latest.json.
+
+## Version 2.20.2 (both apps)
+
+### B-079 A paragraph starting with a bold label: edited all in bold, its first line drawn twice (Mac)
+- **Status:** Fixed (2.20.2)
+- **Reported:** 13 November, screenshot (Mac): "License and cost controls: Paid third-party licenses ..." in the editor
+  all bold, the first line a jumble of the box's text and the page's own.
+- **Root cause:** a line's objects were joined only to the right of the first one met, which is the one with the highest
+  top; the regular rest of the line came first (its parentheses are taller), so the bold label was left out and made a
+  paragraph with the lines below, while the rest of line 1 was a block of its own, not hidden while editing. The style was
+  the first object's (bold), and setting the text again used that one style for every word.
+- **Fix:** the objects of a line are joined on either side (gap to the nearest one; a list number set apart stays
+  apart); the paragraph's style is that of most of its characters; each character remembers the object it came from, and
+  while the style is unchanged every word is set in its own object's font (typed words: the font of the text before).
+- **Verified:** engine checks on a ReportLab page like the reporter's: the paragraph found whole with the label, in the
+  body style; after an edit the label is Helvetica-Bold and the rest Helvetica (rendered: justified as before).
+
+### B-080 "Paragraphs can use letters ... of Western languages" for text with a dash
+- **Status:** Fixed (2.20.2)
+- **Reported:** 13 November, screenshot: editing "51. Copy and move — Implement as ..." refused.
+- **Root cause:** text for the standard fonts was allowed up to character 255 only; WinAnsi, which these fonts use, also
+  has — – ‘ ’ “ ” • … € ™ and a few more.
+- **Fix:** those are allowed (for paragraphs, text boxes, stamps, watermarks alike).
+- **Verified:** engine check: an item with "—" edited, " Tested — done." added.
+
+### B-081 After one edit, the other justified paragraphs of the page fell apart
+- **Status:** Fixed (2.20.2)
+- **Root cause:** when the page is written again, PDFium writes a justified line word by word; joining by the line's
+  whole extent then refused a word lying inside it.
+- **Fix:** the gap is measured to the nearest object of the line.
+- **Verified:** engine check: a second edit on the same page finds its paragraph whole (both lines).

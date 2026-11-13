@@ -497,6 +497,39 @@ for page in extract_pages('$W/tex_e.pdf'): walk(page)
 fi
 fi
 
+echo "a bold label in a paragraph, a dash, two edits in a row"
+python3 - "$W" <<'PY'
+import sys
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Paragraph
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY
+st=ParagraphStyle('b',fontName='Helvetica',fontSize=9.5,leading=13,alignment=TA_JUSTIFY,spaceBefore=8)
+SimpleDocTemplate(sys.argv[1]+'/label.pdf',pagesize=A4).build([
+  Paragraph('<b>Implementation principle:</b> Feature backlog, not a mandate to implement everything at once. Prioritize correctness, file integrity, performance, and maintainability.',st),
+  Paragraph('<b>License and cost controls:</b> Paid third-party licenses. Some integrations (cloud APIs, patented codecs, proprietary CAD formats, signing/notarization) can carry costs or restrictions. Do not promise these without verification. Free software can still incur developer distribution costs.',st),
+  Paragraph('1. Multi-tab interface \u2014 Provide a discoverable, keyboard-accessible workflow with clear errors, consistent state, and appropriate platform-specific handling.',st)])
+PY
+run --paratest "$W/label.pdf" "$W/label1.pdf" "$W/label1.txt" 100 722 append "Reviewed yearly."
+check "the paragraph is the whole paragraph, label and all, in its body style" "grep -q '^lines=3 ' '$W/label1.txt' && grep -q 'style family=0 bold=0' '$W/label1.txt' && grep -q '^text=License and cost controls: *Paid third-party' '$W/label1.txt'"
+check "the bold label stays bold, the rest regular" "python3 -c \"
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LTChar
+ch=[]
+def w(o):
+    if isinstance(o,LTChar): ch.append((o.get_text(),o.fontname,round(o.y0)))
+    elif hasattr(o,'__iter__'):
+        [w(x) for x in o]
+[w(p) for p in extract_pages('$W/label1.pdf')]
+line=[c for c in ch if c[2]==718]
+bold=''.join(c[0] for c in line if 'Bold' in c[1]); reg=''.join(c[0] for c in line if 'Bold' not in c[1])
+assert bold.replace(' ','')=='Licenseandcostcontrols:', bold
+assert reg.replace(' ','').startswith('Paidthird-party'), reg
+assert any('Reviewed' in ''.join(c[0] for c in ch if c[2]==y) for y in {c[2] for c in ch})
+\""
+run --paratest "$W/label1.pdf" "$W/label2.pdf" "$W/label2.txt" 100 675 append "Tested — done."
+check "a second edit on the page: the item whole, a dash accepted" "grep -q '^lines=2 .*result=ok' '$W/label2.txt' && text '$W/label2.pdf' | grep -q 'Tested — done.'"
+
 echo "edit mode: the outlined blocks"
 run --blocks "$W/rich.pdf" "$W/blocks.txt"
 check "every paragraph of the report outlined, as a click edits it" "grep -q 'pictures=0 text=15 same=15' '$W/blocks.txt' && grep -q '^text .* same Quarterly Report' '$W/blocks.txt'"

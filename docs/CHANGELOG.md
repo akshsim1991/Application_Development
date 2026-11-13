@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.20.2 (13 November 2026)
+
+- Fixed (both apps): **a paragraph that starts with a bold label** ("License and cost controls: Paid third-party ...")
+  opened for editing in bold and, on the Mac, with the rest of its first line still drawn under the box. The line was
+  split in two when its bold start came second; now its parts join left or right. The paragraph is edited in the style
+  of most of its text, and **every word keeps its own font when it is set again**: the label stays bold, the rest
+  regular; new words take the style of the text before them. A style chosen in the style bar still applies to all.
+- Fixed: **"Paragraphs can use letters, numbers and common symbols of Western languages"** for text with a dash (—, –),
+  curly quotes, a bullet, an ellipsis, € or ™: the standard PDF fonts have them, and they are accepted now.
+- Fixed: after one edit, the other justified paragraphs of the page fell apart into pieces (a word such as "to" or
+  "a" outlined on its own) and could not be edited whole.
+
 ## 2.20.1 (13 November 2026)
 
 - Fixed: **editing text of LaTeX documents** (question papers, theses ...): a bold serif heading opened as plain

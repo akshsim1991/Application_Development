@@ -144,8 +144,20 @@ FPDF_PAGEOBJECT newText(Document& d, const char* font, double size, const std::w
     return makeText(d, font, size, text, color, alphaPercent);
 }
 
+// The characters the standard PDF fonts draw (WinAnsi): Latin-1, and the typographic ones of its 0x80-0x9F row
+// (dashes, quotes, bullet, ellipsis, euro, trade mark ...).
+static bool isWinAnsiExtra(wchar_t c) {
+    static const wchar_t extra[] = {0x20AC, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021, 0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x017D,
+                                    0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014, 0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x017E, 0x0178};
+    for (wchar_t e : extra) if (c == e) return true;
+    return false;
+}
+
 bool isLatin(const std::wstring& text) {
-    for (wchar_t c : text) if (c > 0xFF || (c < 0x20 && c != L'\t' && c != L'\r' && c != L'\n')) return false;
+    for (wchar_t c : text) {
+        if (c < 0x20 && c != L'\t' && c != L'\r' && c != L'\n') return false;
+        if (c > 0xFF && !isWinAnsiExtra(c)) return false;
+    }
     return true;
 }
 
@@ -639,6 +651,7 @@ struct Line {
     bool startsItem = false;   // the first line of a list item (a number or bullet before it, or at its start)
     bool marker = false;       // only a list number or bullet ("3.", "a)", "iv.", "•")
     unsigned rgb = 0;          // the colour of its text: a line in another colour is another paragraph
+    std::vector<int> src;      // for each character of `text`, the page object it comes from (-1: a space put between two)
 };
 
 // A list number or bullet on its own: "3.", "12)", "(a)", "b.", "iv.", "•", "–", "▪".
@@ -830,22 +843,48 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
     });
     for (size_t oi : order) {
         if (used[oi]) continue;
-        Line ln{objs[oi].l, objs[oi].b, objs[oi].r, objs[oi].t, objs[oi].size, objs[oi].text, {objs[oi].idx}, objs[oi].o};
-        ln.rgb = objs[oi].rgb;
+        // the objects of this line: on the same baseline and of the same size, joined left or right of what is already in
+        // it (a bold label before the rest of the line may come second here: its top is lower), not another column
+        const double size = objs[oi].size;
+        std::vector<size_t> members{oi};
         used[oi] = 1;
-        std::vector<size_t> same;
-        for (size_t oj : order) if (!used[oj] && std::fabs(objs[oj].b - objs[oi].b) < 0.4 * objs[oi].size && std::fabs(objs[oj].size - objs[oi].size) < 0.15 * objs[oi].size) same.push_back(oj);
-        std::sort(same.begin(), same.end(), [&](size_t a, size_t b) { return objs[a].l != objs[b].l ? objs[a].l < objs[b].l : a < b; });
-        for (size_t oj : same) {
-            const double gap = objs[oj].l - ln.r;
-            if (gap > 2.5 * objs[oi].size || gap < -0.3 * objs[oi].size) continue;   // another column or overlapping
-            ln.text += (gap > 0.15 * objs[oi].size && !ln.text.empty() && ln.text.back() != L' ' ? L" " : L"") + objs[oj].text;
-            ln.r = std::max(ln.r, objs[oj].r); ln.t = std::max(ln.t, objs[oj].t); ln.b = std::min(ln.b, objs[oj].b);
-            ln.idx.push_back(objs[oj].idx);
-            used[oj] = 1;
+        double L = objs[oi].l, R = objs[oi].r;
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (size_t oj : order) {
+                if (used[oj] || std::fabs(objs[oj].b - objs[oi].b) >= 0.4 * size || std::fabs(objs[oj].size - size) >= 0.15 * size) continue;
+                double gap = 1e18;   // to the nearest object of the line (negative: overlapping it)
+                size_t closest = members.front();
+                for (size_t m : members) {
+                    const double g = std::max(objs[oj].l - objs[m].r, objs[m].l - objs[oj].r);
+                    if (g < gap) { gap = g; closest = m; }
+                }
+                if (gap > 2.5 * size || gap < -0.3 * size) continue;   // another column, or drawn over
+                // a list number or bullet set apart from its item (wider than a word space) stays a line of its own: it
+                // marks the item (2b below) and is not part of its text
+                auto trimmed = [](std::wstring t) { while (!t.empty() && t.back() == L' ') t.pop_back(); while (!t.empty() && t.front() == L' ') t.erase(0, 1); return t; };
+                if (gap > 0.9 * size && (isListMarker(trimmed(objs[oj].text)) || isListMarker(trimmed(objs[closest].text)))) continue;
+                members.push_back(oj);
+                used[oj] = 1;
+                L = std::min(L, objs[oj].l); R = std::max(R, objs[oj].r);
+                grew = true;
+            }
         }
-        // the line's first object is the leftmost one
-        if (objs[oi].l > ln.l + 0.01) for (size_t oj = 0; oj < objs.size(); ++oj) if (objs[oj].o != objs[oi].o && std::find(ln.idx.begin(), ln.idx.end(), objs[oj].idx) != ln.idx.end() && objs[oj].l <= ln.l + 0.01) { ln.first = objs[oj].o; break; }
+        std::sort(members.begin(), members.end(), [&](size_t a, size_t b) { return objs[a].l != objs[b].l ? objs[a].l < objs[b].l : a < b; });
+        const size_t m0 = members.front();
+        Line ln{objs[m0].l, objs[m0].b, objs[m0].r, objs[m0].t, size, L"", {}, objs[m0].o};
+        ln.rgb = objs[oi].rgb;
+        for (size_t k = 0; k < members.size(); ++k) {
+            const auto& o = objs[members[k]];
+            if (k > 0) {
+                const double gap = o.l - ln.r;
+                if (gap > 0.15 * size && !ln.text.empty() && ln.text.back() != L' ' && !o.text.empty() && o.text.front() != L' ') { ln.text += L' '; ln.src.push_back(-1); }
+            }
+            ln.text += o.text;
+            ln.src.insert(ln.src.end(), o.text.size(), o.idx);
+            ln.l = std::min(ln.l, o.l); ln.r = std::max(ln.r, o.r); ln.t = std::max(ln.t, o.t); ln.b = std::min(ln.b, o.b);
+            ln.idx.push_back(o.idx);
+        }
         lines.push_back(ln);
     }
     std::sort(lines.begin(), lines.end(), [](const Line& a, const Line& b) { return a.t > b.t; });
@@ -933,19 +972,24 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     hit.lines = last - first + 1;
     double l = 1e9, r = -1e9;
     std::wstring text;
+    std::vector<int> src;   // which object each character comes from
     for (int i = first; i <= last; ++i) {
         const Line& ln = lines[i];
         for (int ix : ln.idx) hit.objects.push_back(ix);
         l = std::min(l, ln.l); r = std::max(r, ln.r);
         std::wstring t = ln.text;
-        while (!t.empty() && t.back() == L' ') t.pop_back();
+        std::vector<int> ts = ln.src;
+        ts.resize(t.size(), -1);
+        while (!t.empty() && t.back() == L' ') { t.pop_back(); ts.pop_back(); }
         if (!text.empty()) {
-            if (text.size() > 1 && text.back() == L'-' && iswalpha(text[text.size() - 2]) && !t.empty() && iswlower(t[0])) text.pop_back();   // a word broken at the line end
-            else text += L' ';
+            if (text.size() > 1 && text.back() == L'-' && iswalpha(text[text.size() - 2]) && !t.empty() && iswlower(t[0])) { text.pop_back(); src.pop_back(); }   // a word broken at the line end
+            else { text += L' '; src.push_back(-1); }
         }
         text += t;
+        src.insert(src.end(), ts.begin(), ts.end());
     }
     hit.text = text;
+    hit.charObject = src;
     hit.left = l; hit.top = lines[first].t; hit.width = r - l;
     hit.lineHeight = last > first ? (lines[first].b - lines[last].b) / (last - first) : lines[first].size * 1.2;
     // 5. exact geometry from the text matrices: the lines' starting points on their baselines, along and across the line
@@ -1020,8 +1064,16 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
             if (std::fabs(ln.l - lines[first].l) < 3.6 * size) column = std::max(column, ln.r);
         hit.wrapWidth = std::max(widest, column - hit.originX);
     }
-    // style from the first line's first object
-    styleOfObject(lines[first].first, lines[first].size, hit.style, hit.fontName);
+    // the style of most of the text (a bold label at the start of a paragraph is not the paragraph's style); each word keeps
+    // its own when the paragraph is set again (charObject)
+    FPDF_PAGEOBJECT styleObj = lines[first].first;
+    {
+        std::map<int, size_t> count;
+        for (int o : hit.charObject) if (o >= 0) ++count[o];
+        size_t best = 0;
+        for (const auto& [o, c] : count) if (c > best) { best = c; if (FPDF_PAGEOBJECT po = api.FPDFPage_GetObject(pg, o)) styleObj = po; }
+    }
+    styleOfObject(styleObj, lines[first].size, hit.style, hit.fontName);
     hit.sizeExact = lines[first].size;
     return hit;
 }
@@ -1290,21 +1342,24 @@ std::vector<std::wstring> wordsOf(const std::wstring& s) {
 
 // Words of a line grouped into runs that share a font; each run becomes one text object. `width` reaches the right edge of
 // the run's last letter; `advance` is where the next letter would start.
-struct Run { std::wstring text; const Setter* set; double width, advance; };
-std::vector<Run> runsOf(Fonts& f, const std::vector<std::wstring>& words, bool& ok) {
+struct Run { std::wstring text; const Setter* set; double width, advance; Fonts* fonts; };
+// `wf` gives each word its fonts (a paragraph whose words keep their own fonts, a bold label before regular text ...).
+std::vector<Run> runsOf(const std::vector<Fonts*>& wf, const std::vector<std::wstring>& words, bool& ok) {
     std::vector<Run> runs;
     ok = true;
-    for (const auto& w : words) {
+    for (size_t i = 0; i < words.size(); ++i) {
+        const auto& w = words[i];
+        Fonts& f = *wf[std::min(i, wf.size() - 1)];
         const Setter* s = f.forWord(w);
         if (!s) { ok = false; return {}; }
         if (!runs.empty() && runs.back().set == s) runs.back().text += L" " + w;
-        else runs.push_back({w, s, 0, 0});
+        else runs.push_back({w, s, 0, 0, &f});
     }
     for (auto& r : runs) {
         r.width = std::max(0.0, r.set->width(r.text));
         r.advance = r.width;
         if (runs.size() > 1) {   // a letter the font has, set after the run, starts at the run's advance
-            const std::wstring probe = r.set == &f.main && f.limited ? std::wstring(1, f.probe) : L"x";
+            const std::wstring probe = r.set == &r.fonts->main && r.fonts->limited ? std::wstring(1, r.fonts->probe) : L"x";
             const double a = r.set->width(r.text + probe), b = r.set->width(probe);
             if (a > 0 && b > 0 && a - b > 0) r.advance = a - b;
         }
@@ -1312,9 +1367,9 @@ std::vector<Run> runsOf(Fonts& f, const std::vector<std::wstring>& words, bool& 
     return runs;
 }
 
-double widthOfRuns(const Fonts& f, const std::vector<Run>& runs) {
+double widthOfRuns(const std::vector<Run>& runs) {
     double w = 0;
-    for (size_t i = 0; i < runs.size(); ++i) w += (i + 1 < runs.size() ? runs[i].advance : runs[i].width) + (i ? f.space : 0);
+    for (size_t i = 0; i < runs.size(); ++i) w += (i + 1 < runs.size() ? runs[i].advance : runs[i].width) + (i ? runs[i - 1].fonts->space : 0);
     return w;
 }
 } // namespace
@@ -1369,15 +1424,15 @@ double TextSetter::width(const std::wstring& line) {
     const auto words = wordsOf(line);
     if (words.empty()) return 0;
     bool fits = false;
-    const auto runs = runsOf(impl_->fonts, words, fits);
-    return fits ? widthOfRuns(impl_->fonts, runs) : -1;
+    const auto runs = runsOf({&impl_->fonts}, words, fits);
+    return fits ? widthOfRuns(runs) : -1;
 }
 
 std::vector<FPDF_PAGEOBJECT> TextSetter::make(const std::wstring& line, double x, double y) {
     std::vector<FPDF_PAGEOBJECT> out;
     const auto words = wordsOf(line);
     bool fits = false;
-    const auto runs = runsOf(impl_->fonts, words, fits);
+    const auto runs = runsOf({&impl_->fonts}, words, fits);
     if (!fits) return out;
     double at = x;
     for (size_t i = 0; i < runs.size(); ++i) {
@@ -1403,8 +1458,8 @@ double paragraphTextWidth(Document& d, const ParagraphHit& hit, const std::wstri
     Fonts f;
     if (!fontsFor(d, hit, st, f)) return 0;
     bool ok = true;
-    const auto runs = runsOf(f, wordsOf(text), ok);
-    return ok ? widthOfRuns(f, runs) : 0;
+    const auto runs = runsOf({&f}, wordsOf(text), ok);
+    return ok ? widthOfRuns(runs) : 0;
 }
 
 bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& textIn, const TextStyle& st, Align align, std::wstring* why,
@@ -1416,41 +1471,103 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     Fonts f;
     if (!fontsFor(d, hit, st, f)) return false;
     const double k = std::fabs(st.sizePt - hit.style.sizePt) < 0.05 || hit.sizeExact <= 0 ? 1.0 : st.sizePt / hit.sizeExact;
+    // Words keep the fonts they were drawn in (a bold label before regular text stays bold) while the style is the one the
+    // paragraph had; a style chosen in the style bar is for the whole paragraph. A new word takes the font of the text
+    // before it (at the start, of the text after it).
+    std::vector<std::unique_ptr<Fonts>> extra;   // the fonts of the paragraph's other objects
+    std::map<int, Fonts*> byObject;
+    std::vector<int> wordObject;                 // for each word of `text`, in order, the object whose font it takes
+    {
+        FPDF_PAGE pg0 = d.page(hit.page);
+        std::map<FPDF_FONT, int> fontsSeen;
+        for (int o : hit.objects) if (FPDF_PAGEOBJECT po = api.FPDFPage_GetObject(pg0, o)) if (api.FPDFPageObj_GetType(po) == FPDF_PAGEOBJ_TEXT) fontsSeen.emplace(api.FPDFTextObj_GetFont(po), o);
+        const bool sameStyle = st.family == hit.style.family && st.bold == hit.style.bold && st.italic == hit.style.italic &&
+                               std::fabs(st.sizePt - hit.style.sizePt) < 0.05 && st.color == hit.style.color;
+        if (sameStyle && fontsSeen.size() > 1 && hit.charObject.size() == hit.text.size()) {
+            const std::wstring& old = hit.text;
+            const size_t on = old.size(), nn = text.size();
+            size_t pre = 0, suf = 0;
+            while (pre < on && pre < nn && old[pre] == text[pre]) ++pre;
+            while (suf < on - pre && suf < nn - pre && old[on - 1 - suf] == text[nn - 1 - suf]) ++suf;
+            auto sourceOfOld = [&](size_t i, bool back) {   // the nearest character drawn by an object
+                for (long j = static_cast<long>(i); j >= 0 && j < static_cast<long>(on); j += back ? -1 : 1) if (hit.charObject[static_cast<size_t>(j)] >= 0) return hit.charObject[static_cast<size_t>(j)];
+                return -1;
+            };
+            auto sourceOfNew = [&](size_t i) {
+                if (i < pre) return sourceOfOld(i, true);
+                if (i >= nn - suf) return sourceOfOld(on - (nn - i), true);
+                int s2 = pre > 0 ? sourceOfOld(pre - 1, true) : -1;   // typed: as the text before it
+                return s2 >= 0 ? s2 : sourceOfOld(pre, false);
+            };
+            // the words in the order the layout below meets them
+            bool inWord = false;
+            for (size_t i = 0; i < nn; ++i) {
+                const wchar_t c = text[i];
+                const bool sp = c == L' ' || c == L'\n' || c == L'\r';
+                if (!sp && !inWord) wordObject.push_back(sourceOfNew(i));
+                inWord = !sp;
+            }
+            for (int& o : wordObject) {
+                if (o < 0) continue;
+                if (byObject.count(o)) continue;
+                FPDF_PAGEOBJECT po = api.FPDFPage_GetObject(pg0, o);
+                if (!po) { o = -1; continue; }
+                ParagraphHit h2 = hit;   // this object's own style, so its font is kept
+                h2.objects = {o};
+                h2.sizeExact = drawnSize(d, po);
+                styleOfObject(po, h2.sizeExact, h2.style, h2.fontName);
+                auto fx = std::make_unique<Fonts>();
+                if (fontsFor(d, h2, h2.style, *fx)) { byObject[o] = fx.get(); extra.push_back(std::move(fx)); }
+            }
+        }
+    }
+    size_t wordAt = 0;   // the next word of `text`
+    auto fontsOfWord = [&](size_t gw) -> Fonts* {
+        if (gw < wordObject.size()) { auto it = byObject.find(wordObject[gw]); if (it != byObject.end()) return it->second; }
+        return &f;
+    };
     // The change starts here: setting the text may embed a font. Anything that fails from now on puts the document back.
     d.beginChange(L"Edit a paragraph");
     f.mayLoad = true;
+    for (auto& fx : extra) fx->mayLoad = true;
     auto fail = [&](const wchar_t* reason) {
         if (why && reason) *why = reason;
         f.release();
+        for (auto& fx : extra) fx->release();
         d.rollbackChange();
         return false;
     };
     const double W = oneLine ? 1e9 : hit.wrapWidth;   // the column keeps its width when the size changes
     const double first = hit.firstIndent, rest = hit.restIndent;
     // break the text into lines that fit the width; a newline always starts a new line
-    struct Out { std::vector<Run> runs; std::vector<std::wstring> words; bool last; double indent; };
+    struct Out { std::vector<Run> runs; std::vector<std::wstring> words; std::vector<Fonts*> wf; bool last; double indent; };
     std::vector<Out> lines;
     for (const std::wstring& para : splitLines(text)) {
         const std::vector<std::wstring> words = wordsOf(para);
         std::vector<std::wstring> cur;
+        std::vector<Fonts*> curF;
         std::vector<Run> curRuns;
         auto indent = [&] { return lines.empty() || lines.back().last ? first : rest; };
         for (const auto& w : words) {
+            Fonts* wfont = fontsOfWord(wordAt++);
             std::vector<std::wstring> cand = cur;
+            std::vector<Fonts*> candF = curF;
             cand.push_back(w);
+            candF.push_back(wfont);
             bool ok = true;
-            std::vector<Run> runs = runsOf(f, cand, ok);
+            std::vector<Run> runs = runsOf(candF, cand, ok);
             if (!ok) return fail(L"Paragraphs can use letters, numbers and common symbols of Western languages. Please remove other characters.");
-            if (cur.empty() || widthOfRuns(f, runs) <= W - indent() + 0.25) { cur = std::move(cand); curRuns = std::move(runs); }
+            if (cur.empty() || widthOfRuns(runs) <= W - indent() + 0.25) { cur = std::move(cand); curF = std::move(candF); curRuns = std::move(runs); }
             else {
                 const double ind = indent();
-                lines.push_back({curRuns, cur, false, ind});
+                lines.push_back({curRuns, cur, curF, false, ind});
                 cur = {w};
-                curRuns = runsOf(f, cur, ok);
+                curF = {wfont};
+                curRuns = runsOf(curF, cur, ok);
             }
         }
         const double ind = indent();
-        lines.push_back({curRuns, cur, true, ind});
+        lines.push_back({curRuns, cur, curF, true, ind});
     }
     const double step = hit.lineStep * k;
     const Setter& m = f.main;
@@ -1551,11 +1668,13 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             bool ok = true;
             std::vector<Run> ws;
             std::vector<double> adv;
-            for (const auto& w : ln.words) {
-                auto r = runsOf(f, {w}, ok);
+            for (size_t wi = 0; wi < ln.words.size(); ++wi) {
+                const auto& w = ln.words[wi];
+                auto r = runsOf({ln.wf[std::min(wi, ln.wf.size() - 1)]}, {w}, ok);
                 if (!ok || r.empty()) continue;
                 const Setter& s = *r[0].set;
-                const std::wstring probe = &s == &f.main && f.limited ? std::wstring(1, f.probe) : L"x";
+                const Fonts& rf = *r[0].fonts;
+                const std::wstring probe = &s == &rf.main && rf.limited ? std::wstring(1, rf.probe) : L"x";
                 const double a = s.width(w + probe), b = s.width(probe);
                 ws.push_back(r[0]);
                 adv.push_back(a > 0 && b > 0 && a > b ? a - b : r[0].width);
@@ -1568,10 +1687,10 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             continue;
         }
         double along = ln.indent;
-        const double lw = widthOfRuns(f, ln.runs);
+        const double lw = widthOfRuns(ln.runs);
         if (align == Align::Right) along += room - lw;
         else if (align == Align::Centre) along += (room - lw) / 2;
-        for (const auto& r : ln.runs) { put(*r.set, r.text, along, static_cast<int>(row)); along += r.advance + f.space; }
+        for (const auto& r : ln.runs) { put(*r.set, r.text, along, static_cast<int>(row)); along += r.advance + r.fonts->space; }
     }
     if (!any && !text.empty()) return fail(nullptr);   // nothing could be placed: put the old lines back
     contentgen::generate(d.handle(), pg);

@@ -1224,3 +1224,5 @@ application.
   finding, fonts, repair and sanitize: errors, no crash or hang.
 - **Long use:** a 1000-page PDF opened, paged through and closed six times in one window: memory 67 MB after each cycle,
   no growth.
+
+- **Published:** 2.20.3 on 13 November (Windows installer and Mac disk image; both downloads checked against latest.json: size and SHA-256).

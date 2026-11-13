@@ -479,6 +479,22 @@ check "a LaTeX bold heading is a bold serif" "grep -q 'style family=1 bold=1 ita
 run --paratest "$W/tex.pdf" "$W/tex_b.pdf" "$W/tex2.txt" 120 703 same
 check "its body text a regular serif"      "grep -q 'style family=1 bold=0 italic=0' '$W/tex2.txt'"
 check "a heading grows along its line, not onto a second" "python3 '$root/tests/engine/sameline.py' '$W/tex_e.pdf' Module Revised"
+if ! python3 "$root/tests/engine/sameline.py" "$W/tex_e.pdf" Module Revised >/dev/null 2>&1; then   # what the Mac made of it
+  echo "  -- the edit's report:"; sed 's/^/     /' "$W/tex.txt"
+  python3 -c "
+import pikepdf,sys
+p=pikepdf.open('$W/tex_e.pdf'); pg=p.pages[0]
+print('     fonts:', {str(k): str(v.get('/BaseFont')) for k,v in pg.Resources.Font.items()})
+print('     content:', pg.Contents.read_bytes()[:1500] if not isinstance(pg.obj.Contents, pikepdf.Array) else b''.join(c.read_bytes() for c in pg.obj.Contents)[:1500])
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LTChar
+def walk(o):
+    if isinstance(o, LTChar): print('     char %r %s at %.1f,%.1f' % (o.get_text(), o.fontname, o.x0, o.y0))
+    elif hasattr(o,'__iter__'):
+        for x in o: walk(x)
+for page in extract_pages('$W/tex_e.pdf'): walk(page)
+" 2>&1 | head -80
+fi
 fi
 
 echo "edit mode: the outlined blocks"

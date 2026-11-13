@@ -14,7 +14,52 @@ struct Dlg {
     std::function<void(int id, int code)> onCommand;
     std::map<int, std::vector<std::wstring>> choices;   // selector buttons: id -> items
     std::map<int, int> chosen;
+    std::map<int, int> keys;                            // shortcut pickers: control id -> packed shortcut (0 = none)
 };
+
+static HWND g_capture = nullptr;                        // the shortcut picker that is waiting for keys
+static HWND g_hkNote = nullptr;                         // line under the pickers that explains what happened
+
+static void EndCapture(Dlg* d) {
+    if (!g_capture) return;
+    HWND h = g_capture;
+    g_capture = nullptr;
+    int id = GetDlgCtrlID(h);
+    SetWindowTextW(h, core::HotkeyName(d->keys[id]).c_str());
+    InvalidateRect(h, nullptr, TRUE);
+    if (g_hkNote) SetWindowTextW(g_hkNote, L"");
+}
+
+static LRESULT CALLBACK KeyCapProc(HWND h, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR ref) {
+    Dlg* d = (Dlg*)ref;
+    if (g_capture == h) {
+        switch (m) {
+        case WM_GETDLGCODE: return DLGC_WANTALLKEYS | DLGC_WANTCHARS;
+        case WM_CHAR: case WM_SYSCHAR: case WM_DEADCHAR: case WM_KEYUP: case WM_SYSKEYUP: return 0;
+        case WM_KILLFOCUS: EndCapture(d); break;
+        case WM_KEYDOWN: case WM_SYSKEYDOWN: {
+            int vk = (int)w, id = GetDlgCtrlID(h);
+            if (core::IsModifierVk(vk)) return 0;                      // still holding the modifiers: wait for the key
+            if (vk == VK_ESCAPE) { EndCapture(d); return 0; }
+            if (vk == VK_BACK || vk == VK_DELETE) { d->keys[id] = 0; EndCapture(d); return 0; }
+            int mods = 0;
+            if (GetKeyState(VK_CONTROL) < 0) mods |= core::HKM_CTRL;
+            if (GetKeyState(VK_MENU) < 0) mods |= core::HKM_ALT;
+            if (GetKeyState(VK_SHIFT) < 0) mods |= core::HKM_SHIFT;
+            if (GetKeyState(VK_LWIN) < 0 || GetKeyState(VK_RWIN) < 0) mods |= core::HKM_WIN;
+            int packed = core::HotkeyPack(mods, vk);
+            std::wstring why;
+            if (!core::HotkeyAllowed(packed, &why)) { if (g_hkNote) SetWindowTextW(g_hkNote, (core::HotkeyName(packed) + L": " + T(why.c_str())).c_str()); return 0; }
+            for (auto& kv : d->keys)
+                if (kv.first != id && kv.second == packed) { if (g_hkNote) SetWindowTextW(g_hkNote, (core::HotkeyName(packed) + L": " + T(L"already used by another action here.")).c_str()); return 0; }
+            d->keys[id] = packed;
+            EndCapture(d);
+            return 0;
+        }
+        }
+    }
+    return DefSubclassProc(h, m, w, l);
+}
 
 static const wchar_t* DLG_CLASS = L"CmDialog";
 
@@ -85,6 +130,13 @@ static LRESULT CALLBACK DlgProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (GetPropW(c, L"cb")) {
                 if (GetPropW(c, L"on")) RemovePropW(c, L"on"); else SetPropW(c, L"on", (HANDLE)1);
                 InvalidateRect(c, nullptr, TRUE);
+            } else if (GetPropW(c, L"hk")) {
+                g_capture = c;
+                SetWindowTextW(c, T(L"Press the keys\u2026"));
+                InvalidateRect(c, nullptr, TRUE);
+                SetFocus(c);
+                if (g_hkNote) SetWindowTextW(g_hkNote, T(L"Press the shortcut you want. Backspace clears it, Esc cancels."));
+                return 0;
             } else if (d->choices.count(id)) {
                 HMENU pm = CreatePopupMenu();
                 auto& items = d->choices[id];
@@ -154,8 +206,8 @@ static void RunModal(Dlg& d, HWND parent, HWND firstFocus = nullptr) {
     if (firstFocus) SetFocus(firstFocus);
     MSG msg;
     while (!d.done && GetMessageW(&msg, nullptr, 0, 0) > 0) {
-        if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && GetAncestor(msg.hwnd, GA_ROOT) == d.h) { d.done = true; d.result = 0; break; }
-        if (msg.message == WM_KEYDOWN && msg.wParam == VK_TAB && GetAncestor(msg.hwnd, GA_ROOT) == d.h) {
+        if (!g_capture && msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && GetAncestor(msg.hwnd, GA_ROOT) == d.h) { d.done = true; d.result = 0; break; }
+        if (!g_capture && msg.message == WM_KEYDOWN && msg.wParam == VK_TAB && GetAncestor(msg.hwnd, GA_ROOT) == d.h) {
             // simple tab navigation
             HWND next = GetNextDlgTabItem(d.h, GetFocus(), GetKeyState(VK_SHIFT) < 0);
             if (next) SetFocus(next);
@@ -183,6 +235,14 @@ static HWND MakeSel(Dlg& d, HWND p, int id, int x, int y, int w, const std::vect
     HWND c = Make(p, L"BUTTON", (items[cur] + L"  ▾").c_str(), BS_OWNERDRAW | WS_TABSTOP, x, y, w, S(28), id);
     d.choices[id] = items;
     d.chosen[id] = cur;
+    return c;
+}
+
+static HWND MakeKeyPick(Dlg& d, HWND p, int id, int x, int y, int w, int packed) {
+    HWND c = Make(p, L"BUTTON", core::HotkeyName(packed).c_str(), BS_OWNERDRAW | WS_TABSTOP, x, y, w, S(28), id);
+    SetPropW(c, L"hk", (HANDLE)1);
+    d.keys[id] = packed;
+    SetWindowSubclass(c, KeyCapProc, 1, (DWORD_PTR)&d);
     return c;
 }
 
@@ -398,6 +458,11 @@ void ShowSettingsDialog(HWND parent) {
     HWND eEntry = numEdit(1, g_set.maxEntryMB, X + 285, y, 70);
     oneLine(1, T(L"MB  (0: no limit)"), y, 0);
     SetWindowPos(pages[1].back(), nullptr, S(X + 365), S(y + 4), S(CW - 365), S(20), SWP_NOZORDER);
+    y += 40;
+    oneLine(1, T(L"Stop recording when less than"), y, 280);
+    HWND eFree = numEdit(1, g_set.minFreeMB, X + 285, y, 70);
+    oneLine(1, T(L"MB free on the disk  (0: off)"), y, 0);
+    SetWindowPos(pages[1].back(), nullptr, S(X + 365), S(y + 4), S(CW - 365), S(20), SWP_NOZORDER);
     y += 46;
     label(1, T(L"Pinned items and snippets are always kept. Deleted items stay in Recently deleted for 7 days."), y);
     y += 44;
@@ -431,18 +496,23 @@ void ShowSettingsDialog(HWND parent) {
 
     // ---- page 3: Shortcuts
     y = 20;
-    oneLine(3, T(L"Open the history with:"), y, 250);
-    std::vector<std::wstring> hk = {L"Ctrl+Shift+V", L"Ctrl+Alt+V", L"Win+Shift+V", T(L"None")};
-    HWND selHK = add(3, MakeSel(d, d.h, 602, S(X) + S(260), S(y), S(190), hk, g_set.hotkey));
+    label(3, T(L"Click a box, then press the keys you want. Backspace removes the shortcut."), y);
+    y += 30;
+    oneLine(3, T(L"Open the history:"), y, 250);
+    add(3, MakeKeyPick(d, d.h, 602, S(X) + S(260), S(y), S(190), g_set.keyOpen));
     y += 44;
     oneLine(3, T(L"Paste the newest item as plain text:"), y, 250);
-    std::vector<std::wstring> hk2 = {L"Ctrl+Alt+P", L"Ctrl+Alt+Shift+V", L"Win+Alt+V", T(L"None")};
-    HWND selHK2 = add(3, MakeSel(d, d.h, 603, S(X) + S(260), S(y), S(190), hk2, g_set.hotkeyPlain));
+    add(3, MakeKeyPick(d, d.h, 603, S(X) + S(260), S(y), S(190), g_set.keyPlain));
     y += 44;
+    oneLine(3, T(L"Paste the next item of the paste queue:"), y, 250);
+    add(3, MakeKeyPick(d, d.h, 608, S(X) + S(260), S(y), S(190), g_set.keyQueue));
+    y += 38;
+    g_hkNote = add(3, Make(d.h, L"STATIC", L"", 0, S(X), S(y), S(CW), S(36)));
+    y += 40;
     HWND cQuick = chk(3, T(L"Ctrl+Alt+1 to Ctrl+Alt+9 paste the 1st to 9th newest item from any program"), g_set.quickNumbers);
     y += 10;
     label(3, T(L"In the window: Enter pastes, Shift+Enter pastes as plain text, Ctrl+1 to Ctrl+9 pastes the Nth item, Ctrl+C copies, Ctrl+P pins, Ctrl+E edits, Ctrl+N makes a snippet, Ctrl+Z undoes a delete, Ctrl+F searches, Del deletes, Esc hides."), y);
-    SetWindowPos(pages[3].back(), nullptr, S(X), S(y), S(CW), S(90), SWP_NOZORDER);
+    SetWindowPos(pages[3].back(), nullptr, S(X), S(y), S(CW), S(110), SWP_NOZORDER);
 
     // ---- page 4: Appearance
     y = 20;
@@ -528,8 +598,9 @@ void ShowSettingsDialog(HWND parent) {
             n.sensitive = d.chosen[601];
             n.expireSeconds = std::clamp(num(eExp), 5, 86400);
             n.ignoreList = TextAt(eIgnore);
-            n.hotkey = d.chosen[602];
-            n.hotkeyPlain = d.chosen[603];
+            n.keyOpen = d.keys[602];
+            n.keyPlain = d.keys[603];
+            n.keyQueue = d.keys[608];
             n.quickNumbers = GetCheck(cQuick);
             n.theme = d.chosen[604];
             n.compact = GetCheck(cCompact);
@@ -538,6 +609,7 @@ void ShowSettingsDialog(HWND parent) {
             n.fontSize = d.chosen[606];
             n.previewLen = d.chosen[607];
             n.maxEntryMB = std::min(num(eEntry), 100000);
+            n.minFreeMB = std::min(num(eFree), 1000000);
             n.maskPreviews = GetCheck(cMask);
             n.logging = GetCheck(cLog);
             n.pipelines = TextAt(ePipes);
@@ -561,7 +633,7 @@ void ShowSettingsDialog(HWND parent) {
             d.done = true;
         }
     };
-    (void)selLang; (void)selSens; (void)selHK; (void)selHK2; (void)selTheme; (void)selAcc; (void)selFont; (void)selPrev;
+    (void)selLang; (void)selSens; (void)selTheme; (void)selAcc; (void)selFont; (void)selPrev;
     RunModal(d, parent);
     if (d.result == 1) SettingsChanged();
 }
@@ -669,10 +741,10 @@ void ShowClipboardFormats(HWND parent) {
 
 void ShowShortcuts(HWND parent) {
     std::wstring t = std::wstring(T(L"From any program")) + L"\r\n"
-        L"  Ctrl+Shift+V            " + T(L"open or hide the history (can be changed)") + L"\r\n"
-        L"  Ctrl+Alt+P              " + T(L"paste the newest item as plain text") + L"\r\n"
+        L"  " + core::HotkeyName(g_set.keyOpen) + L"\t" + T(L"open or hide the history") + L"\r\n"
+        L"  " + core::HotkeyName(g_set.keyPlain) + L"\t" + T(L"paste the newest item as plain text") + L"\r\n"
         L"  Ctrl+Alt+1 \u2026 9        " + T(L"paste the 1st \u2026 9th newest item") + L"\r\n"
-        L"  Ctrl+Alt+N              " + T(L"paste the next item of the paste queue") + L"\r\n\r\n" +
+        L"  " + core::HotkeyName(g_set.keyQueue) + L"\t" + T(L"paste the next item of the paste queue") + L"\r\n\r\n" +
         T(L"In the window") + L"\r\n"
         L"  \u2191 \u2193 PgUp PgDn        " + T(L"move through the history") + L"\r\n"
         L"  Enter                   " + T(L"paste (or copy, see Settings)") + L"\r\n"

@@ -1,5 +1,5 @@
 ; Feather Clipboard Manager - installer (NSIS). Per-user: no administrator permission is needed.
-; Build:  makensis -DVERSION=2.1.1 -DEXE=build\FeatherClipboardManager.exe -DOUT=releases\FeatherClipboardManager-Setup-2.1.1.exe installer\FeatherClipboardManager.nsi
+; Build:  makensis -DVERSION=2.2.0 -DEXE=build\FeatherClipboardManager.exe -DOUT=releases\FeatherClipboardManager-Setup-2.2.0.exe installer\FeatherClipboardManager.nsi
 ; Silent (used by the in-app updater):  Setup.exe /S /relaunch /waitfor=<process id>
 Unicode true
 !include "MUI2.nsh"
@@ -8,7 +8,7 @@ Unicode true
 !include "nsDialogs.nsh"
 
 !ifndef VERSION
-  !define VERSION "2.1.1"
+  !define VERSION "2.2.0"
 !endif
 !ifndef EXE
   !define EXE "..\build\FeatherClipboardManager.exe"

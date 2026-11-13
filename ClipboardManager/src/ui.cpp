@@ -31,7 +31,7 @@ enum {
     IDM_FGROUP_BASE = 1500,
     IDM_RECENT_BASE = 1600,
     IDM_PIPE_BASE = 1700,
-    IDM_FINDREPL = 1750, IDM_TEMPLATE, IDM_QUEUE_ADD, IDM_QUEUE_CLEAR, IDM_DIFF, IDM_UNICODE, IDM_TABLE, IDM_FORMATS, IDM_SHORTCUTS, IDM_TOPMOST, IDM_INTEGRITY, IDM_LOG, IDM_FAV,
+    IDM_FINDREPL = 1750, IDM_TEMPLATE, IDM_QUEUE_ADD, IDM_QUEUE_CLEAR, IDM_DIFF, IDM_UNICODE, IDM_TABLE, IDM_FORMATS, IDM_SHORTCUTS, IDM_TOPMOST, IDM_INTEGRITY, IDM_LOG, IDM_FAV, IDM_CLEARALL,
 };
 enum Filter { FL_ALL = 0, FL_TEXT, FL_PICS, FL_FILES, FL_PINNED, FL_TODAY, FL_SNIPPETS, FL_TRASH, FL_LINKS, FL_EMAILS, FL_PHONES, FL_COLOURS, FL_PATHS, FL_JSON, FL_GROUP, FL_COUNT };
 enum { TM_CAPTURE = 1, TM_PASTE, TM_CLEAN, TM_SEARCH, TM_STATUS, TM_HOTKEYS, TM_UPDATE };
@@ -54,6 +54,7 @@ static uint64_t g_prevBmpId;
 static bool g_actualSize;
 static std::vector<std::wstring> g_menuGroups;
 static std::vector<uint64_t> g_recentIds;
+static std::vector<std::wstring> g_hlNeedles;               // words of the current search, highlighted in the list
 static std::vector<uint64_t> g_queue;                       // paste queue, oldest first
 static std::function<std::wstring(const std::wstring&)> g_customXf;   // used by paste mode 5 (find/replace, pipelines, templates)
 static HBRUSH brBg, brPanel, brEdit;
@@ -320,6 +321,8 @@ static void Rebuild(bool keepSelection) {
     if (keepSelection) for (auto id : SelectedIds()) sel.insert(id);
     int focusTop = ListView_GetTopIndex(hList);
     core::Query q = core::ParseQuery(core::Trim(curQuery), (long long)time(nullptr), (long long)StartOfToday());
+    g_hlNeedles = q.words;
+    g_hlNeedles.insert(g_hlNeedles.end(), q.phrases.begin(), q.phrases.end());
     view.clear();
     for (size_t i = g_store.items.size(); i-- > 0;) {
         const Item& it = g_store.items[i];
@@ -862,6 +865,19 @@ static void OnCapture() {
     bool flagged = false;
     if (!ClipCapture(g_main, c, g_set.recordImages, g_set.recordFiles, g_set.recordRich, flagged)) { LogEvent(L"The clipboard was busy; one copy was skipped."); return; }
     if (flagged || c.kind < 0) return;
+    {   // low disk space: stop recording before the disk is full (the limit is in Settings; 0 = off)
+        uint64_t need = 0;
+        if (c.kind == K_TEXT) need = c.text.size() * 2 + c.html.size() + c.rtf.size();
+        else if (c.kind == K_PICTURE) need = FileSizeW(c.tmpPng);
+        uint64_t freeB = FreeDiskBytes(g_store.dir);
+        if (g_set.minFreeMB > 0 && freeB != ~0ULL && freeB < (uint64_t)g_set.minFreeMB * 1048576ULL + need * 2) {
+            if (c.kind == K_PICTURE) DeleteFileW(c.tmpPng.c_str());
+            SetStatus(std::wstring(T(L"Not recorded: the disk is almost full")) + L" (" + FormatBytes(freeB) + L" " + T(L"free") + L"). " + T(L"Free some space, or change the limit in Settings > What to keep."), 9000);
+            static DWORD lastLog = 0;
+            if (GetTickCount() - lastLog > 600000 || !lastLog) { lastLog = GetTickCount(); LogEvent(L"Recording stopped: less than the free-space limit is left on the disk (" + FormatBytes(freeB) + L" free)."); Balloon(APP_NAME, T(L"The disk is almost full, so copies are not being recorded.")); }
+            return;
+        }
+    }
     if (g_set.maxEntryMB > 0) {
         uint64_t limit = (uint64_t)g_set.maxEntryMB * 1048576ULL, size = 0;
         if (c.kind == K_TEXT) size = c.text.size() * 2 + c.html.size() + c.rtf.size();
@@ -919,17 +935,14 @@ static bool RegHK(int id, UINT mods, UINT vk, const wchar_t* name) {
 static void RegisterHotkeys() {
     for (int i = 0; i < 20; i++) UnregisterHotKey(g_main, i);
     g_startupHotkeyProblem.clear();
-    switch (g_set.hotkey) {
-    case 0: RegHK(HK_OPEN, MOD_CONTROL | MOD_SHIFT, 'V', L"Ctrl+Shift+V"); break;
-    case 1: RegHK(HK_OPEN, MOD_CONTROL | MOD_ALT, 'V', L"Ctrl+Alt+V"); break;
-    case 2: RegHK(HK_OPEN, MOD_WIN | MOD_SHIFT, 'V', L"Win+Shift+V"); break;
-    }
-    switch (g_set.hotkeyPlain) {
-    case 0: RegHK(HK_PLAIN, MOD_CONTROL | MOD_ALT, 'P', L"Ctrl+Alt+P"); break;
-    case 1: RegHK(HK_PLAIN, MOD_CONTROL | MOD_ALT | MOD_SHIFT, 'V', L"Ctrl+Alt+Shift+V"); break;
-    case 2: RegHK(HK_PLAIN, MOD_WIN | MOD_ALT, 'V', L"Win+Alt+V"); break;
-    }
-    RegHK(HK_QUEUE, MOD_CONTROL | MOD_ALT, 'N', L"Ctrl+Alt+N");
+    auto reg = [&](int id, int packed) {
+        if (!packed) return;
+        std::wstring name = core::HotkeyName(packed);
+        RegHK(id, (UINT)core::HotkeyMods(packed), (UINT)core::HotkeyVk(packed), name.c_str());
+    };
+    reg(HK_OPEN, g_set.keyOpen);
+    reg(HK_PLAIN, g_set.keyPlain);
+    reg(HK_QUEUE, g_set.keyQueue);
     if (g_set.quickNumbers)
         for (int n = 1; n <= 9; n++) RegHK(HK_QUICK + n - 1, MOD_CONTROL | MOD_ALT, '0' + n, (L"Ctrl+Alt+" + std::to_wstring(n)).c_str());
 }
@@ -944,6 +957,8 @@ void SettingsChanged() {
     ApplyTheme();
     SetWindowPos(g_main, g_set.alwaysOnTop ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
     RegisterHotkeys();
+    if (!g_startupHotkeyProblem.empty() && g_main && IsWindowVisible(g_main))
+        MsgInfo(g_main, g_startupHotkeyProblem + L"\n" + T(L"Choose another shortcut in Settings."), MB_ICONWARNING);
     SendMessageW(hSearch, EM_SETCUEBANNER, TRUE, (LPARAM)T(L"Search everything you copied  (Ctrl+F)"));
     const wchar_t* tips[6] = {T(L"Paste into the program you were using (Enter)"), T(L"Put it on the clipboard (Ctrl+C)"),
                               T(L"Pinned items stay at hand and are never deleted automatically (Ctrl+P)"), T(L"Delete the selected items (Del); Ctrl+Z brings them back"),
@@ -1176,6 +1191,7 @@ static HMENU BuildMoreMenu() {
     AppendMenuW(m, MF_STRING, IDM_UNDO, (std::wstring(T(L"&Undo delete")) + L"\tCtrl+Z").c_str());
     AppendMenuW(m, MF_STRING, IDM_DELALL, T(L"&Delete all unpinned items"));
     AppendMenuW(m, MF_STRING, IDM_EMPTY_TRASH, T(L"Empty &recently deleted"));
+    AppendMenuW(m, MF_STRING, IDM_CLEARALL, T(L"Delete &everything\u2026"));
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING | (g_set.alwaysOnTop ? MF_CHECKED : 0), IDM_TOPMOST, T(L"Keep on &top"));
     AppendMenuW(m, MF_STRING, IDM_QUEUE_CLEAR, T(L"Clear the paste &queue"));
@@ -1468,6 +1484,22 @@ static void DoCommand(int id) {
         }
         break;
     }
+    case IDM_CLEARALL: {
+        int total = (int)g_store.items.size(), pinned = 0, snips = 0;
+        for (auto& it : g_store.items) { if (it.pinned) pinned++; if (it.kind == K_SNIPPET) snips++; }
+        if (!total) { MsgInfo(g_main, T(L"There is nothing to delete.")); break; }
+        std::wstring q = std::wstring(T(L"Delete EVERYTHING?")) + L"\n\n" + std::to_wstring(total) + L" " + T(L"items will be deleted for good,") + L" " + T(L"including") + L" " + std::to_wstring(pinned) + L" " + T(L"pinned items and") + L" " + std::to_wstring(snips) + L" " + T(L"snippets, with their files and the text read from pictures.") + L"\n\n" +
+                         T(L"This can not be undone and nothing goes to Recently deleted. Files you copied (the originals) are not touched.") + L"\n\n" +
+                         T(L"Note: deleting is not secure erasure. Other programs, Windows' own clipboard history, backups you made and an SSD may still hold copies.");
+        if (MessageBoxW(g_main, q.c_str(), APP_NAME, MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES) break;
+        g_store.ClearAll();
+        g_queue.clear();
+        g_lastDeleted.clear();
+        Rebuild(false);
+        SetStatus(T(L"Everything was deleted."), 5000);
+        LogEvent(L"All history was deleted by the user (" + std::to_wstring(total) + L" items).");
+        break;
+    }
     case IDM_UNDO: UndoDelete(); break;
     case IDM_SETTINGS: ShowSettingsDialog(g_main); break;
     case IDM_ABOUT: ShowAbout(g_main); break;
@@ -1594,6 +1626,118 @@ static bool HandleKey(MSG* msg) {
     }
     if (inSearch && k == VK_DELETE) return false;
     return false;
+}
+
+// ---------------------------------------------------------------- list rows, with the search words highlighted
+// While searching, long texts show the part around the first match (with "..." before it), so the match can be seen.
+static std::wstring SearchExcerpt(const Item& it) {
+    if (g_hlNeedles.empty() || it.kind != K_TEXT || it.head.empty()) return L"";
+    std::wstring low = core::Lower(it.head);
+    size_t best = std::wstring::npos;
+    for (auto& nd : g_hlNeedles) {
+        if (nd.empty()) continue;
+        size_t p = low.find(nd);
+        if (p != std::wstring::npos && (best == std::wstring::npos || p < best)) best = p;
+    }
+    if (best == std::wstring::npos || best < 20) return L"";            // already at the start: the normal line shows it
+    size_t from = best - 10;
+    return L"\u2026" + it.head.substr(from, 220);
+}
+
+static std::wstring CellText(const Item& it, int sub) {
+    if (sub == 0) return KindLabel(it);
+    if (sub == 1) {
+        std::wstring ex = SearchExcerpt(it);
+        return (it.pinned && it.kind != K_SNIPPET ? L"\u25CF " : L"") + (ex.empty() ? ItemTitle(it) : ex);
+    }
+    return FormatTime((time_t)it.created);
+}
+
+static void FillCell(HDC dc, const RECT& r, COLORREF c) {
+    HBRUSH b = CreateSolidBrush(c);
+    FillRect(dc, &r, b);
+    DeleteObject(b);
+}
+
+// draws text in a cell, cut with an ellipsis, with every needle found in it on a highlight background
+static void DrawCellText(HDC dc, std::wstring text, RECT rc, COLORREF fg, bool selected, bool right, bool highlight) {
+    int avail = rc.right - rc.left;
+    if (avail < 4 || text.empty()) return;
+    SIZE sz;
+    GetTextExtentPoint32W(dc, text.c_str(), (int)text.size(), &sz);
+    std::vector<char> mark(text.size(), 0);
+    if (highlight) {
+        std::wstring low = core::Lower(text);
+        for (auto& nd : g_hlNeedles) {
+            if (nd.empty()) continue;
+            for (size_t p = low.find(nd); p != std::wstring::npos; p = low.find(nd, p + nd.size()))
+                for (size_t k = p; k < p + nd.size() && k < mark.size(); k++) mark[k] = 1;
+        }
+    }
+    if (sz.cx > avail) {                                   // too long: keep what fits, then an ellipsis
+        SIZE el;
+        GetTextExtentPoint32W(dc, L"\u2026", 1, &el);
+        int fit = 0;
+        GetTextExtentExPointW(dc, text.c_str(), (int)text.size(), std::max<int>(0, avail - (int)el.cx), &fit, nullptr, &sz);
+        text = text.substr(0, (size_t)fit) + L"\u2026";
+        mark.resize(text.size(), 0);
+        GetTextExtentPoint32W(dc, text.c_str(), (int)text.size(), &sz);
+    }
+    int x = right ? rc.right - sz.cx : rc.left;
+    COLORREF hiBg = g_th.dark ? RGB(122, 98, 0) : RGB(255, 224, 96), hiFg = g_th.dark ? RGB(255, 255, 255) : RGB(0, 0, 0);
+    int top = rc.top + (rc.bottom - rc.top - sz.cy) / 2;
+    size_t i = 0;
+    while (i < text.size()) {
+        size_t j = i;
+        while (j < text.size() && mark[j] == mark[i]) j++;
+        SIZE seg;
+        GetTextExtentPoint32W(dc, text.c_str() + i, (int)(j - i), &seg);
+        if (mark[i]) {
+            RECT hr = {x, top, x + seg.cx, top + sz.cy};
+            FillCell(dc, hr, hiBg);
+            SetTextColor(dc, hiFg);
+        } else SetTextColor(dc, fg);
+        TextOutW(dc, x, top, text.c_str() + i, (int)(j - i));
+        x += seg.cx;
+        i = j;
+    }
+    (void)selected;
+}
+
+static LRESULT DrawListItem(NMLVCUSTOMDRAW* cd) {
+    switch (cd->nmcd.dwDrawStage) {
+    case CDDS_PREPAINT: return CDRF_NOTIFYITEMDRAW;
+    case CDDS_ITEMPREPAINT: return CDRF_NOTIFYSUBITEMDRAW;
+    case CDDS_ITEMPREPAINT | CDDS_SUBITEM: {
+        int idx = (int)cd->nmcd.dwItemSpec, sub = cd->iSubItem;
+        if (idx < 0 || idx >= (int)view.size()) return CDRF_DODEFAULT;
+        RECT row;
+        ListView_GetItemRect(hList, idx, &row, LVIR_BOUNDS);
+        int x = row.left;
+        for (int c = 0; c < sub; c++) x += ListView_GetColumnWidth(hList, c);
+        RECT cell = {x, row.top, x + ListView_GetColumnWidth(hList, sub), row.bottom};
+        if (sub == 2) cell.right = std::max(cell.right, row.right);
+        HDC dc = cd->nmcd.hdc;
+        bool sel = (ListView_GetItemState(hList, idx, LVIS_SELECTED) & LVIS_SELECTED) != 0;
+        FillCell(dc, cell, sel ? g_th.sel : g_th.panel);
+        const Item& it = g_store.items[view[idx]];
+        SetBkMode(dc, TRANSPARENT);
+        HGDIOBJ oldFont = SelectObject(dc, g_font);
+        RECT tr = cell;
+        tr.left += S(8);
+        tr.right -= S(8);
+        COLORREF fg = sel ? g_th.selText : (sub == 1 ? g_th.text : g_th.sub);
+        DrawCellText(dc, CellText(it, sub), tr, fg, sel, sub == 2, sub == 1 && !g_hlNeedles.empty());
+        SelectObject(dc, oldFont);
+        if (sub == 2 && (ListView_GetItemState(hList, idx, LVIS_FOCUSED) & LVIS_FOCUSED) && GetFocus() == hList) {
+            RECT fr = row;
+            fr.right = cell.right;
+            DrawFocusRect(dc, &fr);
+        }
+        return CDRF_SKIPDEFAULT;
+    }
+    }
+    return CDRF_DODEFAULT;
 }
 
 // ---------------------------------------------------------------- window procedure
@@ -1808,6 +1952,7 @@ static LRESULT CALLBACK MainProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 if (nl->uChanged & LVIF_STATE) { UpdatePreview(); UpdateStatus(); }
                 return 0;
             }
+            case NM_CUSTOMDRAW: return DrawListItem((NMLVCUSTOMDRAW*)l);
             case NM_DBLCLK: DoCommand(IDM_PASTE); return 0;
             case NM_RCLICK: {
                 POINT p;
@@ -1985,6 +2130,8 @@ int RunApp(HINSTANCE inst, const std::wstring& cmdline) {
             SetAutostart(true);
     }
 
+    size_t qp = cmdline.find(L"--query ");                              // for screenshots and checks: start with this search
+    if (qp != std::wstring::npos) { std::wstring qv = core::Trim(cmdline.substr(qp + 8)); SetWindowTextW(hSearch, qv.c_str()); curQuery = qv; Rebuild(false); }
     size_t os = cmdline.find(L"--open-settings");
     if (os != std::wstring::npos) {                                      // for screenshots and checks: --open-settings=N opens page N
         extern int g_settingsPage;

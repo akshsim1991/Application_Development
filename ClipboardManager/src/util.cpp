@@ -234,7 +234,12 @@ void Settings::Load() {
     int v;
     auto I = [&](const wchar_t* n, int& d) { if (GetIntReg(n, v)) d = v; };
     auto B = [&](const wchar_t* n, bool& d) { if (GetIntReg(n, v)) d = v != 0; };
-    I(L"Theme", theme); I(L"Hotkey", hotkey); I(L"HotkeyPlain", hotkeyPlain);
+    I(L"Theme", theme); I(L"MinFreeMB", minFreeMB);
+    if (GetIntReg(L"KeyOpen", v)) keyOpen = v;                       // earlier versions stored a choice number instead of the keys
+    else if (GetIntReg(L"Hotkey", v)) { static const int old[] = {core::HotkeyPack(core::HKM_CTRL | core::HKM_SHIFT, 'V'), core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT, 'V'), core::HotkeyPack(core::HKM_WIN | core::HKM_SHIFT, 'V'), 0}; keyOpen = old[std::clamp(v, 0, 3)]; }
+    if (GetIntReg(L"KeyPlain", v)) keyPlain = v;
+    else if (GetIntReg(L"HotkeyPlain", v)) { static const int old2[] = {core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT, 'P'), core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT | core::HKM_SHIFT, 'V'), core::HotkeyPack(core::HKM_WIN | core::HKM_ALT, 'V'), 0}; keyPlain = old2[std::clamp(v, 0, 3)]; }
+    if (GetIntReg(L"KeyQueue", v)) keyQueue = v;
     B(L"QuickNumbers", quickNumbers); B(L"PasteOnEnter", pasteOnEnter);
     B(L"RecordImages", recordImages); B(L"RecordFiles", recordFiles); B(L"RecordRich", recordRich); B(L"Ocr", ocr);
     B(L"StartInTray", startInTray); B(L"CloseToTray", closeToTray);
@@ -249,7 +254,7 @@ void Settings::Load() {
     if (GetStrReg(L"Pipelines", s)) pipelines = s;
     B(L"AskedAutostart", askedAutostart); B(L"ToldAboutTray", toldAboutTray); B(L"CheckUpdates", checkUpdates);
     if (GetStrReg(L"SkipVersion", s)) skipVersion = s;
-    theme = std::clamp(theme, 0, 2); hotkey = std::clamp(hotkey, 0, 3); hotkeyPlain = std::clamp(hotkeyPlain, 0, 3);
+    theme = std::clamp(theme, 0, 2); minFreeMB = std::clamp(minFreeMB, 0, 1000000);
     deleteAfterDays = std::clamp(deleteAfterDays, 0, 36500); maxItems = std::clamp(maxItems, 0, 10000000);
     maxMB = std::clamp(maxMB, 0, 10000000); sensitive = std::clamp(sensitive, 0, 2);
     maxEntryMB = std::clamp(maxEntryMB, 0, 100000); fontSize = std::clamp(fontSize, 0, 2); accent = std::clamp(accent, 0, 4); previewLen = std::clamp(previewLen, 0, 2);
@@ -262,7 +267,7 @@ void Settings::Load() {
 }
 
 void Settings::Save() const {
-    SetIntReg(L"Theme", theme); SetIntReg(L"Hotkey", hotkey); SetIntReg(L"HotkeyPlain", hotkeyPlain);
+    SetIntReg(L"Theme", theme); SetIntReg(L"MinFreeMB", minFreeMB); SetIntReg(L"KeyOpen", keyOpen); SetIntReg(L"KeyPlain", keyPlain); SetIntReg(L"KeyQueue", keyQueue);
     SetIntReg(L"QuickNumbers", quickNumbers); SetIntReg(L"PasteOnEnter", pasteOnEnter);
     SetIntReg(L"RecordImages", recordImages); SetIntReg(L"RecordFiles", recordFiles); SetIntReg(L"RecordRich", recordRich); SetIntReg(L"Ocr", ocr);
     SetIntReg(L"StartInTray", startInTray); SetIntReg(L"CloseToTray", closeToTray);
@@ -309,4 +314,10 @@ std::wstring ReadLog() {
     if (!ReadFileBytes(JoinPath(g_store.dataRoot, L"diagnostics.log"), raw) || raw.empty()) return L"(the log is empty)";
     if (raw.size() > 60000) raw = raw.substr(raw.size() - 60000);
     return core::FromUtf8(raw);
+}
+
+uint64_t FreeDiskBytes(const std::wstring& dir) {
+    ULARGE_INTEGER avail = {}, total = {}, freeAll = {};
+    if (!GetDiskFreeSpaceExW(dir.c_str(), &avail, &total, &freeAll)) return ~0ULL;      // unknown: do not block recording
+    return avail.QuadPart;
 }

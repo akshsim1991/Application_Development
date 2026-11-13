@@ -1069,4 +1069,58 @@ bool RegexSearch(const std::wstring& pattern, const std::wstring& text) {
     } catch (...) { return false; }
 }
 
+// ---------------------------------------------------------------- hotkeys
+int HotkeyPack(int mods, int vk) { return vk ? ((mods & 15) << 16) | (vk & 0xFFFF) : 0; }
+int HotkeyMods(int p) { return (p >> 16) & 15; }
+int HotkeyVk(int p) { return p & 0xFFFF; }
+bool IsModifierVk(int vk) { return vk == 0x10 || vk == 0x11 || vk == 0x12 || vk == 0x5B || vk == 0x5C || (vk >= 0xA0 && vk <= 0xA5); }
+
+std::wstring HotkeyName(int p) {
+    int vk = HotkeyVk(p), m = HotkeyMods(p);
+    if (!vk) return L"None";
+    std::wstring s;
+    if (m & HKM_CTRL) s += L"Ctrl+";
+    if (m & HKM_ALT) s += L"Alt+";
+    if (m & HKM_SHIFT) s += L"Shift+";
+    if (m & HKM_WIN) s += L"Win+";
+    if ((vk >= '0' && vk <= '9') || (vk >= 'A' && vk <= 'Z')) s += (wchar_t)vk;
+    else if (vk >= 0x70 && vk <= 0x87) s += L"F" + std::to_wstring(vk - 0x6F);
+    else if (vk >= 0x60 && vk <= 0x69) s += L"Num" + std::to_wstring(vk - 0x60);
+    else {
+        switch (vk) {
+        case 0x20: s += L"Space"; break;       case 0x08: s += L"Backspace"; break;  case 0x09: s += L"Tab"; break;
+        case 0x0D: s += L"Enter"; break;       case 0x21: s += L"PageUp"; break;     case 0x22: s += L"PageDown"; break;
+        case 0x23: s += L"End"; break;         case 0x24: s += L"Home"; break;       case 0x25: s += L"Left"; break;
+        case 0x26: s += L"Up"; break;          case 0x27: s += L"Right"; break;      case 0x28: s += L"Down"; break;
+        case 0x2D: s += L"Insert"; break;      case 0x2E: s += L"Delete"; break;     case 0x2C: s += L"PrintScreen"; break;
+        case 0x6A: s += L"Num*"; break;        case 0x6B: s += L"Num+"; break;       case 0x6D: s += L"Num-"; break;
+        case 0x6E: s += L"Num."; break;        case 0x6F: s += L"Num/"; break;
+        case 0xBA: s += L";"; break;           case 0xBB: s += L"="; break;          case 0xBC: s += L","; break;
+        case 0xBD: s += L"-"; break;           case 0xBE: s += L"."; break;          case 0xBF: s += L"/"; break;
+        case 0xC0: s += L"`"; break;           case 0xDB: s += L"["; break;          case 0xDC: s += L"\\"; break;
+        case 0xDD: s += L"]"; break;           case 0xDE: s += L"'"; break;
+        default: s += L"Key" + std::to_wstring(vk);
+        }
+    }
+    return s;
+}
+
+bool HotkeyAllowed(int p, std::wstring* why) {
+    auto no = [&](const wchar_t* w) { if (why) *why = w; return false; };
+    int vk = HotkeyVk(p), m = HotkeyMods(p);
+    if (!vk) return true;                                   // "None" is always fine
+    if (IsModifierVk(vk)) return no(L"A shortcut needs a key as well as Ctrl, Alt, Shift or Win.");
+    int count = (m & HKM_CTRL ? 1 : 0) + (m & HKM_ALT ? 1 : 0) + (m & HKM_SHIFT ? 1 : 0) + (m & HKM_WIN ? 1 : 0);
+    if (count == 0) return no(L"Use at least one of Ctrl, Alt, Shift or Win, so that normal typing is not affected.");
+    bool fkey = vk >= 0x70 && vk <= 0x87;
+    // one modifier alone would take over everyday keys (Ctrl+C, Alt+letter menus, Shift+letter capitals)
+    if (count == 1 && !(m & HKM_WIN) && !fkey) return no(L"Use two modifiers (for example Ctrl+Shift), or the Win key, or a function key, so that everyday shortcuts such as Ctrl+C keep working.");
+    if (m == HKM_SHIFT && !fkey) return no(L"Shift with a key would break typing capital letters.");
+    if (m == HKM_ALT && vk == 0x73) return no(L"Alt+F4 closes windows.");
+    if (m == (HKM_CTRL | HKM_ALT) && vk == 0x2E) return no(L"Ctrl+Alt+Delete is reserved by Windows.");
+    if (m == HKM_WIN && (vk == 'L' || vk == 'D' || vk == 'E' || vk == 'R' || vk == 'V' || vk == 'I' || vk == 'A' || vk == 'S' || vk == 'X' || vk == 'M' || vk == 'P' || vk == 'K' || vk == 'G' || vk == 'H' || vk == 'N' || vk == 'W' || vk == 'U' || vk == 0x09 || (vk >= '0' && vk <= '9')))
+        return no(L"Windows already uses this Win+key shortcut.");
+    return true;
+}
+
 }  // namespace core

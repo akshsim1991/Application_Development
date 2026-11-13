@@ -137,6 +137,17 @@ int main() {
     CHECK(FuzzyContains(L"the quick brown fox", L"quikc"));
     CHECK(FuzzyContains(L"the quick brown fox", L"quik") && FuzzyContains(L"the quick brown fox", L"quicck") && FuzzyContains(L"colour", L"color") && !FuzzyContains(L"hello", L"zzzzz"));
 
+    // hotkeys
+    CHECK(HotkeyPack(HKM_CTRL | HKM_SHIFT, 'V') == ((6 << 16) | 'V') && HotkeyMods(HotkeyPack(HKM_CTRL | HKM_SHIFT, 'V')) == 6 && HotkeyVk(HotkeyPack(2, 'V')) == 'V');
+    CHECK(HotkeyName(HotkeyPack(HKM_CTRL | HKM_SHIFT, 'V')) == L"Ctrl+Shift+V" && HotkeyName(HotkeyPack(HKM_CTRL | HKM_ALT, '7')) == L"Ctrl+Alt+7");
+    CHECK(HotkeyName(HotkeyPack(HKM_WIN | HKM_ALT, 0x70)) == L"Alt+Win+F1" && HotkeyName(0) == L"None" && HotkeyName(HotkeyPack(HKM_CTRL | HKM_ALT, 0xBF)) == L"Ctrl+Alt+/");
+    std::wstring hwhy;
+    CHECK(HotkeyAllowed(HotkeyPack(HKM_CTRL | HKM_SHIFT, 'V')) && HotkeyAllowed(HotkeyPack(HKM_CTRL | HKM_ALT, 'P')) && HotkeyAllowed(0));
+    CHECK(HotkeyAllowed(HotkeyPack(HKM_CTRL, 0x7A)) && HotkeyAllowed(HotkeyPack(HKM_WIN, 'Q')));
+    CHECK(!HotkeyAllowed(HotkeyPack(0, 'V'), &hwhy) && !hwhy.empty());
+    CHECK(!HotkeyAllowed(HotkeyPack(HKM_CTRL, 'V')) && !HotkeyAllowed(HotkeyPack(HKM_CTRL, 'C')) && !HotkeyAllowed(HotkeyPack(HKM_ALT, 'F')) && !HotkeyAllowed(HotkeyPack(HKM_SHIFT, 'A')));
+    CHECK(!HotkeyAllowed(HotkeyPack(HKM_ALT, 0x73)) && !HotkeyAllowed(HotkeyPack(HKM_CTRL | HKM_ALT, 0x2E)) && !HotkeyAllowed(HotkeyPack(HKM_WIN, 'L')) && !HotkeyAllowed(HotkeyPack(HKM_CTRL, 0x11)));
+
     std::printf("%d checks, %d failed\n", total, fails);
     return fails ? 1 : 0;
 }

@@ -479,6 +479,26 @@ bool Store::Cleanup() {
     return true;
 }
 
+void Store::ClearAll() {
+    std::vector<uint64_t> ids;
+    for (auto& it : items) ids.push_back(it.id);
+    if (!ids.empty()) Purge(ids);
+    // everything else in the history folder is derived data (pictures' text, half-written files, stray files): removed too
+    WIN32_FIND_DATAW fd;
+    HANDLE ff = FindFirstFileW(JoinPath(dir, L"*").c_str(), &fd);
+    if (ff != INVALID_HANDLE_VALUE) {
+        do {
+            std::wstring n = fd.cFileName;
+            if (n == L"." || n == L".." || (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+            if (core::Lower(n) == L"index.txt") continue;
+            DeleteFileW(JoinPath(dir, n).c_str());
+        } while (FindNextFileW(ff, &fd));
+        FindClose(ff);
+    }
+    items.clear();
+    Save();                                   // an empty journal replaces the old one
+}
+
 bool Store::CheckIntegrity(std::wstring& report, bool repair) {
     std::set<std::wstring> known;
     std::vector<uint64_t> missing;

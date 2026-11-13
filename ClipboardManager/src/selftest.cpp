@@ -177,6 +177,39 @@ int RunSelfTest(const std::wstring& outFile) {
     }
     Check(IsIgnoredProgram(L"KeePass.exe") && !IsIgnoredProgram(L"notepad.exe"), L"the ignore list recognises password managers");
 
+    // free space and shortcut settings
+    Check(FreeDiskBytes(g_store.dir) > 0, L"the free disk space can be read");
+    {
+        Settings s1;
+        s1.keyOpen = core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT, 'H');
+        s1.keyPlain = 0;
+        s1.keyQueue = core::HotkeyPack(core::HKM_WIN | core::HKM_SHIFT, 0x71);
+        s1.minFreeMB = 321;
+        s1.Save();
+        Settings s2;
+        s2.Load();
+        Check(s2.keyOpen == s1.keyOpen && s2.keyPlain == 0 && s2.keyQueue == s1.keyQueue && s2.minFreeMB == 321, L"shortcuts and the free-space limit are saved and loaded");
+        RegDeleteTreeW(HKEY_CURRENT_USER, L"Software\\FeatherClipboardManager");
+    }
+
+    // clear everything
+    {
+        g_store.AddText(L"pinned one", "", "<b>x</b>", L"a.exe", 0, &isNew);
+        g_store.SetPinned(g_store.items.back().id, true);
+        g_store.AddSnippet(L"snip", L"snippet body");
+        uint64_t pid = g_store.AddText(L"to be cleared", "", "", L"a.exe", 0, &isNew);
+        g_store.SetOcr(pid, L"words found in a picture");
+        WriteFileAtomic(JoinPath(g_store.dir, L"stray-derived.dat"), "x", 1);
+        Check(g_store.items.size() > 3, L"there is history to clear");
+        g_store.ClearAll();
+        int files = 0;
+        WIN32_FIND_DATAW fd;
+        HANDLE ff = FindFirstFileW(JoinPath(g_store.dir, L"*").c_str(), &fd);
+        if (ff != INVALID_HANDLE_VALUE) { do { if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) && std::wstring(fd.cFileName) != L"index.txt") files++; } while (FindNextFileW(ff, &fd)); FindClose(ff); }
+        Check(g_store.items.empty() && files == 0, L"clear everything removes every item (pinned and snippets too) and all derived files");
+        Check(g_store.Init() && g_store.items.empty(), L"after a restart the history is still empty");
+    }
+
     g_log += L"\r\n" + std::to_wstring(g_total - g_fail) + L" of " + std::to_wstring(g_total) + L" checks passed\r\n";
     std::string u = core::ToUtf8(g_log);
     WriteFileAtomic(outFile, u.data(), u.size());

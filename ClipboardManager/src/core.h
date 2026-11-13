@@ -74,4 +74,13 @@ bool ParseLatest(const std::string& json, Latest& out);      // false when it is
 int CompareVersions(const std::string& a, const std::string& b);   // <0 older, 0 same, >0 newer ("2.1.10" > "2.1.9")
 std::string Sha256Hex(const std::string& data);              // 64 lowercase hex digits
 
+// ---- hotkeys: a shortcut is stored as one number (modifiers << 16 | virtual-key code); 0 means "none"
+enum { HKM_ALT = 1, HKM_CTRL = 2, HKM_SHIFT = 4, HKM_WIN = 8 };      // same values as MOD_ALT, MOD_CONTROL, MOD_SHIFT, MOD_WIN
+int HotkeyPack(int mods, int vk);
+int HotkeyMods(int packed);
+int HotkeyVk(int packed);
+std::wstring HotkeyName(int packed);                                 // "Ctrl+Shift+V", "None"
+bool HotkeyAllowed(int packed, std::wstring* why = nullptr);         // refuses shortcuts that would break normal typing or Windows
+bool IsModifierVk(int vk);
+
 }  // namespace core

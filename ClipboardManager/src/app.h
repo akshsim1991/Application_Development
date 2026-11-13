@@ -32,8 +32,8 @@ using std::max;
 #include "core.h"
 
 #define APP_NAME L"Feather Clipboard Manager"
-#define APP_VERSION L"2.1.1"
-#define APP_VERSION_SHORT L"2.1"
+#define APP_VERSION L"2.2.0"
+#define APP_VERSION_SHORT L"2.2"
 #define APP_AUTHOR L"Akshaya Simha"
 #define APP_YEAR L"2026"
 
@@ -57,6 +57,7 @@ std::wstring FormatBytes(uint64_t b);
 void OpenShell(HWND owner, const std::wstring& what, const wchar_t* verb = L"open");
 void ShowInExplorer(const std::wstring& file);
 std::wstring TextAt(HWND h);
+uint64_t FreeDiskBytes(const std::wstring& dir);   // free space the user can use on the volume of dir
 void LogEvent(const std::wstring& message);       // local, content-free, bounded; only when logging is on
 std::wstring ReadLog();
 void SetFontAll(HWND parent, HFONT f);
@@ -76,8 +77,10 @@ const wchar_t* LanguageName(int l);
 // ------------------------------------------------------------------ settings
 struct Settings {
     int theme = 0;                 // 0 same as Windows, 1 light, 2 dark
-    int hotkey = 0;                // 0 Ctrl+Shift+V, 1 Ctrl+Alt+V, 2 Win+Shift+V, 3 none
-    int hotkeyPlain = 0;           // 0 Ctrl+Alt+P, 1 Ctrl+Shift+Alt+V, 2 Win+Alt+V, 3 none  (paste newest as plain text)
+    int keyOpen = core::HotkeyPack(core::HKM_CTRL | core::HKM_SHIFT, 'V');    // open the history (any shortcut you press; 0 = none)
+    int keyPlain = core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT, 'P');     // paste the newest item as plain text
+    int keyQueue = core::HotkeyPack(core::HKM_CTRL | core::HKM_ALT, 'N');     // paste the next item of the paste queue
+    int minFreeMB = 200;           // stop recording when less than this is free on the disk
     bool quickNumbers = true;      // Ctrl+Alt+1..9 pastes the Nth newest item from any program
     bool pasteOnEnter = true;
     bool recordImages = true;
@@ -179,6 +182,7 @@ public:
     void PurgeAllDeleted();
     void DeleteAllUnpinned();
     int CountUnpinned() const;
+    void ClearAll();                                         // deletes every item for good, with all its files and derived data
     bool CheckIntegrity(std::wstring& report, bool repair);   // missing files, stray files; repair drops records without a file
     bool Cleanup();                                        // age, count, size, expiry, old trash. true when something changed
     std::vector<std::wstring> Groups() const;

@@ -23,7 +23,7 @@ Type words: every word must be found (in the text, the program name, the group).
 
 ## Pasting
 * **Enter** pastes into the program you were using; **Shift+Enter** pastes as plain text; **Ctrl+C** only copies. (Settings can make Enter only copy.)
-* Without opening the window: **Ctrl+Alt+1 … 9** paste the 1st … 9th newest item; **Ctrl+Alt+P** pastes the newest as plain text; **Ctrl+Alt+N** pastes the next item of your **paste queue**.
+* Without opening the window: **Ctrl+Alt+1 … 9** paste the 1st … 9th newest item; **Ctrl+Alt+P** pastes the newest as plain text; **Ctrl+Alt+N** pastes the next item of your **paste queue**. The three shortcuts can be changed in Settings > Shortcuts: click the box and press the keys you want.
 * Right-click an item: *Paste as* (upper/lower/title/sentence case, trim, remove extra blank lines or line breaks, sort/unique/reverse/number lines, format JSON/XML/SQL, Base64, URL-encode, path slashes, SHA-256), *Paste with find and replace*, *Paste with today's date and time* (`{date} {time} {datetime} {iso} {year} {weekday} {month}`), *Paste through* a saved pipeline, *Paste joined with* (when several items are selected), *Add to the paste queue*, *Compare the two items*, *Inspect the characters*, *Show as a table*.
 * If something prevents pasting (an elevated program, a protected screen), the item is still copied: press Ctrl+V yourself. The program cannot confirm that another program received the paste.
 
@@ -40,6 +40,9 @@ Pictures are stored as PNG. The preview scales them (double-click: actual size).
 * Copies that look like a card number, API key, token or password are, by default, recorded but **deleted after 60 seconds** (or not recorded at all, or kept — your choice). This is a heuristic: it cannot recognise every secret.
 * Pause recording whenever you like. Windows' own clipboard history and other programs may keep copies independently of this one.
 * The history folder is private to your Windows account. It is **not encrypted** (use BitLocker); backups can be password-protected.
+
+## Deleting everything and low disk space
+More > **Delete everything…** deletes every item for good, including pinned items and snippets, after a warning. It is not secure erasure: other programs, Windows' own clipboard history, backups and an SSD may still hold copies. When less than 200 MB (changeable in Settings > What to keep) is free on the disk, recording stops with a message instead of filling the disk.
 
 ## Backup and restore
 More > Export backup (optional password) writes one `.cmbackup` file; Import adds what you do not already have. Backups to network or cloud-sync folders are your choice and outside the program's control.

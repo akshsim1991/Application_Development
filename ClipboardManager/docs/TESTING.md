@@ -5,8 +5,8 @@
 ## Automated
 | What | How | Result (this build) |
 |---|---|---|
-| Portable core (transforms, formatters, parsers, detection, hashing, SHA-256 vectors, query parser, `latest.json`) | `tests/run.sh` (native g++) | 107 checks, 0 failed |
-| Storage, search, journal, retention, sensitive expiry, integrity check and repair, encrypted backup (right/wrong/no password, tampered file), torn-write recovery, clipboard text and picture round trips, ignore list | `FeatherClipboardManager.exe --selftest result.txt` (runs in a temporary folder, never your history) | 47 checks, 0 failed (under Wine) |
+| Portable core (transforms, formatters, parsers, detection, hashing, SHA-256 vectors, query parser, `latest.json`) | `tests/run.sh` (native g++) | 115 checks, 0 failed |
+| Storage, search, journal, retention, sensitive expiry, integrity check and repair, encrypted backup (right/wrong/no password, tampered file), torn-write recovery, clipboard text and picture round trips, ignore list | `FeatherClipboardManager.exe --selftest result.txt` (runs in a temporary folder, never your history) | 52 checks, 0 failed (under Wine) |
 | Installer | NSIS installer run under Wine: `/S /D=…`, uninstall keeps history, `/DELETEDATA` removes it, Start-menu shortcuts and Add/Remove entry | passed |
 | Window rendering | screenshots under Xvfb: light, dark, list with sample data, all settings pages | seen (Wine fonts differ: the toolbar icons and some symbols fall back to text/boxes) |
 

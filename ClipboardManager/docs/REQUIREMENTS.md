@@ -1,4 +1,4 @@
-# Requirement matrix — Feather Clipboard Manager 2.1.1
+# Requirement matrix — Feather Clipboard Manager 2.2.0
 
 One row for each of the 216 feature rows in *Windows Clipboard Manager Development Specification*. **Status is stated honestly:** this build was written and tested on Linux with a cross-compiler and Wine, never on a real Windows PC, so many rows are "implemented, not tested on Windows".
 
@@ -10,16 +10,16 @@ One row for each of the 216 feature rows in *Windows Clipboard Manager Developme
 | NOT DONE | not implemented |
 | EXCLUDED | deliberately not built (your decision) |
 
-Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-test under Wine (`--selftest`, 47 checks) · **V** screenshot under Wine · **B** benchmark (`--bench`) · **R** code review only.
+Evidence letters: **U** unit tests (`tests/run.sh`, 115 checks) · **W** self-test under Wine (`--selftest`, 52 checks) · **V** screenshot under Wine · **B** benchmark (`--bench`) · **R** code review only.
 
 ## Totals
 
 | Priority | rows | DONE-T | DONE-U | PARTIAL | NOT DONE | EXCLUDED |
 |---|---|---|---|---|---|---|
-| P0 | 69 | 21 | 31 | 17 | 0 | 0 |
+| P0 | 69 | 22 | 35 | 12 | 0 | 0 |
 | P1 | 89 | 26 | 36 | 12 | 13 | 2 |
 | P2 | 58 | 7 | 11 | 9 | 31 | 0 |
-| **all** | **216** | **54** | **78** | **38** | **44** | **2** |
+| **all** | **216** | **55** | **82** | **33** | **44** | **2** |
 
 
 ## 1. Clipboard Capture and History Management
@@ -27,7 +27,7 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 | ID | Pri | Feature | Status | Notes / evidence |
 |---|---|---|---|---|
 | CAP-001 | P0 | Automatic clipboard monitoring | DONE-U | AddClipboardFormatListener + WM_CLIPBOARDUPDATE (ui.cpp). Capture/restore code exercised under Wine (W); the live listener was not. |
-| CAP-002 | P0 | Unlimited history option | PARTIAL | No item-count cap by default (0 = unlimited). The required low-disk-space protection is NOT implemented; a full disk gives an error message. |
+| CAP-002 | P0 | Unlimited history option | DONE-U | No item-count cap by default (0 = unlimited). Recording stops when less than the free-space limit (default 200 MB) is left on the disk; reading the free space is tested (W), the stop itself was not exercised on a full disk. |
 | CAP-003 | P0 | Text capture | DONE-T | W: Unicode text, mixed scripts, multi-line round trip through restart. |
 | CAP-004 | P0 | Rich-text capture | DONE-U | HTML and RTF are stored beside the text and restored (W checks the stored flags). Reading HTML/RTF from a real application was not exercised. |
 | CAP-005 | P0 | Image capture | DONE-T | W: PNG and bitmap (DIB) put on the clipboard and read back; pictures stored as PNG files. |
@@ -36,7 +36,7 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 | CAP-008 | P0 | Duplicate detection | DONE-T | W: identical copy is not stored twice (hash of content). |
 | CAP-009 | P0 | Chronological history | DONE-T | W + V: newest first. |
 | CAP-010 | P0 | Manual item deletion | DONE-T | W: delete moves to Recently deleted (7 days), undo, delete for good. |
-| CAP-011 | P0 | Clear entire history | PARTIAL | "Delete all unpinned items" and "Empty recently deleted" exist; there is no single "clear absolutely everything including pinned" command. |
+| CAP-011 | P0 | Clear entire history | DONE-T | W: More > Delete everything removes all items (pinned and snippets too), their HTML/RTF/OCR files and stray files, and survives a restart. Also: Delete all unpinned, Empty recently deleted. The UI warns that deleting is not secure erasure. |
 | CAP-012 | P0 | Persistent history | DONE-T | W: history restored after restart; journal tolerates a torn last line. |
 | CAP-013 | P1 | Configurable history limits | DONE-T | Age, item count and disk space limits (Settings). W tests the item limit; age and size limits are untested. |
 | CAP-014 | P1 | Intelligent duplicate handling | DONE-T | W: duplicate moves to the top (recency updated). |
@@ -49,7 +49,7 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 |---|---|---|---|---|
 | SEARCH-001 | P0 | Instant search | DONE-T | B: 100,000 items, one word 25 ms median (Wine). 180 ms typing debounce. |
 | SEARCH-002 | P0 | Case-insensitive search | DONE-T | W/U. |
-| SEARCH-003 | P0 | Search highlighting | PARTIAL | The first match is selected in the preview pane; list rows are not highlighted. |
+| SEARCH-003 | P0 | Search highlighting | DONE-U | Matches are highlighted in the list rows (long texts show the part around the first match) and the first match is selected in the preview. Seen under Wine (V); fuzzy and regex matches are not highlighted. |
 | SEARCH-004 | P0 | Pinned items | DONE-T | W: pinned items survive cleanup. Sensitive expiry overrides pinning only until you pin it (pinning rescues it). |
 | SEARCH-005 | P0 | Favorites | PARTIAL | Pinned items and snippets serve as favourites; there is no separate favourites flag. |
 | SEARCH-006 | P1 | Tags | PARTIAL | One group label per item (tag: syntax, Group menu). No multiple tags per item. |
@@ -115,13 +115,13 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 
 | ID | Pri | Feature | Status | Notes / evidence |
 |---|---|---|---|---|
-| KEY-001 | P0 | Customizable activation shortcut | PARTIAL | Chosen from three shortcuts (Ctrl+Shift+V, Ctrl+Alt+V, Win+Shift+V) or none; arbitrary key capture is not implemented. |
+| KEY-001 | P0 | Customizable activation shortcut | DONE-U | Settings > Shortcuts: press the keys you want (Backspace clears). The rules (what is refused and why) are unit-tested (U); the live key capture was not driven. |
 | KEY-002 | P0 | Arrow-key navigation | DONE-U | Up/Down in the search box move the list. |
 | KEY-003 | P0 | Enter-to-paste | DONE-U | Enter pastes; Shift+Enter plain. |
 | KEY-004 | P0 | Escape-to-close | DONE-U | Esc clears the search, then hides. |
 | KEY-005 | P1 | Numbered quick-paste | DONE-U | Ctrl+1..9 in the window; Ctrl+Alt+1..9 from any program. |
 | KEY-006 | P1 | Favorite-item shortcuts | NOT DONE | No per-favourite shortcuts. |
-| KEY-007 | P1 | Shortcut conflict detection | DONE-U | A shortcut that cannot be registered is reported at start with advice to choose another. |
+| KEY-007 | P1 | Shortcut conflict detection | DONE-U | A shortcut that cannot be registered is reported at start and after Settings changes; two of our own actions cannot share a shortcut; reserved/unsafe shortcuts are refused (U). |
 | KEY-008 | P1 | Keyboard shortcut reference | DONE-U | More > Tools > Keyboard shortcuts. |
 | KEY-009 | P2 | Context-sensitive shortcuts | NOT DONE | Not implemented. |
 | KEY-010 | P2 | Custom command bindings | NOT DONE | Not implemented. |
@@ -264,7 +264,7 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 | ID | Pri | Feature | Status | Notes / evidence |
 |---|---|---|---|---|
 | CUST-001 | P0 | Theme selection | DONE-T | V: light, dark, same as Windows. |
-| CUST-002 | P0 | Configurable hotkeys | PARTIAL | See KEY-001. |
+| CUST-002 | P0 | Configurable hotkeys | DONE-U | See KEY-001. The in-window keys and Ctrl+Alt+1..9 are fixed. |
 | CUST-003 | P1 | Accent color selection | DONE-U | Five highlight colours. |
 | CUST-004 | P1 | Adjustable spacing | NOT DONE | No spacing setting. |
 | CUST-005 | P1 | Configurable startup behavior | DONE-U | Start with Windows, start in tray, close to tray. |
@@ -294,14 +294,14 @@ Evidence letters: **U** unit tests (`tests/run.sh`, 107 checks) · **W** self-te
 |---|---|---|---|---|
 | MAINT-001 | P0 | Clean installation | DONE-U | Per-user, no administrator, no service, statically linked (no runtime to install). |
 | MAINT-002 | P0 | Clean uninstallation | DONE-T | Run under Wine: asks (or /DELETEDATA) about history; keeps it by default. |
-| MAINT-003 | P0 | Application version display | DONE-U | About dialog and file properties show 2.1.1. |
+| MAINT-003 | P0 | Application version display | DONE-U | About dialog and file properties show 2.2.0. |
 | MAINT-004 | P1 | Offline installer | DONE-T | Single self-contained installer (about 0.7 MB). |
 | MAINT-005 | P1 | Portable executable distribution | EXCLUDED | EXCLUDED by your decision (not portable). |
 | MAINT-006 | P1 | Local diagnostic logging | DONE-T | W: content-free local log. |
 | MAINT-007 | P1 | Configurable logging | DONE-U | Settings > Privacy: switch the log off. |
 | MAINT-008 | P1 | Offline update installation | PARTIAL | The installer can be run by hand offline; the in-app update downloads it (SHA-256 checked). Not code-signed. |
 | MAINT-009 | P2 | Database repair utility | PARTIAL | Integrity check + repair (REL-010/011). |
-| MAINT-010 | P2 | Self-test mode | DONE-T | --selftest result.txt (47 checks) and tests/run.sh (107 checks). |
+| MAINT-010 | P2 | Self-test mode | DONE-T | --selftest result.txt (52 checks) and tests/run.sh (115 checks). |
 
 ## 16. Specialized Advanced Capabilities
 

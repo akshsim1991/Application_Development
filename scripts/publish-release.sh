@@ -24,6 +24,7 @@ latest = {"version": version, "date": datetime.date.today().strftime("%-d %B %Y"
 open(os.path.join(dest, "latest.json"), "w").write(json.dumps(latest, indent=2, ensure_ascii=True) + "\n")
 print(json.dumps(latest, indent=2))
 PY
+mirror="https://cdn.jsdelivr.net/gh/akshsim1991/FeatherPDF-releases@v$version"   # jsDelivr, from the release's tag
 cat > "$dest/README.md" <<MD
 # Feather PDF
 
@@ -32,8 +33,11 @@ cloud service, no tracking. Free to use and share, always.
 
 **Version $version**
 
-- Windows 7 SP1, 8.1, 10 and 11 (64-bit): [$win]($base/$win)
-- macOS 11 or later (Apple silicon and Intel): [$mac]($base/$mac)
+- Windows 7 SP1, 8.1, 10 and 11 (64-bit): [$win]($base/$win) (or from the mirror: [$win]($mirror/$win))
+- macOS 11 or later (Apple silicon and Intel): [$mac]($base/$mac) (or from the mirror: [$mac]($mirror/$mac))
+
+If a download does not start, your network may block raw.githubusercontent.com (some providers do at times): use the
+mirror link beside it, which serves the same file (its SHA-256 is in latest.json).
 
 Installed copies find new versions themselves (Help > Update to new version) and ask whether to update now or later.
 MD
@@ -42,3 +46,4 @@ git add -A
 [ -n "${NO_COMMIT:-}" ] && { echo "files ready in $dest (NO_COMMIT: not committed)"; exit 0; }
 git commit -q -m "Feather PDF $version"
 git push origin HEAD:main
+git tag -f "v$version" && git push -f origin "v$version"   # the mirror serves the files of this tag

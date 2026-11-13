@@ -2,6 +2,20 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.20.3 (13 November 2026)
+
+- Fixed (Windows): **recent files disappeared after updating**, after closing several windows, and after Windows shut
+  down or restarted. Every window (each a program of its own since 2.15) wrote the recent list from the copy it read when
+  it opened, so the last window to close put back its old list; and nothing was saved when Windows ended the session.
+  Now the list is written the moment a file is opened, changed one window at a time, and settings, reading positions and
+  recovery copies are kept when Windows shuts down. A window no longer undoes preferences changed in another window.
+- Fixed (Windows): **file names in Kannada, Hindi and other scripts** were stored as "?????" in the settings, so they
+  could not be opened again from the recent list ("not found"). The settings file, workspaces and recovery files are
+  Unicode now; an existing settings file is converted once, everything in it kept (names already damaged cannot be
+  recovered, and are left out of the list).
+- Updating, uninstalling and reinstalling keep recent files and settings (checked: the settings file unchanged byte for
+  byte through all three; the Mac's recent list and settings kept when the app is replaced by an update).
+
 ## 2.20.2 (13 November 2026)
 
 - Fixed (both apps): **a paragraph that starts with a bold label** ("License and cost controls: Paid third-party ...")

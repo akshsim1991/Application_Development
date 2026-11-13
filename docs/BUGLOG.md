@@ -1168,3 +1168,59 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
 - **Verified:** engine check: a second edit on the same page finds its paragraph whole (both lines).
 
 2.20.2 published for both apps; both downloads match latest.json.
+
+## Version 2.20.3: diagnosis of lost recent files, and an audit of data safety
+
+Requested 13 November: recent files disappear after updates or reinstallation; find the root cause, and audit the whole
+application.
+
+### B-082 Recent files (and reading positions, preferences) lost when several windows closed - Critical (Windows)
+- **Status:** Fixed (2.20.3)
+- **Root cause:** since 2.15 every window is a program of its own. Each read settings.ini once, at its start, and on
+  closing wrote the whole recent list, all reading positions and every preference back from that copy. The last window
+  to close won: what the others had added was gone. An update closes every window, so it happened at each update. The
+  recent list was also written only when a window closed.
+- **Reproduced:** under Wine, gamma.pdf in one window, alpha.pdf in another; the alpha window closed first, then the
+  gamma window: the list held gamma, not alpha.
+- **Fix:** the shared lists are read from the file, changed and written back at once, under a named lock (one window at a
+  time); the recent list is written when a file is opened, removed or cleared, never from a window's copy; reading
+  positions are merged (only the files this window read are written); a window writes only the preferences it changed;
+  menus and the start page read the list as every window left it.
+- **Verified:** tests/persistence.sh (new): two windows closing in either order keep both files; another window's theme,
+  recent file and position survive a window closing.
+
+### B-083 Names in other scripts saved as "?????" - Critical (Windows)
+- **Status:** Fixed (2.20.3)
+- **Root cause:** settings.ini, workspace files and the recovery list were 8-bit files (Windows writes a profile file in
+  the code page unless it starts with a UTF-16 byte order mark); a Kannada file name became "????? ???????.pdf".
+- **Reproduced:** under Wine, "ಕನ್ನಡ ಪ್ರಶ್ನೆ.pdf" opened: the recent entry and its position read "????? ???????.pdf".
+- **Fix:** these files are UTF-16; an existing settings.ini is converted once (decoded in the code page it was written in,
+  written beside it and swapped in, so an interruption leaves the old file); entries already damaged (a Windows path
+  cannot hold "?") are left out of the lists.
+- **Verified:** tests/persistence.sh: the old file converted with its theme and entries; the Kannada name kept; a new
+  settings file starts as UTF-16.
+
+### B-084 Nothing saved when Windows shut down, restarted or signed out - High (Windows)
+- **Status:** Fixed (2.20.3)
+- **Root cause:** settings were saved on WM_CLOSE / WM_DESTROY only; at the end of a session Windows sends
+  WM_QUERYENDSESSION and WM_ENDSESSION and then ends the program.
+- **Reproduced:** 2.19.2 under Wine: a file opened and scrolled, then the session ended (wineboot --end-session): neither
+  its recent entry nor its position was saved.
+- **Fix:** WM_ENDSESSION keeps the reading positions, the settings and the recovery copies of unsaved documents; closing
+  a tab writes its position at once.
+- **Verified:** tests/persistence.sh: after the session ends, the file's position (scrolled) is in the settings.
+
+### Checked and found sound (no change)
+- **Install, update, uninstall, reinstall (Windows):** the setup and the uninstaller never touch %APPDATA%\FeatherPDF;
+  under Wine the settings file was byte for byte the same after an update, an uninstall and a reinstall, and the six
+  recent files were listed again. The program folder is removed completely by the uninstaller (it finishes in a copy of
+  itself a moment after returning).
+- **Mac:** the recent list is the system's (NSDocumentController, kept by bundle identifier), settings are the app's
+  user defaults; the build check now replaces the app as the updater does and requires both to be kept.
+- **Saving:** a document is written to a temporary file, flushed, then put in place in one step, so an interrupted save
+  leaves the old file; a full disk and a read-only folder are reported, the changes kept and Save As offered (tried in the
+  app with a read-only folder). Documents are read whole into memory, so saving over the open file is safe.
+- **Damaged input:** an empty file, random bytes, a cut-off PDF, text named .pdf and a missing file through export, block
+  finding, fonts, repair and sanitize: errors, no crash or hang.
+- **Long use:** a 1000-page PDF opened, paged through and closed six times in one window: memory 67 MB after each cycle,
+  no growth.

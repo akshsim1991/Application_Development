@@ -1,0 +1,1730 @@
+[
+ {
+  "id": "CAP-001",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Automatic clipboard monitoring",
+  "purpose": "Capture new clipboard content in the background."
+ },
+ {
+  "id": "CAP-002",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Unlimited history option",
+  "purpose": "Allow unrestricted history subject to disk limits."
+ },
+ {
+  "id": "CAP-003",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Text capture",
+  "purpose": "Store plain text from any compatible application."
+ },
+ {
+  "id": "CAP-004",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Rich-text capture",
+  "purpose": "Preserve formatted text, including RTF and HTML."
+ },
+ {
+  "id": "CAP-005",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Image capture",
+  "purpose": "Capture screenshots and copied bitmap images."
+ },
+ {
+  "id": "CAP-006",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "File and folder capture",
+  "purpose": "Preserve copied file paths and file-drop references."
+ },
+ {
+  "id": "CAP-007",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "One-click history paste",
+  "purpose": "Reuse previous clipboard entries instantly."
+ },
+ {
+  "id": "CAP-008",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Duplicate detection",
+  "purpose": "Prevent unnecessary repeated entries."
+ },
+ {
+  "id": "CAP-009",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Chronological history",
+  "purpose": "Display recent entries first."
+ },
+ {
+  "id": "CAP-010",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Manual item deletion",
+  "purpose": "Remove individual clipboard records."
+ },
+ {
+  "id": "CAP-011",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Clear entire history",
+  "purpose": "Delete all stored clipboard data."
+ },
+ {
+  "id": "CAP-012",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P0",
+  "feature": "Persistent history",
+  "purpose": "Restore stored entries after restarting the application."
+ },
+ {
+  "id": "CAP-013",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P1",
+  "feature": "Configurable history limits",
+  "purpose": "Restrict item count, age, and storage usage."
+ },
+ {
+  "id": "CAP-014",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P1",
+  "feature": "Intelligent duplicate handling",
+  "purpose": "Update the recency of an existing duplicate instead of adding another."
+ },
+ {
+  "id": "CAP-015",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P1",
+  "feature": "Source application identification",
+  "purpose": "Display the program from which content was copied, when identifiable."
+ },
+ {
+  "id": "CAP-016",
+  "cat": 1,
+  "catname": "Clipboard Capture and History Management",
+  "pri": "P2",
+  "feature": "Clipboard format inspector",
+  "purpose": "Inspect available native clipboard formats for troubleshooting."
+ },
+ {
+  "id": "SEARCH-001",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P0",
+  "feature": "Instant search",
+  "purpose": "Find text as the user types."
+ },
+ {
+  "id": "SEARCH-002",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P0",
+  "feature": "Case-insensitive search",
+  "purpose": "Match text regardless of capitalization."
+ },
+ {
+  "id": "SEARCH-003",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P0",
+  "feature": "Search highlighting",
+  "purpose": "Highlight matching words in results."
+ },
+ {
+  "id": "SEARCH-004",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P0",
+  "feature": "Pinned items",
+  "purpose": "Protect important entries from automatic cleanup."
+ },
+ {
+  "id": "SEARCH-005",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P0",
+  "feature": "Favorites",
+  "purpose": "Mark frequently reused content."
+ },
+ {
+  "id": "SEARCH-006",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Tags",
+  "purpose": "Organize entries using custom labels."
+ },
+ {
+  "id": "SEARCH-007",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Categories",
+  "purpose": "Group URLs, code, images, files, and text."
+ },
+ {
+  "id": "SEARCH-008",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Date filters",
+  "purpose": "Search entries copied within a date range."
+ },
+ {
+  "id": "SEARCH-009",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Application filters",
+  "purpose": "Find entries copied from a particular program."
+ },
+ {
+  "id": "SEARCH-010",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Content-type filters",
+  "purpose": "Show only images, text, links, or files."
+ },
+ {
+  "id": "SEARCH-011",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Multi-keyword search",
+  "purpose": "Search using multiple terms."
+ },
+ {
+  "id": "SEARCH-012",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Exact phrase search",
+  "purpose": "Locate an exact sequence of words."
+ },
+ {
+  "id": "SEARCH-013",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P1",
+  "feature": "Saved searches",
+  "purpose": "Reuse frequently applied search criteria."
+ },
+ {
+  "id": "SEARCH-014",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P2",
+  "feature": "Regular expression search",
+  "purpose": "Find complex text patterns."
+ },
+ {
+  "id": "SEARCH-015",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P2",
+  "feature": "Fuzzy search",
+  "purpose": "Find approximate matches despite spelling errors."
+ },
+ {
+  "id": "SEARCH-016",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P2",
+  "feature": "Duplicate grouping",
+  "purpose": "Group similar or identical entries together."
+ },
+ {
+  "id": "SEARCH-017",
+  "cat": 2,
+  "catname": "Search, Filtering, and Organization",
+  "pri": "P2",
+  "feature": "Smart collections",
+  "purpose": "Automatically organize entries using configurable local rules."
+ },
+ {
+  "id": "PASTE-001",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P0",
+  "feature": "Paste selected item",
+  "purpose": "Paste a historical entry into the active application."
+ },
+ {
+  "id": "PASTE-002",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P0",
+  "feature": "Copy without pasting",
+  "purpose": "Restore an item to the Windows clipboard without inserting it."
+ },
+ {
+  "id": "PASTE-003",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P0",
+  "feature": "Paste as plain text",
+  "purpose": "Remove unwanted fonts, colors, and formatting."
+ },
+ {
+  "id": "PASTE-004",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P0",
+  "feature": "Keyboard-first operation",
+  "purpose": "Navigate and paste without touching the mouse."
+ },
+ {
+  "id": "PASTE-005",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Paste multiple items",
+  "purpose": "Combine selected entries into one paste operation."
+ },
+ {
+  "id": "PASTE-006",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Sequential paste",
+  "purpose": "Paste queued items in a predefined order."
+ },
+ {
+  "id": "PASTE-007",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Paste queue",
+  "purpose": "Prepare multiple entries for repetitive data entry."
+ },
+ {
+  "id": "PASTE-008",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Text case conversion",
+  "purpose": "Convert text to uppercase, lowercase, title case, or sentence case."
+ },
+ {
+  "id": "PASTE-009",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Trim whitespace",
+  "purpose": "Remove leading and trailing spaces."
+ },
+ {
+  "id": "PASTE-010",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Remove extra blank lines",
+  "purpose": "Clean text copied from documents or websites."
+ },
+ {
+  "id": "PASTE-011",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Find and replace",
+  "purpose": "Modify copied text before pasting."
+ },
+ {
+  "id": "PASTE-012",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Text snippets",
+  "purpose": "Save reusable phrases, templates, and responses."
+ },
+ {
+  "id": "PASTE-013",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P1",
+  "feature": "Paste without line breaks",
+  "purpose": "Convert multiline text into a single line."
+ },
+ {
+  "id": "PASTE-014",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P2",
+  "feature": "Paste templates",
+  "purpose": "Insert predefined text with locally generated date and time values."
+ },
+ {
+  "id": "PASTE-015",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P2",
+  "feature": "Clipboard macros",
+  "purpose": "Execute repeatable local transformations and paste sequences."
+ },
+ {
+  "id": "PASTE-016",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P2",
+  "feature": "Multi-item separator rules",
+  "purpose": "Join entries using commas, tabs, newlines, or custom delimiters."
+ },
+ {
+  "id": "PASTE-017",
+  "cat": 3,
+  "catname": "Copy, Paste, and Productivity Operations",
+  "pri": "P2",
+  "feature": "Text transformation pipelines",
+  "purpose": "Chain multiple operations, such as trim, replace, and case conversion."
+ },
+ {
+  "id": "UI-001",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Compact popup window",
+  "purpose": "Display history without occupying excessive screen space."
+ },
+ {
+  "id": "UI-002",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "System tray integration",
+  "purpose": "Run quietly in the notification area."
+ },
+ {
+  "id": "UI-003",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Global keyboard shortcut",
+  "purpose": "Open clipboard history from any supported desktop application."
+ },
+ {
+  "id": "UI-004",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Clear item previews",
+  "purpose": "Display enough content to identify each entry."
+ },
+ {
+  "id": "UI-005",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Responsive interface",
+  "purpose": "Remain fluid with large clipboard histories."
+ },
+ {
+  "id": "UI-006",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Dark and light themes",
+  "purpose": "Match the user's preferred appearance."
+ },
+ {
+  "id": "UI-007",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Context menus",
+  "purpose": "Expose relevant operations through right-click."
+ },
+ {
+  "id": "UI-008",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P0",
+  "feature": "Tooltips",
+  "purpose": "Explain controls without cluttering the interface."
+ },
+ {
+  "id": "UI-009",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Resizable window",
+  "purpose": "Adjust the history panel to different workflows."
+ },
+ {
+  "id": "UI-010",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Adjustable preview length",
+  "purpose": "Control how much content each entry displays."
+ },
+ {
+  "id": "UI-011",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "List and grid layouts",
+  "purpose": "Choose a compact text view or visual thumbnail view."
+ },
+ {
+  "id": "UI-012",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Adjustable font size",
+  "purpose": "Improve readability."
+ },
+ {
+  "id": "UI-013",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Always-on-top mode",
+  "purpose": "Keep the clipboard window visible when needed."
+ },
+ {
+  "id": "UI-014",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Window position memory",
+  "purpose": "Reopen the panel at its previous position."
+ },
+ {
+  "id": "UI-015",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Multi-monitor positioning",
+  "purpose": "Open the panel near the active window or cursor."
+ },
+ {
+  "id": "UI-016",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P1",
+  "feature": "Customizable toolbar",
+  "purpose": "Show frequently used operations."
+ },
+ {
+  "id": "UI-017",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P2",
+  "feature": "Detachable preview pane",
+  "purpose": "Inspect long entries without leaving the history view."
+ },
+ {
+  "id": "UI-018",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P2",
+  "feature": "Command palette",
+  "purpose": "Execute clipboard actions through a searchable command interface."
+ },
+ {
+  "id": "UI-019",
+  "cat": 4,
+  "catname": "User Interface and Usability",
+  "pri": "P2",
+  "feature": "Workspace layouts",
+  "purpose": "Save different UI arrangements for different tasks."
+ },
+ {
+  "id": "KEY-001",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P0",
+  "feature": "Customizable activation shortcut",
+  "purpose": "Configure a global shortcut such as `Ctrl+Shift+V`."
+ },
+ {
+  "id": "KEY-002",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P0",
+  "feature": "Arrow-key navigation",
+  "purpose": "Browse history without a mouse."
+ },
+ {
+  "id": "KEY-003",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P0",
+  "feature": "Enter-to-paste",
+  "purpose": "Paste the highlighted item immediately."
+ },
+ {
+  "id": "KEY-004",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P0",
+  "feature": "Escape-to-close",
+  "purpose": "Dismiss the popup quickly."
+ },
+ {
+  "id": "KEY-005",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P1",
+  "feature": "Numbered quick-paste",
+  "purpose": "Paste recent entries using configurable number shortcuts."
+ },
+ {
+  "id": "KEY-006",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P1",
+  "feature": "Favorite-item shortcuts",
+  "purpose": "Access commonly used snippets directly."
+ },
+ {
+  "id": "KEY-007",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P1",
+  "feature": "Shortcut conflict detection",
+  "purpose": "Warn when a hotkey is unavailable."
+ },
+ {
+  "id": "KEY-008",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P1",
+  "feature": "Keyboard shortcut reference",
+  "purpose": "Display available commands in one place."
+ },
+ {
+  "id": "KEY-009",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P2",
+  "feature": "Context-sensitive shortcuts",
+  "purpose": "Apply different actions depending on selected content."
+ },
+ {
+  "id": "KEY-010",
+  "cat": 5,
+  "catname": "Keyboard Shortcuts and Navigation",
+  "pri": "P2",
+  "feature": "Custom command bindings",
+  "purpose": "Assign shortcuts to transformations and macros."
+ },
+ {
+  "id": "IMG-001",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P0",
+  "feature": "Screenshot history",
+  "purpose": "Retain screenshots captured through Windows tools."
+ },
+ {
+  "id": "IMG-002",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P0",
+  "feature": "Image thumbnails",
+  "purpose": "Identify copied images visually."
+ },
+ {
+  "id": "IMG-003",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P0",
+  "feature": "Original image preservation",
+  "purpose": "Avoid degrading captured image quality."
+ },
+ {
+  "id": "IMG-004",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Full-size image preview",
+  "purpose": "Inspect images before reusing them."
+ },
+ {
+  "id": "IMG-005",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Save image to file",
+  "purpose": "Export images as PNG, JPEG, or other supported formats."
+ },
+ {
+  "id": "IMG-006",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Image dimensions",
+  "purpose": "Display width, height, and format information."
+ },
+ {
+  "id": "IMG-007",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Image resizing",
+  "purpose": "Resize clipboard images before copying or saving."
+ },
+ {
+  "id": "IMG-008",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Image compression",
+  "purpose": "Reduce storage consumption."
+ },
+ {
+  "id": "IMG-009",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P1",
+  "feature": "Format conversion",
+  "purpose": "Convert between supported image formats."
+ },
+ {
+  "id": "IMG-010",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P2",
+  "feature": "Image cropping",
+  "purpose": "Remove unwanted areas from captured images."
+ },
+ {
+  "id": "IMG-011",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P2",
+  "feature": "Image annotation",
+  "purpose": "Add arrows, shapes, and labels locally."
+ },
+ {
+  "id": "IMG-012",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P2",
+  "feature": "Offline OCR",
+  "purpose": "Extract text from screenshots using an installed local OCR engine."
+ },
+ {
+  "id": "IMG-013",
+  "cat": 6,
+  "catname": "Image and Screenshot Management",
+  "pri": "P2",
+  "feature": "Color picker",
+  "purpose": "Extract hexadecimal and RGB values from clipboard images."
+ },
+ {
+  "id": "SEC-001",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Fully offline operation",
+  "purpose": "No clipboard data transmitted over a network."
+ },
+ {
+  "id": "SEC-002",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Local-only storage",
+  "purpose": "Keep history on the user's device."
+ },
+ {
+  "id": "SEC-003",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Password-manager exclusion",
+  "purpose": "Avoid retaining sensitive entries from recognized password managers."
+ },
+ {
+  "id": "SEC-004",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Pause clipboard monitoring",
+  "purpose": "Temporarily disable collection."
+ },
+ {
+  "id": "SEC-005",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Private mode",
+  "purpose": "Suspend history capture during sensitive activities."
+ },
+ {
+  "id": "SEC-006",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "Secure local data permissions",
+  "purpose": "Restrict database access using Windows user permissions."
+ },
+ {
+  "id": "SEC-007",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P0",
+  "feature": "No telemetry",
+  "purpose": "Avoid transmitting usage analytics or clipboard metadata."
+ },
+ {
+  "id": "SEC-008",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Application exclusion list",
+  "purpose": "Prevent capture from selected applications."
+ },
+ {
+  "id": "SEC-009",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Automatic history expiration",
+  "purpose": "Delete old records after a configured interval."
+ },
+ {
+  "id": "SEC-010",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Sensitive-content detection",
+  "purpose": "Detect likely passwords, API keys, payment card numbers, and identity numbers."
+ },
+ {
+  "id": "SEC-011",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Automatic sensitive-entry removal",
+  "purpose": "Delete detected sensitive records after a configurable period."
+ },
+ {
+  "id": "SEC-012",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Local database encryption",
+  "purpose": "Encrypt stored history using a locally managed key."
+ },
+ {
+  "id": "SEC-013",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Lockable clipboard history",
+  "purpose": "Require Windows authentication before viewing protected entries."
+ },
+ {
+  "id": "SEC-014",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P1",
+  "feature": "Privacy notifications",
+  "purpose": "Inform users when sensitive-content protection is activated."
+ },
+ {
+  "id": "SEC-015",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P2",
+  "feature": "Protected collections",
+  "purpose": "Store selected entries in separately protected local storage."
+ },
+ {
+  "id": "SEC-016",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P2",
+  "feature": "Configurable redaction",
+  "purpose": "Mask emails, phone numbers, tokens, and account numbers in previews."
+ },
+ {
+  "id": "SEC-017",
+  "cat": 7,
+  "catname": "Security and Privacy",
+  "pri": "P2",
+  "feature": "Local security audit",
+  "purpose": "Identify unprotected settings and potentially sensitive retained data."
+ },
+ {
+  "id": "PERF-001",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Event-driven monitoring",
+  "purpose": "Use Windows clipboard notifications rather than continuous polling."
+ },
+ {
+  "id": "PERF-002",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Low idle CPU usage",
+  "purpose": "Avoid unnecessary background processing."
+ },
+ {
+  "id": "PERF-003",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Low idle memory usage",
+  "purpose": "Keep resident memory consumption small."
+ },
+ {
+  "id": "PERF-004",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Fast popup activation",
+  "purpose": "Display history with minimal perceived delay."
+ },
+ {
+  "id": "PERF-005",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Asynchronous database operations",
+  "purpose": "Prevent storage operations from freezing the interface."
+ },
+ {
+  "id": "PERF-006",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Lazy loading",
+  "purpose": "Load older entries only when required."
+ },
+ {
+  "id": "PERF-007",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P0",
+  "feature": "Database indexing",
+  "purpose": "Keep searches fast as history grows."
+ },
+ {
+  "id": "PERF-008",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P1",
+  "feature": "Thumbnail caching",
+  "purpose": "Avoid repeatedly decoding large images."
+ },
+ {
+  "id": "PERF-009",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P1",
+  "feature": "Configurable cache size",
+  "purpose": "Balance responsiveness and memory consumption."
+ },
+ {
+  "id": "PERF-010",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P1",
+  "feature": "Automatic database maintenance",
+  "purpose": "Perform safe local cleanup and optimization."
+ },
+ {
+  "id": "PERF-011",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P1",
+  "feature": "Storage usage dashboard",
+  "purpose": "Show database, image, and cache sizes."
+ },
+ {
+  "id": "PERF-012",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P1",
+  "feature": "Large-content safeguards",
+  "purpose": "Avoid capturing extremely large entries unintentionally."
+ },
+ {
+  "id": "PERF-013",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P2",
+  "feature": "Performance diagnostics",
+  "purpose": "Display capture latency, search latency, and resource usage."
+ },
+ {
+  "id": "PERF-014",
+  "cat": 8,
+  "catname": "Performance and Resource Optimization",
+  "pri": "P2",
+  "feature": "Adaptive cache management",
+  "purpose": "Adjust cache utilization according to memory pressure."
+ },
+ {
+  "id": "REL-001",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P0",
+  "feature": "Crash-resistant storage",
+  "purpose": "Use transactional writes to reduce corruption risk."
+ },
+ {
+  "id": "REL-002",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P0",
+  "feature": "Graceful error handling",
+  "purpose": "Recover from clipboard contention and temporary access failures."
+ },
+ {
+  "id": "REL-003",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P0",
+  "feature": "Safe shutdown",
+  "purpose": "Close database connections and complete pending writes."
+ },
+ {
+  "id": "REL-004",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P0",
+  "feature": "Startup recovery",
+  "purpose": "Restore valid history after an interrupted session."
+ },
+ {
+  "id": "REL-005",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P0",
+  "feature": "Clipboard retry mechanism",
+  "purpose": "Retry transient clipboard-access failures with bounded delays."
+ },
+ {
+  "id": "REL-006",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Local backup",
+  "purpose": "Create backups in user-selected local folders."
+ },
+ {
+  "id": "REL-007",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Local restore",
+  "purpose": "Recover history from a previously created local backup."
+ },
+ {
+  "id": "REL-008",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Export history",
+  "purpose": "Export selected entries or complete history to local files."
+ },
+ {
+  "id": "REL-009",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Import history",
+  "purpose": "Restore compatible locally exported records."
+ },
+ {
+  "id": "REL-010",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Database integrity checks",
+  "purpose": "Detect structural problems in stored data."
+ },
+ {
+  "id": "REL-011",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P1",
+  "feature": "Corruption recovery",
+  "purpose": "Recover readable records from damaged databases when possible."
+ },
+ {
+  "id": "REL-012",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P2",
+  "feature": "Versioned local backups",
+  "purpose": "Retain several previous backup generations."
+ },
+ {
+  "id": "REL-013",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P2",
+  "feature": "Diagnostic log viewer",
+  "purpose": "Inspect local application errors without uploading logs."
+ },
+ {
+  "id": "REL-014",
+  "cat": 9,
+  "catname": "Reliability, Recovery, and Data Integrity",
+  "pri": "P2",
+  "feature": "Safe migration rollback",
+  "purpose": "Recover from failed database schema upgrades."
+ },
+ {
+  "id": "WIN-001",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P0",
+  "feature": "Windows 10/11 support",
+  "purpose": "Operate on supported Windows desktop environments."
+ },
+ {
+  "id": "WIN-002",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P0",
+  "feature": "Native clipboard API integration",
+  "purpose": "Use supported Win32 clipboard mechanisms."
+ },
+ {
+  "id": "WIN-003",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P0",
+  "feature": "System tray menu",
+  "purpose": "Access core operations from the notification area."
+ },
+ {
+  "id": "WIN-004",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P0",
+  "feature": "Startup with Windows",
+  "purpose": "Optionally launch automatically after sign-in."
+ },
+ {
+  "id": "WIN-005",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P0",
+  "feature": "Native copy/paste compatibility",
+  "purpose": "Preserve expected behavior in ordinary Windows applications."
+ },
+ {
+  "id": "WIN-006",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Windows 11 visual integration",
+  "purpose": "Support modern window styling and system appearance settings."
+ },
+ {
+  "id": "WIN-007",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "High-DPI support",
+  "purpose": "Render correctly on 125%, 150%, 200%, and other display scales."
+ },
+ {
+  "id": "WIN-008",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Multi-monitor support",
+  "purpose": "Handle different resolutions and DPI settings."
+ },
+ {
+  "id": "WIN-009",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Explorer integration",
+  "purpose": "Provide optional file-path and file-related clipboard commands."
+ },
+ {
+  "id": "WIN-010",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Windows notification integration",
+  "purpose": "Display useful local notifications when appropriate."
+ },
+ {
+  "id": "WIN-011",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Portable mode",
+  "purpose": "Run without installation where permissions permit."
+ },
+ {
+  "id": "WIN-012",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P1",
+  "feature": "Standard installer/uninstaller",
+  "purpose": "Provide predictable installation and complete removal options."
+ },
+ {
+  "id": "WIN-013",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P2",
+  "feature": "Windows context-menu extensions",
+  "purpose": "Expose selected clipboard operations in supported shell contexts."
+ },
+ {
+  "id": "WIN-014",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P2",
+  "feature": "Virtual desktop awareness",
+  "purpose": "Open the popup on the active desktop."
+ },
+ {
+  "id": "WIN-015",
+  "cat": 10,
+  "catname": "Windows Integration",
+  "pri": "P2",
+  "feature": "Command-line interface",
+  "purpose": "Permit local scripts and developer tools to access supported operations."
+ },
+ {
+  "id": "DEV-001",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "Code-friendly previews",
+  "purpose": "Preserve indentation and line breaks."
+ },
+ {
+  "id": "DEV-002",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "Syntax highlighting",
+  "purpose": "Make common programming languages easier to inspect."
+ },
+ {
+  "id": "DEV-003",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "JSON formatting",
+  "purpose": "Pretty-print and validate JSON locally."
+ },
+ {
+  "id": "DEV-004",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "XML formatting",
+  "purpose": "Indent and validate XML."
+ },
+ {
+  "id": "DEV-005",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "URL recognition",
+  "purpose": "Identify copied web addresses without opening them automatically."
+ },
+ {
+  "id": "DEV-006",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "Markdown preview",
+  "purpose": "Display locally rendered Markdown."
+ },
+ {
+  "id": "DEV-007",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P1",
+  "feature": "Line numbering",
+  "purpose": "Improve navigation through long code snippets."
+ },
+ {
+  "id": "DEV-008",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "JSON minification",
+  "purpose": "Compress formatted JSON into compact text."
+ },
+ {
+  "id": "DEV-009",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Text diff viewer",
+  "purpose": "Compare two clipboard entries line by line or word by word."
+ },
+ {
+  "id": "DEV-010",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Regex tester",
+  "purpose": "Test expressions against clipboard text."
+ },
+ {
+  "id": "DEV-011",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Encoding utilities",
+  "purpose": "Convert between UTF-8, Base64, and supported encodings."
+ },
+ {
+  "id": "DEV-012",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Hash generation",
+  "purpose": "Calculate SHA-256 and other supported hashes locally."
+ },
+ {
+  "id": "DEV-013",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "SQL formatting",
+  "purpose": "Format SQL statements for readability."
+ },
+ {
+  "id": "DEV-014",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Path conversion",
+  "purpose": "Convert Windows paths into common slash conventions."
+ },
+ {
+  "id": "DEV-015",
+  "cat": 11,
+  "catname": "Text, Code, and Developer Tools",
+  "pri": "P2",
+  "feature": "Unicode inspector",
+  "purpose": "Inspect code points and special characters."
+ },
+ {
+  "id": "AUTO-001",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P1",
+  "feature": "Automatic text cleanup",
+  "purpose": "Normalize whitespace and formatting when requested."
+ },
+ {
+  "id": "AUTO-002",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P1",
+  "feature": "Content-aware actions",
+  "purpose": "Suggest relevant operations based on entry type."
+ },
+ {
+  "id": "AUTO-003",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P1",
+  "feature": "Rule-based classification",
+  "purpose": "Categorize URLs, code, email addresses, and other recognized patterns."
+ },
+ {
+  "id": "AUTO-004",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P1",
+  "feature": "Automatic tagging",
+  "purpose": "Apply locally defined tags to matching content."
+ },
+ {
+  "id": "AUTO-005",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "Rule engine",
+  "purpose": "Execute user-defined conditions and transformations."
+ },
+ {
+  "id": "AUTO-006",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "Offline text summarization",
+  "purpose": "Summarize content using an optional local model."
+ },
+ {
+  "id": "AUTO-007",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "Offline language detection",
+  "purpose": "Identify the language of copied text locally."
+ },
+ {
+  "id": "AUTO-008",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "Offline translation",
+  "purpose": "Translate supported languages using installed local models."
+ },
+ {
+  "id": "AUTO-009",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "Local semantic search",
+  "purpose": "Find conceptually related entries using an optional local embedding model."
+ },
+ {
+  "id": "AUTO-010",
+  "cat": 12,
+  "catname": "Automation and Intelligent Offline Processing",
+  "pri": "P2",
+  "feature": "User-defined scripts",
+  "purpose": "Run explicitly approved local automation scripts with appropriate restrictions."
+ },
+ {
+  "id": "CUST-001",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P0",
+  "feature": "Theme selection",
+  "purpose": "Choose light, dark, or system appearance."
+ },
+ {
+  "id": "CUST-002",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P0",
+  "feature": "Configurable hotkeys",
+  "purpose": "Adapt activation and navigation shortcuts."
+ },
+ {
+  "id": "CUST-003",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Accent color selection",
+  "purpose": "Customize interface highlights."
+ },
+ {
+  "id": "CUST-004",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Adjustable spacing",
+  "purpose": "Choose compact or comfortable layouts."
+ },
+ {
+  "id": "CUST-005",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Configurable startup behavior",
+  "purpose": "Control whether the app launches minimized or displays a window."
+ },
+ {
+  "id": "CUST-006",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Configurable history retention",
+  "purpose": "Set age, item-count, and storage limits."
+ },
+ {
+  "id": "CUST-007",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Configurable paste behavior",
+  "purpose": "Choose whether selecting an item pastes or only copies it."
+ },
+ {
+  "id": "CUST-008",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P1",
+  "feature": "Settings import/export",
+  "purpose": "Transfer application preferences using local files."
+ },
+ {
+  "id": "CUST-009",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P2",
+  "feature": "Custom CSS or theme definitions",
+  "purpose": "Support advanced interface customization with appropriate validation."
+ },
+ {
+  "id": "CUST-010",
+  "cat": 13,
+  "catname": "Customization and Personalization",
+  "pri": "P2",
+  "feature": "Customizable entry actions",
+  "purpose": "Configure which commands appear for each content type."
+ },
+ {
+  "id": "A11Y-001",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P0",
+  "feature": "Full keyboard navigation",
+  "purpose": "Operate core functions without a mouse."
+ },
+ {
+  "id": "A11Y-002",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P0",
+  "feature": "Visible keyboard focus",
+  "purpose": "Clearly indicate the currently selected control."
+ },
+ {
+  "id": "A11Y-003",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P0",
+  "feature": "Screen-reader support",
+  "purpose": "Expose accessible names, roles, and values through Windows accessibility APIs."
+ },
+ {
+  "id": "A11Y-004",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P0",
+  "feature": "Sufficient contrast",
+  "purpose": "Ensure readable text and controls."
+ },
+ {
+  "id": "A11Y-005",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P1",
+  "feature": "High-contrast theme",
+  "purpose": "Support Windows contrast themes."
+ },
+ {
+  "id": "A11Y-006",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P1",
+  "feature": "UI scaling",
+  "purpose": "Support Windows text and display scaling."
+ },
+ {
+  "id": "A11Y-007",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P1",
+  "feature": "Reduced-motion support",
+  "purpose": "Minimize animations when requested by the operating system."
+ },
+ {
+  "id": "A11Y-008",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P1",
+  "feature": "Accessible status messages",
+  "purpose": "Announce important actions and errors appropriately."
+ },
+ {
+  "id": "A11Y-009",
+  "cat": 14,
+  "catname": "Accessibility and Inclusive Design",
+  "pri": "P2",
+  "feature": "Custom accessibility profiles",
+  "purpose": "Save combinations of font, spacing, contrast, and motion preferences."
+ },
+ {
+  "id": "MAINT-001",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P0",
+  "feature": "Clean installation",
+  "purpose": "Avoid unnecessary dependencies and background services."
+ },
+ {
+  "id": "MAINT-002",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P0",
+  "feature": "Clean uninstallation",
+  "purpose": "Remove application files while clearly offering a choice about retained user data."
+ },
+ {
+  "id": "MAINT-003",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P0",
+  "feature": "Application version display",
+  "purpose": "Show the installed version and build information."
+ },
+ {
+  "id": "MAINT-004",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P1",
+  "feature": "Offline installer",
+  "purpose": "Install without an internet connection."
+ },
+ {
+  "id": "MAINT-005",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P1",
+  "feature": "Portable executable distribution",
+  "purpose": "Support use from a USB drive or local folder."
+ },
+ {
+  "id": "MAINT-006",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P1",
+  "feature": "Local diagnostic logging",
+  "purpose": "Record operational failures without transmitting information."
+ },
+ {
+  "id": "MAINT-007",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P1",
+  "feature": "Configurable logging",
+  "purpose": "Disable or minimize diagnostic records."
+ },
+ {
+  "id": "MAINT-008",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P1",
+  "feature": "Offline update installation",
+  "purpose": "Install signed update packages provided locally."
+ },
+ {
+  "id": "MAINT-009",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P2",
+  "feature": "Database repair utility",
+  "purpose": "Diagnose and repair supported storage problems."
+ },
+ {
+  "id": "MAINT-010",
+  "cat": 15,
+  "catname": "Maintenance, Diagnostics, and Distribution",
+  "pri": "P2",
+  "feature": "Self-test mode",
+  "purpose": "Validate clipboard monitoring, storage, and core application components."
+ },
+ {
+  "id": "ADV-001",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Multiple clipboard slots",
+  "purpose": "Maintain separate user-controlled clipboard registers."
+ },
+ {
+  "id": "ADV-002",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Clipboard collections",
+  "purpose": "Create named libraries of reusable entries."
+ },
+ {
+  "id": "ADV-003",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Drag-and-drop paste",
+  "purpose": "Drag supported clipboard content into compatible applications."
+ },
+ {
+  "id": "ADV-004",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Table-aware clipboard handling",
+  "purpose": "Preserve rows and columns from spreadsheet content."
+ },
+ {
+  "id": "ADV-005",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "CSV/TSV preview",
+  "purpose": "Display structured tabular data before pasting."
+ },
+ {
+  "id": "ADV-006",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Clipboard timeline",
+  "purpose": "Browse history visually by time."
+ },
+ {
+  "id": "ADV-007",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Temporary clipboard sessions",
+  "purpose": "Keep task-specific histories separate and optionally discard them afterward."
+ },
+ {
+  "id": "ADV-008",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Local plugin architecture",
+  "purpose": "Extend functionality using explicitly installed local modules."
+ },
+ {
+  "id": "ADV-009",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Clipboard event debugger",
+  "purpose": "Diagnose clipboard-format and ownership problems."
+ },
+ {
+  "id": "ADV-010",
+  "cat": 16,
+  "catname": "Specialized Advanced Capabilities",
+  "pri": "P2",
+  "feature": "Per-application paste profiles",
+  "purpose": "Apply different formatting and paste rules to selected applications."
+ }
+]

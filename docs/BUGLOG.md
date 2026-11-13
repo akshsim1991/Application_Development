@@ -1131,3 +1131,5 @@ and a click in text edits it directly, without choosing "line" or "paragraph" fi
 - **Fix:** a single left-aligned line wraps at the right edge of its column (the farthest any line starting at the same
   left edge reaches on the page).
 - **Verified:** engine check: "Module 5 (b)" + " - Revised" stays one line; under Wine the same in the app.
+
+2.20.1 published for Windows (13 November, at the user's request, before the Mac build check finished): the installer matches latest.json; latest.json gives the Mac no new version until its 2.20.1 is built, so Macs on 2.20.0 are not offered the same disk image again.

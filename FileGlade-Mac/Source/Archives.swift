@@ -28,6 +28,18 @@ enum ArchiveTool {
         return (process.terminationStatus, data, String(decoding: errorData, as: UTF8.self))
     }
 
+    /// Reads every byte of the archive and checks it unpacks cleanly (including checksums), without writing anything.
+    static func test(_ archive: URL) -> (ok: Bool, message: String) {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/bsdtar")
+        process.arguments = ["-xOf", archive.path]
+        process.standardOutput = FileHandle.nullDevice
+        let err = Pipe(); process.standardError = err
+        do { try process.run() } catch { return (false, error.localizedDescription) }
+        let errorText = String(decoding: err.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        process.waitUntilExit()
+        return process.terminationStatus == 0 ? (true, "The archive is intact.") : (false, errorText.split(separator: "\n").first.map(String.init) ?? "The archive is damaged or needs a password.")
+    }
     static func list(_ archive: URL) throws -> [ArchiveEntry] {
         let result = try run(["-tvf", archive.path])
         guard result.status == 0 else { throw powerError("This archive could not be read. It may be damaged, password-protected or in an unsupported format.") }
@@ -72,6 +84,7 @@ struct ArchiveBrowserView: View {
     @State private var query = ""
     @State private var selection = Set<String>()
     @State private var working = false
+    @State private var notice: String?
     private var shown: [ArchiveEntry] {
         let q = query.lowercased()
         return Array(entries.filter { q.isEmpty || $0.path.lowercased().contains(q) }.prefix(5000))
@@ -81,6 +94,7 @@ struct ArchiveBrowserView: View {
             HStack { Label(archive.lastPathComponent, systemImage: "doc.zipper").font(.title3.bold()); Spacer(); if loading || working { ProgressView().controlSize(.small) } }
             TextField("Filter names", text: $query).textFieldStyle(.roundedBorder)
             if let error { Text(error).foregroundStyle(.red).font(.callout) }
+            if let notice { Label(notice, systemImage: "checkmark.seal.fill").foregroundStyle(.green).font(.callout) }
             List(shown, selection: $selection) { entry in
                 HStack(spacing: 8) {
                     Image(systemName: entry.isDirectory ? "folder" : "doc").foregroundStyle(.secondary).frame(width: 18)
@@ -92,6 +106,7 @@ struct ArchiveBrowserView: View {
             HStack {
                 Text("\(entries.count.formatted()) items\(entries.count > 5000 && query.isEmpty ? " · showing the first 5,000; use the filter to find others" : "")").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                Button("Test Archive") { testArchive() }.disabled(working)
                 Button("Extract Selected") { extract(selection.isEmpty ? nil : Array(selection)) }.disabled(selection.isEmpty || working)
                 Button("Extract All") { extract(nil) }.disabled(entries.isEmpty || working)
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -105,6 +120,15 @@ struct ArchiveBrowserView: View {
         let result = await Task.detached(priority: .userInitiated) { Result { try ArchiveTool.list(url) } }.value
         loading = false
         switch result { case .success(let list): entries = list; case .failure(let e): error = e.localizedDescription }
+    }
+    private func testArchive() {
+        working = true; error = nil
+        let url = archive
+        Task {
+            let result = await Task.detached(priority: .userInitiated) { ArchiveTool.test(url) }.value
+            working = false
+            if result.ok { notice = result.message } else { error = result.message }
+        }
     }
     private func extract(_ paths: [String]?) {
         working = true; error = nil

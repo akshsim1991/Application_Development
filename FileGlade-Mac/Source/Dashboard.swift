@@ -200,9 +200,10 @@ struct DashboardOverview: Sendable {
     var storage: [(category: String, count: Int, bytes: Int64)] = []
 }
 enum DashboardDate: String, CaseIterable, Identifiable {
-    case any = "Any date", day = "Last 24 hours", week = "Last 7 days", month = "Last 30 days", year = "Last year"
+    case any = "Any date", day = "Last 24 hours", week = "Last 7 days", month = "Last 30 days", year = "Last year", older1 = "Older than 1 year", older3 = "Older than 3 years"
     var id: String { rawValue }
-    var days: Int? { switch self { case .any: return nil; case .day: return 1; case .week: return 7; case .month: return 30; case .year: return 365 } }
+    var days: Int? { switch self { case .any: return nil; case .day: return 1; case .week: return 7; case .month: return 30; case .year, .older1: return 365; case .older3: return 1095 } }
+    var isOlder: Bool { self == .older1 || self == .older3 }
 }
 enum DashboardSize: String, CaseIterable, Identifiable {
     case any = "Any size", mb1 = "1 MB or more", mb10 = "10 MB or more", mb100 = "100 MB or more", gb1 = "1 GB or more"
@@ -230,7 +231,9 @@ final class SavedSearchStore: ObservableObject {
         SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, name: "PDFs modified this week", query: ".pdf", kind: "Files", date: DashboardDate.week.rawValue, size: DashboardSize.any.rawValue, rootID: nil),
         SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, name: "Large files (100 MB+)", query: "", kind: "Files", date: DashboardDate.any.rawValue, size: DashboardSize.mb100.rawValue, rootID: nil),
         SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!, name: "Images this month", query: "", kind: "Images", date: DashboardDate.month.rawValue, size: DashboardSize.any.rawValue, rootID: nil),
-        SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!, name: "Recent downloads", query: "/downloads/", kind: "Files", date: DashboardDate.week.rawValue, size: DashboardSize.any.rawValue, rootID: nil)
+        SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000004")!, name: "Recent downloads", query: "/downloads/", kind: "Files", date: DashboardDate.week.rawValue, size: DashboardSize.any.rawValue, rootID: nil),
+        SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000005")!, name: "Temporary and junk files", query: #"/(\.(tmp|temp|part|crdownload|download|swp|bak|old)|~)$|^~\$|^\.DS_Store$|^Thumbs\.db$/"#, kind: "Files", date: DashboardDate.any.rawValue, size: DashboardSize.any.rawValue, rootID: nil),
+        SavedSearch(id: UUID(uuidString: "00000000-0000-0000-0000-000000000006")!, name: "Not changed in 3 years", query: "", kind: "Files", date: DashboardDate.older3.rawValue, size: DashboardSize.mb10.rawValue, rootID: nil)
     ]
     @Published var searches: [SavedSearch] = {
         guard let data = UserDefaults.standard.data(forKey: "savedSearches"), let list = try? JSONDecoder().decode([SavedSearch].self, from: data) else { return [] }
@@ -319,6 +322,8 @@ final class DashboardIndex {
         }) else { throw powerError("Could not read \(root.name).") }
         let insert = try prepare("INSERT INTO items(path,root_id,relative_path,name,search,folder,size,modified,category,version) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(path) DO UPDATE SET root_id=excluded.root_id,relative_path=excluded.relative_path,name=excluded.name,search=excluded.search,folder=excluded.folder,size=excluded.size,modified=excluded.modified,category=excluded.category,version=excluded.version")
         defer { sqlite3_finalize(insert) }
+        // Folder names the user asked to leave out of search (for example node_modules).
+        let exclusions = Set((UserDefaults.standard.stringArray(forKey: "indexExclusions") ?? []).map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
         var categoryCache: [String: String] = [:]
         var count = 0
         var inTransaction = false
@@ -355,6 +360,7 @@ final class DashboardIndex {
                 // Never walk app-private data inside the home folder: ~/Library (Mail, Messages, Safari…)
                 // and the Apple Music library trigger extra macOS privacy prompts and are not user files.
                 if root.id == "home" && (relative == "Library" || relative == "Music/Music") { walk.skipDescendants(); continue }
+                if !exclusions.isEmpty, values.isDirectory == true, exclusions.contains(url.lastPathComponent.lowercased()) { walk.skipDescendants(); continue }
                 #if os(macOS)
                 // Without Full Disk Access, reading these folders makes macOS show a permission prompt for each.
                 // Skip them in the background; they are included once access is granted.
@@ -410,7 +416,7 @@ final class DashboardIndex {
         case .folders: condition += " AND items.folder=1"
         default: condition += " AND items.category='\(kind.rawValue.lowercased())'"
         }
-        if let days = filters.date.days { condition += " AND items.modified>=\(Date().addingTimeInterval(-Double(days) * 86_400).timeIntervalSince1970)" }
+        if let days = filters.date.days { condition += " AND items.modified\(filters.date.isOlder ? "<" : ">=")\(Date().addingTimeInterval(-Double(days) * 86_400).timeIntervalSince1970)" }
         if filters.size != .any { condition += " AND items.folder=0 AND items.size>=\(filters.size.bytes)" }
         if filters.rootID != nil { condition += " AND items.root_id=?" }
         let count = try prepare("SELECT COUNT(*) FROM items JOIN roots ON items.root_id=roots.id WHERE " + condition)
@@ -534,7 +540,21 @@ final class DashboardIndex {
             return page.items.count
         }.value
     }
-    func searchChanged() { limit = 500; reloadResults(debounce: true) }
+    @Published var history: [String] = UserDefaults.standard.stringArray(forKey: "searchHistory") ?? []
+    private var historyTask: Task<Void, Never>?
+    /// Remembers a search once you stop typing, so recent searches can be repeated.
+    private func rememberQuerySoon() {
+        historyTask?.cancel()
+        let typed = query
+        historyTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            guard let self, !Task.isCancelled, typed == self.query, typed.count >= 2 else { return }
+            self.history.removeAll { $0 == typed }; self.history.insert(typed, at: 0); self.history = Array(self.history.prefix(12))
+            UserDefaults.standard.set(self.history, forKey: "searchHistory")
+        }
+    }
+    func clearHistory() { history = []; UserDefaults.standard.removeObject(forKey: "searchHistory") }
+    func searchChanged() { limit = 500; reloadResults(debounce: true); rememberQuerySoon() }
     func loadMore() { limit += 500; reloadResults() }
     func reloadResults(debounce: Bool = false) {
         queryTask?.cancel()
@@ -602,6 +622,11 @@ struct UnifiedDashboardView: View {
                         Menu("Delete saved search") { ForEach(store.searches) { search in Button(search.name, role: .destructive) { store.remove(search) } } }
                     }
                 } label: { Label("Saved searches", systemImage: "bookmark.fill") }.menuStyle(.borderlessButton).fixedSize()
+                Menu {
+                    if model.history.isEmpty { Text("No recent searches") }
+                    ForEach(model.history, id: \.self) { q in Button(q) { model.query = q } }
+                    if !model.history.isEmpty { Divider(); Button("Clear recent searches") { model.clearHistory() } }
+                } label: { Label("Recent", systemImage: "clock.arrow.circlepath") }.menuStyle(.borderlessButton).fixedSize()
             }.padding(.horizontal, 14).padding(.bottom, 6)
             Text("Searching \(model.filters.rootID == nil ? DashboardIndex.uniqueRoots(roots).map(\.name).joined(separator: ", ") : (roots.first { $0.id == model.filters.rootID }?.name ?? "selected location"))").font(.caption2).foregroundStyle(.secondary).lineLimit(1).padding(.horizontal, 16).padding(.bottom, 6)
             HStack {

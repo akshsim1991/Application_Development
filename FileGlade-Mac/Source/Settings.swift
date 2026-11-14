@@ -71,6 +71,10 @@ struct SettingsView: View {
                 Toggle("Verify copies with a SHA-256 check", isOn: Binding(get: { UserDefaults.standard.bool(forKey: "verifyCopies") }, set: { UserDefaults.standard.set($0, forKey: "verifyCopies") }))
                 Text("After each copy, FileGlade compares the copy with the original byte for byte. Slower, but catches damaged copies. A bad copy is removed and reported.").font(.caption).foregroundStyle(.secondary)
             }
+            Section("Search") {
+                TextField("Folder names to leave out of search (comma-separated)", text: Binding(get: { (UserDefaults.standard.stringArray(forKey: "indexExclusions") ?? []).joined(separator: ", ") }, set: { UserDefaults.standard.set($0.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }, forKey: "indexExclusions") }))
+                Text("For example: node_modules, .git, build. They are skipped the next time FileGlade refreshes its file index.").font(.caption).foregroundStyle(.secondary)
+            }
             Section("Keyboard") { Button("Keyboard Shortcuts… (Mac or Windows layout)") { openShortcuts() } }
             Section("Updates") {
                 Toggle("Check for updates automatically", isOn: Binding(get: { updater.automatic }, set: { updater.automatic = $0 }))

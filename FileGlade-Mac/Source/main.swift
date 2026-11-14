@@ -415,8 +415,8 @@ struct FileIcon: View {
 }
 
 enum ExtraSheet: Identifiable {
-    case compare, archive(URL), docs, collection(UUID), device(String), hex(URL), fileDiff(URL, URL), emptyFolders(URL)
-    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString; case .device(let id): return "device" + id; case .hex(let u): return "hex" + u.path; case .fileDiff(let a, let b): return "diff" + a.path + b.path; case .emptyFolders(let u): return "empty" + u.path } }
+    case compare, archive(URL), docs, collection(UUID), device(String), hex(URL), fileDiff(URL, URL), emptyFolders(URL), sensitive(URL), similarNames(URL), dates([URL])
+    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString; case .device(let id): return "device" + id; case .hex(let u): return "hex" + u.path; case .fileDiff(let a, let b): return "diff" + a.path + b.path; case .emptyFolders(let u): return "empty" + u.path; case .sensitive(let u): return "sensitive" + u.path; case .similarNames(let u): return "names" + u.path; case .dates(let urls): return "dates" + (urls.first?.path ?? "") } }
 }
 
 struct ExplorerView: View {
@@ -512,6 +512,9 @@ struct ExplorerView: View {
             switch item {
             case .compare: CompareView(left: model.directory, right: panes.second.directory) { model.refresh(); panes.second.refresh() }
             case .archive(let url): ArchiveBrowserView(archive: url) { out in acting.refresh(); acting.selection = [out] }
+            case .sensitive(let url): SensitiveFilesView(root: url) { found in acting.navigate(found.deletingLastPathComponent()); acting.selection = [found] }
+            case .similarNames(let url): SimilarNamesView(root: url) { found in acting.navigate(found.deletingLastPathComponent()); acting.selection = [found] }
+            case .dates(let urls): FileDatesView(urls: urls) { acting.refresh() }
             case .hex(let url): HexViewerView(url: url)
             case .fileDiff(let a, let b): FileCompareView(left: a, right: b)
             case .emptyFolders(let url): EmptyFoldersView(root: url) { acting.refresh() }
@@ -529,6 +532,9 @@ struct ExplorerView: View {
             case "hex": if let url = note.userInfo?["url"] as? URL { extra = .hex(url) }
             case "diff": if let a = note.userInfo?["a"] as? URL, let b = note.userInfo?["b"] as? URL { extra = .fileDiff(a, b) }
             case "empty": extra = .emptyFolders(acting.directory)
+            case "sensitive": extra = .sensitive(acting.directory)
+            case "names": extra = .similarNames(acting.directory)
+            case "dates": if let urls = note.userInfo?["urls"] as? [URL] { extra = .dates(urls) }
             case "collection": if let id = note.userInfo?["id"] as? UUID { extra = .collection(id) }
             default: break
             }
@@ -884,6 +890,7 @@ struct ExplorerView: View {
                     detail("EXTENSION", entry.url.pathExtension.isEmpty ? "None" : entry.url.pathExtension.uppercased())
                     if entry.isDirectory { FolderSizeRow(url: entry.url) }
                     if !entry.isDirectory, let match = FileSignature.detect(entry.url) { detail("DETECTED TYPE", match.name) }
+                    if !entry.isDirectory, (UTType(filenameExtension: entry.url.pathExtension)?.conforms(to: .image) ?? false) { PhotoMetadataSection(url: entry.url) }
                     if !entry.isDirectory, let warning = FileSignature.warning(for: entry.url) { Label(warning, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
                     TagsAndNote(url: entry.url)
                     Button { acting.openEntry(entry) } label: { Label(entry.isDirectory ? "Open folder" : "Open file", systemImage: "arrow.up.forward.square").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
@@ -1046,7 +1053,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         app.insertItem(item("Settings…", #selector(settingsWindow), ","), at: 1)
         let tools = NSMenu()
         tools.addItem(item("Automation Rules…", #selector(automationWindow))); tools.addItem(item("Storage Analyzer…", #selector(storageWindow))); tools.addItem(item("Find Similar Photos…", #selector(similarWindow)))
-        tools.addItem(item("View as Hex…", #selector(viewHex))); tools.addItem(item("Compare Two Selected Files…", #selector(compareFiles))); tools.addItem(item("Find Empty Folders…", #selector(findEmptyFolders)))
+        tools.addItem(item("View as Hex…", #selector(viewHex))); tools.addItem(item("Compare Two Selected Files…", #selector(compareFiles))); tools.addItem(item("Find Empty Folders…", #selector(findEmptyFolders))); tools.addItem(item("Find Similar File Names…", #selector(findSimilarNames))); tools.addItem(item("Find Sensitive Files…", #selector(findSensitive)))
+        tools.addItem(item("Set File Dates…", #selector(setFileDates))); tools.addItem(item("Remove Photo Metadata (Make Copies)", #selector(stripMetadata)))
         tools.addItem(.separator()); tools.addItem(item("New Collection…", #selector(newCollection))); tools.addItem(item("Add Selection to Collection…", #selector(addToCollection)))
         tools.addItem(.separator()); tools.addItem(item("Back Up Settings…", #selector(backupSettings))); tools.addItem(item("Restore Settings…", #selector(restoreSettings)))
         for (title, menu) in [("FileGlade", app), ("File", file), ("Edit", edit), ("View", view), ("Go", go), ("Pane", pane), ("Tools", tools)] { let root = NSMenuItem(title: title, action: nil, keyEquivalent: ""); root.submenu = menu; main.addItem(root) }
@@ -1104,6 +1112,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     @objc func compareFiles() {
         let files = model.chosen.filter { !$0.isDirectory }
         if files.count == 2 { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "diff", userInfo: ["a": files[0].url, "b": files[1].url]) } else { model.failure = "Select exactly two files to compare." }
+    }
+    @objc func findSimilarNames() { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "names") }
+    @objc func findSensitive() { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "sensitive") }
+    @objc func setFileDates() { let urls = model.chosen.map(\.url); if urls.isEmpty { model.failure = "Select files or folders first." } else { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "dates", userInfo: ["urls": urls]) } }
+    @objc func stripMetadata() {
+        let images = model.chosen.filter { !$0.isDirectory && (UTType(filenameExtension: $0.url.pathExtension)?.conforms(to: .image) ?? false) }.map(\.url)
+        guard !images.isEmpty else { model.failure = "Select one or more photos first."; return }
+        let target = model; var made: [URL] = []; var problems: [String] = []
+        for url in images { do { made.append(try ImageMetadata.strippedCopy(of: url)) } catch { problems.append(error.localizedDescription) } }
+        target.refresh(); target.selection = Set(made)
+        if !problems.isEmpty { target.failure = problems.joined(separator: "\n") }
     }
     @objc func findEmptyFolders() { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "empty") }
     @objc func backupSettings() { Backup.saveWithPanel() }
@@ -1352,6 +1371,41 @@ if CommandLine.arguments.contains("--self-test") {
         try Data("x".utf8).write(to: emptyRoot.appendingPathComponent("full/file.txt")); try Data().write(to: emptyRoot.appendingPathComponent("a/.DS_Store"))
         let emptyFound = EmptyFolderFinder.find(in: emptyRoot).map { $0.lastPathComponent }
         precondition(emptyFound.contains("a") && emptyFound.contains("b") && !emptyFound.contains("full"), "Empty folder finder wrong")
+        // Photo metadata, similar names, sensitive files, rename options, archive test.
+        let photoDir = root2(fm, "photos")
+        let photo = photoDir.appendingPathComponent("camera.jpg")
+        do {
+            let context = CGContext(data: nil, width: 8, height: 8, bitsPerComponent: 8, bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)!
+            let image = context.makeImage()!
+            let destination = CGImageDestinationCreateWithURL(photo as CFURL, UTType.jpeg.identifier as CFString, 1, nil)!
+            CGImageDestinationAddImage(destination, image, [kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFModel: "Test Camera 9", kCGImagePropertyTIFFMake: "FileGlade"], kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 12.97, kCGImagePropertyGPSLongitude: 77.59, kCGImagePropertyGPSLatitudeRef: "N", kCGImagePropertyGPSLongitudeRef: "E"], kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2024:05:17 10:30:00"]] as CFDictionary)
+            precondition(CGImageDestinationFinalize(destination))
+        }
+        let before = ImageMetadata.summary(photo)
+        precondition(before.contains { $0.label == "Camera" && $0.value.contains("Test Camera 9") } && ImageMetadata.hasLocation(photo), "Photo metadata was not read")
+        let stripped = try ImageMetadata.strippedCopy(of: photo)
+        let after = ImageMetadata.summary(stripped)
+        precondition(!after.contains { $0.label == "Camera" } && !ImageMetadata.hasLocation(stripped) && after.contains { $0.label == "Size" }, "Metadata was not removed")
+        var takenOptions = RenameOptions(); takenOptions.date = .taken; takenOptions.dateAtStart = true
+        precondition(takenOptions.name(for: photo, index: 0).hasPrefix("2024-05-17_"), "Date taken was not used for renaming")
+        var safeRename = RenameOptions(); safeRename.safeNames = true; safeRename.extensionCase = "upper"; safeRename.newExtension = "jpeg"
+        precondition(safeRename.name(for: URL(fileURLWithPath: "/tmp/a:b*c?.png"), index: 0) == "a-b-c-.JPEG" || safeRename.name(for: URL(fileURLWithPath: "/tmp/a:b*c?.png"), index: 0) == "a-b-c.JPEG", "Safe names or extension change wrong")
+        let namesDir = root2(fm, "names")
+        for n in ["Report.pdf", "Report (1).pdf", "Report copy.pdf", "Budget2024.xlsx", "Budget2O24.xlsx", "Unrelated.pdf"] { try Data("x".utf8).write(to: namesDir.appendingPathComponent(n)) }
+        let nameGroups = SimilarNames.groups(in: namesDir).map { Set($0.map(\.lastPathComponent)) }
+        precondition(nameGroups.contains(["Report.pdf", "Report (1).pdf", "Report copy.pdf"]), "Copy-numbered names were not grouped")
+        precondition(nameGroups.contains { $0.contains("Budget2024.xlsx") && $0.contains("Budget2O24.xlsx") }, "Near-match names were not grouped")
+        let secretDir = root2(fm, "secrets")
+        try Data("-----BEGIN RSA PRIVATE KEY-----\nabc".utf8).write(to: secretDir.appendingPathComponent("notes.txt")); try Data("A=1".utf8).write(to: secretDir.appendingPathComponent(".env")); try Data("hello".utf8).write(to: secretDir.appendingPathComponent("plain.txt"))
+        let sensitive = SensitiveScanner.scan(secretDir).map { $0.url.lastPathComponent }
+        precondition(sensitive.contains("notes.txt") && sensitive.contains(".env") && !sensitive.contains("plain.txt"), "Sensitive file scan wrong")
+        let zipSource = root2(fm, "ziptest"); try Data("zip content".utf8).write(to: zipSource.appendingPathComponent("z.txt"))
+        let goodZip = zipSource.deletingLastPathComponent().appendingPathComponent("good.zip")
+        let dittoZip = Process(); dittoZip.executableURL = URL(fileURLWithPath: "/usr/bin/ditto"); dittoZip.arguments = ["-c", "-k", zipSource.path, goodZip.path]; try dittoZip.run(); dittoZip.waitUntilExit()
+        precondition(ArchiveTool.test(goodZip).ok, "A good archive failed its test")
+        let badZip = zipSource.deletingLastPathComponent().appendingPathComponent("bad.zip")
+        var damaged = try Data(contentsOf: goodZip); damaged.removeLast(damaged.count / 2); try damaged.write(to: badZip)
+        precondition(!ArchiveTool.test(badZip).ok, "A damaged archive passed its test")
         // Keyboard layouts: Mac keeps Return = rename; Windows uses Enter = open and F2 = rename.
         let menu = NSMenu(), sub = NSMenu()
         let renameItem = NSMenuItem(title: "Rename…", action: Selector(("rename")), keyEquivalent: "\r"); renameItem.keyEquivalentModifierMask = []

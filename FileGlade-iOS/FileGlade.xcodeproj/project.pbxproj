@@ -35,7 +35,7 @@ A00000000000000000000012 = {isa = XCBuildConfiguration; buildSettings = {CLANG_E
  ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  CODE_SIGN_STYLE = Automatic;
  DEVELOPMENT_TEAM = MSQ42JHS35;
- CURRENT_PROJECT_VERSION = 8;
+ CURRENT_PROJECT_VERSION = 9;
  GENERATE_INFOPLIST_FILE = YES;
  INFOPLIST_FILE = FileGlade/Info.plist;
  INFOPLIST_KEY_CFBundleDisplayName = FileGlade;
@@ -47,7 +47,7 @@ A00000000000000000000012 = {isa = XCBuildConfiguration; buildSettings = {CLANG_E
  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
  IPHONEOS_DEPLOYMENT_TARGET = 17.0;
  LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
- MARKETING_VERSION = 3.5.0;
+ MARKETING_VERSION = 3.6.0;
  PRODUCT_BUNDLE_IDENTIFIER = com.akshayasimha.fileglade.mobile;
  PRODUCT_NAME = "$(TARGET_NAME)";
  SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -60,7 +60,7 @@ A00000000000000000000014 = {isa = XCBuildConfiguration; buildSettings = {
  ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
  CODE_SIGN_STYLE = Automatic;
  DEVELOPMENT_TEAM = MSQ42JHS35;
- CURRENT_PROJECT_VERSION = 8;
+ CURRENT_PROJECT_VERSION = 9;
  GENERATE_INFOPLIST_FILE = YES;
  INFOPLIST_FILE = FileGlade/Info.plist;
  INFOPLIST_KEY_CFBundleDisplayName = FileGlade;
@@ -72,7 +72,7 @@ A00000000000000000000014 = {isa = XCBuildConfiguration; buildSettings = {
  INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
  IPHONEOS_DEPLOYMENT_TARGET = 17.0;
  LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
- MARKETING_VERSION = 3.5.0;
+ MARKETING_VERSION = 3.6.0;
  PRODUCT_BUNDLE_IDENTIFIER = com.akshayasimha.fileglade.mobile;
  PRODUCT_NAME = "$(TARGET_NAME)";
  SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

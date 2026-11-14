@@ -1,5 +1,12 @@
 # Changelog
 
+## 3.6.0
+- Photos: the details pane shows camera, lens, date taken, exposure and a warning when a photo records its location. **Remove Photo Metadata (Make Copies)** saves copies without it.
+- Rename: "Date taken (photos)" token, make names safe for all systems, extension case and change-extension options (older presets still load).
+- **Find Similar File Names…**, **Find Sensitive Files…** (keys, passwords, tokens; local only), **Set File Dates…**.
+- Archive browser: **Test Archive** checks an archive is intact.
+- Search: recent-search history, folder names to leave out of the index (Settings), and new smart folders for temporary/junk files and files not changed in 3 years; "Older than…" date filters.
+
 ## 3.5.0 (iPhone)
 - Preview: swipe between the files in a folder, and use Markup to draw on images and PDFs (saved into the file).
 - Scan documents with the camera into a searchable PDF (text is recognised on the iPhone).

@@ -252,6 +252,9 @@ struct BatchRenameView: View {
                 Picker("Spaces", selection: $options.spaces) { ForEach(RenameSpaces.allCases) { Text($0.rawValue).tag($0) } }
                 Picker("Insert date", selection: $options.date) { ForEach(RenameDate.allCases) { Text($0.rawValue).tag($0) } }
                 if options.date != .none { Picker("Date position", selection: $options.dateAtStart) { Text("Before name").tag(true); Text("After name").tag(false) } }
+                Toggle("Make names safe for all systems", isOn: Binding(get: { options.safeNames ?? false }, set: { options.safeNames = $0 ? true : nil }))
+                Picker("Extension case", selection: Binding(get: { options.extensionCase ?? "keep" }, set: { options.extensionCase = $0 == "keep" ? nil : $0 })) { Text("Keep").tag("keep"); Text("lowercase").tag("lower"); Text("UPPERCASE").tag("upper") }
+                TextField("Change extension to (optional)", text: Binding(get: { options.newExtension ?? "" }, set: { options.newExtension = $0.isEmpty ? nil : $0 })).autocorrectionDisabled()
                 Toggle("Append a number", isOn: $options.numbered)
                 if options.numbered { Stepper("Start: \(options.start)", value: $options.start, in: 0...999999); Stepper("Digits: \(options.digits)", value: $options.digits, in: 1...8) }
             }.disabled(job.running)

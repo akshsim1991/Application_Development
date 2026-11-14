@@ -94,7 +94,7 @@ struct WorkspaceTab: Identifiable {
 
 enum RenameCase: String, CaseIterable, Identifiable, Codable, Sendable { case keep = "Keep case", lower = "lowercase", upper = "UPPERCASE", title = "Title Case", sentence = "Sentence case"; var id: String { rawValue } }
 enum RenameSpaces: String, CaseIterable, Identifiable, Codable, Sendable { case keep = "Keep spaces", underscore = "Spaces to _", dash = "Spaces to -", remove = "Remove spaces"; var id: String { rawValue } }
-enum RenameDate: String, CaseIterable, Identifiable, Codable, Sendable { case none = "No date", modified = "Date modified", created = "Date created", today = "Today's date"; var id: String { rawValue } }
+enum RenameDate: String, CaseIterable, Identifiable, Codable, Sendable { case none = "No date", modified = "Date modified", created = "Date created", taken = "Date taken (photos)", today = "Today's date"; var id: String { rawValue } }
 
 struct RenameOptions: Equatable, Sendable, Codable {
     var find = ""
@@ -109,6 +109,10 @@ struct RenameOptions: Equatable, Sendable, Codable {
     var numbered = false
     var start = 1
     var digits = 3
+    // Newer options are optional so older saved presets still load.
+    var safeNames: Bool?          // replace characters that break on other systems
+    var extensionCase: String?    // "lower" or "upper"
+    var newExtension: String?     // change the extension (without the dot)
     /// A readable message when the regular expression is invalid.
     var regexError: String? {
         guard useRegex, !find.isEmpty else { return nil }
@@ -120,6 +124,11 @@ struct RenameOptions: Equatable, Sendable, Codable {
         switch date {
         case .modified: value = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
         case .created: value = try? url.resourceValues(forKeys: [.creationDateKey]).creationDate
+        case .taken:
+            if let source = CGImageSourceCreateWithURL(url as CFURL, nil), let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any], let text = (props[kCGImagePropertyExifDictionary] as? [CFString: Any])?[kCGImagePropertyExifDateTimeOriginal] as? String {
+                let parser = DateFormatter(); parser.locale = Locale(identifier: "en_US_POSIX"); parser.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                value = parser.date(from: text)
+            } else { value = try? url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate }
         default: value = Date()
         }
         guard let value else { return nil }
@@ -151,7 +160,19 @@ struct RenameOptions: Equatable, Sendable, Codable {
         var result = prefix + stem + suffix
         if let day = dateText(for: url) { result = dateAtStart ? day + "_" + result : result + "_" + day }
         let counter = numbered ? "_" + String(format: "%0*d", max(1, min(digits, 8)), start + index) : ""
-        return result + counter + (ext.isEmpty ? "" : "." + ext)
+        result += counter
+        var finalExt = ext
+        if !isFolder {
+            if let replacement = newExtension?.trimmingCharacters(in: CharacterSet(charactersIn: ". ")), !replacement.isEmpty { finalExt = replacement }
+            if extensionCase == "lower" { finalExt = finalExt.lowercased() } else if extensionCase == "upper" { finalExt = finalExt.uppercased() }
+        }
+        if safeNames == true {
+            let unsafe = CharacterSet(charactersIn: "/\\:*?\"<>|\u{0}")
+            result = String(result.unicodeScalars.map { unsafe.contains($0) ? "-" : Character($0) })
+            result = result.trimmingCharacters(in: CharacterSet(charactersIn: " ."))
+            if result.isEmpty { result = "file" }
+        }
+        return result + (finalExt.isEmpty ? "" : "." + finalExt)
     }
 }
 /// Reusable naming presets, stored locally.

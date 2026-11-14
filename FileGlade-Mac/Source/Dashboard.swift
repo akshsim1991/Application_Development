@@ -92,6 +92,82 @@ struct FileGladeAboutView: View {
     }
 }
 
+/// Search syntax: words are AND-ed; `OR` between words; `NOT word` or `-word` to exclude; "exact phrase";
+/// `*` and `?` as wildcards; `/regular expression/` matched against the file name.
+struct SearchQuery: Sendable {
+    enum Term: Sendable { case text(String), wildcard(String), regex(String) }
+    struct Clause: Sendable { var negated: Bool; var term: Term }
+    var groups: [[Clause]] = []
+    var isEmpty: Bool { groups.allSatisfy { $0.isEmpty } }
+
+    static func parse(_ raw: String) -> SearchQuery {
+        var tokens: [(text: String, quoted: Bool)] = []
+        var chars = Array(raw)[...]
+        while !chars.isEmpty {
+            if chars.first!.isWhitespace { chars = chars.dropFirst(); continue }
+            if chars.first == "\"" {
+                chars = chars.dropFirst()
+                let phrase = chars.prefix { $0 != "\"" }
+                tokens.append((String(phrase), true)); chars = chars.dropFirst(phrase.count); if chars.first == "\"" { chars = chars.dropFirst() }
+            } else if chars.first == "/", let end = chars.dropFirst().firstIndex(of: "/"), end > chars.startIndex + 1 {
+                tokens.append((String(chars[chars.startIndex...end]), false)); chars = chars[(end + 1)...]
+            } else {
+                let word = chars.prefix { !$0.isWhitespace }
+                tokens.append((String(word), false)); chars = chars.dropFirst(word.count)
+            }
+        }
+        var query = SearchQuery(); var current: [Clause] = []; var negateNext = false
+        for token in tokens {
+            if !token.quoted && token.text == "OR" { if !current.isEmpty { query.groups.append(current); current = [] }; continue }
+            if !token.quoted && token.text == "NOT" { negateNext = true; continue }
+            var text = token.text, negated = negateNext; negateNext = false
+            if !token.quoted && text.count > 1 && text.hasPrefix("-") { negated = true; text.removeFirst() }
+            guard !text.isEmpty else { continue }
+            let term: Term
+            if !token.quoted && text.count >= 3 && text.hasPrefix("/") && text.hasSuffix("/") {
+                let pattern = String(text.dropFirst().dropLast())
+                term = (try? NSRegularExpression(pattern: pattern)) != nil ? .regex(pattern) : .text(DashboardIndex.folded(text))
+            } else if !token.quoted && (text.contains("*") || text.contains("?")) { term = .wildcard(DashboardIndex.folded(text)) }
+            else { term = .text(DashboardIndex.folded(text)) }
+            current.append(Clause(negated: negated, term: term))
+        }
+        if !current.isEmpty { query.groups.append(current) }
+        return query
+    }
+    /// A SQL condition (and its bound values) for the index's text column and name column.
+    func sql(searchColumn: String, nameColumn: String) -> (condition: String, parameters: [String]) {
+        guard !isEmpty else { return ("1=1", []) }
+        var parameters: [String] = []
+        let groupSQL = groups.filter { !$0.isEmpty }.map { group -> String in
+            "(" + group.map { clause -> String in
+                switch clause.term {
+                case .text(let t): parameters.append(t); return "instr(\(searchColumn),?)" + (clause.negated ? "=0" : ">0")
+                case .wildcard(let w):
+                    let escaped = w.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "%", with: "\\%").replacingOccurrences(of: "_", with: "\\_").replacingOccurrences(of: "*", with: "%").replacingOccurrences(of: "?", with: "_")
+                    parameters.append("%" + escaped + "%"); return "\(searchColumn)" + (clause.negated ? " NOT LIKE ?" : " LIKE ?") + " ESCAPE '\\'"
+                case .regex(let r): parameters.append(r); return "\(nameColumn)" + (clause.negated ? " NOT REGEXP ?" : " REGEXP ?")
+                }
+            }.joined(separator: " AND ") + ")"
+        }.joined(separator: " OR ")
+        return ("(" + groupSQL + ")", parameters)
+    }
+}
+
+private let regexCacheLock = NSLock()
+nonisolated(unsafe) private var regexCache: [String: NSRegularExpression] = [:]
+/// SQLite calls this for `name REGEXP pattern` (pattern first, then the text).
+private func sqliteRegexp(_ context: OpaquePointer?, _ argc: Int32, _ argv: UnsafeMutablePointer<OpaquePointer?>?) {
+    guard argc == 2, let argv, let pattern = sqlite3_value_text(argv[0]), let text = sqlite3_value_text(argv[1]) else { sqlite3_result_int(context, 0); return }
+    let key = String(cString: pattern)
+    regexCacheLock.lock()
+    var expression = regexCache[key]
+    if expression == nil { expression = try? NSRegularExpression(pattern: key, options: .caseInsensitive); if let expression, regexCache.count < 200 { regexCache[key] = expression } }
+    regexCacheLock.unlock()
+    let string = String(cString: text)
+    let matched = expression?.firstMatch(in: string, range: NSRange(string.startIndex..., in: string)) != nil
+    sqlite3_result_int(context, matched ? 1 : 0)
+}
+
 struct DashboardRoot: Identifiable, Hashable, Sendable {
     let id: String
     let name: String
@@ -180,6 +256,7 @@ final class DashboardIndex {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         guard sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_FULLMUTEX, nil) == SQLITE_OK else { throw powerError("The file dashboard cache could not be opened.") }
         sqlite3_busy_timeout(db, 5_000)
+        sqlite3_create_function_v2(db, "regexp", 2, SQLITE_UTF8 | SQLITE_DETERMINISTIC, nil, sqliteRegexp, nil, nil, nil)
         try execute("PRAGMA journal_mode=WAL")
         try execute("CREATE TABLE IF NOT EXISTS roots (id TEXT PRIMARY KEY, name TEXT NOT NULL, path TEXT NOT NULL, active INTEGER NOT NULL DEFAULT 1, last_scan REAL NOT NULL DEFAULT 0, issue TEXT NOT NULL DEFAULT '')")
         try execute("CREATE TABLE IF NOT EXISTS items (path TEXT PRIMARY KEY, root_id TEXT NOT NULL, relative_path TEXT NOT NULL, name TEXT NOT NULL, search TEXT NOT NULL, folder INTEGER NOT NULL, size INTEGER NOT NULL, modified REAL NOT NULL, category TEXT NOT NULL, version TEXT NOT NULL)")
@@ -325,7 +402,8 @@ final class DashboardIndex {
         let totals = try prepare("SELECT COALESCE(SUM(CASE WHEN folder=0 THEN 1 ELSE 0 END),0),COALESCE(SUM(CASE WHEN folder=1 THEN 1 ELSE 0 END),0),COALESCE(SUM(size),0) FROM items JOIN roots ON items.root_id=roots.id WHERE roots.active=1")
         if sqlite3_step(totals) == SQLITE_ROW { page.files = Int(sqlite3_column_int64(totals, 0)); page.folders = Int(sqlite3_column_int64(totals, 1)); page.bytes = sqlite3_column_int64(totals, 2) }
         sqlite3_finalize(totals)
-        var condition = "roots.active=1 AND instr(items.search,?)>0"
+        let parsed = SearchQuery.parse(query).sql(searchColumn: "items.search", nameColumn: "items.name")
+        var condition = "roots.active=1 AND " + parsed.condition
         switch kind {
         case .all: break
         case .files: condition += " AND items.folder=0"
@@ -336,13 +414,14 @@ final class DashboardIndex {
         if filters.size != .any { condition += " AND items.folder=0 AND items.size>=\(filters.size.bytes)" }
         if filters.rootID != nil { condition += " AND items.root_id=?" }
         let count = try prepare("SELECT COUNT(*) FROM items JOIN roots ON items.root_id=roots.id WHERE " + condition)
-        bind(Self.folded(query), to: 1, in: count)
-        if let root = filters.rootID { bind(root, to: 2, in: count) }
+        for (i, value) in parsed.parameters.enumerated() { bind(value, to: Int32(i + 1), in: count) }
+        if let root = filters.rootID { bind(root, to: Int32(parsed.parameters.count + 1), in: count) }
         if sqlite3_step(count) == SQLITE_ROW { page.matches = Int(sqlite3_column_int64(count, 0)) }
         sqlite3_finalize(count)
         let rows = try prepare("SELECT items.path,items.relative_path,items.name,items.folder,items.size,items.modified,roots.name,roots.path,items.category FROM items JOIN roots ON items.root_id=roots.id WHERE " + condition + " ORDER BY " + grouping.sqlOrder + " items.folder DESC,items.name COLLATE NOCASE,items.path LIMIT ?")
-        bind(Self.folded(query), to: 1, in: rows)
-        if let root = filters.rootID { bind(root, to: 2, in: rows); sqlite3_bind_int64(rows, 3, Int64(limit)) } else { sqlite3_bind_int64(rows, 2, Int64(limit)) }
+        for (i, value) in parsed.parameters.enumerated() { bind(value, to: Int32(i + 1), in: rows) }
+        let next = Int32(parsed.parameters.count + 1)
+        if let root = filters.rootID { bind(root, to: next, in: rows); sqlite3_bind_int64(rows, next + 1, Int64(limit)) } else { sqlite3_bind_int64(rows, next, Int64(limit)) }
         while sqlite3_step(rows) == SQLITE_ROW {
             let relative = text(rows, 1)
             let base = URL(fileURLWithPath: text(rows, 7), isDirectory: true)
@@ -442,6 +521,19 @@ final class DashboardIndex {
         if let pendingRoots { self.pendingRoots = nil; refresh(pendingRoots) }
     }
     func stop() { pendingRoots = nil; paused = true; worker?.cancel(); status = "Pausing indexing…" }
+    /// Saves every match of the current search (up to 100,000) as a spreadsheet-friendly CSV file.
+    func exportResults(to url: URL) async throws -> Int {
+        let database = database, query = query, kind = kind, filters = filters
+        return try await Task.detached(priority: .utility) {
+            let page = try DashboardIndex(at: database).page(query: query, kind: kind, limit: 100_000, filters: filters)
+            func field(_ value: String) -> String { "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }
+            let iso = ISO8601DateFormatter()
+            var text = "Name,Path,Kind,Size (bytes),Modified,Source\n"
+            for item in page.items { text += [field(item.name), field(item.url.path), field(item.folder ? "folder" : item.category), String(item.size), field(iso.string(from: item.modified)), field(item.source)].joined(separator: ",") + "\n" }
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return page.items.count
+        }.value
+    }
     func searchChanged() { limit = 500; reloadResults(debounce: true) }
     func loadMore() { limit += 500; reloadResults() }
     func reloadResults(debounce: Bool = false) {
@@ -485,7 +577,7 @@ struct UnifiedDashboardView: View {
             Divider()
             HStack(spacing: 12) {
                 Label("Search all files", systemImage: "magnifyingglass").labelStyle(.iconOnly).foregroundStyle(.secondary)
-                TextField("Search all files and folders", text: $model.query).textFieldStyle(.plain)
+                TextField("Search all files and folders — try OR, NOT, *, \"phrase\", /regex/", text: $model.query).textFieldStyle(.plain)
                 if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill") }.buttonStyle(.plain).foregroundStyle(.secondary) }
                 Picker("Show", selection: $model.kind) { ForEach(DashboardKind.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).fixedSize()
             }.padding(.horizontal, 14).padding(.vertical, 8)
@@ -516,6 +608,9 @@ struct UnifiedDashboardView: View {
                 Menu { Picker("Group by", selection: $model.grouping) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } } label: { Label("Group by", systemImage: "square.grid.3x1.below.line.grid.1x2") }
                 Text(model.grouping.rawValue).font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                #if os(macOS)
+                Button("Export Results…") { exportResults() }.font(.caption).disabled(model.page.matches == 0)
+                #endif
                 Button("About") { showAbout = true }.font(.caption)
             }.padding(.horizontal, 16).padding(.vertical, 4)
             Divider()
@@ -590,6 +685,13 @@ struct UnifiedDashboardView: View {
         Color(.secondarySystemBackground)
         #endif
     }
+    #if os(macOS)
+    private func exportResults() {
+        let panel = NSSavePanel(); panel.nameFieldStringValue = "FileGlade search results.csv"; panel.allowedContentTypes = [.commaSeparatedText]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { do { let n = try await model.exportResults(to: url); model.status = "Exported \(n.formatted()) results to \(url.lastPathComponent)" } catch { model.error = error.localizedDescription } }
+    }
+    #endif
     private var overviewPanel: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 12) {

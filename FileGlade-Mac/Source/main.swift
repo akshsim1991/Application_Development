@@ -415,8 +415,8 @@ struct FileIcon: View {
 }
 
 enum ExtraSheet: Identifiable {
-    case compare, archive(URL), docs, collection(UUID), device(String)
-    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString; case .device(let id): return "device" + id } }
+    case compare, archive(URL), docs, collection(UUID), device(String), hex(URL), fileDiff(URL, URL), emptyFolders(URL)
+    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString; case .device(let id): return "device" + id; case .hex(let u): return "hex" + u.path; case .fileDiff(let a, let b): return "diff" + a.path + b.path; case .emptyFolders(let u): return "empty" + u.path } }
 }
 
 struct ExplorerView: View {
@@ -512,6 +512,9 @@ struct ExplorerView: View {
             switch item {
             case .compare: CompareView(left: model.directory, right: panes.second.directory) { model.refresh(); panes.second.refresh() }
             case .archive(let url): ArchiveBrowserView(archive: url) { out in acting.refresh(); acting.selection = [out] }
+            case .hex(let url): HexViewerView(url: url)
+            case .fileDiff(let a, let b): FileCompareView(left: a, right: b)
+            case .emptyFolders(let url): EmptyFoldersView(root: url) { acting.refresh() }
             case .device(let id): if let row = deviceRows.first(where: { $0.id == id }) { PhoneHubView(ic: row.ic, bridge: row.bridge) { acting.directory } } else { Text("This device was disconnected.").padding(40) }
             case .collection(let id): CollectionView(id: id) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
             case .docs: DocSearchView(folder: acting.directory) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
@@ -523,6 +526,9 @@ struct ExplorerView: View {
             case "docs": extra = .docs
             case "archive": if let url = note.userInfo?["url"] as? URL { extra = .archive(url) }
             case "basket": showBasket.toggle()
+            case "hex": if let url = note.userInfo?["url"] as? URL { extra = .hex(url) }
+            case "diff": if let a = note.userInfo?["a"] as? URL, let b = note.userInfo?["b"] as? URL { extra = .fileDiff(a, b) }
+            case "empty": extra = .emptyFolders(acting.directory)
             case "collection": if let id = note.userInfo?["id"] as? UUID { extra = .collection(id) }
             default: break
             }
@@ -843,6 +849,7 @@ struct ExplorerView: View {
         }
         if panes.dual { Button("Copy to Other Pane") { contextSelect(entry); panes.transferToOther(move: false) }; Button("Move to Other Pane") { contextSelect(entry); panes.transferToOther(move: true) } }
         if ArchiveTool.isArchive(entry.url) { Button("Browse Archive…") { extra = .archive(entry.url) } }
+        if !entry.isDirectory { Button("View as Hex…") { extra = .hex(entry.url) } }
         Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
         Divider()
         Button("Cut") { contextSelect(entry); model.copy(cut: true) }
@@ -876,6 +883,8 @@ struct ExplorerView: View {
                     detail("MODIFIED", entry.modified.formatted(date: .abbreviated, time: .shortened))
                     detail("EXTENSION", entry.url.pathExtension.isEmpty ? "None" : entry.url.pathExtension.uppercased())
                     if entry.isDirectory { FolderSizeRow(url: entry.url) }
+                    if !entry.isDirectory, let match = FileSignature.detect(entry.url) { detail("DETECTED TYPE", match.name) }
+                    if !entry.isDirectory, let warning = FileSignature.warning(for: entry.url) { Label(warning, systemImage: "exclamationmark.triangle.fill").font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true) }
                     TagsAndNote(url: entry.url)
                     Button { acting.openEntry(entry) } label: { Label(entry.isDirectory ? "Open folder" : "Open file", systemImage: "arrow.up.forward.square").frame(maxWidth: .infinity) }.buttonStyle(.bordered)
                     Button("Show in Finder", action: acting.reveal).buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(accent)
@@ -1037,6 +1046,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         app.insertItem(item("Settings…", #selector(settingsWindow), ","), at: 1)
         let tools = NSMenu()
         tools.addItem(item("Automation Rules…", #selector(automationWindow))); tools.addItem(item("Storage Analyzer…", #selector(storageWindow))); tools.addItem(item("Find Similar Photos…", #selector(similarWindow)))
+        tools.addItem(item("View as Hex…", #selector(viewHex))); tools.addItem(item("Compare Two Selected Files…", #selector(compareFiles))); tools.addItem(item("Find Empty Folders…", #selector(findEmptyFolders)))
         tools.addItem(.separator()); tools.addItem(item("New Collection…", #selector(newCollection))); tools.addItem(item("Add Selection to Collection…", #selector(addToCollection)))
         tools.addItem(.separator()); tools.addItem(item("Back Up Settings…", #selector(backupSettings))); tools.addItem(item("Restore Settings…", #selector(restoreSettings)))
         for (title, menu) in [("FileGlade", app), ("File", file), ("Edit", edit), ("View", view), ("Go", go), ("Pane", pane), ("Tools", tools)] { let root = NSMenuItem(title: title, action: nil, keyEquivalent: ""); root.submenu = menu; main.addItem(root) }
@@ -1090,6 +1100,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         alert.addButton(withTitle: "Add"); alert.addButton(withTitle: "Cancel")
         if alert.runModal() == .alertFirstButtonReturn { store.add(model.chosen.map(\.url), to: store.collections[popup.indexOfSelectedItem].id) }
     }
+    @objc func viewHex() { if let e = model.focused, !e.isDirectory { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "hex", userInfo: ["url": e.url]) } else { model.failure = "Select one file to view as hex." } }
+    @objc func compareFiles() {
+        let files = model.chosen.filter { !$0.isDirectory }
+        if files.count == 2 { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "diff", userInfo: ["a": files[0].url, "b": files[1].url]) } else { model.failure = "Select exactly two files to compare." }
+    }
+    @objc func findEmptyFolders() { NotificationCenter.default.post(name: .init("FileGladeExtra"), object: "empty") }
     @objc func backupSettings() { Backup.saveWithPanel() }
     @objc func restoreSettings() { Backup.restoreWithPanel() }
     @objc func toggleDual() { PaneState.shared.toggle() }
@@ -1323,6 +1339,19 @@ if CommandLine.arguments.contains("--self-test") {
         pauseToken.resume()
         while !worker.isFinished { Thread.sleep(forTimeInterval: 0.1) }
         precondition((try? Data(contentsOf: bigTarget).count) == 72 * 1_048_576, "Resumed copy is incomplete")
+        // File signatures, hex dump, text diff, empty folders.
+        let disguised = root2(fm, "inspect").appendingPathComponent("holiday.jpg")
+        try Data([0x4D, 0x5A, 0x90, 0x00, 0x03, 0x00, 0x00, 0x00]).write(to: disguised)
+        precondition(FileSignature.warning(for: disguised)?.contains("program") == true, "Disguised program was not flagged")
+        let realPNG = disguised.deletingLastPathComponent().appendingPathComponent("pic.txt"); try Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]).write(to: realPNG)
+        precondition(FileSignature.warning(for: realPNG)?.contains("PNG") == true, "Extension mismatch was not flagged")
+        precondition(HexDump.lines(Data("Hello, FileGlade!".utf8), startOffset: 0).first?.hasPrefix("00000000  48 65 6C 6C 6F") == true, "Hex dump format wrong")
+        let diffLines = TextDiff.compare("one\ntwo\nthree", "one\n2\nthree\nfour")
+        precondition(diffLines.filter { $0.kind == .removed }.map(\.text) == ["two"] && diffLines.filter { $0.kind == .added }.map(\.text) == ["2", "four"], "Text diff wrong")
+        let emptyRoot = root2(fm, "emptytest"); try fm.createDirectory(at: emptyRoot.appendingPathComponent("a/b"), withIntermediateDirectories: true); try fm.createDirectory(at: emptyRoot.appendingPathComponent("full"), withIntermediateDirectories: true)
+        try Data("x".utf8).write(to: emptyRoot.appendingPathComponent("full/file.txt")); try Data().write(to: emptyRoot.appendingPathComponent("a/.DS_Store"))
+        let emptyFound = EmptyFolderFinder.find(in: emptyRoot).map { $0.lastPathComponent }
+        precondition(emptyFound.contains("a") && emptyFound.contains("b") && !emptyFound.contains("full"), "Empty folder finder wrong")
         // Keyboard layouts: Mac keeps Return = rename; Windows uses Enter = open and F2 = rename.
         let menu = NSMenu(), sub = NSMenu()
         let renameItem = NSMenuItem(title: "Rename…", action: Selector(("rename")), keyEquivalent: "\r"); renameItem.keyEquivalentModifierMask = []

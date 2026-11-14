@@ -17,7 +17,7 @@ Built but NOT tested with real hardware: iPhone/iPad in the sidebar (ImageCaptur
 ## Not done yet (next steps, in order)
 1. (Done in 3.3.0) Transfer journal, recovery, verification and pause/resume are tested in `--self-test`.
 2. iPhone Files-app parity: Quick Look pager with Markup, document scanner (VisionKit) with OCR PDF, tags + folder colour/symbol UI (data layer exists in PowerTools `FileLibrary`), Browse hub (Favorites, Tags, Recents), Recently Deleted improvements, iCloud download/remove-download, drag and drop, Move to…, Open-in document types (Info.plist already declares them; needs `onOpenURL` import).
-3. Spec P1 (see the PDF "Free Cross-Platform File Manager Feature Specification", 335 features): regex/boolean search, hex viewer, text compare, similar filenames, search export, empty-folder finder.
+3. (Done in 3.4.0: regex/boolean search, hex viewer, text compare, empty-folder finder, search export, file signatures.) Remaining spec P1 (see the PDF "Free Cross-Platform File Manager Feature Specification", 335 features): regex/boolean search, hex viewer, text compare, similar filenames, search export, empty-folder finder.
 4. Things that cannot be done without extra pieces: iPhone SMB (needs a library), Windows version (needs a Windows machine and a different stack), notarised distribution (needs a paid Apple Developer ID).
 
 ## Known caveats

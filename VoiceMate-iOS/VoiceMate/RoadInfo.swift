@@ -36,7 +36,7 @@ final class RoadInfo: ObservableObject {
         if !fetching, Date().timeIntervalSince(lastFetchAt) > 60 || moved > 1000 {
             Task { await fetch(l) }
         }
-        guard Prefs.cameraAlerts, l.speed > 4, l.course >= 0 else { return }
+        guard Prefs.cameraAlerts, LocationProvider.shared.speedMps > 4, l.course >= 0 else { return }
         for (id, c) in cameras where !warned.contains(id) {
             let d = l.distance(from: CLLocation(latitude: c.latitude, longitude: c.longitude))
             guard d < 450 else { continue }

@@ -57,7 +57,7 @@ final class Emergency: ObservableObject {
     func shareLocation(note: String = "Location") async -> String {
         guard isConfigured else { return "Emergency contact isn't set up. Open Settings." }
         guard let l = await LocationProvider.shared.freshLocation() else { return "I can't get your location." }
-        let speed = Int(Prefs.displaySpeed(l.speed).rounded())
+        let speed = Int(Prefs.displaySpeed(LocationProvider.shared.speedMps).rounded())
         let ok = await send("📍 \(Prefs.riderName): \(note)\n\(mapsLink(l))\nSpeed \(speed) \(Prefs.speedUnit)")
         return ok ? "Location shared." : "I couldn't send the message. Check your internet."
     }
@@ -112,7 +112,7 @@ final class Emergency: ObservableObject {
     }
 
     private func noteSpeed(_ l: CLLocation) {
-        recentSpeeds.append((Date(), l.speed))
+        recentSpeeds.append((Date(), LocationProvider.shared.speedMps))
         recentSpeeds.removeAll { Date().timeIntervalSince($0.0) > 6 }
     }
 
@@ -122,7 +122,7 @@ final class Emergency: ObservableObject {
         checking = true
         Task {
             try? await Task.sleep(for: .seconds(6))
-            let v = LocationProvider.shared.latest?.speed ?? 0
+            let v = LocationProvider.shared.speedMps
             checking = false
             if v < 2.5 { startCountdown() }
         }

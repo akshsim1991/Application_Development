@@ -20,6 +20,8 @@ targets:
         UIBackgroundModes: [audio, location]
         NSMicrophoneUsageDescription: VoiceMate listens through your headphones' microphone to hear your questions.
         NSLocationWhenInUseUsageDescription: VoiceMate tells you your speed and location when you ask.
+        NSLocationTemporaryUsageDescriptionDictionary:
+          Navigation: VoiceMate needs precise location to show your speed and give turn-by-turn directions.
         NSAppleMusicUsageDescription: VoiceMate controls music playback by voice.
         NSSpeechRecognitionUsageDescription: VoiceMate converts your speech to text to answer you.
     settings:

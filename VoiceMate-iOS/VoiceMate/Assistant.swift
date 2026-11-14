@@ -334,10 +334,17 @@ final class Assistant {
         if has(q, "pause", "stop music", "stop the music") { player.pause(); return Reply(text: "Paused.") }
         if has(q, "play music", "resume", "play") { player.play(); return Reply(text: "Playing.") }
 
+        if has(q, "gps", "satellite", "signal") {
+            let g = LocationProvider.shared
+            let acc = g.gpsAccuracy.map { ", accurate to about \(Int($0)) metres" } ?? ""
+            return Reply(text: "\(g.gpsLevel.title)\(acc).")
+        }
         if has(q, "speed", "how fast") {
-            guard let l = await LocationProvider.shared.freshLocation(), l.speed >= 0 else { return Reply(text: "I can't get your speed right now.") }
-            if l.speed < 1.5 { return Reply(text: "You're stationary.") }
-            return Reply(text: "You're doing \(Int(Prefs.displaySpeed(l.speed).rounded())) \(Prefs.speedUnitSpoken).")
+            _ = await LocationProvider.shared.freshLocation()
+            let gps = LocationProvider.shared
+            guard gps.speedKnown else { return Reply(text: "I can't get your speed yet. \(gps.gpsLevel.title).") }
+            if gps.speedMps < 1.5 { return Reply(text: "You're stationary.") }
+            return Reply(text: "You're doing \(Int(Prefs.displaySpeed(gps.speedMps).rounded())) \(Prefs.speedUnitSpoken).")
         }
         if has(q, "where am i", "location", "which road", "what road") {
             guard let l = await LocationProvider.shared.freshLocation() else { return Reply(text: "I can't get your location right now.") }

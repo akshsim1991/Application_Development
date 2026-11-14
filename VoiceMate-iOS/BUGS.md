@@ -33,3 +33,14 @@ Fixed
    audio, a helmet disconnect or a recogniser error, and nothing restarted them. A watchdog now restarts them, switches
    to online recognition if on-device recognition keeps failing, and shows the reason on the Ride screen.
 10. Short words like "play" matched inside other words ("display" started music). Short commands now match whole words.
+
+## 2.0.3
+11. The speedometer stayed at 0 and distance at 0 m while moving. Speed was only read from the phone's GPS speed value,
+    which is missing when the signal is weak (train or bus windows, indoors), and distance ignored fixes with accuracy
+    worse than 50 m. Speed is now taken from GPS when available and otherwise worked out from consecutive positions; with a
+    weak signal, distance is integrated from speed. Works the same on a bike, bus or train.
+12. The "GPS on" badge only meant a ride was running. It now shows real signal strength with bars and accuracy
+    ("GPS good ±12 m"), and explains why the speed may read 0: location off, Precise Location off, searching, weak signal.
+    Tap the badge to open Settings when permission is missing. Voice: "hey rider, GPS signal".
+13. The speedometer only worked after starting a ride; it now also works with the Ride tab open. The dial scales to
+    320 km/h for trains.

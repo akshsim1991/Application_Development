@@ -102,19 +102,25 @@ final class TripRecorder: ObservableObject {
     }
 
     private func handle(_ l: CLLocation) {
-        guard l.horizontalAccuracy >= 0, l.horizontalAccuracy < 50 else { return }
-        var moving = false
+        // Poor accuracy (train or bus window, tunnels) is still fine for speed-based tracking.
+        guard l.horizontalAccuracy >= 0, l.horizontalAccuracy < 200 else { return }
+        let gps = LocationProvider.shared
+        let v = gps.speedMps
+        // GPS jitter while standing still reports small speeds and wandering positions: only count real movement.
+        let moving = gps.speedKnown && v >= 1.5
         if let last = lastLoc {
-            let d = l.distance(from: last), dt = l.timestamp.timeIntervalSince(last.timestamp)
-            // GPS jitter while standing still reports small speeds and wandering positions: only count real movement.
-            moving = l.speed >= 0 ? l.speed >= 1.5 : (dt > 0 && d / dt > 2 && d > l.horizontalAccuracy)
-            if moving, dt > 0, dt < 15, d / dt < 80 {   // also ignore GPS jumps
-                distance += d
-                movingTime += dt
+            let dt = l.timestamp.timeIntervalSince(last.timestamp)
+            if moving, dt > 0, dt < 15 {
+                let good = l.horizontalAccuracy < 50 && last.horizontalAccuracy < 50
+                let d = good ? l.distance(from: last) : v * dt   // weak signal: integrate speed instead of positions
+                if d / dt < 100 {                                // ignore GPS jumps
+                    distance += d
+                    movingTime += dt
+                }
             }
         }
-        if moving, l.speed >= 0, l.speed < 70 { maxSpeed = max(maxSpeed, l.speed) }
-        if moving {
+        if moving, v < 100 { maxSpeed = max(maxSpeed, v) }
+        if moving, l.horizontalAccuracy < 100 {
             let p = [l.coordinate.latitude, l.coordinate.longitude]
             if let last = points.last {
                 if l.distance(from: CLLocation(latitude: last[0], longitude: last[1])) >= 25 { points.append(p) }
@@ -124,9 +130,9 @@ final class TripRecorder: ObservableObject {
 
         let manual = Prefs.speedLimit
         let limit: Double? = manual > 0 ? Double(manual) : (Prefs.autoLimitAlert ? RoadInfo.shared.limitDisplay : nil)
-        if let limit, l.speed >= 0, Prefs.displaySpeed(l.speed) > limit + (manual > 0 ? 0 : 5), Date().timeIntervalSince(lastAlert) > 45 {
+        if let limit, gps.speedKnown, Prefs.displaySpeed(v) > limit + (manual > 0 ? 0 : 5), Date().timeIntervalSince(lastAlert) > 45 {
             lastAlert = Date()
-            let now = Int(Prefs.displaySpeed(l.speed).rounded())
+            let now = Int(Prefs.displaySpeed(v).rounded())
             Task { await speak?("Speed alert. \(now) \(Prefs.speedUnitSpoken).") }
         }
     }

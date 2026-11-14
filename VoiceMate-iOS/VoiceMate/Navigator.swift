@@ -459,7 +459,7 @@ final class Navigator: ObservableObject {
         upcomingMeters = d
         if let r = remainingValues(loc) { remainingMeters = r.distance; remainingSeconds = r.seconds }
 
-        let v = max(loc.speed, 0)
+        let v = max(LocationProvider.shared.speedMps, 0)
         let far = max(500, v * 25), mid = max(200, v * 10), near = max(50, v * 3.5)
         let level = d <= near ? 3 : d <= mid ? 2 : d <= far ? 1 : 0
         let isLast = nextIdx == steps.count - 1

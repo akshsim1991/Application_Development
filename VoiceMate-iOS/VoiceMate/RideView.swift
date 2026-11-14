@@ -33,8 +33,8 @@ struct RideView: View {
     @State private var showSOS = false
     @AppStorage("speedLimit") private var speedLimit = 0
 
-    private var moving: Bool { ride.isRiding && (loc.latest?.speed ?? 0) >= 1.5 }
-    private var speed: Double { moving ? Prefs.displaySpeed(loc.latest?.speed ?? 0) : 0 }
+    private var moving: Bool { loc.speedKnown && loc.speedMps >= 1.5 }
+    private var speed: Double { moving ? Prefs.displaySpeed(loc.speedMps) : 0 }
 
     var body: some View {
         ScrollView {
@@ -55,6 +55,9 @@ struct RideView: View {
             .padding()
         }
         .background(Theme.bg.ignoresSafeArea())
+        .onAppear { if !ride.isRiding { loc.startPreview() } }
+        .onDisappear { loc.stopPreview() }
+        .onChange(of: ride.isRiding) { _, riding in if !riding { loc.startPreview() } }
     }
 
     // MARK: Pieces
@@ -65,10 +68,43 @@ struct RideView: View {
                 chip(route.isBluetooth ? "Helmet: \(route.description)" : "No helmet (\(route.description))",
                      icon: route.isBluetooth ? "headphones" : "exclamationmark.triangle.fill",
                      color: route.isBluetooth ? Theme.good : Theme.accent)
-                chip(ride.isRiding ? "GPS on" : "GPS off", icon: "location.fill", color: ride.isRiding ? Theme.good : Theme.dim)
+                gpsChip
                 chip(nav.providerStatus, icon: "map.fill", color: nav.providerStatus.hasPrefix("Google") ? Theme.good : Theme.dim)
             }
         }
+    }
+
+    /// Explains why the speedometer may read 0.
+    private var gpsHint: String? {
+        if !loc.authorized { return "Location is off for VoiceMate. Tap the GPS badge above and choose “While Using” with Precise Location on." }
+        if loc.reducedAccuracy { return "Precise Location is off. Turn it on: Settings > Privacy > Location Services > VoiceMate." }
+        if loc.gpsLevel == .searching { return "Waiting for GPS… move near a window or outdoors." }
+        if loc.gpsLevel == .poor { return "Weak GPS signal. Speed may be late or jumpy." }
+        return nil
+    }
+
+    private var gpsColor: Color {
+        switch loc.gpsLevel {
+        case .strong, .good: return Theme.good
+        case .fair: return Theme.accent
+        case .poor, .searching, .off: return Theme.bad
+        }
+    }
+
+    private var gpsChip: some View {
+        Button {
+            if !loc.authorized, let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "cellularbars", variableValue: loc.gpsLevel.bars)
+                Text(loc.gpsAccuracy.map { "\(loc.gpsLevel.title) ±\(Int($0)) m" } ?? loc.gpsLevel.title)
+            }
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(gpsColor)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(Capsule().fill(gpsColor.opacity(0.15)))
+        }
+        .buttonStyle(.plain)
     }
 
     private func chip(_ text: String, icon: String, color: Color) -> some View {
@@ -81,12 +117,16 @@ struct RideView: View {
 
     private var speedCard: some View {
         VStack(spacing: 6) {
-            SpeedGauge(speed: speed, maxSpeed: Prefs.imperial ? 100 : 160, unit: Prefs.speedUnit,
+            SpeedGauge(speed: speed, maxSpeed: Prefs.imperial ? (speed > 100 ? 200 : 100) : (speed > 160 ? 320 : 160), unit: Prefs.speedUnit,
                        over: speedLimit > 0 && speed > Double(speedLimit))
             HStack(spacing: 18) {
-                Label(cardinal(ride.isRiding ? (loc.latest?.course ?? -1) : -1), systemImage: "safari")
+                Label(cardinal(moving ? (loc.latest?.course ?? -1) : -1), systemImage: "safari")
                 if speedLimit > 0 { Label("Alert \(speedLimit)", systemImage: "exclamationmark.triangle") }
                 if ride.isRiding, let lim = road.limitDisplay { limitSign(Int(lim.rounded())) }
+            }
+            if let hint = gpsHint {
+                Text(hint).font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent)
+                    .multilineTextAlignment(.center).padding(.horizontal)
             }
             .font(.subheadline.weight(.semibold)).foregroundStyle(Theme.dim)
         }

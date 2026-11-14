@@ -1,4 +1,4 @@
-# VoiceMate / RideVoice: feasibility, licensing and architecture
+# RideVoice (internal code name: VoiceMate): feasibility, licensing and architecture
 
 Status date: 2026-11-14. Written before further coding, as the brief requires. **Nothing in this repository has yet been
 run on a physical iPhone with a BluArmor helmet.** Where a claim could not be verified it says so.

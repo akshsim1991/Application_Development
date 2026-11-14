@@ -4,8 +4,8 @@ import CoreLocation
 enum GPX {
     static func xml(for trip: Trip) -> String {
         let iso = ISO8601DateFormatter()
-        var s = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"VoiceMate\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n"
-        s += "<trk><name>VoiceMate ride \(iso.string(from: trip.start))</name><trkseg>\n"
+        var s = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"RideVoice\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n"
+        s += "<trk><name>RideVoice ride \(iso.string(from: trip.start))</name><trkseg>\n"
         for p in trip.points where p.count == 2 {
             s += "<trkpt lat=\"\(p[0])\" lon=\"\(p[1])\"></trkpt>\n"
         }
@@ -16,7 +16,7 @@ enum GPX {
     static func writeFile(for trip: Trip) -> URL? {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd-HHmm"
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("VoiceMate-\(f.string(from: trip.start)).gpx")
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("RideVoice-\(f.string(from: trip.start)).gpx")
         do { try xml(for: trip).write(to: url, atomically: true, encoding: .utf8); return url } catch { return nil }
     }
 

@@ -320,7 +320,7 @@ private struct ActiveNavSection: View {
                 Button("Skip to next stop") { Task { await ride.skipStop() } }
             }
             if let c = nav.destinationCoordinate {
-                // Hand the destination to Google Maps (its own guidance; VoiceMate can't change what it says).
+                // Hand the destination to Google Maps (its own guidance; RideVoice can't change what it says).
                 Button {
                     if let url = URL(string: "https://www.google.com/maps/dir/?api=1&destination=\(c.latitude),\(c.longitude)&travelmode=two-wheeler") {
                         UIApplication.shared.open(url)

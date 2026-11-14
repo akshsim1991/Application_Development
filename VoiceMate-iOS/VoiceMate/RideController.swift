@@ -80,7 +80,7 @@ final class RideController: ObservableObject {
         guard !isRiding else { await handlePendingDestination(); return }
         errorMessage = nil
         guard await RideListener.requestPermissions() else {
-            errorMessage = "Allow Microphone and Speech Recognition in Settings > VoiceMate."
+            errorMessage = "Allow Microphone and Speech Recognition in Settings > RideVoice."
             return
         }
         do {

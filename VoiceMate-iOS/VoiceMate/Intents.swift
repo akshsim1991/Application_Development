@@ -1,9 +1,9 @@
 import AppIntents
 
-/// "Hey Siri, ask VoiceMate" (when Siri is triggered by the helmet button). Runs without opening the app.
+/// "Hey Siri, ask RideVoice" (when Siri is triggered by the helmet button). Runs without opening the app.
 struct AskVoiceMateIntent: AppIntent {
-    static var title: LocalizedStringResource = "Ask VoiceMate"
-    static var description = IntentDescription("Ask VoiceMate for speed, location, time and more.")
+    static var title: LocalizedStringResource = "Ask RideVoice"
+    static var description = IntentDescription("Ask RideVoice for speed, location, time and more.")
     static var openAppWhenRun = false
 
     @Parameter(title: "Question", requestValueDialog: "What would you like to know?")
@@ -19,7 +19,7 @@ struct AskVoiceMateIntent: AppIntent {
 /// Hold the helmet button -> "Start ride mode": launches the app and begins always-on listening.
 struct StartRideModeIntent: AppIntent {
     static var title: LocalizedStringResource = "Start Ride Mode"
-    static var description = IntentDescription("Open VoiceMate and start hands-free listening.")
+    static var description = IntentDescription("Open RideVoice and start hands-free listening.")
     static var openAppWhenRun = true
 
     @MainActor
@@ -29,9 +29,9 @@ struct StartRideModeIntent: AppIntent {
     }
 }
 
-/// Hold the helmet button -> "Navigate with VoiceMate" -> "Where do you want to go?" -> answer.
+/// Hold the helmet button -> "Navigate with RideVoice" -> "Where do you want to go?" -> answer.
 struct NavigateToIntent: AppIntent {
-    static var title: LocalizedStringResource = "Navigate with VoiceMate"
+    static var title: LocalizedStringResource = "Navigate with RideVoice"
     static var description = IntentDescription("Start audio-only navigation to a place.")
     static var openAppWhenRun = true
 
@@ -46,7 +46,7 @@ struct NavigateToIntent: AppIntent {
     }
 }
 
-/// Hold the helmet button -> "Send SOS with VoiceMate": messages your emergency contact with your location.
+/// Hold the helmet button -> "Send SOS with RideVoice": messages your emergency contact with your location.
 struct SendSOSIntent: AppIntent {
     static var title: LocalizedStringResource = "Send SOS"
     static var description = IntentDescription("Send an emergency message with your location to your emergency contact.")

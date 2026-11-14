@@ -5,7 +5,7 @@ enum Ask {
     static func answer(_ question: String) async -> String? {
         let key = Prefs.anthropicKey
         guard !key.isEmpty, let url = URL(string: "https://api.anthropic.com/v1/messages") else { return nil }
-        let system = "You are VoiceMate, a voice assistant for a motorcycle rider using a helmet headset. "
+        let system = "You are RideVoice, a voice assistant for a motorcycle rider using a helmet headset. "
             + "Answer in at most two short spoken sentences. Plain text only: no markdown, lists, or emojis. "
             + "If a question needs reading a screen or long instructions, say to ask again when stopped."
         let body: [String: Any] = [

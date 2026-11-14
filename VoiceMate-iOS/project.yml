@@ -11,20 +11,20 @@ targets:
     info:
       path: VoiceMate/Info.plist
       properties:
-        CFBundleDisplayName: VoiceMate
+        CFBundleDisplayName: RideVoice
         CFBundleShortVersionString: "2.0"
         CFBundleVersion: "2"
-        NSPersonalVoiceUsageDescription: VoiceMate can use a Personal Voice you created on this iPhone to speak directions.
-        NSMotionUsageDescription: VoiceMate uses motion sensors to detect a possible crash while you ride.
+        NSPersonalVoiceUsageDescription: RideVoice can use a Personal Voice you created on this iPhone to speak directions.
+        NSMotionUsageDescription: RideVoice uses motion sensors to detect a possible crash while you ride.
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIBackgroundModes: [audio, location]
-        NSMicrophoneUsageDescription: VoiceMate listens through your headphones' microphone to hear your questions.
-        NSLocationWhenInUseUsageDescription: VoiceMate tells you your speed and location when you ask.
+        NSMicrophoneUsageDescription: RideVoice listens through your headphones' microphone to hear your questions.
+        NSLocationWhenInUseUsageDescription: RideVoice tells you your speed and location when you ask.
         NSLocationTemporaryUsageDescriptionDictionary:
-          Navigation: VoiceMate needs precise location to show your speed and give turn-by-turn directions.
-        NSAppleMusicUsageDescription: VoiceMate controls music playback by voice.
-        NSSpeechRecognitionUsageDescription: VoiceMate converts your speech to text to answer you.
+          Navigation: RideVoice needs precise location to show your speed and give turn-by-turn directions.
+        NSAppleMusicUsageDescription: RideVoice controls music playback by voice.
+        NSSpeechRecognitionUsageDescription: RideVoice converts your speech to text to answer you.
     scheme:
       testTargets: [VoiceMateTests]
     settings:

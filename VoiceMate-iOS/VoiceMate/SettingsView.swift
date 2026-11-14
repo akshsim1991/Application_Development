@@ -22,7 +22,7 @@ struct SettingsView: View {
 
     private var version: String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0"
-        return "VoiceMate \(v)"
+        return "RideVoice \(v)"
     }
 
     var body: some View {
@@ -88,7 +88,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("Send test message") {
-                        Task { status = await Emergency.shared.send("✅ Test from VoiceMate. Emergency alerts are working.") ? "Test message sent." : "Failed. Check token, chat ID and internet." }
+                        Task { status = await Emergency.shared.send("✅ Test from RideVoice. Emergency alerts are working.") ? "Test message sent." : "Failed. Check token, chat ID and internet." }
                     }
                     if !status.isEmpty { Text(status).font(.caption).foregroundStyle(Theme.accent) }
                     Toggle("Crash detection", isOn: $crashDetect)
@@ -111,7 +111,7 @@ struct SettingsView: View {
                 GSection("AI assistant") {
                     SecureField("Anthropic API key", text: $anthropicKey)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
-                    Text("With a key, anything VoiceMate doesn't understand is answered by Claude (for example “hey rider, how do I fix a punctured tubeless tyre”). Each answer costs a tiny amount on your Anthropic account.")
+                    Text("With a key, anything RideVoice doesn't understand is answered by Claude (for example “hey rider, how do I fix a punctured tubeless tyre”). Each answer costs a tiny amount on your Anthropic account.")
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 

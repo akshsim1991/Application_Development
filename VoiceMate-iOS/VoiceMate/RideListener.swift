@@ -77,7 +77,7 @@ final class RideListener: ObservableObject {
     func start() throws {
         guard !running else { return }
         guard let recognizer, recognizer.isAvailable else {
-            throw NSError(domain: "VoiceMate", code: 1, userInfo: [NSLocalizedDescriptionKey: "Speech recognition is not available. Check your internet and Settings > Siri & Search."])
+            throw NSError(domain: "RideVoice", code: 1, userInfo: [NSLocalizedDescriptionKey: "Speech recognition is not available. Check your internet and Settings > Siri & Search."])
         }
         try startEngine()
         running = true

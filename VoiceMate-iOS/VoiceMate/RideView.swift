@@ -114,8 +114,8 @@ private struct SpeedPanel: View {
     private var speed: Double { moving ? Prefs.displaySpeed(loc.speedMps) : 0 }
 
     private var hint: String? {
-        if !loc.authorized { return "Location is off for VoiceMate. Tap the GPS badge above and choose “While Using” with Precise Location on." }
-        if loc.reducedAccuracy { return "Precise Location is off. Turn it on: Settings > Privacy > Location Services > VoiceMate." }
+        if !loc.authorized { return "Location is off for RideVoice. Tap the GPS badge above and choose “While Using” with Precise Location on." }
+        if loc.reducedAccuracy { return "Precise Location is off. Turn it on: Settings > Privacy > Location Services > RideVoice." }
         if loc.gpsLevel == .searching { return "Waiting for GPS… move near a window or outdoors." }
         if loc.gpsLevel == .poor { return "Weak GPS signal. Speed may be late or jumpy." }
         return nil

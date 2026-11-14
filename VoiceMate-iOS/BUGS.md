@@ -1,4 +1,4 @@
-# VoiceMate 2.0.1 - bug fixes (found by reviewing the code; not yet confirmed on a phone)
+# RideVoice 2.0.1 - bug fixes (found by reviewing the code; not yet confirmed on a phone)
 
 Fixed in this version
 1. Service reminders could only be added, swiped "done" or deleted. They can now be edited: tap a reminder to change

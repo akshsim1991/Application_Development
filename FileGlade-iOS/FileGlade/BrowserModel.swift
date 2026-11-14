@@ -173,6 +173,7 @@ enum FileSort: String, CaseIterable { case name = "Name", modified = "Date modif
             locations.append(location); granted[location.id] = url; saveLocations()
         } catch { if access { url.stopAccessingSecurityScopedResource() }; problem = error.localizedDescription }
     }
+    func moveLocations(from source: IndexSet, to destination: Int) { locations.move(fromOffsets: source, toOffset: destination); saveLocations() }
     private func saveLocations() { if let data = try? JSONEncoder().encode(locations) { UserDefaults.standard.set(data, forKey: "FileGlade.locations") } }
     func removeDashboardLocation(_ location: SavedLocation) {
         locations.removeAll { $0.id == location.id }

@@ -17,6 +17,8 @@ struct FileItem: Identifiable, Hashable, Sendable {
     let size: Int64
     let modified: Date
     let kind: String
+    /// True for an iCloud file that is not downloaded to this iPhone yet.
+    let isCloudOnly: Bool
     var id: URL { url }
     var name: String { url.lastPathComponent }
     var icon: String {
@@ -31,7 +33,8 @@ struct FileItem: Identifiable, Hashable, Sendable {
     }
     init(_ url: URL) {
         self.url = stableFileURL(url)
-        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey])
+        let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .ubiquitousItemDownloadingStatusKey])
+        isCloudOnly = values?.ubiquitousItemDownloadingStatus == .notDownloaded
         let attrs = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
         isDirectory = values?.isDirectory ?? (attrs[.type] as? FileAttributeType == .typeDirectory)
         size = Int64(values?.fileSize ?? (attrs[.size] as? NSNumber)?.intValue ?? 0)

@@ -19,11 +19,12 @@ import UniformTypeIdentifiers
                     .navigationTitle("FileGlade").navigationBarTitleDisplayMode(.inline)
                 }.tabItem { Label("All files", systemImage: "square.grid.2x2") }.tag(0)
                 BrowserView(model: model, onDashboard: { activeScreen = 0 }).tabItem { Label("Folders", systemImage: "folder") }.tag(1)
-                NavigationStack { LibraryToolsView { url in model.revealItem(url); activeScreen = 1 } }.tabItem { Label("Library", systemImage: "star") }.tag(2)
+                BrowseHubView(model: model, open: { _ in activeScreen = 1 }).tabItem { Label("Browse", systemImage: "rectangle.stack") }.tag(2)
                 DeletedView(model: model).tabItem { Label("Recently Deleted", systemImage: "trash") }.tag(3)
             }
             .tint(.blue)
             .alert("Something needs your attention", isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })) { Button("OK") { model.problem = nil } } message: { Text(model.problem ?? "") }
+            .onOpenURL { url in Task { model.openLocal(); activeScreen = 1; await model.importFiles([url]) } }
             .task { BridgeController.shared.rootsProvider = { model.dashboardRoots }; await model.reload() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { if activeScreen == 1 { Task { await model.reload() } }; model.refreshDeleted() } }
             .sheet(item: $dashboardSheet) { sheet in
@@ -71,9 +72,9 @@ struct FileAccessSetupView: View {
 }
 
 private enum BrowserSheet: Identifiable {
-    case about, locations, preview(URL), share([URL]), details(FileItem), tools(URL, [URL]), computer
+    case about, locations, preview(URL), previewList([URL], Int), share([URL]), details(FileItem), tools(URL, [URL]), computer, tags([URL]), customize(URL), text(URL), unlock(URL), scanSave([UIImage])
     var id: String {
-        switch self { case .about: return "about"; case .locations: return "locations"; case .preview(let url): return "preview-\(url.path)"; case .share: return "share"; case .details(let item): return "info-\(item.url.path)"; case .tools: return "tools"; case .computer: return "computer" }
+        switch self { case .about: return "about"; case .locations: return "locations"; case .preview(let url): return "preview-\(url.path)"; case .share: return "share"; case .details(let item): return "info-\(item.url.path)"; case .tools: return "tools"; case .computer: return "computer"; case .previewList(let urls, let i): return "list-\(urls.count)-\(i)"; case .tags(let urls): return "tags-" + (urls.first?.path ?? ""); case .customize(let url): return "custom-" + url.path; case .text(let url): return "text-" + url.path; case .unlock(let url): return "unlock-" + url.path; case .scanSave(let pages): return "scan-\(pages.count)" }
     }
 }
 
@@ -88,6 +89,9 @@ struct BrowserView: View {
     @State private var newName = ""
     @State private var trashItems: [FileItem] = []
     @State private var confirmTrash = false
+    @State private var scanning = false
+    @State private var movingItems: [URL] = []
+    @State private var moving = false
 
     var body: some View {
         NavigationStack {
@@ -120,6 +124,7 @@ struct BrowserView: View {
                         Divider()
                         Toggle("Show hidden files", isOn: $model.hidden).onChange(of: model.hidden) { _, _ in Task { await model.reload() } }
                         Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.reload() } }
+                        Button("Scan documents", systemImage: "doc.viewfinder") { scanning = true }
                         Button("Computer access (USB)", systemImage: "cable.connector") { sheet = .computer }
                         Button("About FileGlade", systemImage: "info.circle") { sheet = .about }
                     } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("More actions")
@@ -135,8 +140,21 @@ struct BrowserView: View {
                 case .share(let urls): ShareView(urls: urls)
                 case .details(let item): DetailsView(item: item)
                 case .computer: ComputerAccessView()
+                case .previewList(let urls, let index): PreviewView(urls: urls, start: index)
+                case .tags(let urls): TagEditorView(urls: urls)
+                case .customize(let url): CustomizeFolderView(url: url) { Task { await model.reload() } }
+                case .text(let url): ExtractedTextView(url: url)
+                case .unlock(let url): PasswordPromptView(title: "Unlock PDF") { password in model.quickAction("Unlock PDF") { try ImageQuickActions.unlockPDF(url, password: password) } }
+                case .scanSave(let pages): ScanSaveView(pages: pages, folder: model.directory) { url in Task { await model.reload(); model.selection = [url] } }
                 case .tools(let folder, let urls): PowerToolsView(folder: folder, selection: urls, onProduced: model.toolsProduced, onReveal: model.revealItem)
                 }
+            }
+            .fullScreenCover(isPresented: $scanning) {
+                DocumentScannerView(onFinish: { pages in scanning = false; if !pages.isEmpty { sheet = .scanSave(pages) } }, onCancel: { scanning = false }).ignoresSafeArea()
+            }
+            .fileMover(isPresented: $moving, files: movingItems) { result in
+                if case .failure(let error) = result { model.problem = error.localizedDescription }
+                movingItems = []; Task { await model.reload() }
             }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
                 switch result { case .success(let urls): Task { await model.importFiles(urls) }; case .failure(let error): model.problem = error.localizedDescription }
@@ -219,7 +237,7 @@ struct BrowserView: View {
                     ForEach(group.items) { item in
                         Button { tap(item) } label: {
                             VStack(spacing: 10) {
-                                Image(systemName: item.icon).font(.system(size: 46, weight: .regular)).foregroundStyle(item.isDirectory ? Color.yellow : .blue).frame(height: 57)
+                                ItemGlyph(isDirectory: item.isDirectory, icon: item.icon, style: library.folderStyle(item.url), size: 46).frame(height: 57).overlay(alignment: .bottomTrailing) { if item.isCloudOnly { Image(systemName: "icloud.and.arrow.down").font(.system(size: 14)).foregroundStyle(.blue).padding(2).background(.thinMaterial, in: Circle()) } }
                                 Text(item.name).font(.system(size: 12)).foregroundStyle(.primary).lineLimit(2).multilineTextAlignment(.center).frame(height: 33, alignment: .top)
                             }
                             .padding(.vertical, 14).padding(.horizontal, 7).frame(maxWidth: .infinity)
@@ -240,8 +258,8 @@ struct BrowserView: View {
                 Button { tap(item) } label: {
                     HStack(spacing: 14) {
                         if model.selecting { Image(systemName: model.selection.contains(item.url) ? "checkmark.circle.fill" : "circle").foregroundStyle(.blue) }
-                        Image(systemName: item.icon).font(.system(size: 27)).foregroundStyle(item.isDirectory ? Color.yellow : .blue).frame(width: 37)
-                        VStack(alignment: .leading, spacing: 5) { Text(item.name).foregroundStyle(.primary).font(.subheadline).lineLimit(2); Text(item.isDirectory ? "Folder" : ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
+                        ItemGlyph(isDirectory: item.isDirectory, icon: item.icon, style: library.folderStyle(item.url), size: 27).frame(width: 37)
+                        VStack(alignment: .leading, spacing: 5) { Text(item.name).foregroundStyle(.primary).font(.subheadline).lineLimit(2); Text((item.isDirectory ? "Folder" : ByteCountFormatter.string(fromByteCount: item.size, countStyle: .file)) + (item.isCloudOnly ? " · in iCloud" : "") + (library.tags(item.url).isEmpty ? "" : " · " + library.tags(item.url).joined(separator: ", "))).font(.caption).foregroundStyle(.secondary) }
                         Spacer(minLength: 0)
                         if item.isDirectory && !model.selecting { Image(systemName: "chevron.right").font(.caption).foregroundStyle(.tertiary) }
                     }.padding(.vertical, 5)
@@ -261,6 +279,8 @@ struct BrowserView: View {
                     Spacer()
                     Button { model.copy(model.chosen, cut: true) } label: { Image(systemName: "scissors").frame(width: 34, height: 44) }.accessibilityLabel("Cut selected items")
                     Button { model.copy(model.chosen, cut: false) } label: { Image(systemName: "doc.on.doc").frame(width: 34, height: 44) }.accessibilityLabel("Copy selected items")
+                    Button { sheet = .tags(model.chosen.map(\.url)) } label: { Image(systemName: "tag").frame(width: 34, height: 44) }.accessibilityLabel("Tag selected items")
+                    Button { movingItems = model.chosen.map(\.url); moving = true } label: { Image(systemName: "folder").frame(width: 34, height: 44) }.accessibilityLabel("Move selected items")
                     Button { sheet = .share(model.chosen.map(\.url)) } label: { Image(systemName: "square.and.arrow.up").frame(width: 34, height: 44) }.accessibilityLabel("Share selected items")
                     Button { requestTrash(model.chosen) } label: { Image(systemName: "trash").frame(width: 34, height: 44) }.tint(.red).accessibilityLabel("Move selected items to Recently Deleted")
                 }.padding(.horizontal, 16).disabled(model.busy)
@@ -278,12 +298,46 @@ struct BrowserView: View {
         guard !model.busy else { return }
         if model.selecting { model.toggleSelection(item) }
         else if item.isDirectory { model.navigate(item.url) }
-        else { library.opened(item.url); sheet = .preview(item.url) }
+        else {
+            library.opened(item.url)
+            let files = model.visible.filter { !$0.isDirectory }.map(\.url)
+            if let index = files.firstIndex(of: item.url) { sheet = .previewList(files, index) } else { sheet = .preview(item.url) }
+        }
+    }
+    /// Image and PDF actions, like Quick Actions in Apple's Files app.
+    @ViewBuilder private func quickActions(_ item: FileItem) -> some View {
+        let type = UTType(filenameExtension: item.url.pathExtension)
+        if item.isCloudOnly { Button("Download now", systemImage: "icloud.and.arrow.down") { try? FileManager.default.startDownloadingUbiquitousItem(at: item.url); Task { try? await Task.sleep(nanoseconds: 1_500_000_000); await model.reload() } } }
+        else if (try? item.url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true { Button("Remove download", systemImage: "icloud") { try? FileManager.default.evictUbiquitousItem(at: item.url); Task { await model.reload() } } }
+        if !item.isDirectory && !item.isCloudOnly, let type {
+            if type.conforms(to: .image) {
+                Menu("Quick actions", systemImage: "wand.and.rays") {
+                    Button("Rotate right", systemImage: "rotate.right") { let u = item.url; model.quickAction("Rotate") { try ImageQuickActions.rotate(u, clockwise: true) } }
+                    Button("Rotate left", systemImage: "rotate.left") { let u = item.url; model.quickAction("Rotate") { try ImageQuickActions.rotate(u, clockwise: false) } }
+                    Menu("Convert image", systemImage: "arrow.triangle.2.circlepath") {
+                        Button("JPEG") { let u = item.url; model.quickAction("Convert image") { try ImageQuickActions.convert(u, to: .jpeg) } }
+                        Button("PNG") { let u = item.url; model.quickAction("Convert image") { try ImageQuickActions.convert(u, to: .png) } }
+                        Button("HEIC") { let u = item.url; model.quickAction("Convert image") { try ImageQuickActions.convert(u, to: .heic) } }
+                    }
+                    Button("Remove background", systemImage: "person.crop.circle.badge.minus") { let u = item.url; model.quickAction("Remove background") { try ImageQuickActions.removeBackground(u) } }
+                    Button("Create PDF", systemImage: "doc.richtext") { let u = item.url, folder = model.directory; model.quickAction("Create PDF") { try PowerFS.combinePDFs([u], into: folder, name: u.deletingPathExtension().lastPathComponent) } }
+                    Button("Extract text", systemImage: "text.viewfinder") { sheet = .text(item.url) }
+                }
+            } else if type.conforms(to: .pdf) {
+                Menu("Quick actions", systemImage: "wand.and.rays") {
+                    Button("Extract text", systemImage: "text.viewfinder") { sheet = .text(item.url) }
+                    Button("Unlock…", systemImage: "lock.open") { sheet = .unlock(item.url) }
+                }
+            }
+        }
     }
     private func requestTrash(_ items: [FileItem]) { trashItems = items; confirmTrash = true }
     @ViewBuilder private func itemMenu(_ item: FileItem) -> some View {
         Button(library.isStarred(item.url) ? "Remove star" : "Star item", systemImage: "star") { library.toggleStar(item.url) }
         Menu("Color label", systemImage: "circle.fill") { ForEach(FileLibrary.labels, id: \.self) { label in Button(label) { library.setLabel(label, urls: [item.url]) } } }
+        Button("Tags…", systemImage: "tag") { sheet = .tags(model.selecting && !model.selection.isEmpty ? Array(model.selection) : [item.url]) }
+        if item.isDirectory { Button("Customize folder…", systemImage: "paintpalette") { sheet = .customize(item.url) } }
+        quickActions(item)
         Button("Power tools", systemImage: "wand.and.stars") { sheet = .tools(model.directory, [item.url]) }
         Button("Copy path", systemImage: "link") { copyFileText(item.url.path) }
         Divider()
@@ -294,6 +348,8 @@ struct BrowserView: View {
         Button("Copy", systemImage: "doc.on.doc") { model.copy([item], cut: false) }
         Button("Cut", systemImage: "scissors") { model.copy([item], cut: true) }
         Button("Rename", systemImage: "pencil") { renameItem = item; newName = item.name; naming = true }
+        Button("Duplicate", systemImage: "plus.square.on.square") { let source = item.url, folder = model.directory; model.quickAction("Duplicate") { try FileOperations.transfer(source, into: folder, moving: false) } }
+        Button("Move to…", systemImage: "folder") { movingItems = [item.url]; moving = true }
         Divider()
         Button("Move to Recently Deleted", systemImage: "trash", role: .destructive) { requestTrash([item]) }
     }
@@ -369,20 +425,27 @@ struct DetailsView: View {
     }
 }
 
+/// Quick Look for one file or a whole folder: swipe between files, and use Markup to draw on images and PDFs.
 struct PreviewView: UIViewControllerRepresentable {
-    let url: URL
-    func makeCoordinator() -> Coordinator { Coordinator(url: url) }
+    let urls: [URL]
+    var start = 0
+    init(url: URL) { urls = [url] }
+    init(urls: [URL], start: Int) { self.urls = urls; self.start = start }
+    func makeCoordinator() -> Coordinator { Coordinator(urls: urls) }
     func makeUIViewController(context: Context) -> QLPreviewController {
-        let controller = QLPreviewController(); controller.dataSource = context.coordinator
-        if (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true { try? FileManager.default.startDownloadingUbiquitousItem(at: url) }
+        let controller = QLPreviewController(); controller.dataSource = context.coordinator; controller.delegate = context.coordinator
+        controller.currentPreviewItemIndex = min(max(start, 0), max(urls.count - 1, 0))
+        for url in urls.prefix(3) where (try? url.resourceValues(forKeys: [.isUbiquitousItemKey]).isUbiquitousItem) == true { try? FileManager.default.startDownloadingUbiquitousItem(at: url) }
         return controller
     }
     func updateUIViewController(_ uiViewController: QLPreviewController, context: Context) { }
-    final class Coordinator: NSObject, QLPreviewControllerDataSource {
-        let url: URL
-        init(url: URL) { self.url = url }
-        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { 1 }
-        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { url as NSURL }
+    final class Coordinator: NSObject, QLPreviewControllerDataSource, QLPreviewControllerDelegate {
+        let urls: [URL]
+        init(urls: [URL]) { self.urls = urls }
+        func numberOfPreviewItems(in controller: QLPreviewController) -> Int { urls.count }
+        func previewController(_ controller: QLPreviewController, previewItemAt index: Int) -> QLPreviewItem { urls[index] as NSURL }
+        // Markup edits are saved into the file itself, as in Apple's Files app.
+        func previewController(_ controller: QLPreviewController, editingModeFor previewItem: QLPreviewItem) -> QLPreviewItemEditingMode { .updateContents }
     }
 }
 struct ShareView: UIViewControllerRepresentable {

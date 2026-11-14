@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.5.0 (iPhone)
+- Preview: swipe between the files in a folder, and use Markup to draw on images and PDFs (saved into the file).
+- Scan documents with the camera into a searchable PDF (text is recognised on the iPhone).
+- Quick actions for images and PDFs: rotate, convert (JPEG, PNG, HEIC), remove background, create PDF, extract text (copyable), unlock a PDF.
+- Tags (kept inside FileGlade) with a tag editor, and folder colours with a symbol or emoji.
+- New Browse tab: locations (reorder and remove), favorites, tags, recents and starred, Recently Deleted, scan, and computer access. A button opens Apple's Files app for iCloud sharing.
+- iCloud: shows files that are not downloaded, with Download now and Remove download.
+- Duplicate, Move to…, and "Open in FileGlade" from other apps.
+
 ## 3.4.0
 - Search understands `OR`, `NOT` / `-word`, "exact phrases", `*` and `?` wildcards, and `/regular expressions/` (matched against the file name). Tested.
 - Export search results to CSV.

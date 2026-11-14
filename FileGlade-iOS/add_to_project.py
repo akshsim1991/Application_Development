@@ -3,7 +3,8 @@
 import re, sys, os
 proj = os.path.join(os.path.dirname(__file__), "FileGlade.xcodeproj", "project.pbxproj")
 text = open(proj).read()
-n = 0x7000
+used = [int(m, 16) for m in re.findall(r"F0{19}([0-9A-F]{4})", text)]
+n = (max(used) + 2) if used else 0x7000
 for name in sys.argv[1:]:
     if re.search(r'path = "?%s"?;' % re.escape(name), text): continue
     ref = "F%023X" % n; bld = "F%023X" % (n + 1); n += 2

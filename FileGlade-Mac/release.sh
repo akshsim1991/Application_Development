@@ -4,15 +4,19 @@
 # Nothing is uploaded by this script.
 set -euo pipefail
 cd "${0:A:h}"
-./bump-version.sh "${1:-patch}"
+[[ "${1:-}" == "--no-bump" ]] || ./bump-version.sh "${1:-patch}"
 ./build.sh
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" FileGlade.app/Contents/Info.plist)
 OUT="release"; mkdir -p "$OUT"
 ZIP="$OUT/FileGlade-$VERSION-mac.zip"
 rm -f "$ZIP"
-ditto -c -k --keepParent FileGlade.app "$ZIP"
+xattr -cr FileGlade.app
+ditto -c -k --norsrc --noextattr --keepParent FileGlade.app "$ZIP"
+# Self-check: the update must unpack and pass the same signature test the updater runs.
+CHECK="$(mktemp -d)"; ditto -x -k "$ZIP" "$CHECK"; codesign --verify --deep --strict "$CHECK/FileGlade.app"; rm -rf "$CHECK"
 SIZE=$(stat -f%z "$ZIP"); SHA=$(shasum -a 256 "$ZIP" | awk '{print $1}')
 REPO_RAW="${FILEGLADE_RELEASES_RAW:-https://raw.githubusercontent.com/akshsim1991/FileGlade-releases/main}"
+if [[ "${1:-}" == "--no-bump" ]]; then shift; fi
 NOTES="${1:-FileGlade $VERSION}"
 cat > "$OUT/latest.json" <<JSON
 {

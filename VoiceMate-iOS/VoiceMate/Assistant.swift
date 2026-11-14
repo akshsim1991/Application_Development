@@ -4,6 +4,10 @@ import MediaPlayer
 
 struct Reply {
     var text: String
+    /// Nothing recognised while the assistant is on: stay quiet instead of answering background chatter.
+    var silent = false
+    /// Ride Mode should end after this reply is spoken.
+    var endRide = false
     /// True when the assistant asked a question: keep listening for the answer without the wake phrase.
     var followUp = false
 }
@@ -19,15 +23,21 @@ final class Assistant {
 
     func reply(to question: String) async -> String { await handle(question).text }
 
-    func handle(_ raw: String) async -> Reply {
-        let r = await compute(raw)
-        if !r.text.hasPrefix("I didn't catch") { lastReply = r.text }
+    /// `explicit` is false when the words weren't preceded by the wake phrase (assistant already on).
+    func handle(_ raw: String, explicit: Bool = true) async -> Reply {
+        let r = await compute(raw, explicit: explicit)
+        if !r.silent, !r.text.hasPrefix("I didn't catch") { lastReply = r.text }
         return r
     }
 
     // MARK: Helpers
 
-    private func has(_ q: String, _ words: String...) -> Bool { words.contains { q.contains($0) } }
+    /// Phrases (with a space) and long words match anywhere; short single words must be whole words,
+    /// so "play" doesn't fire on "display".
+    private func has(_ q: String, _ needles: String...) -> Bool {
+        let tokens = Set(q.split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") }).map(String.init))
+        return needles.contains { n in n.contains(" ") || n.count >= 8 ? q.contains(n) : tokens.contains(n) }
+    }
 
     private func after(_ q: String, _ prefixes: [String]) -> String? {
         for p in prefixes {
@@ -142,7 +152,7 @@ final class Assistant {
 
     // MARK: Commands
 
-    private func compute(_ raw: String) async -> Reply {
+    private func compute(_ raw: String, explicit: Bool) async -> Reply {
         let q = raw.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if q.isEmpty { return Reply(text: "I didn't catch that.") }
         let words = Set(q.split(separator: " ").map(String.init))
@@ -175,7 +185,13 @@ final class Assistant {
             }
         }
 
-        if q.hasPrefix("ask ") , let ans = await Ask.answer(String(q.dropFirst(4))) { return Reply(text: ans) }
+        if q.hasPrefix("ask "), let ans = await Ask.answer(String(q.dropFirst(4))) { return Reply(text: ans) }
+
+        // Ending the ride by voice (the microphone can't hear "hey rider" again afterwards).
+        if has(q, "end ride", "end the ride", "stop ride mode", "turn off ride mode", "finish ride", "stop the ride") {
+            let summary = TripRecorder.shared.isRecording ? TripRecorder.shared.summary() + " " : ""
+            return Reply(text: summary + "Ride ended. Ride safe.", endRide: true)
+        }
 
         // Safety
         if q.replacingOccurrences(of: " ", with: "").contains("sos") || has(q, "emergency", "send help", "i need help", "i crashed", "call for help") {
@@ -320,6 +336,7 @@ final class Assistant {
 
         if has(q, "speed", "how fast") {
             guard let l = await LocationProvider.shared.freshLocation(), l.speed >= 0 else { return Reply(text: "I can't get your speed right now.") }
+            if l.speed < 1.5 { return Reply(text: "You're stationary.") }
             return Reply(text: "You're doing \(Int(Prefs.displaySpeed(l.speed).rounded())) \(Prefs.speedUnitSpoken).")
         }
         if has(q, "where am i", "location", "which road", "what road") {
@@ -346,11 +363,13 @@ final class Assistant {
         if has(q, "help", "what can you do") {
             return Reply(text: "Try: navigate to a place, nearest petrol pump, add a stop, avoid tolls, next turn, weather, trip stats, log fuel, mileage, service status, save parking, set a timer, share my location, or ask a question.")
         }
-        if has(q, "call ", "message", "text ") {
+        if explicit, has(q, "call", "message", "text") {
             return Reply(text: "For calls and messages, hold your helmet button to use Siri.")
         }
 
-        // Anything else: ask the AI assistant if a key is set.
+        // Anything else: ask the AI assistant if a key is set. While the assistant is simply on, ignore
+        // chatter it doesn't understand (only words addressed to it with the wake phrase get an answer).
+        if !explicit { return Reply(text: "", silent: true) }
         if !Prefs.anthropicKey.isEmpty {
             if let ans = await Ask.answer(q) { return Reply(text: ans) }
             return Reply(text: "I couldn't reach the AI assistant. Check your internet and key.")

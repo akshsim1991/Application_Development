@@ -74,6 +74,7 @@ final class TripRecorder: ObservableObject {
                               maxSpeed: maxSpeed, points: points), at: 0)
             save()
         }
+        distance = 0; movingTime = 0; maxSpeed = 0; elapsed = 0
     }
 
     func delete(at offsets: IndexSet) { trips.remove(atOffsets: offsets); save() }
@@ -102,17 +103,23 @@ final class TripRecorder: ObservableObject {
 
     private func handle(_ l: CLLocation) {
         guard l.horizontalAccuracy >= 0, l.horizontalAccuracy < 50 else { return }
+        var moving = false
         if let last = lastLoc {
             let d = l.distance(from: last), dt = l.timestamp.timeIntervalSince(last.timestamp)
-            if dt > 0, dt < 15, d / dt < 80 {   // ignore GPS jumps
+            // GPS jitter while standing still reports small speeds and wandering positions: only count real movement.
+            moving = l.speed >= 0 ? l.speed >= 1.5 : (dt > 0 && d / dt > 2 && d > l.horizontalAccuracy)
+            if moving, dt > 0, dt < 15, d / dt < 80 {   // also ignore GPS jumps
                 distance += d
-                if d / dt > 0.5 { movingTime += dt }
+                movingTime += dt
             }
         }
-        if l.speed >= 0 { maxSpeed = max(maxSpeed, l.speed) }
-        if let p = points.last {
-            if l.distance(from: CLLocation(latitude: p[0], longitude: p[1])) >= 25 { points.append([l.coordinate.latitude, l.coordinate.longitude]) }
-        } else { points.append([l.coordinate.latitude, l.coordinate.longitude]) }
+        if moving, l.speed >= 0, l.speed < 70 { maxSpeed = max(maxSpeed, l.speed) }
+        if moving {
+            let p = [l.coordinate.latitude, l.coordinate.longitude]
+            if let last = points.last {
+                if l.distance(from: CLLocation(latitude: last[0], longitude: last[1])) >= 25 { points.append(p) }
+            } else { points.append(p) }
+        }
         lastLoc = l
 
         let manual = Prefs.speedLimit

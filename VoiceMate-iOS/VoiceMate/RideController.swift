@@ -37,14 +37,23 @@ final class RideController: ObservableObject {
         wakeWord = saved
         listener.wakeWord = saved
         listener.onWake = { [weak self] in await self?.say("Yes?") }
-        listener.onCommand = { [weak self] text in
+        listener.onSleep = { [weak self] auto in
+            guard let self else { return }
+            let wake = self.wakeWord
+            await self.say(auto ? "No commands for a while, going to standby. Say \(wake) when you need me."
+                                : "Okay, going to standby. Say \(wake) when you need me.")
+        }
+        listener.onCommand = { [weak self] text, explicit in
             guard let self else { return false }
+            let r = await Assistant.shared.handle(text, explicit: explicit)
+            if r.silent { return false }
             self.add(user: true, text)
             self.phase = .thinking
-            let r = await Assistant.shared.handle(text)
             await self.say(r.text)
+            if r.endRide { self.stop(); return false }
             return r.followUp
         }
+        listener.reconfigureSession = { [weak self] in try self?.route.activate() }
         Navigator.shared.speak = { [weak self] text in await self?.say(text) }
         TripRecorder.shared.speak = { [weak self] text in await self?.say(text) }
         Emergency.shared.speak = { [weak self] text in await self?.say(text) }
@@ -73,7 +82,7 @@ final class RideController: ObservableObject {
             phase = .listening
             UIApplication.shared.isIdleTimerDisabled = Prefs.keepScreenOn
             // Spoken before listening starts so the app never hears its own announcement.
-            await say("Ride mode on.")
+            await say("Ride mode on. Say \(wakeWord) when you need me.")
             let due = Garage.shared.dueMessages()
             if !due.isEmpty { await say(due.joined(separator: " ")) }
             try listener.start()

@@ -33,7 +33,8 @@ struct RideView: View {
     @State private var showSOS = false
     @AppStorage("speedLimit") private var speedLimit = 0
 
-    private var speed: Double { ride.isRiding ? Prefs.displaySpeed(loc.latest?.speed ?? 0) : 0 }
+    private var moving: Bool { ride.isRiding && (loc.latest?.speed ?? 0) >= 1.5 }
+    private var speed: Double { moving ? Prefs.displaySpeed(loc.latest?.speed ?? 0) : 0 }
 
     var body: some View {
         ScrollView {
@@ -136,19 +137,22 @@ struct RideView: View {
 
     private var statsGrid: some View {
         LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-            StatTile(title: "Distance", value: shortDistance(trip.distance))
-            StatTile(title: "Ride time", value: clockString(trip.elapsed))
-            StatTile(title: "Average", value: "\(Int(Prefs.displaySpeed(trip.avgSpeed).rounded())) \(Prefs.speedUnit)")
-            StatTile(title: "Top speed", value: "\(Int(Prefs.displaySpeed(trip.maxSpeed).rounded())) \(Prefs.speedUnit)")
+            StatTile(title: "Distance", value: trip.isRecording ? shortDistance(trip.distance) : "—")
+            StatTile(title: "Riding time", value: trip.isRecording ? clockString(trip.movingTime) : "—")
+            StatTile(title: "Average", value: trip.isRecording && trip.movingTime > 5 ? "\(Int(Prefs.displaySpeed(trip.avgSpeed).rounded())) \(Prefs.speedUnit)" : "—")
+            StatTile(title: "Top speed", value: trip.isRecording && trip.maxSpeed > 0 ? "\(Int(Prefs.displaySpeed(trip.maxSpeed).rounded())) \(Prefs.speedUnit)" : "—")
         }
     }
 
     private var voiceCard: some View {
         HStack(spacing: 14) {
-            VoiceOrb(phase: ride.phase)
+            VoiceOrb(phase: ride.phase, active: listener.isActive)
             VStack(alignment: .leading, spacing: 3) {
                 Text(stateTitle).font(.headline)
-                Text(stateDetail).font(.subheadline).foregroundStyle(Theme.dim).lineLimit(2)
+                Text(stateDetail).font(.subheadline).foregroundStyle(Theme.dim).lineLimit(3)
+                if !listener.statusNote.isEmpty {
+                    Text(listener.statusNote).font(.footnote.weight(.semibold)).foregroundStyle(Theme.accent).lineLimit(3)
+                }
             }
             Spacer()
         }
@@ -158,16 +162,17 @@ struct RideView: View {
     private var stateTitle: String {
         switch ride.phase {
         case .off: return "Voice assistant off"
-        case .listening: return "Listening"
+        case .listening: return listener.isActive ? "Assistant ON" : "Standby"
         case .thinking: return "Working on it…"
         case .speaking: return "Speaking"
         }
     }
 
     private var stateDetail: String {
-        if ride.phase == .off { return "Start Ride Mode, then say “\(ride.wakeWord)”." }
+        if ride.phase == .off { return "Start a ride, then say “\(ride.wakeWord)”." }
         if !listener.heard.isEmpty && ride.phase == .listening { return "“\(listener.heard)”" }
-        return "Say “\(ride.wakeWord)” then a command."
+        if listener.isActive { return "Just talk. Say “bye \(ride.wakeWord.split(separator: " ").last.map(String.init) ?? "rider")” to turn me off." }
+        return "Say “\(ride.wakeWord)” to wake me."
     }
 
     private var startButton: some View {
@@ -248,12 +253,13 @@ struct SpeedGauge: View {
 
 struct VoiceOrb: View {
     let phase: RidePhase
+    var active = false
     @State private var pulse = false
 
     private var color: Color {
         switch phase {
         case .off: return .gray
-        case .listening: return Theme.good
+        case .listening: return active ? Theme.good : Color.blue.opacity(0.7)
         case .thinking: return Theme.accent
         case .speaking: return .cyan
         }
@@ -262,7 +268,7 @@ struct VoiceOrb: View {
     private var icon: String {
         switch phase {
         case .off: return "mic.slash.fill"
-        case .listening: return "mic.fill"
+        case .listening: return active ? "mic.fill" : "ear.fill"
         case .thinking: return "ellipsis"
         case .speaking: return "speaker.wave.2.fill"
         }

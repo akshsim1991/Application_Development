@@ -29,6 +29,8 @@ enum Prefs {
     static var cameraAlerts: Bool { d.object(forKey: "cameraAlerts") as? Bool ?? true }
     static var autoLimitAlert: Bool { d.bool(forKey: "autoLimitAlert") }
     static var crashDetect: Bool { d.bool(forKey: "crashDetect") }
+    /// Minutes of silence after which the assistant returns to standby; 0 = stay on until you say bye.
+    static var activeTimeoutMinutes: Int { d.integer(forKey: "activeTimeoutMinutes") }
 
     // Navigation
     static var routeStyle: String { d.string(forKey: "routeStyle") ?? "fastest" }

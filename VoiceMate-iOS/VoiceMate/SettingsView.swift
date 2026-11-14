@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("speedLimit") private var speedLimit = 0
     @AppStorage("breakMinutes") private var breakMinutes = 90
     @AppStorage("keepScreenOn") private var keepScreenOn = true
+    @AppStorage("activeTimeoutMinutes") private var activeTimeoutMinutes = 0
     @AppStorage("cameraAlerts") private var cameraAlerts = true
     @AppStorage("autoLimitAlert") private var autoLimitAlert = false
     @AppStorage("crashDetect") private var crashDetect = false
@@ -39,6 +40,10 @@ struct SettingsView: View {
                     Picker("Voice", selection: $voiceID) {
                         Text("Default").tag("")
                         ForEach(Speaker.voiceOptions()) { Text($0.name).tag($0.id) }
+                    }
+                    Stepper(value: $activeTimeoutMinutes, in: 0...30, step: 5) {
+                        Text(activeTimeoutMinutes == 0 ? "Assistant stays on until you say “bye”"
+                                                      : "Back to standby after \(activeTimeoutMinutes) min of silence")
                     }
                     Button("Test voice") { Task { await ride.say("This is how I will sound while you ride.") } }
                 }
@@ -135,6 +140,7 @@ struct CommandsView: View {
         ("Safety", ["SOS / I need help", "share my location", "I'm OK (cancels a crash alert)", "set speed alert to 80 / speed alert off"]),
         ("Timers", ["set a timer for 10 minutes", "remind me in 30 minutes to refuel"]),
         ("Music", ["play / pause", "next song / previous song"]),
+        ("Assistant", ["hey rider  →  assistant ON (just talk, no need to repeat hey rider)", "bye rider / that's all  →  back to standby", "end ride  →  stops Ride Mode completely"]),
         ("Other", ["what time is it", "battery", "repeat", "ask <any question> (needs Anthropic key)", "help"])
     ]
 

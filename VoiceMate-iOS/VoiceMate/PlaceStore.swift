@@ -39,6 +39,18 @@ final class PlaceStore: ObservableObject {
     }
 
     func delete(at offsets: IndexSet) { saved.remove(atOffsets: offsets); persist() }
+
+    /// Replaces a saved place (rename / move) by id.
+    func update(_ p: SavedPlace) {
+        let name = p.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, let i = saved.firstIndex(where: { $0.id == p.id }) else { return }
+        var q = p
+        q.name = name
+        saved[i] = q
+        persist()
+    }
+
+    func delete(id: UUID) { saved.removeAll { $0.id == id }; persist() }
     func deleteRecent(at offsets: IndexSet) { recents.remove(atOffsets: offsets); persist() }
 
     func addRecent(_ p: Place) {

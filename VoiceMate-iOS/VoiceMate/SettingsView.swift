@@ -120,6 +120,7 @@ struct SettingsView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg.ignoresSafeArea())
+            .keyboardDone()
             .navigationTitle("Settings")
         }
     }

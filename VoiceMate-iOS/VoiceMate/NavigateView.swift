@@ -30,6 +30,7 @@ struct NavigateView: View {
 
     @State private var query = ""
     @State private var showSave = false
+    @State private var editingPlace: SavedPlace?
     @State private var saveName = ""
     @State private var showImport = false
     @State private var showNearby = false
@@ -92,10 +93,18 @@ struct NavigateView: View {
                         Button { Task { await ride.navigate(to: p.place) } } label: {
                             Label(p.name, systemImage: icon(for: p.name))
                         }
+                        .swipeActions(edge: .leading) {
+                            Button { editingPlace = p } label: { Label("Edit", systemImage: "pencil") }.tint(Theme.accent)
+                        }
+                        .swipeActions(edge: .trailing) {
+                            Button(role: .destructive) { places.delete(id: p.id) } label: { Label("Delete", systemImage: "trash") }
+                        }
+                        .contextMenu {
+                            Button { editingPlace = p } label: { Label("Edit", systemImage: "pencil") }
+                        }
                     }
-                    .onDelete { places.delete(at: $0) }
                     Button { showSave = true } label: { Label("Save current location…", systemImage: "plus.circle.fill") }
-                    Text("Voice: “save parking”, “set home”, “save this place as <name>”, “where did I park”.")
+                    Text("Tap to navigate. Swipe right (or press and hold) to rename or move a place. Voice: “save parking”, “set home”, “save this place as <name>”, “where did I park”.")
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
@@ -118,6 +127,7 @@ struct NavigateView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Theme.bg.ignoresSafeArea())
+            .keyboardDone()
             .navigationTitle("Navigate")
             .alert("Save current location", isPresented: $showSave) {
                 TextField("Name (e.g. Office)", text: $saveName)
@@ -128,6 +138,9 @@ struct NavigateView: View {
                           allowedContentTypes: [UTType(filenameExtension: "gpx") ?? .xml, .xml],
                           allowsMultipleSelection: false) { result in importGPX(result) }
             .sheet(isPresented: $showNearby) { nearbySheet }
+            .sheet(item: $editingPlace) { p in
+                PlaceEditor(place: p, onSave: { places.update($0) }, onDelete: { places.delete(id: p.id) })
+            }
         }
     }
 
@@ -235,5 +248,71 @@ struct NavigateView: View {
         case "parking": return "parkingsign.circle.fill"
         default: return "star.fill"
         }
+    }
+}
+
+struct PlaceEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    let original: SavedPlace
+    let onSave: (SavedPlace) -> Void
+    let onDelete: () -> Void
+    @State private var name: String
+    @State private var lat: Double
+    @State private var lon: Double
+    @State private var moved = false
+    @State private var locating = false
+
+    init(place: SavedPlace, onSave: @escaping (SavedPlace) -> Void, onDelete: @escaping () -> Void) {
+        original = place
+        self.onSave = onSave
+        self.onDelete = onDelete
+        _name = State(initialValue: place.name)
+        _lat = State(initialValue: place.lat)
+        _lon = State(initialValue: place.lon)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Place") {
+                    TextField("Name", text: $name)
+                    Text(String(format: "%.5f, %.5f", lat, lon)).font(.footnote).foregroundStyle(Theme.dim)
+                    Button {
+                        Task {
+                            locating = true
+                            if let l = await LocationProvider.shared.freshLocation() {
+                                lat = l.coordinate.latitude
+                                lon = l.coordinate.longitude
+                                moved = true
+                            }
+                            locating = false
+                        }
+                    } label: {
+                        if locating { ProgressView() } else { Label("Move to my current location", systemImage: "location.fill") }
+                    }
+                    if moved { Text("Location updated. Tap Save.").font(.footnote).foregroundStyle(Theme.accent) }
+                }
+                Section { Button("Delete place", role: .destructive) { onDelete(); dismiss() } }
+            }
+            .keyboardDone()
+            .navigationTitle("Edit place")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        var p = original
+                        p.name = name
+                        p.lat = lat
+                        p.lon = lon
+                        onSave(p)
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .preferredColorScheme(.dark)
     }
 }

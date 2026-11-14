@@ -43,3 +43,23 @@ func cardinal(_ course: Double) -> String {
     let names = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"]
     return names[Int(((course + 22.5) / 45).rounded(.down)) % 8]
 }
+
+func hideKeyboard() {
+    UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+}
+
+/// Lets you dismiss the keyboard (number pads have no return key) by tapping Done or dragging the list.
+struct KeyboardDone: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar {
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { hideKeyboard() }
+                }
+            }
+    }
+}
+
+extension View { func keyboardDone() -> some View { modifier(KeyboardDone()) } }

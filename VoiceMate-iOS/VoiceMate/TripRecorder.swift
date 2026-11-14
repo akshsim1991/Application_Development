@@ -2,6 +2,7 @@ import CoreLocation
 
 struct Trip: Codable, Identifiable {
     var id = UUID()
+    var name: String? = nil
     var start: Date
     var end: Date
     var distance: Double
@@ -76,6 +77,14 @@ final class TripRecorder: ObservableObject {
     }
 
     func delete(at offsets: IndexSet) { trips.remove(atOffsets: offsets); save() }
+    func delete(id: UUID) { trips.removeAll { $0.id == id }; save() }
+
+    func rename(_ id: UUID, to name: String) {
+        guard let i = trips.firstIndex(where: { $0.id == id }) else { return }
+        let n = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        trips[i].name = n.isEmpty ? nil : n
+        save()
+    }
 
     func summary() -> String {
         guard isRecording else { return "No ride in progress." }

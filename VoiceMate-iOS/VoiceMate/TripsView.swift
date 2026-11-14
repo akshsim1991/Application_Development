@@ -60,10 +60,10 @@ struct TripsView: View {
                         Text("Your rides appear here after you end a ride.").foregroundStyle(Theme.dim)
                     }
                     ForEach(trip.trips) { t in
-                        NavigationLink { TripDetail(trip: t) } label: {
+                        NavigationLink { TripDetail(id: t.id) } label: {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(t.start.formatted(date: .abbreviated, time: .shortened)).font(.headline)
-                                Text("\(shortDistance(t.distance)) · \(clockString(t.duration)) · avg \(Int(Prefs.displaySpeed(t.avgSpeed).rounded())) \(Prefs.speedUnit)")
+                                Text(t.name ?? t.start.formatted(date: .abbreviated, time: .shortened)).font(.headline)
+                                Text("\(t.name != nil ? t.start.formatted(date: .abbreviated, time: .omitted) + " · " : "")\(shortDistance(t.distance)) · \(clockString(t.duration)) · avg \(Int(Prefs.displaySpeed(t.avgSpeed).rounded())) \(Prefs.speedUnit)")
                                     .font(.subheadline).foregroundStyle(Theme.dim)
                             }
                         }
@@ -87,9 +87,46 @@ struct TripsView: View {
 }
 
 struct TripDetail: View {
-    let trip: Trip
+    let id: UUID
+    @ObservedObject private var rec = TripRecorder.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var showRename = false
+    @State private var newName = ""
+    @State private var showDelete = false
+
+    private var trip: Trip? { rec.trips.first { $0.id == id } }
 
     var body: some View {
+        Group {
+            if let trip { content(trip) } else { Text("This ride was deleted.").foregroundStyle(Theme.dim) }
+        }
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle(trip?.name ?? trip?.start.formatted(date: .abbreviated, time: .omitted) ?? "Ride")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if let trip {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button { newName = trip.name ?? ""; showRename = true } label: { Label("Rename", systemImage: "pencil") }
+                        if let url = GPX.writeFile(for: trip) {
+                            ShareLink(item: url) { Label("Export GPX", systemImage: "square.and.arrow.up") }
+                        }
+                        Button(role: .destructive) { showDelete = true } label: { Label("Delete ride", systemImage: "trash") }
+                    } label: { Image(systemName: "ellipsis.circle") }
+                }
+            }
+        }
+        .alert("Rename ride", isPresented: $showRename) {
+            TextField("Name (e.g. Sunday ghat ride)", text: $newName)
+            Button("Save") { rec.rename(id, to: newName) }
+            Button("Cancel", role: .cancel) {}
+        }
+        .confirmationDialog("Delete this ride?", isPresented: $showDelete, titleVisibility: .visible) {
+            Button("Delete", role: .destructive) { rec.delete(id: id); dismiss() }
+        }
+    }
+
+    private func content(_ trip: Trip) -> some View {
         ScrollView {
             VStack(spacing: 14) {
                 if trip.coordinates.count >= 2 {
@@ -109,16 +146,6 @@ struct TripDetail: View {
                 }
             }
             .padding()
-        }
-        .background(Theme.bg.ignoresSafeArea())
-        .navigationTitle(trip.start.formatted(date: .abbreviated, time: .omitted))
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if let url = GPX.writeFile(for: trip) {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ShareLink(item: url) { Image(systemName: "square.and.arrow.up") }
-                }
-            }
         }
     }
 }

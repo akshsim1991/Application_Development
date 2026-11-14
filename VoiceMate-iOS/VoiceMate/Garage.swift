@@ -56,6 +56,17 @@ final class Garage: ObservableObject {
 
     func addDistance(meters: Double) { odometerKm += meters / 1000 }
 
+    /// Sets the real odometer reading. The first time you set it, reminders that were created at 0 km
+    /// start counting from this reading (otherwise they would all show as thousands of km overdue).
+    func setOdometer(_ km: Double) {
+        guard km >= 0 else { return }
+        if odometerKm < 1 && km > 0 {
+            for i in services.indices where services[i].lastDoneKm < 1 { services[i].lastDoneKm = km }
+            persist()
+        }
+        odometerKm = km
+    }
+
     // MARK: Fuel
 
     var fuelSorted: [FuelEntry] { fuel.sorted { $0.date < $1.date } }
@@ -99,6 +110,12 @@ final class Garage: ObservableObject {
 
     func deleteFuel(ids: [UUID]) { fuel.removeAll { ids.contains($0.id) }; persist() }
 
+    /// Adds a new fill-up or replaces the one with the same id.
+    func upsertFuel(_ e: FuelEntry) {
+        if let i = fuel.firstIndex(where: { $0.id == e.id }) { fuel[i] = e } else { fuel.append(e) }
+        persist()
+    }
+
     func mileageSummary() -> String {
         guard let avg = averageMileage else { return "I need at least two fill-ups to work out mileage. Say log fuel, 8 litres." }
         var s = "Average mileage \(trim(avg)) kilometres per litre."
@@ -116,6 +133,11 @@ final class Garage: ObservableObject {
         if let i = services.firstIndex(where: { $0.id == id }) { services[i].lastDoneKm = odometerKm; persist() }
     }
     func deleteService(at offsets: IndexSet) { services.remove(atOffsets: offsets); persist() }
+    func deleteService(id: UUID) { services.removeAll { $0.id == id }; persist() }
+    func upsertService(_ s: ServiceItem) {
+        if let i = services.firstIndex(where: { $0.id == s.id }) { services[i] = s } else { services.append(s) }
+        persist()
+    }
 
     /// "I changed the engine oil" -> marks the matching reminder done.
     func markDone(matching q: String) -> String? {
@@ -130,6 +152,11 @@ final class Garage: ObservableObject {
 
     func addDoc(name: String, expiry: Date) { docs.append(DocItem(name: name, expiry: expiry)); persist() }
     func deleteDoc(at offsets: IndexSet) { docs.remove(atOffsets: offsets); persist() }
+    func deleteDoc(id: UUID) { docs.removeAll { $0.id == id }; persist() }
+    func upsertDoc(_ d: DocItem) {
+        if let i = docs.firstIndex(where: { $0.id == d.id }) { docs[i] = d } else { docs.append(d) }
+        persist()
+    }
 
     func serviceSummary() -> String {
         guard !services.isEmpty else { return "You have no service reminders. Add some in the Garage tab." }

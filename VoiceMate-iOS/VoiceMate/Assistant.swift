@@ -257,7 +257,7 @@ final class Assistant {
         }
         if has(q, "odometer") || words.contains("odo") {
             if q.contains("set"), let v = number(q, #"(\d+(?:\.\d+)?)"#) {
-                Garage.shared.odometerKm = v
+                Garage.shared.setOdometer(v)
                 return Reply(text: "Odometer set to \(Int(v)) kilometres.")
             }
             return Reply(text: "Odometer is \(Int(Garage.shared.odometerKm)) kilometres.")

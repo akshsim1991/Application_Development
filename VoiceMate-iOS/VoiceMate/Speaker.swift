@@ -55,11 +55,13 @@ struct VoiceOption: Identifiable {
 extension Speaker {
     /// Installed voices for the phone's language, best quality first. Download "Enhanced" voices in
     /// Settings > Accessibility > Spoken Content > Voices for a more natural sound.
-    static func voiceOptions() -> [VoiceOption] {
+    static func voiceOptions() -> [VoiceOption] { cachedVoices }
+
+    private static let cachedVoices: [VoiceOption] = {
         let lang = Locale.current.language.languageCode?.identifier ?? "en"
         return AVSpeechSynthesisVoice.speechVoices()
             .filter { $0.language.hasPrefix(lang) }
             .sorted { $0.quality.rawValue > $1.quality.rawValue }
             .map { VoiceOption(id: $0.identifier, name: "\($0.name) (\($0.language))" + ($0.quality.rawValue > 1 ? " - enhanced" : "")) }
-    }
+    }()
 }

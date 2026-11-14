@@ -29,7 +29,7 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Voice") {
+                GSection("Voice") {
                     TextField("Wake phrase", text: $ride.wakeWord)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .disabled(ride.isRiding)
@@ -48,7 +48,7 @@ struct SettingsView: View {
                     Button("Test voice") { Task { await ride.say("This is how I will sound while you ride.") } }
                 }
 
-                Section("Units") {
+                GSection("Units") {
                     Picker("Units", selection: $units) {
                         Text("Auto").tag("auto")
                         Text("km").tag("metric")
@@ -57,7 +57,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
 
-                Section("Safety alerts") {
+                GSection("Safety alerts") {
                     Stepper(value: $speedLimit, in: 0...200, step: 5) {
                         Text(speedLimit == 0 ? "Speed alert: off" : "Speed alert: \(speedLimit) \(Prefs.speedUnit)")
                     }
@@ -71,7 +71,7 @@ struct SettingsView: View {
                     Toggle("Keep screen on while riding", isOn: $keepScreenOn)
                 }
 
-                Section("Emergency contact (Telegram)") {
+                GSection("Emergency contact (Telegram)") {
                     TextField("Your name", text: $riderName)
                     SecureField("Bot token", text: $tgToken)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
@@ -96,7 +96,7 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
-                Section("Navigation") {
+                GSection("Navigation") {
                     SecureField("Google Maps API key", text: $googleKey)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     LabeledContent("Routing", value: nav.providerStatus)
@@ -104,27 +104,27 @@ struct SettingsView: View {
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
-                Section("AI assistant") {
+                GSection("AI assistant") {
                     SecureField("Anthropic API key", text: $anthropicKey)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                     Text("With a key, anything VoiceMate doesn't understand is answered by Claude (for example “hey rider, how do I fix a punctured tubeless tyre”). Each answer costs a tiny amount on your Anthropic account.")
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
-                Section {
+                GSection {
                     NavigationLink("Voice commands") { CommandsView() }
                     Button("Open iPhone settings (permissions)") {
                         if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
                     }
                 }
 
-                Section("About") {
+                GSection("About") {
                     Text(version).font(.headline)
                     Text("Designed and developed by Akshaya Simha").foregroundStyle(Theme.dim)
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg.ignoresSafeArea())
+            .background(AppBackground())
             .keyboardDone()
             .navigationTitle("Settings")
         }
@@ -149,7 +149,7 @@ struct CommandsView: View {
             Text("Say the wake phrase first (default “hey rider”), then the command. After a question like “Say yes to start” just answer.")
                 .font(.footnote).foregroundStyle(Theme.dim)
             ForEach(groups, id: \.0) { g in
-                Section(g.0) { ForEach(g.1, id: \.self) { Text($0) } }
+                GSection(g.0) { ForEach(g.1, id: \.self) { Text($0) } }
             }
         }
         .navigationTitle("Voice commands")

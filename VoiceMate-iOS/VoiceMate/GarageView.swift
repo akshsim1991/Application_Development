@@ -21,7 +21,7 @@ struct GarageView: View {
                 documentSection
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg.ignoresSafeArea())
+            .background(AppBackground())
             .keyboardDone()
             .navigationTitle("Garage")
             .alert("Odometer (km)", isPresented: $showOdo) {
@@ -49,7 +49,7 @@ struct GarageView: View {
     // MARK: Sections
 
     private var odometerSection: some View {
-        Section("Odometer") {
+        GSection("Odometer") {
             Button {
                 odoText = String(Int(g.odometerKm))
                 showOdo = true
@@ -69,7 +69,7 @@ struct GarageView: View {
     }
 
     private var fuelSection: some View {
-        Section("Fuel & mileage") {
+        GSection("Fuel & mileage") {
             LabeledContent("Average mileage", value: g.averageMileage.map { "\(one($0)) km/l" } ?? "—")
             LabeledContent("Last fill-up", value: g.lastMileage.map { "\(one($0)) km/l" } ?? "—")
             LabeledContent("Cost per km", value: g.costPerKm.map { money($0) } ?? "—")
@@ -96,7 +96,7 @@ struct GarageView: View {
     }
 
     private var serviceSection: some View {
-        Section("Service reminders") {
+        GSection("Service reminders") {
             ForEach(g.services) { s in
                 let left = s.remainingKm(odometer: g.odometerKm)
                 Button { editingService = s } label: {
@@ -130,7 +130,7 @@ struct GarageView: View {
     }
 
     private var documentSection: some View {
-        Section("Documents") {
+        GSection("Documents") {
             ForEach(g.docs) { d in
                 Button { editingDoc = d } label: {
                     HStack {
@@ -194,7 +194,7 @@ struct ServiceEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Reminder") {
+                GSection("Reminder") {
                     TextField("Name (e.g. Air filter)", text: $name)
                     HStack {
                         Text("Every (km)")
@@ -210,7 +210,7 @@ struct ServiceEditor: View {
                     if !dueText.isEmpty { Text(dueText).font(.footnote).foregroundStyle(Theme.accent) }
                 }
                 if !isNew {
-                    Section {
+                    GSection {
                         Button("Delete reminder", role: .destructive) { onDelete(); dismiss() }
                     }
                 }
@@ -265,7 +265,7 @@ struct FuelEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Fill-up") {
+                GSection("Fill-up") {
                     HStack {
                         Text("Litres")
                         Spacer()
@@ -285,7 +285,7 @@ struct FuelEditor: View {
                     if total > 0 { Text("Total \(total.formatted(.currency(code: Prefs.currencyCode)))").font(.footnote).foregroundStyle(Theme.accent) }
                 }
                 if !isNew {
-                    Section { Button("Delete fill-up", role: .destructive) { onDelete(); dismiss() } }
+                    GSection { Button("Delete fill-up", role: .destructive) { onDelete(); dismiss() } }
                 }
             }
             .keyboardDone()
@@ -333,12 +333,12 @@ struct DocEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Document") {
+                GSection("Document") {
                     TextField("Name (e.g. Insurance)", text: $name)
                     DatePicker("Expires on", selection: $expiry, displayedComponents: .date)
                 }
                 if !isNew {
-                    Section { Button("Delete document", role: .destructive) { onDelete(); dismiss() } }
+                    GSection { Button("Delete document", role: .destructive) { onDelete(); dismiss() } }
                 }
             }
             .keyboardDone()

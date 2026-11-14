@@ -26,7 +26,7 @@ struct TripsView: View {
         NavigationStack {
             List {
                 if !trip.trips.isEmpty {
-                    Section {
+                    GSection {
                         HStack {
                             totals("Rides", "\(trip.trips.count)")
                             Divider()
@@ -35,7 +35,7 @@ struct TripsView: View {
                             totals("Time", clockString(trip.trips.reduce(0) { $0 + $1.duration }))
                         }
                     }
-                    Section("Distance per week") {
+                    GSection("Distance per week") {
                         Chart(weekly) { w in
                             BarMark(x: .value("Week", w.weekStart, unit: .weekOfYear), y: .value("Distance", w.value))
                                 .foregroundStyle(Theme.accent)
@@ -43,7 +43,7 @@ struct TripsView: View {
                         .chartYAxisLabel(Prefs.imperial ? "mi" : "km")
                         .frame(height: 160)
                     }
-                    Section("Records") {
+                    GSection("Records") {
                         if let longest = trip.trips.max(by: { $0.distance < $1.distance }) {
                             LabeledContent("Longest ride", value: shortDistance(longest.distance))
                         }
@@ -55,7 +55,7 @@ struct TripsView: View {
                         }
                     }
                 }
-                Section("Rides") {
+                GSection("Rides") {
                     if trip.trips.isEmpty {
                         Text("Your rides appear here after you end a ride.").foregroundStyle(Theme.dim)
                     }
@@ -72,7 +72,7 @@ struct TripsView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg.ignoresSafeArea())
+            .background(AppBackground())
             .navigationTitle("Trips")
         }
     }
@@ -100,7 +100,7 @@ struct TripDetail: View {
         Group {
             if let trip { content(trip) } else { Text("This ride was deleted.").foregroundStyle(Theme.dim) }
         }
-        .background(Theme.bg.ignoresSafeArea())
+        .background(AppBackground())
         .navigationTitle(trip?.name ?? trip?.start.formatted(date: .abbreviated, time: .omitted) ?? "Ride")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

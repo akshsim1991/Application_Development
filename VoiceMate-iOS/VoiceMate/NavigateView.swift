@@ -42,9 +42,9 @@ struct NavigateView: View {
     var body: some View {
         NavigationStack {
             List {
-                if nav.isNavigating { activeSection }
+                if nav.isNavigating { ActiveNavSection() }
 
-                Section("Where to?") {
+                GSection("Where to?") {
                     HStack {
                         TextField("Search a place or address", text: $query)
                             .submitLabel(.go)
@@ -56,7 +56,7 @@ struct NavigateView: View {
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
-                Section("Find nearby") {
+                GSection("Find nearby") {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                         ForEach(categories) { c in
                             Button { Task { await loadNearby(c) } } label: {
@@ -73,7 +73,7 @@ struct NavigateView: View {
                     if loadingNearby { ProgressView() }
                 }
 
-                Section("Route options") {
+                GSection("Route options") {
                     Picker("Style", selection: $routeStyle) {
                         Text("Fastest").tag("fastest")
                         Text("Curvy").tag("curvy")
@@ -88,7 +88,7 @@ struct NavigateView: View {
                     }
                 }
 
-                Section("Saved places") {
+                GSection("Saved places") {
                     ForEach(places.saved) { p in
                         Button { Task { await ride.navigate(to: p.place) } } label: {
                             Label(p.name, systemImage: icon(for: p.name))
@@ -108,14 +108,14 @@ struct NavigateView: View {
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
-                Section("Routes") {
+                GSection("Routes") {
                     Button { showImport = true } label: { Label("Import GPX route…", systemImage: "square.and.arrow.down") }
                     Text("Follow a route from Kurviger, Rever, Komoot and similar apps. Works best with a Google key.")
                         .font(.caption).foregroundStyle(Theme.dim)
                 }
 
                 if !places.recents.isEmpty {
-                    Section("Recent") {
+                    GSection("Recent") {
                         ForEach(places.recents) { p in
                             Button { Task { await ride.navigate(to: p.place) } } label: {
                                 Label(p.name, systemImage: "clock.arrow.circlepath")
@@ -126,7 +126,7 @@ struct NavigateView: View {
                 }
             }
             .scrollContentBackground(.hidden)
-            .background(Theme.bg.ignoresSafeArea())
+            .background(AppBackground())
             .keyboardDone()
             .navigationTitle("Navigate")
             .alert("Save current location", isPresented: $showSave) {
@@ -145,27 +145,6 @@ struct NavigateView: View {
     }
 
     // MARK: Pieces
-
-    private var activeSection: some View {
-        Section("Navigating") {
-            HStack(spacing: 16) {
-                Image(systemName: maneuverSymbol(nav.upcomingPhrase))
-                    .font(.system(size: 44, weight: .bold)).foregroundStyle(Theme.accent).frame(width: 60)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(shortDistance(nav.upcomingMeters)).font(.system(size: 30, weight: .heavy, design: .rounded))
-                    Text(nav.upcomingPhrase.prefix(1).uppercased() + nav.upcomingPhrase.dropFirst()).font(.headline)
-                }
-            }
-            LabeledContent("Destination", value: nav.destinationName)
-            LabeledContent("Remaining", value: "\(shortDistance(nav.remainingMeters)) · \(Int((nav.remainingSeconds / 60).rounded())) min")
-            LabeledContent("Arrive", value: Date().addingTimeInterval(nav.remainingSeconds).formatted(date: .omitted, time: .shortened))
-            if !nav.queue.isEmpty {
-                LabeledContent("Then", value: nav.queue.map(\.name).joined(separator: " → "))
-                Button("Skip to next stop") { Task { await ride.skipStop() } }
-            }
-            Button(role: .destructive) { nav.stop() } label: { Label("Stop navigation", systemImage: "xmark.circle.fill") }
-        }
-    }
 
     private var nearbySheet: some View {
         NavigationStack {
@@ -274,7 +253,7 @@ struct PlaceEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Place") {
+                GSection("Place") {
                     TextField("Name", text: $name)
                     Text(String(format: "%.5f, %.5f", lat, lon)).font(.footnote).foregroundStyle(Theme.dim)
                     Button {
@@ -292,7 +271,7 @@ struct PlaceEditor: View {
                     }
                     if moved { Text("Location updated. Tap Save.").font(.footnote).foregroundStyle(Theme.accent) }
                 }
-                Section { Button("Delete place", role: .destructive) { onDelete(); dismiss() } }
+                GSection { Button("Delete place", role: .destructive) { onDelete(); dismiss() } }
             }
             .keyboardDone()
             .navigationTitle("Edit place")
@@ -314,5 +293,33 @@ struct PlaceEditor: View {
         }
         .presentationDetents([.medium])
         .preferredColorScheme(.dark)
+    }
+}
+
+/// The live navigation card; it watches the per-second numbers so the rest of the screen doesn't redraw.
+private struct ActiveNavSection: View {
+    @EnvironmentObject var ride: RideController
+    @ObservedObject private var nav = Navigator.shared
+    @ObservedObject private var live = Navigator.shared.live
+
+    var body: some View {
+        GSection("Navigating") {
+            HStack(spacing: 16) {
+                Image(systemName: maneuverSymbol(live.upcomingPhrase))
+                    .font(.system(size: 44, weight: .bold)).foregroundStyle(Theme.good).frame(width: 60)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(shortDistance(live.upcomingMeters)).font(.system(size: 30, weight: .heavy, design: .rounded))
+                    Text(live.upcomingPhrase.prefix(1).uppercased() + live.upcomingPhrase.dropFirst()).font(.headline)
+                }
+            }
+            LabeledContent("Destination", value: nav.destinationName)
+            LabeledContent("Remaining", value: "\(shortDistance(live.remainingMeters)) · \(Int((live.remainingSeconds / 60).rounded())) min")
+            LabeledContent("Arrive", value: Date().addingTimeInterval(live.remainingSeconds).formatted(date: .omitted, time: .shortened))
+            if !nav.queue.isEmpty {
+                LabeledContent("Then", value: nav.queue.map(\.name).joined(separator: " → "))
+                Button("Skip to next stop") { Task { await ride.skipStop() } }
+            }
+            Button(role: .destructive) { nav.stop() } label: { Label("Stop navigation", systemImage: "xmark.circle.fill") }
+        }
     }
 }

@@ -44,3 +44,10 @@ Fixed
     Tap the badge to open Settings when permission is missing. Voice: "hey rider, GPS signal".
 13. The speedometer only worked after starting a ride; it now also works with the Ride tab open. The dial scales to
     320 km/h for trains.
+
+## 2.1 - look and speed
+- New look: gradient background, glass cards, colour-coded stat tiles with icons, glowing multicolour speed dial,
+  gradient Start/End button, colourful quick actions, solid tab bar, press-and-haptic feedback on buttons.
+- Faster: the Ride screen is split into small views that each watch only their own data, so the once-a-second GPS and
+  timer updates redraw the dial and tiles only (before, they redrew the whole screen, and the Trips and Navigate tabs too).
+  The voice list in Settings is built once instead of on every redraw.

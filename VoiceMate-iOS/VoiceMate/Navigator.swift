@@ -248,6 +248,14 @@ private func plainPhrase(prev: NavStep, next: NavStep, isLast: Bool) -> String {
 
 private func capitalised(_ s: String) -> String { s.prefix(1).uppercased() + s.dropFirst() }
 
+@MainActor
+final class NavLive: ObservableObject {
+    @Published var upcomingPhrase = ""
+    @Published var upcomingMeters = 0.0
+    @Published var remainingMeters = 0.0
+    @Published var remainingSeconds = 0.0
+}
+
 // MARK: - Navigator
 
 /// Audio-only turn-by-turn navigation: announces plain directions with distances, reroutes when
@@ -260,10 +268,8 @@ final class Navigator: ObservableObject {
     @Published private(set) var isNavigating = false
     @Published private(set) var destinationName = ""
     @Published private(set) var providerStatus = "Apple Maps"
-    @Published private(set) var upcomingPhrase = ""
-    @Published private(set) var upcomingMeters = 0.0
-    @Published private(set) var remainingMeters = 0.0
-    @Published private(set) var remainingSeconds = 0.0
+    /// Numbers that change every second live in their own object so only the cards showing them redraw.
+    let live = NavLive()
     /// Stops still to visit after the current destination.
     @Published private(set) var queue: [Place] = []
 
@@ -366,7 +372,7 @@ final class Navigator: ObservableObject {
         route = nil; destination = nil; steps = []; phrases = []; junctions = []; routeCoords = []
         queue = []
         if let id = observerID { LocationProvider.shared.removeObserver(id); observerID = nil }
-        upcomingPhrase = ""; upcomingMeters = 0; remainingMeters = 0; remainingSeconds = 0
+        live.upcomingPhrase = ""; live.upcomingMeters = 0; live.remainingMeters = 0; live.remainingSeconds = 0
     }
 
     // MARK: Queries
@@ -455,9 +461,9 @@ final class Navigator: ObservableObject {
 
         let j = junctions[nextIdx]
         let d = loc.distance(from: CLLocation(latitude: j.latitude, longitude: j.longitude))
-        upcomingPhrase = phrases[nextIdx]
-        upcomingMeters = d
-        if let r = remainingValues(loc) { remainingMeters = r.distance; remainingSeconds = r.seconds }
+        live.upcomingPhrase = phrases[nextIdx]
+        live.upcomingMeters = d
+        if let r = remainingValues(loc) { live.remainingMeters = r.distance; live.remainingSeconds = r.seconds }
 
         let v = max(LocationProvider.shared.speedMps, 0)
         let far = max(500, v * 25), mid = max(200, v * 10), near = max(50, v * 3.5)

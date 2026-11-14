@@ -73,17 +73,7 @@ func routeCurviness(_ pts: [CLLocationCoordinate2D]) -> Double {
 
 // MARK: - Spoken & short formats
 
-func spokenDistance(_ m: Double) -> String {
-    if Prefs.imperial {
-        let ft = m * 3.28084
-        if ft < 1000 { return "\(max(50, Int((ft / 50).rounded()) * 50)) feet" }
-        let mi = m / 1609.34
-        return mi < 10 ? String(format: "%.1f miles", mi) : "\(Int(mi.rounded())) miles"
-    }
-    if m < 1000 { return "\(max(50, Int((m / 50).rounded()) * 50)) metres" }
-    let km = m / 1000
-    return km < 10 ? String(format: "%.1f kilometres", km) : "\(Int(km.rounded())) kilometres"
-}
+func spokenDistance(_ m: Double) -> String { PhraseFormatter.distance(m, imperial: Prefs.imperial) }
 
 func spokenDuration(_ s: TimeInterval) -> String {
     let mins = max(1, Int((s / 60).rounded()))
@@ -240,8 +230,14 @@ private func plainPhrase(prev: NavStep, next: NavStep, isLast: Bool) -> String {
         else { core = "continue straight" }
     }
     if roundabout {
-        if let angle { core = turn(angle) } else if m == "ROUNDABOUT_LEFT" { core = "turn left" } else if m == "ROUNDABOUT_RIGHT" { core = "turn right" }
-        core = "at the roundabout, " + core
+        var direction = core
+        if let angle { direction = turn(angle) } else if m == "ROUNDABOUT_LEFT" { direction = "turn left" } else if m == "ROUNDABOUT_RIGHT" { direction = "turn right" }
+        if let n = PhraseFormatter.exitNumber(from: next.instruction) {
+            // Exit number first (what the rider counts), then which way that exit leads.
+            core = "at the roundabout, take the \(PhraseFormatter.ordinal(n)) exit and \(direction)"
+        } else {
+            core = "at the roundabout, " + direction
+        }
     }
     return core
 }
@@ -290,6 +286,10 @@ final class Navigator: ObservableObject {
     private var rerouteCooldown = Date.distantPast
     private var lastLoc: CLLocation?
     private var observerID: UUID?
+    /// The last turn instruction spoken, for "repeat the last instruction".
+    private(set) var lastInstruction = ""
+    /// Where you are heading, for handing the destination to another maps app.
+    private(set) var destinationCoordinate: CLLocationCoordinate2D?
 
     // MARK: Search
 
@@ -372,6 +372,8 @@ final class Navigator: ObservableObject {
         route = nil; destination = nil; steps = []; phrases = []; junctions = []; routeCoords = []
         queue = []
         if let id = observerID { LocationProvider.shared.removeObserver(id); observerID = nil }
+        LocationProvider.shared.onWeakSignal = nil
+        lastInstruction = ""
         live.upcomingPhrase = ""; live.upcomingMeters = 0; live.remainingMeters = 0; live.remainingSeconds = 0
     }
 
@@ -381,6 +383,15 @@ final class Navigator: ObservableObject {
         guard isNavigating, nextIdx < steps.count, let loc = lastLoc else { return "I'm not navigating." }
         let d = loc.distance(from: CLLocation(latitude: junctions[nextIdx].latitude, longitude: junctions[nextIdx].longitude))
         return "In \(spokenDistance(d)), \(phrases[nextIdx])."
+    }
+
+    func summary() -> String {
+        guard isNavigating else { return "I'm not navigating." }
+        var parts = ["Heading to \(destinationName)."]
+        if let r = remainingValues(lastLoc) { parts.append("\(spokenDistance(r.distance)) to go, about \(spokenDuration(r.seconds)).") }
+        if !queue.isEmpty { parts.append("Then \(queue.map(\.name).joined(separator: ", then "))." ) }
+        parts.append(upcoming())
+        return parts.joined(separator: " ")
     }
 
     func remaining() -> String {
@@ -419,6 +430,7 @@ final class Navigator: ObservableObject {
     private func install(_ r: NavRoute, _ place: Place) {
         route = r
         destination = place
+        destinationCoordinate = place.coordinate
         destinationName = place.name
         steps = r.steps
         routeCoords = r.points
@@ -436,6 +448,9 @@ final class Navigator: ObservableObject {
         isNavigating = steps.count > 1
         if let id = observerID { LocationProvider.shared.removeObserver(id) }
         observerID = LocationProvider.shared.observe { [weak self] loc in self?.update(loc) }
+        LocationProvider.shared.onWeakSignal = { [weak self] in
+            self?.say("GPS signal is weak. Directions may be late.")
+        }
     }
 
     private func say(_ text: String) { Task { await speak?(text) } }
@@ -466,7 +481,9 @@ final class Navigator: ObservableObject {
         if let r = remainingValues(loc) { live.remainingMeters = r.distance; live.remainingSeconds = r.seconds }
 
         let v = max(LocationProvider.shared.speedMps, 0)
-        let far = max(500, v * 25), mid = max(200, v * 10), near = max(50, v * 3.5)
+        let verbosity = VoiceStore.shared.verbosity
+        let far = verbosity == .detailed ? max(800, v * 35) : max(500, v * 25)
+        let mid = max(200, v * 10), near = max(50, v * 3.5)
         let level = d <= near ? 3 : d <= mid ? 2 : d <= far ? 1 : 0
         let isLast = nextIdx == steps.count - 1
 
@@ -485,9 +502,12 @@ final class Navigator: ObservableObject {
         }
         if level > (announced[nextIdx] ?? 0) {
             announced[nextIdx] = level
-            if !(isLast && level == 3) {
+            // "Concise" skips the early heads-up and only gives the middle and final prompts.
+            if !(isLast && level == 3) && !(verbosity == .concise && level == 1) {
                 let p = phrases[nextIdx]
-                say(level == 3 ? capitalised(p) + " now." : "In \(spokenDistance(d)), \(p).")
+                let msg = level == 3 ? capitalised(p) + " now." : "In \(spokenDistance(d)), \(p)."
+                lastInstruction = msg
+                say(msg)
             }
         }
         // Passed the junction: move on to the next maneuver.
@@ -512,7 +532,7 @@ final class Navigator: ObservableObject {
     private func reroute(from loc: CLLocation) async {
         guard let destination, !rerouting else { return }
         rerouting = true
-        say("Rerouting.")
+        say("You have missed the turn. Finding another route.")
         if let r = await calculate(to: destination, from: loc, vias: []) {
             install(r, destination)
             if let first = steps.first?.instruction, !first.isEmpty { say(first + ".") }

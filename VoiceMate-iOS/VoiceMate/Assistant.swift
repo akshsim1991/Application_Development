@@ -73,8 +73,12 @@ final class Assistant {
         if has(q, "set home", "save home", "this is home") { return "Home" }
         if has(q, "set work", "save work", "this is work", "this is my office") { return "Work" }
         if has(q, "save parking", "save my parking", "i parked here", "remember parking", "parked here") { return "Parking" }
-        return after(q, ["save this place as ", "save this location as ", "save location as ", "remember this place as ",
-                         "save this as ", "save place as "])?.capitalized
+        if let named = after(q, ["save this place as ", "save this location as ", "save location as ", "remember this place as ",
+                                 "save this as ", "save place as "])?.capitalized { return named }
+        if has(q, "save this location", "save this place", "save location", "save my location") {
+            return "Saved place \(PlaceStore.shared.saved.count + 1)"
+        }
+        return nil
     }
 
     /// "nearest petrol pump", "find a hospital", ...
@@ -321,7 +325,15 @@ final class Assistant {
             return Reply(text: await Weather.summary(at: l))
         }
 
-        if has(q, "repeat", "say that again") { return Reply(text: lastReply.isEmpty ? "Nothing to repeat." : lastReply) }
+        if has(q, "route summary", "summary of the route", "summarise the route", "summarize the route") {
+            return Reply(text: Navigator.shared.summary())
+        }
+        if has(q, "repeat", "say that again") {
+            // "Repeat the last instruction" repeats the last turn prompt; plain "repeat" repeats the last answer.
+            let nav = Navigator.shared.lastInstruction
+            if has(q, "instruction", "direction", "turn"), !nav.isEmpty { return Reply(text: nav) }
+            return Reply(text: lastReply.isEmpty ? "Nothing to repeat." : lastReply)
+        }
 
         // Music (Apple Music / Music app)
         let player = MPMusicPlayerController.systemMusicPlayer

@@ -6,6 +6,8 @@ enum Prefs {
     static func set(_ value: Any, _ key: String) { d.set(value, forKey: key) }
 
     // Voice & units
+    /// Hands-free wake phrase in the app (true) or guidance only, with voice commands via Siri (false).
+    static var wakeEnabled: Bool { d.object(forKey: "wakeEnabled") as? Bool ?? true }
     static var speechRate: Float { Float(d.object(forKey: "speechRate") as? Double ?? 0.5) }
     static var voiceID: String { d.string(forKey: "voiceID") ?? "" }
     static var units: String { d.string(forKey: "units") ?? "auto" }

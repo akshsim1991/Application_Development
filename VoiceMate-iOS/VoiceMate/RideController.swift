@@ -16,8 +16,8 @@ final class RideController: ObservableObject {
 
     let route = AudioRoute()
     let listener = RideListener()
-    private let speaker = Speaker()
-    private var speechTail: Task<Void, Never>?
+    private let queue = SpeechQueue(engine: AppleSpeechEngine())
+    private let previewEngine = AppleSpeechEngine()
 
     @Published private(set) var isRiding = false
     @Published private(set) var phase: RidePhase = .off
@@ -54,11 +54,22 @@ final class RideController: ObservableObject {
             return r.followUp
         }
         listener.reconfigureSession = { [weak self] in try self?.route.activate() }
-        Navigator.shared.speak = { [weak self] text in await self?.say(text) }
-        TripRecorder.shared.speak = { [weak self] text in await self?.say(text) }
-        Emergency.shared.speak = { [weak self] text in await self?.say(text) }
+        queue.onBusy = { [weak self] busy in
+            guard let self else { return }
+            if busy {
+                self.phase = .speaking
+                self.route.beginSpeaking()
+            } else {
+                self.route.endSpeaking()
+                self.phase = self.isRiding ? .listening : .off
+            }
+        }
+        Navigator.shared.speak = { [weak self] text in await self?.say(text, kind: .guidance) }
+        TripRecorder.shared.speak = { [weak self] text in await self?.say(text, kind: .guidance) }
+        TripRecorder.shared.speakUrgent = { [weak self] text in await self?.say(text, kind: .urgent) }
+        Emergency.shared.speak = { [weak self] text in await self?.say(text, kind: .urgent) }
         Emergency.shared.expectReply = { [weak self] in self?.listener.expectFollowUp() }
-        RoadInfo.shared.speak = { [weak self] text in await self?.say(text) }
+        RoadInfo.shared.speak = { [weak self] text in await self?.say(text, kind: .guidance) }
     }
 
     func toggle() {
@@ -73,7 +84,9 @@ final class RideController: ObservableObject {
             return
         }
         do {
+            route.guidanceOnly = !Prefs.wakeEnabled
             try route.activate()
+            queue.engine.prepareForRide()   // the voice is fixed for the whole ride
             LocationProvider.shared.startContinuous()
             TripRecorder.shared.start()
             Emergency.shared.rideStarted()
@@ -82,10 +95,11 @@ final class RideController: ObservableObject {
             phase = .listening
             UIApplication.shared.isIdleTimerDisabled = Prefs.keepScreenOn
             // Spoken before listening starts so the app never hears its own announcement.
-            await say("Ride mode on. Say \(wakeWord) when you need me.")
+            await say(Prefs.wakeEnabled ? "Ride mode on. Say \(wakeWord) when you need me." : "Ride mode on.")
+            if let note = VoiceStore.shared.fallbackNote { await say(note) }
             let due = Garage.shared.dueMessages()
             if !due.isEmpty { await say(due.joined(separator: " ")) }
-            try listener.start()
+            if Prefs.wakeEnabled { try listener.start() }
             await handlePendingDestination()
         } catch {
             errorMessage = error.localizedDescription
@@ -99,7 +113,7 @@ final class RideController: ObservableObject {
         RoadInfo.shared.stop()
         TripRecorder.shared.stop()
         listener.stop()
-        speaker.stop()
+        queue.stopAll()
         LocationProvider.shared.stopContinuous()
         route.deactivate()
         UIApplication.shared.isIdleTimerDisabled = false
@@ -163,9 +177,9 @@ final class RideController: ObservableObject {
     private func handlePendingDestination() async {
         guard let dest = pendingDestination else { return }
         pendingDestination = nil
-        let r = await Assistant.shared.requestNavigation(to: dest)
+        let r = await Assistant.shared.requestNavigation(to: dest, autoStart: true)
         await say(r.text)
-        if r.followUp { listener.expectFollowUp() }
+        if r.followUp, Prefs.wakeEnabled { listener.expectFollowUp() }
     }
 
     private func add(user: Bool, _ text: String) {
@@ -173,17 +187,19 @@ final class RideController: ObservableObject {
         if log.count > 30 { log.removeFirst(log.count - 30) }
     }
 
-    /// Speech is queued so navigation prompts never cut off an answer (or each other).
-    func say(_ text: String) async {
-        add(user: false, text)
-        let previous = speechTail
-        let task = Task { [weak self] in
-            await previous?.value
-            self?.phase = .speaking
-            await self?.speaker.speak(text)
-        }
-        speechTail = task
-        await task.value
-        if speechTail == task { phase = isRiding ? .listening : .off }
+    /// Everything spoken goes through one queue: no overlaps, urgent first, stale guidance dropped.
+    func say(_ text: String, kind: SpeechKind = .reply) async {
+        if kind != .guidance { add(user: false, text) }
+        await queue.say(text, kind: kind)
     }
+
+    /// Plays a sample (voice gallery, audio test) without touching the ride queue.
+    func previewVoice(_ text: String, voiceID: String? = nil) async {
+        let useSession = !isRiding
+        if useSession { route.preparePreview() }
+        await previewEngine.speak(text, kind: .reply, voiceID: voiceID)
+        if useSession { route.endPreview() }
+    }
+
+    func stopPreview() { previewEngine.stop() }
 }

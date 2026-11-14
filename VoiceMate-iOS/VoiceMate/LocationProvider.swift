@@ -52,6 +52,10 @@ final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDeleg
     private var wantsUpdates = false
     private var background = false
     private var staleTimer: Timer?
+    private var weakSince: Date?
+    private var lastWeakWarning = Date.distantPast
+    /// Called (at most every two minutes) when the signal has been weak or lost for 15 seconds.
+    var onWeakSignal: (() -> Void)?
 
     override init() {
         super.init()
@@ -161,6 +165,17 @@ final class LocationProvider: NSObject, ObservableObject, CLLocationManagerDeleg
     private func tick() {
         if Date().timeIntervalSince(lastFixAt) > 5 { speedMps = 0; speedKnown = false }
         updateLevel()
+        guard background, onWeakSignal != nil else { weakSince = nil; return }
+        if gpsLevel == .poor || gpsLevel == .searching {
+            let since = weakSince ?? Date()
+            weakSince = since
+            if Date().timeIntervalSince(since) > 15, Date().timeIntervalSince(lastWeakWarning) > 120 {
+                lastWeakWarning = Date()
+                onWeakSignal?()
+            }
+        } else {
+            weakSince = nil
+        }
     }
 
     private func deliver(_ loc: CLLocation?) {

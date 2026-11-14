@@ -71,6 +71,68 @@ struct ShareLocationIntent: AppIntent {
     }
 }
 
+struct NavigateHomeIntent: AppIntent {
+    static var title: LocalizedStringResource = "Navigate home"
+    static var description = IntentDescription("Start navigation to your saved Home.")
+    static var openAppWhenRun = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        RideController.shared.pendingDestination = "home"
+        RideController.shared.pendingStart = true
+        return .result()
+    }
+}
+
+struct AnnounceETAIntent: AppIntent {
+    static var title: LocalizedStringResource = "Announce ETA"
+    static var description = IntentDescription("Hear the remaining distance and time to your destination.")
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        let msg = Navigator.shared.isNavigating ? Navigator.shared.remaining() : "I'm not navigating."
+        return .result(dialog: IntentDialog(stringLiteral: msg))
+    }
+}
+
+struct PauseRideTrackingIntent: AppIntent {
+    static var title: LocalizedStringResource = "Pause ride tracking"
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard TripRecorder.shared.isRecording else { return .result(dialog: "No ride is being recorded.") }
+        TripRecorder.shared.pause()
+        return .result(dialog: "Ride tracking paused.")
+    }
+}
+
+struct ResumeRideTrackingIntent: AppIntent {
+    static var title: LocalizedStringResource = "Resume ride tracking"
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard TripRecorder.shared.isRecording else { return .result(dialog: "No ride is being recorded.") }
+        TripRecorder.shared.resume()
+        return .result(dialog: "Ride tracking resumed.")
+    }
+}
+
+struct StopRideIntent: AppIntent {
+    static var title: LocalizedStringResource = "Stop ride"
+    static var description = IntentDescription("End Ride Mode and save the ride.")
+    static var openAppWhenRun = false
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ProvidesDialog {
+        guard RideController.shared.isRiding else { return .result(dialog: "No ride is running.") }
+        RideController.shared.stop()
+        return .result(dialog: "Ride stopped and saved.")
+    }
+}
+
 struct VoiceMateShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
@@ -96,6 +158,36 @@ struct VoiceMateShortcuts: AppShortcutsProvider {
             phrases: ["Share my location with \(.applicationName)"],
             shortTitle: "Share location",
             systemImageName: "location.fill"
+        )
+        AppShortcut(
+            intent: NavigateHomeIntent(),
+            phrases: ["Navigate home with \(.applicationName)", "Take me home with \(.applicationName)"],
+            shortTitle: "Home",
+            systemImageName: "house.fill"
+        )
+        AppShortcut(
+            intent: AnnounceETAIntent(),
+            phrases: ["ETA in \(.applicationName)", "How far to go in \(.applicationName)"],
+            shortTitle: "ETA",
+            systemImageName: "flag.checkered"
+        )
+        AppShortcut(
+            intent: PauseRideTrackingIntent(),
+            phrases: ["Pause ride in \(.applicationName)"],
+            shortTitle: "Pause",
+            systemImageName: "pause.circle"
+        )
+        AppShortcut(
+            intent: ResumeRideTrackingIntent(),
+            phrases: ["Resume ride in \(.applicationName)"],
+            shortTitle: "Resume",
+            systemImageName: "play.circle"
+        )
+        AppShortcut(
+            intent: StopRideIntent(),
+            phrases: ["Stop ride in \(.applicationName)"],
+            shortTitle: "Stop ride",
+            systemImageName: "stop.circle"
         )
         AppShortcut(
             intent: AskVoiceMateIntent(),

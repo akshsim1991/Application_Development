@@ -3,8 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var ride: RideController
     @ObservedObject private var nav = Navigator.shared
-    @AppStorage("speechRate") private var speechRate = 0.5
-    @AppStorage("voiceID") private var voiceID = ""
+    @AppStorage("wakeEnabled") private var wakeEnabled = true
     @AppStorage("units") private var units = "auto"
     @AppStorage("speedLimit") private var speedLimit = 0
     @AppStorage("breakMinutes") private var breakMinutes = 90
@@ -33,20 +32,25 @@ struct SettingsView: View {
                     TextField("Wake phrase", text: $ride.wakeWord)
                         .textInputAutocapitalization(.never).autocorrectionDisabled()
                         .disabled(ride.isRiding)
-                    VStack(alignment: .leading) {
-                        Text("Speaking speed")
-                        Slider(value: $speechRate, in: 0.35...0.65)
+                    NavigationLink {
+                        VoiceGalleryView()
+                    } label: {
+                        Label("Voice gallery, style & pronunciation", systemImage: "waveform.circle.fill")
                     }
-                    Picker("Voice", selection: $voiceID) {
-                        Text("Default").tag("")
-                        ForEach(Speaker.voiceOptions()) { Text($0.name).tag($0.id) }
-                    }
+                    Toggle("Hands-free voice commands in the app", isOn: $wakeEnabled)
+                        .disabled(ride.isRiding)
+                    Text(wakeEnabled
+                         ? "The microphone stays open so “\(ride.wakeWord)” works. Bluetooth helmets then use their hands-free profile, which sounds flatter."
+                         : "Best sound: the microphone stays closed and music is only lowered while I speak. Use Siri (helmet button) for commands.")
+                        .font(.caption).foregroundStyle(Theme.dim)
                     Stepper(value: $activeTimeoutMinutes, in: 0...30, step: 5) {
                         Text(activeTimeoutMinutes == 0 ? "Assistant stays on until you say “bye”"
                                                       : "Back to standby after \(activeTimeoutMinutes) min of silence")
                     }
-                    Button("Test voice") { Task { await ride.say("This is how I will sound while you ride.") } }
+                    Button("Test voice") { Task { await ride.previewVoice("In five hundred metres, turn left.") } }
                 }
+
+                AudioStatusSection()
 
                 GSection("Units") {
                     Picker("Units", selection: $units) {
@@ -153,5 +157,25 @@ struct CommandsView: View {
             }
         }
         .navigationTitle("Voice commands")
+    }
+}
+
+/// Live audio route and a one-tap audio test (checks that speech comes from the right place).
+private struct AudioStatusSection: View {
+    @EnvironmentObject var ride: RideController
+    @ObservedObject private var route = RideController.shared.route
+
+    var body: some View {
+        GSection("Audio route") {
+            LabeledContent("Output", value: route.description)
+            LabeledContent("Type", value: route.outputKind)
+            LabeledContent("Microphone", value: route.inputName)
+            if !route.status.isEmpty { Text(route.status).font(.footnote).foregroundStyle(Theme.accent) }
+            Button("Test audio output") {
+                Task { await ride.previewVoice("Audio test. You should hear this from your helmet, or the phone's loudspeaker if no helmet is connected.") }
+            }
+            Text("With no Bluetooth or wired headphones, speech comes from the iPhone loudspeaker, not the earpiece. “Earpiece” above would be a bug: tell me.")
+                .font(.caption).foregroundStyle(Theme.dim)
+        }
     }
 }

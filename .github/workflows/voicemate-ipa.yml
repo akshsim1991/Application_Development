@@ -11,6 +11,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Generate Xcode project
         run: brew install xcodegen && cd VoiceMate-iOS && xcodegen generate
+      - name: Unit tests (non-blocking)
+        continue-on-error: true
+        run: |
+          cd VoiceMate-iOS
+          xcodebuild test -project VoiceMate.xcodeproj -scheme VoiceMate \
+            -destination 'platform=iOS Simulator,name=iPhone 16' \
+            CODE_SIGNING_ALLOWED=NO 2>&1 | tail -40
       - name: Build unsigned app
         run: |
           cd VoiceMate-iOS

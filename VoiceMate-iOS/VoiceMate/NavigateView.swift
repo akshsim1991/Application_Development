@@ -319,6 +319,14 @@ private struct ActiveNavSection: View {
                 LabeledContent("Then", value: nav.queue.map(\.name).joined(separator: " → "))
                 Button("Skip to next stop") { Task { await ride.skipStop() } }
             }
+            if let c = nav.destinationCoordinate {
+                // Hand the destination to Google Maps (its own guidance; VoiceMate can't change what it says).
+                Button {
+                    if let url = URL(string: "https://www.google.com/maps/dir/?api=1&destination=\(c.latitude),\(c.longitude)&travelmode=two-wheeler") {
+                        UIApplication.shared.open(url)
+                    }
+                } label: { Label("Open in Google Maps", systemImage: "arrow.up.right.square") }
+            }
             Button(role: .destructive) { nav.stop() } label: { Label("Stop navigation", systemImage: "xmark.circle.fill") }
         }
     }

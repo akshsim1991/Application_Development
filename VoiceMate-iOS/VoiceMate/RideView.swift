@@ -251,7 +251,10 @@ private struct VoicePanel: View {
         }
     }
 
+    @AppStorage("wakeEnabled") private var wakeEnabled = true
+
     private var title: String {
+        if ride.isRiding && !wakeEnabled && ride.phase == .listening { return "Guidance only" }
         switch ride.phase {
         case .off: return "Voice assistant off"
         case .listening: return listener.isActive ? "Assistant ON" : "Standby"
@@ -262,6 +265,7 @@ private struct VoicePanel: View {
 
     private var detail: String {
         let name = ride.wakeWord.split(separator: " ").last.map(String.init) ?? "rider"
+        if ride.isRiding && !wakeEnabled { return "Spoken directions only. Hold your helmet button to use Siri." }
         if ride.phase == .off { return "Start a ride, then say “\(ride.wakeWord)”." }
         if !listener.heard.isEmpty && ride.phase == .listening { return "“\(listener.heard)”" }
         if listener.isActive { return "Just talk. Say “bye \(name)” to turn me off." }

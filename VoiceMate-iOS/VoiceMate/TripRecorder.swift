@@ -31,11 +31,13 @@ final class TripRecorder: ObservableObject {
     static let shared = TripRecorder()
 
     @Published private(set) var isRecording = false
+    @Published private(set) var isPaused = false
     @Published private(set) var trips: [Trip] = []
     let live = LiveStats()
 
     /// Set by RideController; speaks through the helmet.
     var speak: ((String) async -> Void)?
+    var speakUrgent: ((String) async -> Void)?
 
     private var startDate = Date()
     private var lastLoc: CLLocation?
@@ -44,6 +46,8 @@ final class TripRecorder: ObservableObject {
     private var timer: Timer?
     private var lastAlert = Date.distantPast
     private var nextBreak = TimeInterval.infinity
+    private var pausedTotal: TimeInterval = 0
+    private var pausedAt: Date?
 
     private static var fileURL: URL {
         FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("trips.json")
@@ -62,6 +66,7 @@ final class TripRecorder: ObservableObject {
         lastAlert = .distantPast
         let b = Prefs.breakMinutes
         nextBreak = b > 0 ? TimeInterval(b * 60) : .infinity
+        pausedTotal = 0; pausedAt = nil; isPaused = false
         isRecording = true
         observerID = LocationProvider.shared.observe { [weak self] l in self?.handle(l) }
         timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
@@ -83,6 +88,21 @@ final class TripRecorder: ObservableObject {
         live.distance = 0; live.movingTime = 0; live.maxSpeed = 0; live.elapsed = 0
     }
 
+    /// Pause/resume recording (for example at a long stop). Navigation and the speedometer keep working.
+    func pause() {
+        guard isRecording, !isPaused else { return }
+        isPaused = true
+        pausedAt = Date()
+    }
+
+    func resume() {
+        guard isRecording, isPaused else { return }
+        if let p = pausedAt { pausedTotal += Date().timeIntervalSince(p) }
+        pausedAt = nil
+        isPaused = false
+        lastLoc = nil
+    }
+
     func delete(at offsets: IndexSet) { trips.remove(atOffsets: offsets); save() }
     func delete(id: UUID) { trips.removeAll { $0.id == id }; save() }
 
@@ -100,7 +120,8 @@ final class TripRecorder: ObservableObject {
     }
 
     private func tick() {
-        live.elapsed = Date().timeIntervalSince(startDate)
+        guard !isPaused else { return }
+        live.elapsed = Date().timeIntervalSince(startDate) - pausedTotal
         if live.elapsed >= nextBreak {
             nextBreak += TimeInterval(max(Prefs.breakMinutes, 15) * 60)
             Task { await speak?("You've been riding for \(spokenDuration(live.elapsed)). Consider taking a break.") }
@@ -108,6 +129,7 @@ final class TripRecorder: ObservableObject {
     }
 
     private func handle(_ l: CLLocation) {
+        guard !isPaused else { lastLoc = nil; return }
         // Poor accuracy (train or bus window, tunnels) is still fine for speed-based tracking.
         guard l.horizontalAccuracy >= 0, l.horizontalAccuracy < 200 else { return }
         let gps = LocationProvider.shared
@@ -139,7 +161,7 @@ final class TripRecorder: ObservableObject {
         if let limit, gps.speedKnown, Prefs.displaySpeed(v) > limit + (manual > 0 ? 0 : 5), Date().timeIntervalSince(lastAlert) > 45 {
             lastAlert = Date()
             let now = Int(Prefs.displaySpeed(v).rounded())
-            Task { await speak?("Speed alert. \(now) \(Prefs.speedUnitSpoken).") }
+            Task { await speakUrgent?("Speed alert. \(now) \(Prefs.speedUnitSpoken).") }
         }
     }
 

@@ -32,20 +32,54 @@ enum PowerFilter: String, CaseIterable, Identifiable {
     case all = "All files", documents = "Documents", images = "Images", video = "Video", audio = "Audio", archives = "Archives", folders = "Folders", large = "Large files", recent = "Last 7 days", starred = "Starred"
     var id: String { rawValue }
     func accepts(_ file: PowerFile, starred: Bool = false) -> Bool {
+        accepts(directory: file.directory, size: file.size, modified: file.modified, ext: file.url.pathExtension, starred: starred)
+    }
+    /// The same test without building a PowerFile (which touches the disk), so big folders filter instantly.
+    func accepts(directory: Bool, size: Int64, modified: Date, ext: String, starred: Bool = false) -> Bool {
         if self == .all { return true }
-        if self == .folders { return file.directory }
+        if self == .folders { return directory }
         if self == .starred { return starred }
-        if self == .recent { return file.modified > Date().addingTimeInterval(-7 * 86400) }
-        if self == .large { return !file.directory && file.size >= 100_000_000 }
-        guard !file.directory, let type = UTType(filenameExtension: file.url.pathExtension) else { return false }
+        if self == .recent { return modified > Date().addingTimeInterval(-7 * 86400) }
+        if self == .large { return !directory && size >= 100_000_000 }
+        guard !directory, let type = ExtensionTypes.type(ext) else { return false }
+        let lower = ext.lowercased()
         switch self {
-        case .documents: return type.conforms(to: .text) || type.conforms(to: .pdf) || type.conforms(to: .spreadsheet) || type.conforms(to: .presentation) || ["doc", "docx", "pages", "rtf"].contains(file.url.pathExtension.lowercased())
+        case .documents: return type.conforms(to: .text) || type.conforms(to: .pdf) || type.conforms(to: .spreadsheet) || type.conforms(to: .presentation) || ["doc", "docx", "pages", "rtf"].contains(lower)
         case .images: return type.conforms(to: .image)
         case .video: return type.conforms(to: .movie)
         case .audio: return type.conforms(to: .audio)
-        case .archives: return type.conforms(to: .archive) || ["zip", "rar", "7z", "gz", "tar"].contains(file.url.pathExtension.lowercased())
+        case .archives: return type.conforms(to: .archive) || ["zip", "rar", "7z", "gz", "tar"].contains(lower)
         default: return false
         }
+    }
+}
+
+/// Looking up a file type is slow, and a folder has few distinct extensions, so results are remembered.
+enum ExtensionTypes {
+    private static let lock = NSLock()
+    private static var types: [String: UTType?] = [:]
+    private static var categories: [String: String] = [:]
+    static func type(_ ext: String) -> UTType? {
+        let key = ext.lowercased()
+        lock.lock(); defer { lock.unlock() }
+        if let known = types[key] { return known }
+        let value = UTType(filenameExtension: key)
+        types[key] = .some(value)
+        return value
+    }
+    static func category(_ ext: String) -> String {
+        let key = ext.lowercased()
+        lock.lock(); if let known = categories[key] { lock.unlock(); return known }; lock.unlock()
+        var result = "other"
+        if let type = type(key) {
+            if type.conforms(to: .image) { result = "images" }
+            else if type.conforms(to: .movie) { result = "video" }
+            else if type.conforms(to: .audio) { result = "audio" }
+            else if type.conforms(to: .archive) { result = "archives" }
+            else if PowerFilter.documents.accepts(directory: false, size: 0, modified: .distantPast, ext: key) { result = "documents" }
+        }
+        lock.lock(); categories[key] = result; lock.unlock()
+        return result
     }
 }
 

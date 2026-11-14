@@ -19,6 +19,10 @@ struct LibraryRecord: Identifiable, Codable {
     var starred = false
     var label = "None"
     var opened = Date.distantPast
+    /// Tags, folder colour and folder symbol are kept inside FileGlade (iOS does not let apps write Files' own tags).
+    var tags: [String]?
+    var folderColor: String?
+    var folderSymbol: String?
     var id: String { path }
     var name: String { URL(fileURLWithPath: path).lastPathComponent }
 }
@@ -55,10 +59,29 @@ final class FileLibrary: ObservableObject {
         var entry = position.map { records[$0] } ?? LibraryRecord(path: path, bookmark: nil)
         edit(&entry)
         // Bookmarks are only needed for items you starred or labeled; skipping them keeps opening folders fast.
-        if entry.bookmark == nil && (entry.starred || entry.label != "None") { entry.bookmark = try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil) }
+        if entry.bookmark == nil && (entry.starred || entry.label != "None" || entry.tags != nil || entry.folderColor != nil || entry.folderSymbol != nil) { entry.bookmark = try? url.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil) }
         if let position { records[position] = entry } else { records.append(entry) }
         save()
     }
+    func tags(_ url: URL) -> [String] { record(url)?.tags ?? [] }
+    func setTags(_ tags: [String], urls: [URL]) {
+        for url in urls { update(url) { $0.tags = tags.isEmpty ? nil : tags } }
+    }
+    func addTag(_ tag: String, urls: [URL]) {
+        for url in urls { update(url) { var t = $0.tags ?? []; if !t.contains(tag) { t.append(tag) }; $0.tags = t } }
+    }
+    func removeTag(_ tag: String, urls: [URL]) {
+        for url in urls { update(url) { let t = ($0.tags ?? []).filter { $0 != tag }; $0.tags = t.isEmpty ? nil : t } }
+    }
+    /// Every tag in use, with how many items carry it.
+    var allTags: [(name: String, count: Int)] {
+        var counts: [String: Int] = [:]
+        for record in records { for tag in record.tags ?? [] { counts[tag, default: 0] += 1 } }
+        return counts.map { ($0.key, $0.value) }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+    func items(tagged tag: String) -> [LibraryRecord] { records.filter { ($0.tags ?? []).contains(tag) } }
+    func folderStyle(_ url: URL) -> (color: String?, symbol: String?) { let r = record(url); return (r?.folderColor, r?.folderSymbol) }
+    func setFolderStyle(_ url: URL, color: String?, symbol: String?) { update(url) { $0.folderColor = color; $0.folderSymbol = symbol } }
     func toggleStar(_ url: URL) { update(url) { $0.starred.toggle() } }
     func setLabel(_ label: String, urls: [URL]) { for url in urls { update(url) { $0.label = label } } }
     func opened(_ url: URL) { update(url) { $0.opened = Date() } }
@@ -90,8 +113,9 @@ final class FileLibrary: ObservableObject {
         if let data = try? JSONEncoder().encode(activities) { UserDefaults.standard.set(data, forKey: "FileGlade.activity.v2") }
     }
     private func save() {
-        let pinned = records.filter { $0.starred || $0.label != "None" }
-        let recent = records.filter { !$0.starred && $0.label == "None" }.sorted { $0.opened > $1.opened }.prefix(100)
+        func keep(_ r: LibraryRecord) -> Bool { r.starred || r.label != "None" || r.tags != nil || r.folderColor != nil || r.folderSymbol != nil }
+        let pinned = records.filter(keep)
+        let recent = records.filter { !keep($0) }.sorted { $0.opened > $1.opened }.prefix(100)
         records = pinned + recent
         // Writing to disk is batched, so rapid navigation does not stall on it.
         saveWork?.cancel()

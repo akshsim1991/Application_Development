@@ -24,7 +24,7 @@ import UniformTypeIdentifiers
             }
             .tint(.blue)
             .alert("Something needs your attention", isPresented: Binding(get: { model.problem != nil }, set: { if !$0 { model.problem = nil } })) { Button("OK") { model.problem = nil } } message: { Text(model.problem ?? "") }
-            .task { await model.reload() }
+            .task { BridgeController.shared.rootsProvider = { model.dashboardRoots }; await model.reload() }
             .onChange(of: scenePhase) { _, phase in if phase == .active { if activeScreen == 1 { Task { await model.reload() } }; model.refreshDeleted() } }
             .sheet(item: $dashboardSheet) { sheet in
                 switch sheet { case .access: FileAccessSetupView(model: model); case .preview(let url): PreviewView(url: url) }
@@ -71,9 +71,9 @@ struct FileAccessSetupView: View {
 }
 
 private enum BrowserSheet: Identifiable {
-    case about, locations, preview(URL), share([URL]), details(FileItem), tools(URL, [URL])
+    case about, locations, preview(URL), share([URL]), details(FileItem), tools(URL, [URL]), computer
     var id: String {
-        switch self { case .about: return "about"; case .locations: return "locations"; case .preview(let url): return "preview-\(url.path)"; case .share: return "share"; case .details(let item): return "info-\(item.url.path)"; case .tools: return "tools" }
+        switch self { case .about: return "about"; case .locations: return "locations"; case .preview(let url): return "preview-\(url.path)"; case .share: return "share"; case .details(let item): return "info-\(item.url.path)"; case .tools: return "tools"; case .computer: return "computer" }
     }
 }
 
@@ -120,6 +120,7 @@ struct BrowserView: View {
                         Divider()
                         Toggle("Show hidden files", isOn: $model.hidden).onChange(of: model.hidden) { _, _ in Task { await model.reload() } }
                         Button("Refresh", systemImage: "arrow.clockwise") { Task { await model.reload() } }
+                        Button("Computer access (USB)", systemImage: "cable.connector") { sheet = .computer }
                         Button("About FileGlade", systemImage: "info.circle") { sheet = .about }
                     } label: { Image(systemName: "ellipsis.circle") }.accessibilityLabel("More actions")
                 }
@@ -133,6 +134,7 @@ struct BrowserView: View {
                 case .preview(let url): PreviewView(url: url)
                 case .share(let urls): ShareView(urls: urls)
                 case .details(let item): DetailsView(item: item)
+                case .computer: ComputerAccessView()
                 case .tools(let folder, let urls): PowerToolsView(folder: folder, selection: urls, onProduced: model.toolsProduced, onReveal: model.revealItem)
                 }
             }

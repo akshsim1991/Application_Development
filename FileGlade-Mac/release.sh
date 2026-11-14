@@ -4,6 +4,7 @@
 # Nothing is uploaded by this script.
 set -euo pipefail
 cd "${0:A:h}"
+./bump-version.sh "${1:-patch}"
 ./build.sh
 VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" FileGlade.app/Contents/Info.plist)
 OUT="release"; mkdir -p "$OUT"

@@ -60,7 +60,11 @@ func fileSections<Item>(_ items: [Item], key: (Item) -> String) -> [FileSection<
 func fileCategory(_ url: URL) -> String { ExtensionTypes.category(url.pathExtension) }
 struct FileGladeAboutView: View {
     @Environment(\.dismiss) private var dismiss
-    private var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.0" }
+    private var version: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.2.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String
+        return build.map { "\(short) (build \($0))" } ?? short
+    }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {

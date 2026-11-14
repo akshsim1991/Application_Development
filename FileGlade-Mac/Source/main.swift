@@ -323,7 +323,6 @@ final class Explorer: ObservableObject {
     }
     /// Handles files dropped from Finder or inside the app. Moves on the same disk, copies otherwise (hold ⌥ to copy).
     func handleDrop(_ providers: [NSItemProvider], into folder: URL) -> Bool {
-        let optionHeld = NSEvent.modifierFlags.contains(.option)
         let group = DispatchGroup()
         let lock = NSLock()
         var urls: [URL] = []
@@ -336,13 +335,16 @@ final class Explorer: ObservableObject {
                 group.leave()
             }
         }
-        group.notify(queue: .main) { [weak self] in
-            guard let self, !urls.isEmpty else { return }
-            let volume = { (u: URL) in (try? u.resourceValues(forKeys: [.volumeURLKey]).volume)?.path }
-            let sameDisk = urls.allSatisfy { volume($0) == volume(folder) }
-            self.transfer(urls, into: folder, kind: (optionHeld || !sameDisk) ? .copy : .move)
-        }
+        let optionHeld = NSEvent.modifierFlags.contains(.option)
+        group.notify(queue: .main) { [weak self] in self?.dropURLs(urls, into: folder, forceCopy: optionHeld) }
         return true
+    }
+    /// Handles files dropped from Finder or inside the app. Moves on the same disk, copies otherwise (hold ⌥ to copy).
+    func dropURLs(_ urls: [URL], into folder: URL, forceCopy: Bool = NSEvent.modifierFlags.contains(.option)) {
+        guard !urls.isEmpty else { return }
+        let volume = { (u: URL) in (try? u.resourceValues(forKeys: [.volumeURLKey]).volume)?.path }
+        let sameDisk = urls.allSatisfy { volume($0) == volume(folder) }
+        transfer(urls, into: folder, kind: (forceCopy || !sameDisk) ? .copy : .move)
     }
     func undoFileOperation() {
         let problems = TransferManager.shared.undoLast()
@@ -413,8 +415,8 @@ struct FileIcon: View {
 }
 
 enum ExtraSheet: Identifiable {
-    case compare, archive(URL), docs, collection(UUID)
-    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString } }
+    case compare, archive(URL), docs, collection(UUID), device(String)
+    var id: String { switch self { case .compare: return "compare"; case .archive(let url): return "archive" + url.path; case .docs: return "docs"; case .collection(let id): return "collection" + id.uuidString; case .device(let id): return "device" + id } }
 }
 
 struct ExplorerView: View {
@@ -425,7 +427,21 @@ struct ExplorerView: View {
     @ObservedObject private var theme = Theme.shared
     @ObservedObject private var basket = BasketStore.shared
     @ObservedObject private var collectionStore = CollectionStore.shared
+    @ObservedObject private var deviceStore = DeviceStore.shared
+    @ObservedObject private var bridgeStore = BridgeStore.shared
+    /// One row per phone: the macOS image service and the USB bridge are paired up when both see the same device.
+    private var deviceRows: [(id: String, name: String, model: String, ic: PhoneDevice?, bridge: BridgeDevice?)] {
+        let phones = deviceStore.phones, bridges = bridgeStore.devices
+        var rows: [(id: String, name: String, model: String, ic: PhoneDevice?, bridge: BridgeDevice?)] = []
+        for i in 0..<max(phones.count, bridges.count) {
+            let ic = i < phones.count ? phones[i] : nil, bridge = i < bridges.count ? bridges[i] : nil
+            rows.append((id: bridge?.id ?? ic?.id ?? "device\(i)", name: bridge?.info?.name ?? ic?.name ?? "iPhone", model: bridge?.info?.model ?? ic?.model ?? ic?.kindName ?? "iPhone", ic: ic, bridge: bridge))
+        }
+        return rows
+    }
     @State private var extra: ExtraSheet?
+    @State private var windowWidth: CGFloat = 0
+    @State private var listWidth: CGFloat = 0
     @State private var showBasket = false
     @ObservedObject private var library = FileLibrary.shared
     @ObservedObject private var smartStore = SavedSearchStore.shared
@@ -438,9 +454,14 @@ struct ExplorerView: View {
     @FocusState private var pathFocused: Bool
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     /// The pane that toolbar buttons and the sidebar act on.
-    private var acting: Explorer { (panes.dual && !model.showDashboard && !embedded) ? (panes.active ?? model) : (embedded ? model : model) }
+    /// Two panes and the details pane only show when the window is wide enough; otherwise nothing is squeezed or cut off.
+    private var roomy: Bool { windowWidth == 0 || windowWidth >= 1040 }
+    private var dualVisible: Bool { panes.dual && roomy }
+    private var inspectorVisible: Bool { model.inspector && (windowWidth == 0 || windowWidth >= 980) }
+    private var sidebarWidth: Double { min(layout.sidebar, max(150, Double(windowWidth) * 0.26)) }
+    private var acting: Explorer { (dualVisible && !model.showDashboard && !embedded) ? (panes.active ?? model) : model }
     private func bind<T>(_ keyPath: ReferenceWritableKeyPath<Explorer, T>) -> Binding<T> { Binding(get: { acting[keyPath: keyPath] }, set: { acting[keyPath: keyPath] = $0 }) }
-    private var isActivePane: Bool { panes.dual && (panes.active ?? (embedded ? nil : model)) === model }
+    private var isActivePane: Bool { dualVisible && (panes.active ?? (embedded ? nil : model)) === model }
     @ViewBuilder var body: some View {
         if embedded {
             paneColumn
@@ -466,19 +487,19 @@ struct ExplorerView: View {
             UpdateBanner()
             if !model.showDashboard { if model.tabs.count > 1 { workspaceBar; Divider() }; commandbar; Divider() }
             HStack(spacing: 0) {
-                sidebar.frame(width: layout.sidebar)
+                sidebar.frame(width: sidebarWidth)
                 ResizeHandle(width: $layout.sidebar, range: 140...400, resetTo: 208)
                 if model.showDashboard {
                     UnifiedDashboardView(roots: model.dashboardRoots, onOpen: { model.openEntry(FileEntry($0)) }, onReveal: { url in model.filter = .all; model.navigate(PowerFile(url).directory ? url : url.deletingLastPathComponent()); if !PowerFile(url).directory { model.selection = [powerURL(url)] } })
                 } else {
                 paneColumn
-                if panes.dual { ResizeHandle(width: $layout.second, range: 260...1200, growsLeft: true, resetTo: 460); ExplorerView(model: panes.second, embedded: true).frame(width: layout.second) }
-                if model.inspector { ResizeHandle(width: $layout.inspector, range: 200...560, growsLeft: true, resetTo: 280); inspector.frame(width: layout.inspector) }
+                if dualVisible { ResizeHandle(width: $layout.second, range: 260...1200, growsLeft: true, resetTo: 460); ExplorerView(model: panes.second, embedded: true).frame(width: layout.second) }
+                if inspectorVisible { ResizeHandle(width: $layout.inspector, range: 200...560, growsLeft: true, resetTo: 280); inspector.frame(width: layout.inspector) }
                 }
             }
         }
-        .padding(.top, theme.glass ? 26 : 0)
-        .frame(minWidth: 760, minHeight: 500)
+        .frame(minWidth: 700, minHeight: 460)
+        .background(GeometryReader { proxy in Color.clear.onAppear { windowWidth = proxy.size.width }.onChange(of: proxy.size.width) { windowWidth = $0 } })
         .background(theme.window)
         .background { if theme.glass { GlassBackdrop() } }
         .preferredColorScheme(theme.colorScheme)
@@ -491,6 +512,7 @@ struct ExplorerView: View {
             switch item {
             case .compare: CompareView(left: model.directory, right: panes.second.directory) { model.refresh(); panes.second.refresh() }
             case .archive(let url): ArchiveBrowserView(archive: url) { out in acting.refresh(); acting.selection = [out] }
+            case .device(let id): if let row = deviceRows.first(where: { $0.id == id }) { PhoneHubView(ic: row.ic, bridge: row.bridge) { acting.directory } } else { Text("This device was disconnected.").padding(40) }
             case .collection(let id): CollectionView(id: id) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
             case .docs: DocSearchView(folder: acting.directory) { url in acting.filter = .all; acting.navigate(url.deletingLastPathComponent()); acting.selection = [powerURL(url)] }
             }
@@ -549,42 +571,69 @@ struct ExplorerView: View {
             Text("FILE EXPLORER").font(.system(size: 9, weight: .semibold, design: .rounded)).tracking(1.8).foregroundStyle(.tertiary)
         }.padding(.horizontal, 21).frame(height: 48)
     }
+    private enum CommandLevel { case full, compact, minimal }
+    /// The toolbar shows labels when there is room, then icons only, then moves extras into a menu, so nothing is ever cut off.
     private var commandbar: some View {
+        ViewThatFits(in: .horizontal) {
+            commandRow(.full)
+            commandRow(.compact)
+            commandRow(.minimal)
+        }.padding(.horizontal, 12).frame(height: 38).background(theme.panel)
+    }
+    private func commandRow(_ level: CommandLevel) -> some View {
         HStack(spacing: 5) {
-            Button(action: acting.newFolder) { Label { Text("New folder") } icon: { ColorSymbol(name: "folder.badge.plus", size: 13) }.font(.system(size: 12, weight: .medium)) }.buttonStyle(.bordered).help("New folder (⇧⌘N)")
-            Divider().frame(height: 20).padding(.horizontal, 9)
+            Button(action: acting.newFolder) {
+                if level == .full { Label { Text("New folder") } icon: { ColorSymbol(name: "folder.badge.plus", size: 13) }.font(.system(size: 12, weight: .medium)) }
+                else { ColorSymbol(name: "folder.badge.plus", size: 13) }
+            }.buttonStyle(.bordered).help("New folder (⇧⌘N)")
+            Divider().frame(height: 20).padding(.horizontal, level == .full ? 9 : 4)
             tool("scissors", "Cut (⌘X)", disabled: acting.selection.isEmpty) { acting.copy(cut: true) }
             tool("doc.on.doc", "Copy (⌘C)", disabled: acting.selection.isEmpty) { acting.copy() }
             tool("doc.on.clipboard", "Paste (⌘V)") { acting.paste() }
             tool("pencil", "Rename (Return)", disabled: acting.selection.count != 1) { acting.rename() }
             tool("trash", "Move to Trash (⌘⌫)", disabled: acting.selection.isEmpty) { acting.trash() }
-            tool("trash.slash", "Delete permanently (⌥⌘⌫) — skips the Trash", disabled: acting.selection.isEmpty) { acting.deletePermanently() }
-            tool("arrow.uturn.backward", transfers.undoTitle + " (⌥⌘Z)", disabled: !transfers.canUndo) { acting.undoFileOperation() }
-            Divider().frame(height: 20).padding(.horizontal, 9)
-            Menu {
-                Picker("Sort by", selection: bind(\.order)) { ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
-                Divider()
-                Toggle("Ascending", isOn: bind(\.ascending))
-            } label: { Label { Text("Sort") } icon: { ColorSymbol(name: "arrow.up.arrow.down", size: 12) }.font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
-            Menu { Picker("Group by", selection: bind(\.grouping)) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } } label: { Label { Text("Group by") } icon: { ColorSymbol(name: "square.grid.3x1.below.line.grid.1x2", size: 12) }.font(.system(size: 12)) }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, 7)
-            Spacer()
-            Picker("Filter", selection: bind(\.filter)) { ForEach(PowerFilter.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).labelsHidden().fixedSize().help("Filter files")
-            tool(library.isStarred(acting.directory) ? "star.fill" : "star", "Star current folder") { library.toggleStar(acting.directory) }
-            tool("wand.and.stars", "Power tools (⇧⌘P)") { openTools() }
-            tool(panes.dual ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", "Dual pane (⌘\\)") { panes.toggle() }
-            if panes.dual {
-                tool("arrow.right.circle", "Copy to other pane (⌥⌘C)", disabled: acting.selection.isEmpty) { panes.transferToOther(move: false) }
-                tool("arrow.right.circle.fill", "Move to other pane (⌥⌘M)", disabled: acting.selection.isEmpty) { panes.transferToOther(move: true) }
-                tool("arrow.triangle.2.circlepath", "Compare and sync panes") { extra = .compare }
+            if level != .minimal {
+                tool("trash.slash", "Delete permanently (⌥⌘⌫) — skips the Trash", disabled: acting.selection.isEmpty) { acting.deletePermanently() }
+                tool("arrow.uturn.backward", transfers.undoTitle + " (⌥⌘Z)", disabled: !transfers.canUndo) { acting.undoFileOperation() }
+                Divider().frame(height: 20).padding(.horizontal, level == .full ? 9 : 4)
+                Menu {
+                    Picker("Sort by", selection: bind(\.order)) { ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.inline)
+                    Divider()
+                    Picker("Direction", selection: bind(\.ascending)) { Text("Ascending (A to Z, oldest, smallest)").tag(true); Text("Descending (Z to A, newest, largest)").tag(false) }.pickerStyle(.inline)
+                } label: { if level == .full { Label { Text("Sort") } icon: { ColorSymbol(name: "arrow.up.arrow.down", size: 12) }.font(.system(size: 12)) } else { ColorSymbol(name: "arrow.up.arrow.down", size: 12) } }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, level == .full ? 7 : 2)
+                Menu { Picker("Group by", selection: bind(\.grouping)) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } } label: { if level == .full { Label { Text("Group by") } icon: { ColorSymbol(name: "square.grid.3x1.below.line.grid.1x2", size: 12) }.font(.system(size: 12)) } else { ColorSymbol(name: "square.grid.3x1.below.line.grid.1x2", size: 12) } }.menuStyle(.borderlessButton).fixedSize().padding(.horizontal, level == .full ? 7 : 2)
             }
-            Button { showBasket.toggle() } label: { ColorSymbol(name: basket.items.isEmpty ? "tray" : "tray.full", size: 14).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).help("Selection basket (⌘B adds the selection)")
-                .popover(isPresented: $showBasket) { BasketView(target: acting) }
+            Spacer(minLength: 4)
+            if level != .minimal {
+                Picker("Filter", selection: bind(\.filter)) { ForEach(PowerFilter.allCases) { Text($0.rawValue).tag($0) } }.pickerStyle(.menu).labelsHidden().fixedSize().help("Filter files")
+                tool(library.isStarred(acting.directory) ? "star.fill" : "star", "Star current folder") { library.toggleStar(acting.directory) }
+                tool("wand.and.stars", "Power tools (⇧⌘P)") { openTools() }
+                tool(dualVisible ? "rectangle.split.2x1.fill" : "rectangle.split.2x1", "Dual pane (⌘\\)") { panes.toggle() }
+                if dualVisible {
+                    tool("arrow.right.circle", "Copy to other pane (⌥⌘C)", disabled: acting.selection.isEmpty) { panes.transferToOther(move: false) }
+                    tool("arrow.right.circle.fill", "Move to other pane (⌥⌘M)", disabled: acting.selection.isEmpty) { panes.transferToOther(move: true) }
+                    tool("arrow.triangle.2.circlepath", "Compare and sync panes") { extra = .compare }
+                }
+                basketButton
+            }
             HStack(spacing: 2) {
                 viewButton("square.grid.2x2", layout: .icons)
                 viewButton("list.bullet", layout: .details)
             }.padding(3).background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
-            tool("sidebar.right", "Toggle details pane") { model.inspector.toggle() }
+            if level != .minimal { tool("sidebar.right", "Toggle details pane") { model.inspector.toggle() } }
             Menu {
+                if level == .minimal {
+                    Button("Delete permanently…", action: acting.deletePermanently).disabled(acting.selection.isEmpty)
+                    Button(transfers.undoTitle, action: acting.undoFileOperation).disabled(!transfers.canUndo)
+                    Menu("Sort by") { Picker("Sort by", selection: bind(\.order)) { ForEach(Order.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.pickerStyle(.inline); Divider(); Picker("Direction", selection: bind(\.ascending)) { Text("Ascending").tag(true); Text("Descending").tag(false) }.pickerStyle(.inline) }
+                    Menu("Group by") { Picker("Group by", selection: bind(\.grouping)) { ForEach(FileGrouping.allCases) { Text($0.rawValue).tag($0) } } }
+                    Menu("Filter") { Picker("Filter", selection: bind(\.filter)) { ForEach(PowerFilter.allCases) { Text($0.rawValue).tag($0) } } }
+                    Button(library.isStarred(acting.directory) ? "Unstar folder" : "Star folder") { library.toggleStar(acting.directory) }
+                    Button(dualVisible ? "Single pane" : "Dual pane") { panes.toggle() }
+                    Button("Selection basket…") { showBasket = true }
+                    Button(model.inspector ? "Hide details pane" : "Show details pane") { model.inspector.toggle() }
+                    Divider()
+                }
                 Button("Power tools…", action: openTools)
                 Button("New workspace tab", action: model.addTab)
                 Divider()
@@ -596,7 +645,11 @@ struct ExplorerView: View {
                 Button(acting.showHidden ? "Hide hidden files" : "Show hidden files", action: acting.toggleHidden)
                 Button("Refresh", action: acting.refresh)
             } label: { ColorSymbol(name: "ellipsis", size: 14).frame(width: 26) }.menuStyle(.borderlessButton).fixedSize()
-        }.padding(.horizontal, 12).frame(height: 38).background(theme.panel)
+        }
+    }
+    private var basketButton: some View {
+        Button { showBasket.toggle() } label: { ColorSymbol(name: basket.items.isEmpty ? "tray" : "tray.full", size: 14).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).help("Selection basket (⌘B adds the selection)")
+            .popover(isPresented: $showBasket) { BasketView(target: acting) }
     }
     private func tool(_ icon: String, _ help: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) { ColorSymbol(name: icon, size: 14).frame(width: 29, height: 28).contentShape(Rectangle()) }.buttonStyle(.plain).opacity(disabled ? 0.3 : 1).disabled(disabled).help(help).accessibilityLabel(help)
@@ -625,6 +678,14 @@ struct ExplorerView: View {
                             .padding(.horizontal, 12).frame(height: 32).contentShape(Rectangle())
                     }.buttonStyle(.plain).help("Smart folder: a saved search. Nothing is moved.")
                     .contextMenu { if !smartStore.isBuiltIn(search) { Button("Remove smart folder") { smartStore.remove(search) } } }
+                }
+                sectionTitle("Devices").padding(.top, 20)
+                if deviceRows.isEmpty { Text("Connect an iPhone or iPad with a cable, unlock it and tap Trust.").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.vertical, 4) }
+                ForEach(deviceRows, id: \.id) { row in
+                    Button { extra = .device(row.id) } label: {
+                        HStack(spacing: 11) { ColorSymbol(name: "iphone.gen3", size: 14, override: .blue).frame(width: 18); VStack(alignment: .leading, spacing: 0) { Text(row.name).font(.system(size: 12)).lineLimit(1); Text(row.model).font(.system(size: 9)).foregroundStyle(.secondary) }; Spacer(minLength: 0) }
+                            .padding(.horizontal, 12).frame(height: 36).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
                 }
                 sectionTitle("Collections").padding(.top, 20)
                 if collectionStore.collections.isEmpty { Text("Group files from different folders with Tools ▸ New Collection.").font(.system(size: 11)).foregroundStyle(.tertiary).padding(.horizontal, 12).padding(.vertical, 4) }
@@ -686,7 +747,7 @@ struct ExplorerView: View {
                 ColorSymbol(name: "magnifyingglass", size: 12)
                 TextField("Search this folder", text: $model.query).textFieldStyle(.plain).font(.system(size: 11)).focused($searchFocused)
                 if !model.query.isEmpty { Button { model.query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }.buttonStyle(.plain) }
-            }.padding(.horizontal, 10).frame(width: 170, height: 26).background(theme.control, in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.line))
+            }.padding(.horizontal, 10).frame(minWidth: 90, idealWidth: 170, maxWidth: 170, minHeight: 26, maxHeight: 26).background(theme.control, in: RoundedRectangle(cornerRadius: 6)).overlay(RoundedRectangle(cornerRadius: 6).strokeBorder(theme.line))
         }.padding(.horizontal, 12).frame(height: 40).background(theme.panel)
     }
     private func beginPath() { path = model.directory.path; pathEditing = true; pathFocused = true }
@@ -712,7 +773,7 @@ struct ExplorerView: View {
             }.background(theme.content)
         } else {
             VStack(spacing: 0) {
-                DetailsHeader(model: model)
+                DetailsHeader(model: model, showDate: listWidth == 0 || listWidth > 430, showKind: listWidth == 0 || listWidth > 600)
                 Divider()
                 List(selection: $model.selection) {
                     ForEach(groups) { group in
@@ -720,6 +781,7 @@ struct ExplorerView: View {
                         else { Section(group.title) { ForEach(group.items) { entry in detailRow(entry) } } }
                     }
                 }.listStyle(.plain).scrollContentBackground(.hidden).background(theme.content)
+                .background(GeometryReader { proxy in Color.clear.onAppear { listWidth = proxy.size.width }.onChange(of: proxy.size.width) { listWidth = $0 } })
                 .contextMenu(forSelectionType: URL.self) { urls in
                     if let url = urls.first, let entry = model.entries.first(where: { $0.url == url }) { fileMenu(entry) }
                     else { Button("New Folder") { model.newFolder() }; Button("Paste") { model.paste() }.disabled(!model.canPaste) }
@@ -735,12 +797,14 @@ struct ExplorerView: View {
                 if let color = library.color(entry.url) { Circle().fill(color).frame(width: 7, height: 7) }
                 if library.isStarred(entry.url) { Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow) }
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Text(entry.modified.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.dateColumn, alignment: .leading)
-            Text(entry.kind).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.kindColumn, alignment: .leading)
+            if listWidth == 0 || listWidth > 430 { Text(entry.modified.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.dateColumn, alignment: .leading) }
+            if listWidth == 0 || listWidth > 600 { Text(entry.kind).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.kindColumn, alignment: .leading) }
             Text(entry.isDirectory ? "—" : ByteCountFormatter.string(fromByteCount: entry.size, countStyle: .file)).foregroundStyle(.secondary).font(.system(size: 11)).lineLimit(1).frame(width: layout.sizeColumn, alignment: .trailing)
         }.opacity(model.isCut(entry.url) ? 0.45 : 1).padding(.vertical, 1)
-        .onDrag { NSItemProvider(object: entry.url as NSURL) }
-        .onDrop(of: [.fileURL], isTargeted: nil) { providers in (entry.isDirectory && !entry.isPackage) ? model.handleDrop(providers, into: entry.url) : false }
+        .allowsHitTesting(false)
+        .background(RowClickCatcher(onOpen: { model.openEntry(entry) },
+                                    dragURLs: { model.selection.contains(entry.url) ? model.chosen.map(\.url) : [entry.url] },
+                                    dropInto: (entry.isDirectory && !entry.isPackage) ? { urls in model.dropURLs(urls, into: entry.url) } : nil))
     }
     private func iconCard(_ entry: FileEntry) -> some View {
                         VStack(spacing: 9) { FileIcon(url: entry.url, size: 52, thumbnail: true, directory: entry.isDirectory); Text(entry.name).font(.system(size: 11)).lineLimit(2).multilineTextAlignment(.center).frame(height: 30, alignment: .top) }
@@ -845,7 +909,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         window.title = "FileGlade"
         window.titlebarAppearsTransparent = false
         window.tabbingMode = .disallowed
-        window.minSize = NSSize(width: 850, height: 570)
+        window.minSize = NSSize(width: 760, height: 500)
         PaneState.shared.main = mainModel
         let host = NSHostingView(rootView: ExplorerView(model: mainModel))
         let container = ThemedContainer(content: host)
@@ -860,6 +924,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         offerFullDiskAccess()
         Updater.shared.checkAutomatically()
         AutomationStore.shared.start()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { _ = TransferManager.shared.recoverInterrupted() }
+        DeviceStore.shared.start()
+        BridgeStore.shared.start()
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard let self, NSApp.keyWindow === self.window, self.textResponder == nil else { return event }
             let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
@@ -875,6 +942,34 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             if modifiers == .shift { self.model.selection.insert(items[index].url) } else { self.model.selection = [items[index].url] }
             return nil
         }
+        // Developer test: `--test-doubleclick <folder>` double-clicks the first row's name text and reports whether it opened.
+        if let flag = CommandLine.arguments.firstIndex(of: "--test-doubleclick"), flag + 1 < CommandLine.arguments.count {
+            mainModel.navigate(URL(fileURLWithPath: CommandLine.arguments[flag + 1])); mainModel.showDashboard = false; mainModel.setLayout(.details)
+            let start = mainModel.directory
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                func findTable(_ view: NSView) -> NSTableView? { if let t = view as? NSTableView { return t }; for sub in view.subviews { if let t = findTable(sub) { return t } }; return nil }
+                guard let table = findTable(self.window.contentView!) else { fputs("DOUBLECLICK: no table found\n", stderr); exit(2) }
+                let rect = table.convert(table.rect(ofRow: self.mainModel.grouping == .none ? 0 : 1), to: nil)   // row 0 is a group heading when grouping is on
+                let point = NSPoint(x: rect.minX + (CommandLine.arguments.contains("--empty-area") ? 480 : 70), y: rect.midY)   // over the name text, or in empty space
+                func click(_ type: NSEvent.EventType, _ count: Int) {
+                    if let event = NSEvent.mouseEvent(with: type, location: point, modifierFlags: [], timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: self.window.windowNumber, context: nil, eventNumber: 0, clickCount: count, pressure: 1) { NSApp.postEvent(event, atStart: false) }
+                }
+                let container = self.window.contentView!
+                let hit = container.hitTest(container.convert(point, from: nil))
+                fputs("DOUBLECLICK debug: point=\(point) hit=\(hit.map { String(describing: type(of: $0)) } ?? "nil") key=\(self.window.isKeyWindow) active=\(NSApp.isActive) rowRect=\(rect)\n", stderr)
+                if CommandLine.arguments.contains("--single") {
+                    click(.leftMouseDown, 1); click(.leftMouseUp, 1)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) { fputs("SINGLECLICK: selected \(self.mainModel.chosen.map(\.name))\n", stderr); exit(0) }
+                    return
+                }
+                click(.leftMouseDown, 1); click(.leftMouseUp, 1); click(.leftMouseDown, 2); click(.leftMouseUp, 2)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                    let opened = self.mainModel.directory != start
+                    fputs("DOUBLECLICK on name text: \(opened ? "opened \(self.mainModel.directory.lastPathComponent)" : "did NOT open")\n", stderr); exit(opened ? 0 : 3)
+                }
+            }
+            return
+        }
         // Developer tool: `--snapshot <png> [--theme colourful|dark|amoled] [--glass] [--dual] <folder>` saves a picture of the window.
         if let flag = CommandLine.arguments.firstIndex(of: "--snapshot"), flag + 1 < CommandLine.arguments.count {
             let output = CommandLine.arguments[flag + 1]
@@ -882,6 +977,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             Theme.shared.glass = CommandLine.arguments.contains("--glass")
             if let folder = CommandLine.arguments.last, folder.hasPrefix("/") { mainModel.navigate(URL(fileURLWithPath: folder)); mainModel.showDashboard = false }
             if CommandLine.arguments.contains("--dual") { PaneState.shared.dual = true }
+            if let z = CommandLine.arguments.firstIndex(of: "--size"), z + 1 < CommandLine.arguments.count {
+                let parts = CommandLine.arguments[z + 1].split(separator: "x").compactMap { Double($0) }
+                if parts.count == 2 { window.setContentSize(NSSize(width: parts[0], height: parts[1])) }
+            }
             if CommandLine.arguments.contains("--details") { mainModel.setLayout(.details) }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                 if let first = self.mainModel.visible.dropFirst(3).first { self.mainModel.selection = [first.url] }
@@ -1158,6 +1257,72 @@ if CommandLine.arguments.contains("--self-test") {
         // Treemap rectangles stay inside the area and add up.
         let boxes = Treemap.layout([50, 30, 20], in: CGRect(x: 0, y: 0, width: 100, height: 100))
         precondition(abs(boxes.reduce(0) { $0 + $1.width * $1.height } - 10_000) < 1, "Treemap failed")
+        // iPhone bridge: server and client talk HTTP over a local socket (the USB cable carries the same bytes).
+        let share = root2(fm, "bridge-share"); try fm.createDirectory(at: share.appendingPathComponent("Docs"), withIntermediateDirectories: true)
+        let payload = Data((0..<300_000).map { UInt8($0 % 251) }); try payload.write(to: share.appendingPathComponent("Docs/big.bin"))
+        let bridgePort: UInt16 = 38_999
+        let service = FileBridgeService(token: "123456", roots: { [(BridgeRoot(id: "files", name: "Test files", kind: "files"), share)] }, info: { BridgeInfo(name: "Test phone", model: "iPhone 13", machine: "iPhone14,5", systemName: "iOS", systemVersion: "18", appVersion: "3", freeBytes: 1, totalBytes: 2) })
+        let bridgeServer = BridgeHTTPServer(); bridgeServer.handler = { await service.handle($0) }
+        try bridgeServer.start(port: bridgePort, loopbackOnly: true)
+        Thread.sleep(forTimeInterval: 0.4)
+        let connectLocal: () throws -> Int32 = {
+            let fd = socket(AF_INET, SOCK_STREAM, 0)
+            var address = sockaddr_in(); address.sin_family = sa_family_t(AF_INET); address.sin_port = bridgePort.bigEndian; address.sin_addr.s_addr = UInt32(0x7F000001).bigEndian
+            let ok = withUnsafePointer(to: &address) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
+            guard ok == 0 else { close(fd); throw UsbMuxError.refused }
+            return fd
+        }
+        let unpaired = BridgeClient(token: "wrong", connect: connectLocal)
+        var rejected = false
+        do { _ = try unpaired.get("/info") } catch let failure as BridgeFailure { rejected = failure.status == 401 }
+        precondition(rejected, "Server accepted a wrong pairing code")
+        let phone = BridgeClient(token: "123456", connect: connectLocal)
+        let bridgeInfo = try phone.json("/info", as: BridgeInfo.self)
+        let bridgeRoots = try phone.json("/roots", as: [BridgeRoot].self)
+        let bridgeList = try phone.json("/list", ["root": "files", "path": "Docs"], as: BridgeListing.self)
+        precondition(bridgeInfo.model == "iPhone 13" && bridgeRoots.first?.name == "Test files" && bridgeList.entries.first?.name == "big.bin", "Bridge info, roots or list failed")
+        let pulled = try phone.download("/file", ["root": "files", "path": "Docs/big.bin"], to: share.appendingPathComponent("pulled.bin"))
+        let pulledData = try Data(contentsOf: pulled)
+        precondition(pulledData == payload, "Bridge download corrupted the file")
+        var escaped = false
+        do { _ = try phone.get("/list", ["root": "files", "path": "../.."]) } catch { escaped = true }
+        precondition(escaped, "Bridge allowed leaving the shared folder")
+        bridgeServer.stop()
+        // Transfer safety: interrupted-job recovery, copy verification, pause and resume.
+        let safe = root2(fm, "safety")
+        TransferJournal.overrideDirectory = safe
+        let srcA = safe.appendingPathComponent("a.txt"), srcB = safe.appendingPathComponent("b.txt"), outDir = safe.appendingPathComponent("out")
+        try fm.createDirectory(at: outDir, withIntermediateDirectories: true)
+        try Data("alpha".utf8).write(to: srcA); try Data("bravo".utf8).write(to: srcB)
+        try Data("PARTIAL".utf8).write(to: outDir.appendingPathComponent("b.txt"))      // a half-written copy left by a crash
+        TransferJournal.begin(JournalJob(id: UUID(), kind: "Copy", title: "crash test", items: [
+            JournalItem(source: srcA.path, target: outDir.appendingPathComponent("a.txt").path, replace: false, state: "pending"),
+            JournalItem(source: srcB.path, target: outDir.appendingPathComponent("b.txt").path, replace: false, state: "running")]))
+        precondition(TransferManager.shared.recoverInterrupted(autoResume: true) == 2, "Recovery did not find the unfinished items")
+        precondition((try? String(contentsOf: outDir.appendingPathComponent("a.txt"))) == "alpha" && (try? String(contentsOf: outDir.appendingPathComponent("b.txt"))) == "bravo", "Recovery did not finish the copies correctly")
+        precondition(TransferJournal.load().isEmpty, "Journal was not cleaned up")
+        TransferJournal.overrideDirectory = nil
+        precondition(CopyVerifier.matches(srcA, outDir.appendingPathComponent("a.txt")) && !CopyVerifier.matches(srcA, outDir.appendingPathComponent("b.txt")), "Copy verification failed")
+        // Pause stops a large copy between pieces; resume completes it intact.
+        let bigSource = safe.appendingPathComponent("large.bin"), bigTarget = safe.appendingPathComponent("large-copy.bin")
+        try Data(repeating: 7, count: 72 * 1_048_576).write(to: bigSource)
+        let pauseToken = CancelToken()
+        let progressLock = NSLock(); var copied: Int64 = 0
+        let worker = Thread {
+            _ = TransferEngine.execute(plan: [PlannedItem(source: bigSource, target: bigTarget, replace: false)], kind: .copy, token: pauseToken, verify: true) { bytes in
+                progressLock.lock(); copied += bytes; let first = copied == bytes; progressLock.unlock()
+                if first { pauseToken.pause() }
+            }
+        }
+        worker.start()
+        Thread.sleep(forTimeInterval: 0.6)
+        progressLock.lock(); let atPause = copied; progressLock.unlock()
+        Thread.sleep(forTimeInterval: 0.5)
+        progressLock.lock(); let afterWait = copied; progressLock.unlock()
+        precondition(atPause > 0 && afterWait == atPause && atPause < 72 * 1_048_576, "Pause did not stop the copy")
+        pauseToken.resume()
+        while !worker.isFinished { Thread.sleep(forTimeInterval: 0.1) }
+        precondition((try? Data(contentsOf: bigTarget).count) == 72 * 1_048_576, "Resumed copy is incomplete")
         // Keyboard layouts: Mac keeps Return = rename; Windows uses Enter = open and F2 = rename.
         let menu = NSMenu(), sub = NSMenu()
         let renameItem = NSMenuItem(title: "Rename…", action: Selector(("rename")), keyEquivalent: "\r"); renameItem.keyEquivalentModifierMask = []

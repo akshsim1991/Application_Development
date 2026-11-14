@@ -18,7 +18,7 @@ struct SettingsView: View {
                 Text("Theme").font(.headline)
                 HStack(spacing: 12) { ForEach(ThemeMode.allCases) { mode in swatch(mode) } }
                 Divider()
-                Toggle(isOn: $theme.glass) { VStack(alignment: .leading) { Text("Glass").font(.headline); Text("A translucent, Windows Vista–style look. The window blurs the desktop behind it.").font(.caption).foregroundStyle(.secondary) } }.toggleStyle(.switch)
+                Toggle(isOn: $theme.glass) { VStack(alignment: .leading) { Text("Glass").font(.headline); Text("A frosted, translucent window that softly blurs the desktop behind it.").font(.caption).foregroundStyle(.secondary) } }.toggleStyle(.switch)
                 if theme.glass {
                     HStack(spacing: 10) {
                         ForEach(GlassTint.allCases) { tint in
@@ -28,7 +28,7 @@ struct SettingsView: View {
                             }.buttonStyle(.plain)
                         }
                     }
-                    HStack { Text("Clarity").font(.caption); Slider(value: $theme.glassStrength, in: 0...1); Text("Text is easier to read toward the right.").font(.caption2).foregroundStyle(.secondary) }
+                    HStack { Text("Clarity").font(.caption); Slider(value: $theme.glassStrength, in: 0...1); Text("More solid = easier to read").font(.caption2).foregroundStyle(.secondary) }
                 }
                 Divider()
                 Toggle(isOn: $theme.colorIcons) { VStack(alignment: .leading) { Text("Colourful icons").font(.headline); Text("Gives toolbar and sidebar icons their own colours.").font(.caption).foregroundStyle(.secondary) } }.toggleStyle(.switch)
@@ -66,6 +66,10 @@ struct SettingsView: View {
             Section("Layout") {
                 Button("Reset Pane and Column Sizes") { layout.reset() }
                 Text("Drag the dividers between the sidebar, file list and details pane, or between column headings, to resize them. Double-click a divider to reset it.").font(.caption).foregroundStyle(.secondary)
+            }
+            Section("File safety") {
+                Toggle("Verify copies with a SHA-256 check", isOn: Binding(get: { UserDefaults.standard.bool(forKey: "verifyCopies") }, set: { UserDefaults.standard.set($0, forKey: "verifyCopies") }))
+                Text("After each copy, FileGlade compares the copy with the original byte for byte. Slower, but catches damaged copies. A bad copy is removed and reported.").font(.caption).foregroundStyle(.secondary)
             }
             Section("Keyboard") { Button("Keyboard Shortcuts… (Mac or Windows layout)") { openShortcuts() } }
             Section("Updates") {

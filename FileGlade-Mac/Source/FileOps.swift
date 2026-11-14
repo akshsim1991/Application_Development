@@ -5,10 +5,16 @@ import Foundation
 // MARK: - Model types
 
 final class CancelToken {
-    private let lock = NSLock()
-    private var flag = false
-    var isCancelled: Bool { lock.lock(); defer { lock.unlock() }; return flag }
-    func cancel() { lock.lock(); flag = true; lock.unlock() }
+    private let condition = NSCondition()
+    private var cancelledFlag = false
+    private var pausedFlag = false
+    var isCancelled: Bool { condition.lock(); defer { condition.unlock() }; return cancelledFlag }
+    var isPaused: Bool { condition.lock(); defer { condition.unlock() }; return pausedFlag }
+    func cancel() { condition.lock(); cancelledFlag = true; pausedFlag = false; condition.broadcast(); condition.unlock() }
+    func pause() { condition.lock(); pausedFlag = true; condition.unlock() }
+    func resume() { condition.lock(); pausedFlag = false; condition.broadcast(); condition.unlock() }
+    /// Blocks while paused, so a transfer stops between pieces and carries on exactly where it left off.
+    func waitWhilePaused() { condition.lock(); while pausedFlag && !cancelledFlag { condition.wait() }; condition.unlock() }
 }
 
 enum TransferKind: String { case copy = "Copy", move = "Move" }
@@ -51,8 +57,72 @@ struct TransferJob: Identifiable {
     var completed: [URL] = []
     var moved: [RenamePair] = []
     var earlyErrors: [String] = []
+    var paused = false
     let token = CancelToken()
     var fraction: Double { totalBytes > 0 ? min(1, Double(doneBytes) / Double(totalBytes)) : (state == .running ? 0 : 1) }
+}
+
+// MARK: - Journal: what was in flight, so an interrupted transfer can be finished or cleaned up
+
+struct JournalItem: Codable { var source: String; var target: String; var replace: Bool; var state: String }   // pending, running, done
+struct JournalJob: Codable, Identifiable { var id: UUID; var kind: String; var title: String; var items: [JournalItem] }
+
+enum TransferJournal {
+    /// Tests point this at a temporary folder.
+    static var overrideDirectory: URL?
+    private static let lock = NSLock()
+    private static var file: URL {
+        let dir = overrideDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("FileGlade", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir.appendingPathComponent("transfer-journal.json")
+    }
+    static func load() -> [JournalJob] { lock.lock(); defer { lock.unlock() }; return (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([JournalJob].self, from: $0) } ?? [] }
+    private static func save(_ jobs: [JournalJob]) { if let data = try? JSONEncoder().encode(jobs) { try? data.write(to: file, options: .atomic) } }
+    static func begin(_ job: JournalJob) { lock.lock(); var jobs = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([JournalJob].self, from: $0) } ?? []; jobs.append(job); save(jobs); lock.unlock() }
+    static func mark(_ id: UUID, _ index: Int, _ state: String) {
+        lock.lock(); defer { lock.unlock() }
+        var jobs = (try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([JournalJob].self, from: $0) } ?? []
+        if let j = jobs.firstIndex(where: { $0.id == id }), index < jobs[j].items.count { jobs[j].items[index].state = state; save(jobs) }
+    }
+    static func finish(_ id: UUID) {
+        lock.lock(); defer { lock.unlock() }
+        let jobs = ((try? Data(contentsOf: file)).flatMap { try? JSONDecoder().decode([JournalJob].self, from: $0) } ?? []).filter { $0.id != id }
+        save(jobs)
+    }
+    static func clear() { lock.lock(); save([]); lock.unlock() }
+
+    /// Turns interrupted jobs into a plan that finishes only the unfinished items. Half-written targets are removed first.
+    static func recoveryPlan() -> [(kind: TransferKind, title: String, plan: [PlannedItem])] {
+        let fm = FileManager.default
+        return load().compactMap { job in
+            var plan: [PlannedItem] = []
+            for item in job.items where item.state != "done" {
+                let source = URL(fileURLWithPath: item.source), target = URL(fileURLWithPath: item.target)
+                guard fm.fileExists(atPath: source.path) else { continue }
+                if item.state == "running" && fm.fileExists(atPath: target.path) && source.path != target.path { try? fm.removeItem(at: target) }
+                plan.append(PlannedItem(source: source, target: target, replace: item.replace && item.state == "pending" && fm.fileExists(atPath: target.path)))
+            }
+            return plan.isEmpty ? nil : (job.kind == "Move" ? .move : .copy, "Resume · " + job.title, plan)
+        }
+    }
+}
+
+enum CopyVerifier {
+    /// True when the copy matches the source byte for byte (SHA-256), for a file or every file in a folder.
+    static func matches(_ source: URL, _ copy: URL) -> Bool {
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: source.path, isDirectory: &isDir) else { return false }
+        if !isDir.boolValue { return (try? PowerFS.digest(source)) != nil && (try? PowerFS.digest(source)) == (try? PowerFS.digest(copy)) }
+        guard let walk = FileManager.default.enumerator(at: source, includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey]) else { return false }
+        let base = source.standardizedFileURL.path
+        for case let file as URL in walk {
+            let values = try? file.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if values?.isDirectory == true || values?.isSymbolicLink == true { continue }
+            let relative = String(file.standardizedFileURL.path.dropFirst(base.count + 1))
+            if (try? PowerFS.digest(file)) != (try? PowerFS.digest(copy.appendingPathComponent(relative))) { return false }
+        }
+        return true
+    }
 }
 
 // MARK: - Engine (runs off the main thread)
@@ -98,6 +168,7 @@ enum TransferEngine {
         let output = try FileHandle(forWritingTo: destination)
         defer { try? input.close(); try? output.close() }
         while true {
+            token.waitWhilePaused()
             if token.isCancelled { throw CancellationError() }
             let data = try input.read(upToCount: 4 * 1_048_576) ?? Data()
             if data.isEmpty { break }
@@ -120,11 +191,13 @@ enum TransferEngine {
         var cancelled = false
     }
 
-    static func execute(plan: [PlannedItem], kind: TransferKind, token: CancelToken, progress: @escaping (Int64) -> Void) -> Outcome {
+    static func execute(plan: [PlannedItem], kind: TransferKind, token: CancelToken, journalID: UUID? = nil, verify: Bool = UserDefaults.standard.bool(forKey: "verifyCopies"), progress: @escaping (Int64) -> Void) -> Outcome {
         let fm = FileManager.default
         var outcome = Outcome()
-        for item in plan {
+        for (index, item) in plan.enumerated() {
+            token.waitWhilePaused()
             if token.isCancelled { outcome.cancelled = true; break }
+            if let journalID { TransferJournal.mark(journalID, index, "running") }
             do {
                 if item.replace && fm.fileExists(atPath: item.target.path) {
                     var trashed: NSURL?
@@ -136,6 +209,10 @@ enum TransferEngine {
                     do { try copyTree(from: item.source, to: item.target, token: token, progress: progress) }
                     catch is CancellationError { try? fm.removeItem(at: item.target); outcome.cancelled = true; break }
                     if outcome.cancelled { break }
+                    if verify && !CopyVerifier.matches(item.source, item.target) {
+                        try? fm.removeItem(at: item.target)
+                        throw NSError(domain: "FileGlade", code: 7, userInfo: [NSLocalizedDescriptionKey: "Verification failed: the copy did not match the original, so it was removed."])
+                    }
                     let date = (try? fm.attributesOfItem(atPath: item.target.path))?[.modificationDate] as? Date
                     outcome.steps.append(.copied(item.target, date))
                 case .move:
@@ -145,7 +222,7 @@ enum TransferEngine {
                     outcome.steps.append(.moved(from: item.source, to: item.target))
                     outcome.moved.append(RenamePair(source: item.source, destination: item.target))
                 }
-                if !outcome.cancelled { outcome.completed.append(item.target) }
+                if !outcome.cancelled { outcome.completed.append(item.target); if let journalID { TransferJournal.mark(journalID, index, "done") } }
             } catch {
                 outcome.failures.append(TransferFailure(item: item, message: error.localizedDescription))
             }
@@ -266,6 +343,25 @@ final class TransferManager: ObservableObject {
         launch(next) { _ in NotificationCenter.default.post(name: .init("FileGladeTransferDone"), object: nil) }
     }
     func cancel(_ id: UUID) { jobs.first { $0.id == id }?.token.cancel() }
+    func pause(_ id: UUID) { guard let job = jobs.first(where: { $0.id == id }) else { return }; job.token.pause(); update(id) { $0.paused = true } }
+    func resume(_ id: UUID) { guard let job = jobs.first(where: { $0.id == id }) else { return }; job.token.resume(); update(id) { $0.paused = false } }
+    /// Offers to finish or discard transfers that were interrupted (for example by a crash or a power cut).
+    func recoverInterrupted(autoResume: Bool = false) -> Int {
+        let recovery = TransferJournal.recoveryPlan()
+        let count = recovery.reduce(0) { $0 + $1.plan.count }
+        guard count > 0 else { TransferJournal.clear(); return 0 }
+        var resume = autoResume
+        if !autoResume {
+            let alert = NSAlert()
+            alert.messageText = "FileGlade was interrupted while copying or moving files"
+            alert.informativeText = "\(count) item\(count == 1 ? "" : "s") were not finished. Half-written copies are removed before finishing, and nothing is overwritten."
+            alert.addButton(withTitle: "Finish Now"); alert.addButton(withTitle: "Discard")
+            resume = alert.runModal() == .alertFirstButtonReturn
+        }
+        TransferJournal.clear()
+        if resume { for job in recovery { startPlan(kind: job.kind, plan: job.plan, title: job.title) { _ in } } }
+        return count
+    }
     func dismiss(_ id: UUID) { jobs.removeAll { $0.id == id } }
 
     private func update(_ id: UUID, _ change: (inout TransferJob) -> Void) {
@@ -277,8 +373,12 @@ final class TransferManager: ObservableObject {
         let kind = job.kind
         let plan = job.plan
         let token = job.token
+        if !Prefs.selfTest || TransferJournal.overrideDirectory != nil {
+            TransferJournal.begin(JournalJob(id: id, kind: kind.rawValue, title: job.title, items: plan.map { JournalItem(source: $0.source.path, target: $0.target.path, replace: $0.replace, state: "pending") }))
+        }
         let finish: (TransferEngine.Outcome) -> Void = { [weak self] outcome in
             guard let self else { return }
+            TransferJournal.finish(id)
             var done = job
             if let existing = self.jobs.first(where: { $0.id == id }) { done = existing }
             done.completed = outcome.completed; done.moved = outcome.moved; done.failures = outcome.failures
@@ -294,7 +394,7 @@ final class TransferManager: ObservableObject {
             NotificationCenter.default.post(name: .init("FileGladeTransferDone"), object: nil)
         }
         if Prefs.selfTest {
-            finish(TransferEngine.execute(plan: plan, kind: kind, token: token) { _ in })
+            finish(TransferEngine.execute(plan: plan, kind: kind, token: token, journalID: id) { _ in })
             return
         }
         jobs.append(job)
@@ -305,7 +405,7 @@ final class TransferManager: ObservableObject {
             var done: Int64 = 0
             var lastPush = Date.distantPast
             let started = Date()
-            let outcome = TransferEngine.execute(plan: plan, kind: kind, token: token) { bytes in
+            let outcome = TransferEngine.execute(plan: plan, kind: kind, token: token, journalID: id) { bytes in
                 lock.lock()
                 done += kind == .copy ? bytes : 1
                 let current = done
@@ -388,8 +488,9 @@ struct TransferBar: View {
                         VStack(alignment: .leading, spacing: 3) {
                             Text(job.title).font(.system(size: 11, weight: .medium)).lineLimit(1)
                             if job.state == .running {
-                                ProgressView(value: job.fraction).controlSize(.small)
+                                ProgressView(value: job.fraction).controlSize(.small).opacity(job.paused ? 0.4 : 1)
                                 Text(job.kind == .copy ? "\(fileBytes(job.doneBytes)) of \(fileBytes(job.totalBytes)) · \(fileBytes(Int64(job.speed)))/s\(eta(job.eta))" : "Moving…").font(.system(size: 10)).foregroundStyle(.secondary)
+                                if job.paused { Text("Paused").font(.system(size: 10, weight: .semibold)).foregroundStyle(.orange) }
                             } else if job.state == .cancelled {
                                 Text("Cancelled · \(job.completed.count) completed").font(.system(size: 10)).foregroundStyle(.secondary)
                             } else if job.failures.isEmpty {
@@ -399,7 +500,10 @@ struct TransferBar: View {
                             }
                         }
                         Spacer()
-                        if job.state == .running { Button("Cancel") { manager.cancel(job.id) }.controlSize(.small) }
+                        if job.state == .running {
+                            Button(job.paused ? "Resume" : "Pause") { if job.paused { manager.resume(job.id) } else { manager.pause(job.id) } }.controlSize(.small)
+                            Button("Cancel") { manager.cancel(job.id) }.controlSize(.small)
+                        }
                         else {
                             if !job.failures.isEmpty { Button("Retry") { manager.retry(job) }.controlSize(.small) }
                             Button { manager.dismiss(job.id) } label: { Image(systemName: "xmark") }.buttonStyle(.plain).foregroundStyle(.secondary)

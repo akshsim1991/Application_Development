@@ -10,7 +10,7 @@ enum GlassTint: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var colors: [Color] {
         switch self {
-        case .aero: return [Color(red: 0.25, green: 0.55, blue: 0.95), Color(red: 0.35, green: 0.80, blue: 0.90)]
+        case .aero: return [Color(red: 0.30, green: 0.58, blue: 0.95), Color(red: 0.45, green: 0.75, blue: 0.95)]
         case .aqua: return [Color(red: 0.10, green: 0.70, blue: 0.55), Color(red: 0.45, green: 0.85, blue: 0.35)]
         case .rose: return [Color(red: 0.90, green: 0.35, blue: 0.60), Color(red: 0.65, green: 0.45, blue: 0.95)]
         case .amber: return [Color(red: 0.98, green: 0.60, blue: 0.15), Color(red: 0.95, green: 0.35, blue: 0.30)]
@@ -33,7 +33,7 @@ final class Theme: ObservableObject {
         mode = ThemeMode(rawValue: d.string(forKey: "themeMode") ?? "") ?? .colorful
         glass = d.bool(forKey: "themeGlass")
         tint = GlassTint(rawValue: d.string(forKey: "themeTint") ?? "") ?? .aero
-        glassStrength = d.object(forKey: "themeGlassStrength") as? Double ?? 0.55
+        glassStrength = d.object(forKey: "themeGlassStrength") as? Double ?? 0.6
         colorIcons = d.object(forKey: "themeColorIcons") as? Bool ?? true
     }
     private func changed(_ key: String, _ value: Any) {
@@ -51,33 +51,27 @@ final class Theme: ObservableObject {
         switch mode { case .amoled: return .black; case .colorful: return Color(red: 0.95, green: 0.97, blue: 1.0); default: return Color(nsColor: .windowBackgroundColor) }
     }
     var content: Color {
-        if glass { return isDark ? Color.black.opacity(0.35 + glassStrength * 0.4) : Color.white.opacity(0.55 + glassStrength * 0.35) }
+        if glass { return isDark ? Color.black.opacity(0.52 + glassStrength * 0.30) : Color.white.opacity(0.70 + glassStrength * 0.25) }
         switch mode { case .amoled: return .black; case .colorful: return .white; default: return Color(nsColor: .textBackgroundColor) }
     }
     var panel: Color {
-        if glass { return (isDark ? Color.white : tint.colors[0]).opacity(isDark ? 0.06 : 0.14 * (1.2 - glassStrength * 0.5)) }
+        if glass { return isDark ? Color.white.opacity(0.05) : Color.white.opacity(0.30) }
         switch mode { case .amoled: return Color(white: 0.04); case .colorful: return Color(red: 0.90, green: 0.94, blue: 1.0); default: return Color.primary.opacity(0.04) }
     }
     var control: Color {
-        if glass { return Color.white.opacity(isDark ? 0.10 : 0.45) }
+        if glass { return isDark ? Color.white.opacity(0.10) : Color.white.opacity(0.65) }
         switch mode { case .amoled: return Color(white: 0.10); case .colorful: return .white; default: return Color(nsColor: .controlBackgroundColor) }
     }
     var line: Color { mode == .amoled ? Color(white: 0.16) : Color.primary.opacity(0.12) }
 }
 
-/// A soft Aero-style backdrop: tinted gradient with diagonal light streaks. Drawn once, very cheap.
+/// A quiet tint wash over the blurred desktop, with a thin highlight along the top edge. Static and cheap.
 struct GlassBackdrop: View {
     @ObservedObject private var theme = Theme.shared
     var body: some View {
-        ZStack {
-            LinearGradient(colors: theme.tint.colors.map { $0.opacity(theme.isDark ? 0.22 : 0.40) }, startPoint: .topLeading, endPoint: .bottomTrailing)
-            Canvas { context, size in
-                var a = Path(); a.move(to: CGPoint(x: size.width * 0.05, y: 0)); a.addLine(to: CGPoint(x: size.width * 0.38, y: 0)); a.addLine(to: CGPoint(x: size.width * 0.12, y: size.height)); a.addLine(to: CGPoint(x: 0, y: size.height)); a.closeSubpath()
-                var b = Path(); b.move(to: CGPoint(x: size.width * 0.50, y: 0)); b.addLine(to: CGPoint(x: size.width * 0.62, y: 0)); b.addLine(to: CGPoint(x: size.width * 0.30, y: size.height)); b.addLine(to: CGPoint(x: size.width * 0.20, y: size.height)); b.closeSubpath()
-                context.fill(a, with: .linearGradient(Gradient(colors: [.white.opacity(0.22), .white.opacity(0.0)]), startPoint: .zero, endPoint: CGPoint(x: size.width * 0.4, y: size.height)))
-                context.fill(b, with: .color(.white.opacity(0.08)))
-            }
-            VStack { LinearGradient(colors: [.white.opacity(0.28), .white.opacity(0)], startPoint: .top, endPoint: .bottom).frame(height: 70); Spacer() }
+        ZStack(alignment: .top) {
+            LinearGradient(colors: [theme.tint.colors[0].opacity(theme.isDark ? 0.16 : 0.18), theme.tint.colors[1].opacity(theme.isDark ? 0.06 : 0.08)], startPoint: .top, endPoint: .bottom)
+            Rectangle().fill(Color.white.opacity(theme.isDark ? 0.10 : 0.55)).frame(height: 1)
         }.allowsHitTesting(false)
     }
 }
@@ -102,12 +96,11 @@ extension Theme {
         NSApp.appearance = appearance
         guard let window else { return }
         container?.effect.isHidden = !glass
-        container?.effect.material = isDark ? .hudWindow : .underWindowBackground
+        container?.effect.material = .underWindowBackground
         window.isOpaque = !glass
         window.backgroundColor = glass ? .clear : (mode == .amoled ? .black : (mode == .colorful ? NSColor(red: 0.95, green: 0.97, blue: 1.0, alpha: 1) : .windowBackgroundColor))
         window.titlebarAppearsTransparent = glass
         window.hasShadow = true
-        if glass { window.styleMask.insert(.fullSizeContentView) } else { window.styleMask.remove(.fullSizeContentView) }
     }
 }
 

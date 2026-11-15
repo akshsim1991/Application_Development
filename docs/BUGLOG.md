@@ -1266,3 +1266,5 @@ below it down", then "The paragraph could not be changed", and the page's backgr
 - **Status:** Fixed (2.20.4)
 - **Fix:** a one-line paragraph starting with a bullet or a list number ("1.", "a)", "(i)") hangs its next lines under its
   text. Verified: the wrapped line starts within 0.5 pt of the text after the bullet.
+
+- **Published:** 2.20.4 on 15 November (Windows installer and Mac disk image; both downloads checked against latest.json: size and SHA-256).

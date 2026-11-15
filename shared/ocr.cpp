@@ -77,7 +77,7 @@ int placeWords(Document& d, int p, const std::vector<Word>& words, double dpi) {
         pd.FPDFPage_InsertObject(pg, o);
         ++added;
     }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(p);
     return added;
 }

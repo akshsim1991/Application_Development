@@ -1226,3 +1226,43 @@ application.
   no growth.
 
 - **Published:** 2.20.3 on 13 November (Windows installer and Mac disk image; both downloads checked against latest.json: size and SHA-256).
+
+## Version 2.20.4: editing a page printed from a browser
+
+Reported 15 November (screenshots): editing a bullet on a slide gave "there is no room on this page to move the text
+below it down", then "The paragraph could not be changed", and the page's background turned black.
+
+### B-085 Gradients turned black, symbols (Type3 text) disappeared, soft shadows turned solid, when a page was written - Critical (both)
+- **Status:** Fixed (2.20.4)
+- **Root cause:** every change to a page's objects is written back by PDFium (FPDFPage_GenerateContent), which writes each
+  object from what it understands of it. It cannot write a fill with a pattern (a browser's gradient): the fill becomes
+  black; nor text in a Type3 font (the browser's symbols and emoji): it is left out; and some graphics states (a soft
+  shadow) lose their mask. In memory the page still looked right, so the damage showed only when the page was read again -
+  after a change failed and the document was put back, or after undo, saving or reopening.
+- **Reproduced:** a slide printed by Chromium (tests/engine/fixtures/printed-slide.html): adding one letter to a bullet
+  made the background black (243,230,212 -> 0,0,0) and removed both arrows; the card's shadow became a grey block.
+- **Fix (contentgen::generate, used by every feature that changes a page):** the page is drawn as it is held in memory,
+  written, copied into a scratch document, read back and drawn again; the drawings are compared (softened by a 3x3
+  average, a pixel counting only when nothing within one pixel of the other drawing is within 28 levels - a missing full
+  stop still counts, a shape a fraction of a pixel apart does not). Where they differ, the objects PDFium cannot write are
+  found by writing halves of them alone until each is alone, and each becomes a picture of itself at 300 dots per inch
+  (transparency kept), at its depth, marked FeatherDrawing so that edit mode, the accessibility check and scan detection
+  do not take it for a picture. If the written page still differs, the edit is undone with a message.
+- **Verified:** tests/engine/cli_check.sh (new fixture): background kept, the rest of the page the same, no new pictures in
+  edit mode; the Windows build under Wine: edit made in the app, saved, background and arrows in the saved file. 25 page
+  writes in the other tests: all matched at once (nothing made a picture).
+
+### B-086 A longer paragraph refused when anything near the bottom of the page was in its column - High (both)
+- **Status:** Fixed (2.20.4)
+- **Root cause:** everything below the paragraph in its column moved down as one block, so a footer 8 points above the
+  page's edge made any longer paragraph "not fit", however much empty space there was.
+- **Reproduced:** the slide above, and a page with a footer at 8 pt: refused.
+- **Fix:** only what the longer text comes near moves, then what each moved object comes near, as a word processor moves
+  the text below; refused only when something that has to move would leave the page.
+- **Verified:** the bullets below moved down by the new lines, the footer stayed; tests/smoke.sh still refuses when the
+  page is truly full.
+
+### B-087 A one-line list item that wrapped continued under its bullet - Low (both)
+- **Status:** Fixed (2.20.4)
+- **Fix:** a one-line paragraph starting with a bullet or a list number ("1.", "a)", "(i)") hangs its next lines under its
+  text. Verified: the wrapped line starts within 0.5 pt of the text after the bullet.

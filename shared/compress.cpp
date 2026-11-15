@@ -86,7 +86,7 @@ int pass(Document& d, int dpi, int quality, bool grey) {
             }
             api.FPDFBitmap_Destroy(bmp);
         }
-        if (pageChanged) contentgen::generate(d.handle(), pg);
+        if (pageChanged) contentgen::generate(d, pg);
     }
     return replaced;
 }

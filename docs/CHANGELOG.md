@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.20.4 (15 November 2026)
+
+- Fixed: after a change to a page (editing text, deleting, moving, redacting, a table, a picture), **a gradient
+  background turned black and symbols such as arrows and emoji disappeared** - in PDFs printed from a browser or made by
+  presentation programs. The page is now checked after it is written: anything that would not come back as it was is
+  kept as a sharp picture of itself (300 dots per inch), in the same place, and the page is checked again; if it still
+  would not look the same, the change is not made and you are told why.
+- Fixed: **"there is no room on this page to move the text below it down"** when there was plenty of room - a footer or
+  page number near the bottom of the page counted as text that had to move. Now only what the longer paragraph would
+  run into moves down (and what that runs into), as in a word processor; text far below stays where it is.
+- Fixed: a one-line list item that wraps onto more lines now continues under its text, not under the bullet or number.
+
 ## 2.20.3 (13 November 2026)
 
 - Fixed (Windows): **recent files disappeared after updating**, after closing several windows, and after Windows shut

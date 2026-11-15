@@ -56,7 +56,7 @@ int apply(Document& d, int dpi) {
         api.FPDFBitmap_Destroy(bmp);
         if (!ok) { if (img) api.FPDFPageObj_Destroy(img); continue; }
         api.FPDFPage_InsertObject(pg, img);
-        contentgen::generate(d.handle(), pg);
+        contentgen::generate(d, pg);
         ++done;
     }
     if (!done) { d.cancelChange(); return 0; }

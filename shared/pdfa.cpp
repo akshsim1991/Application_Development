@@ -145,7 +145,7 @@ bool pictureOnly(Document& d, int page) {
         else if (api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
     }
     api.FPDFPage_InsertObjectAtIndex(pg, img, 0);
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(page);
     return true;
 }
@@ -332,7 +332,7 @@ bool convert(Document& src, bool allPictures, std::vector<unsigned char>& out, R
                 if (api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
                 ++r.fontsReplaced;
             }
-            if (!swap.empty()) { contentgen::generate(w.handle(), pg); w.resetText(p); }
+            if (!swap.empty()) { contentgen::generate(w, pg); w.resetText(p); }
         }
         if (picture) {
             if (!pictureOnly(w, p)) { error = L"Page " + std::to_wstring(p + 1) + L" could not be turned into a picture."; return false; }

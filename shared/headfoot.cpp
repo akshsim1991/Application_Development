@@ -191,7 +191,7 @@ void unitsOf(Document& d, int page, std::vector<Unit>& out, bool& scanned, bool&
         FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(v.pg, i);
         const int type = api().FPDFPageObj_GetType(o);
         float l, b, r, t;
-        if (type == FPDF_PAGEOBJ_IMAGE && api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && (r - l) * (t - b) > 0.6 * v.w * v.h) scanned = true;
+        if (type == FPDF_PAGEOBJ_IMAGE && !contentgen::drawnAsPicture(o) && api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && (r - l) * (t - b) > 0.6 * v.w * v.h) scanned = true;
         if (type == FPDF_PAGEOBJ_TEXT) (api().FPDFTextObj_GetTextRenderMode(o) == FPDF_TEXTRENDERMODE_INVISIBLE ? invisibleText : visibleText)++;
     }
     if (scanned && visibleText > 0) scanned = false;   // a picture under real text: not a scan
@@ -683,7 +683,7 @@ bool applyPage(Document& d, int index, const PagePlan& pp) {
         const int n = api().FPDFPage_CountObjects(pg);
         for (int i = 0; i < n; ++i) {
             FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
-            if (api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE) continue;
+            if (api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE || contentgen::drawnAsPicture(o)) continue;
             float l, b, r, t;
             if (!api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t) || (r - l) * (t - b) < 0.6 * v.w * v.h) continue;
             FS_MATRIX m;
@@ -744,7 +744,7 @@ bool applyPage(Document& d, int index, const PagePlan& pp) {
             if (c && api().FPDFFormObj_RemoveObject(o, c)) api().FPDFPageObj_Destroy(c);
         }
     }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(index);
     return true;
 }

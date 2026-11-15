@@ -642,7 +642,7 @@ std::vector<Table> detect(Document& d, int page) {
         const int n = api().FPDFPage_CountObjects(pg);
         for (int i = 0; i < n && !scanned; ++i) {
             FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
-            if (!o || api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE) continue;
+            if (!o || api().FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE || contentgen::drawnAsPicture(o)) continue;
             float l, b, r, t;
             if (api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && (r - l) * (t - b) > 0.5 * ps.w * ps.h) scanned = hs0.size() + vs0.size() < 4;
         }
@@ -881,7 +881,7 @@ bool unwrapTextForms(Document& d, int page) {
         if (!again) break;
     }
     if (changed) {
-        contentgen::generate(d.handle(), pg);
+        contentgen::generate(d, pg);
         d.resetText(page);
     }
     return changed;
@@ -1602,7 +1602,7 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
     for (FPDF_PAGEOBJECT o : text) api().FPDFPage_InsertObject(pg, o);
     graphics.clear(); text.clear();
     laid.clear();   // the setters' fonts are released after their objects are on the page
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(t.page);
     if (grewBy) *grewBy = grew;
     return true;
@@ -1624,7 +1624,7 @@ bool remove(Document& d, const Table& t) {
         if (FPDF_PAGEOBJECT o = boxObj(t.left() - 2, t.bottom() - 2, t.right() + 2, t.top() + 2, RGB(255, 255, 255))) { api().FPDFPage_InsertObject(pg, o); any = true; }
     }
     if (!any) { d.cancelChange(); return false; }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(t.page);
     return true;
 }

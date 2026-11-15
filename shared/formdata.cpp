@@ -148,7 +148,7 @@ void drawRadioLabels(Document& d, const std::vector<formcreate::Spec>& specs) {
             api.FPDFPage_InsertObject(pg, o);
             changed.insert(lb.page);
         }
-    for (int p : changed) { contentgen::generate(d.handle(), d.page(p)); d.resetText(p); }
+    for (int p : changed) { contentgen::generate(d, d.page(p)); d.resetText(p); }
 }
 
 int resetAll(Document& d) {

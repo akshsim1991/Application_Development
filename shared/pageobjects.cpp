@@ -182,7 +182,7 @@ bool addWatermark(Document& d, const std::vector<int>& pages, const std::wstring
         if (!o) continue;
         if (!place(pg, o, vw, vh, vw / 2, vh / 2, angle)) { api.FPDFPageObj_Destroy(o); continue; }
         if (st.behind) api.FPDFPage_InsertObjectAtIndex(pg, o, 0); else api.FPDFPage_InsertObject(pg, o);
-        contentgen::generate(d.handle(), pg);
+        contentgen::generate(d, pg);
         any = true;
     }
     if (!any) { d.cancelChange(); return false; }
@@ -220,7 +220,7 @@ bool addPageNumbers(Document& d, const std::vector<int>& pages, const NumberStyl
         cy = st.position < 3 ? vh - margin - th / 2 : margin + th / 2;   // y measured from the top
         if (!place(pg, o, vw, vh, cx, cy, 0)) { api.FPDFPageObj_Destroy(o); continue; }
         api.FPDFPage_InsertObject(pg, o);
-        contentgen::generate(d.handle(), pg);
+        contentgen::generate(d, pg);
         any = true;
     }
     if (!any) { d.cancelChange(); return false; }
@@ -284,7 +284,7 @@ bool addTextBox(Document& d, int page, double atX, double atY, const std::wstrin
         lineTop += st.sizePt * 1.2;
     }
     if (!any) { d.cancelChange(); return false; }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     return true;
 }
 
@@ -357,7 +357,7 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool 
     if (text.empty()) {
         if (!api.FPDFPage_RemoveObject(pg, o)) { if (track) d.cancelChange(); return false; }
         api.FPDFPageObj_Destroy(o);
-        contentgen::generate(d.handle(), pg);
+        if (!contentgen::generate(d, pg)) { if (track) d.rollbackChange(); d.resetText(page); return false; }
         d.resetText(page);
         return true;
     }
@@ -377,7 +377,11 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool 
     if (!needsFallback) {
         std::vector<unsigned short> w(text.begin(), text.end());
         w.push_back(0);
-        if (api.FPDFText_SetText(o, w.data())) { contentgen::generate(d.handle(), pg); d.resetText(page); return true; }
+        if (api.FPDFText_SetText(o, w.data())) {
+            if (!contentgen::generate(d, pg)) { if (track) d.rollbackChange(); d.resetText(page); return false; }
+            d.resetText(page);
+            return true;
+        }
         // fall through to the replacement route
     }
     // Replacement in a similar standard font at the same place, size and colour.
@@ -402,7 +406,7 @@ bool replaceText(Document& d, int page, int idx, const std::wstring& text, bool 
     if (!api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(n); if (track) d.cancelChange(); return false; }
     api.FPDFPageObj_Destroy(o);
     api.FPDFPage_InsertObjectAtIndex(pg, n, static_cast<size_t>(idx));
-    contentgen::generate(d.handle(), pg);
+    if (!contentgen::generate(d, pg)) { if (track) d.rollbackChange(); d.resetText(page); return false; }
     d.resetText(page);
     return true;
 }
@@ -438,7 +442,7 @@ bool addStamp(Document& d, int page, double cx, double cy, const std::wstring& t
     }
     api.FPDFPage_InsertObject(pg, box);
     api.FPDFPage_InsertObject(pg, t);
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     return true;
 }
 
@@ -588,7 +592,7 @@ bool addTable(Document& d, int page, double atX, double atY, const TableSpec& sp
             else api.FPDFPageObj_Destroy(o);
             (void)th;
         }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(page);
     return true;
 }
@@ -638,7 +642,7 @@ bool removeTable(Document& d, int page, const std::string& id, bool track) {
         if (api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(o); any = true; }
     }
     if (!any) { if (track) d.cancelChange(); return false; }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(page);
     return true;
 }
@@ -914,7 +918,7 @@ std::vector<EditBlock> editableBlocks(Document& d, int page) {
     // pictures (a group holding pictures counts as one)
     std::function<bool(FPDF_PAGEOBJECT, int)> hasImage = [&](FPDF_PAGEOBJECT o, int depth) {
         const int t = api.FPDFPageObj_GetType(o);
-        if (t == FPDF_PAGEOBJ_IMAGE) return true;
+        if (t == FPDF_PAGEOBJ_IMAGE) return !contentgen::drawnAsPicture(o);
         if (t != FPDF_PAGEOBJ_FORM || depth > 6) return false;
         const int n = api.FPDFFormObj_CountObjects(o);
         for (int i = 0; i < n; ++i) if (hasImage(api.FPDFFormObj_GetObject(o, static_cast<unsigned long>(i)), depth + 1)) return true;
@@ -1538,7 +1542,31 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         return false;
     };
     const double W = oneLine ? 1e9 : hit.wrapWidth;   // the column keeps its width when the size changes
-    const double first = hit.firstIndent, rest = hit.restIndent;
+    const double first = hit.firstIndent;
+    double rest = hit.restIndent;
+    // A one-line list item that now wraps: its next lines start under its text, not under the bullet or number (as a
+    // word processor sets a list). A paragraph of several lines keeps the indent its lines had.
+    if (hit.lines == 1 && !oneLine) {
+        const std::vector<std::wstring> ws = wordsOf(text);
+        auto marker = [](const std::wstring& w) {
+            static const std::wstring bullets = L"\u2022\u25E6\u25AA\u25AB\u25CF\u25CB\u2023\u2043\u2013\u2014-*\u00B7\u27A2\u2192";
+            if (w.size() == 1 && bullets.find(w[0]) != std::wstring::npos) return true;
+            if (w.size() < 2 || w.size() > 5) return false;
+            const wchar_t end = w.back();
+            if (end != L'.' && end != L')') return false;
+            std::wstring core = w.substr(0, w.size() - 1);
+            if (!core.empty() && core[0] == L'(' && end == L')') core = core.substr(1);
+            if (core.empty()) return false;
+            bool digits = true, letter = core.size() == 1 && std::iswalpha(core[0]);
+            for (wchar_t c : core) if (!std::iswdigit(c)) digits = false;
+            return digits || letter;
+        };
+        if (ws.size() > 1 && marker(ws[0])) {
+            bool ok = true;
+            const auto r = runsOf({fontsOfWord(0)}, {ws[0]}, ok);
+            if (ok && !r.empty()) rest = first + r[0].advance + r[0].fonts->space;
+        }
+    }
     // break the text into lines that fit the width; a newline always starts a new line
     struct Out { std::vector<Run> runs; std::vector<std::wstring> words; std::vector<Fonts*> wf; bool last; double indent; };
     std::vector<Out> lines;
@@ -1584,12 +1612,16 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     if (!api.FPDFPage_GetCropBox(pg, &pl, &pb, &pr, &pt) && !api.FPDFPage_GetMediaBox(pg, &pl, &pb, &pr, &pt)) { pl = 0; pb = 0; pr = 612; pt = 792; }
     const double pageBottom = std::min(pb, pt);
     const bool upright = std::fabs(ux - 1) < 0.01 && std::fabs(vy - 1) < 0.01;
-    std::vector<int> below;           // page objects below the paragraph in its column
+    std::vector<int> below;           // page objects below the paragraph in its column that have to move down
     std::vector<int> belowAnnots;
     double shift = 0;
     if (upright && newLast < oldLast - 0.01) {
+        if (newLast - descent < pageBottom) return fail(L"The new text needs more lines than fit on this page. Shorten the text or choose a smaller size.");
+        // What is below the paragraph in its column. Only what the longer text would run into moves down, and what that
+        // then runs into, and so on, as a word processor moves the text below: a footer or picture far below stays.
         const double colL = hit.originX - 1, colR = hit.originX + W + 1;
-        double nextTop = -1e9, lowest = 1e9;
+        struct Item { bool annot; int index; double l, b, r, t; bool moves; };
+        std::vector<Item> items;
         const int n = api.FPDFPage_CountObjects(pg);
         for (int i = 0; i < n; ++i) {
             if (std::find(hit.objects.begin(), hit.objects.end(), i) != hit.objects.end()) continue;
@@ -1597,30 +1629,42 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             float l, b, r, t;
             if (!o || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
             if (t > oldLast || r < colL || l > colR) continue;
-            below.push_back(i);
-            nextTop = std::max(nextTop, static_cast<double>(t));
-            lowest = std::min(lowest, static_cast<double>(b));
+            items.push_back({false, i, l, b, r, t, false});
         }
         const int na = api.FPDFPage_GetAnnotCount(pg);
         for (int i = 0; i < na; ++i) {
             FPDF_ANNOTATION a = api.FPDFPage_GetAnnot(pg, i);
             if (!a) continue;
             FS_RECTF r{};
-            if (api.FPDFAnnot_GetRect(a, &r) && std::max(r.top, r.bottom) <= oldLast && std::max(r.left, r.right) >= colL && std::min(r.left, r.right) <= colR) {
-                belowAnnots.push_back(i);
-                lowest = std::min(lowest, static_cast<double>(std::min(r.top, r.bottom)));
-            }
+            if (api.FPDFAnnot_GetRect(a, &r) && std::max(r.top, r.bottom) <= oldLast && std::max(r.left, r.right) >= colL && std::min(r.left, r.right) <= colR)
+                items.push_back({true, i, std::min(r.left, r.right), std::min(r.top, r.bottom), std::max(r.left, r.right), std::max(r.top, r.bottom), false});
             api.FPDFPage_CloseAnnot(a);
         }
         const double extra = oldLast - newLast;
-        if (!below.empty() || !belowAnnots.empty()) {
-            const double gap = oldLast - nextTop;          // free space under the old last line
-            shift = gap >= extra + 2 * step ? 0 : extra;   // plenty of room: nothing needs to move
-            if (shift > 0 && lowest - shift < pageBottom)
-                return fail(L"The new text needs more lines, and there is no room on this page to move the text below it down. "
-                            L"Shorten the text or choose a smaller size.");
+        // the text right under the paragraph keeps its distance unless there is plenty of room (two lines more than needed)
+        bool any = false;
+        for (auto& it : items) if (oldLast - it.t < extra + 2 * step) { it.moves = true; any = true; }
+        if (any) {
+            shift = extra;
+            // what a moved object would come too close to (within 2 points, or onto) moves with it
+            for (bool grew = true; grew;) {
+                grew = false;
+                for (auto& y : items) {
+                    if (y.moves) continue;
+                    for (const auto& x : items) {
+                        if (!x.moves || y.t > x.t || y.r < x.l || y.l > x.r) continue;   // only what is below it and beside it
+                        if (x.b - y.t < shift + 2) { y.moves = true; grew = true; break; }
+                    }
+                }
+            }
+            for (const auto& it : items) {
+                if (!it.moves) continue;
+                if (it.b - shift < pageBottom)
+                    return fail(L"The new text needs more lines, and there is no room on this page to move the text below it down. "
+                                L"Shorten the text or choose a smaller size.");
+                (it.annot ? belowAnnots : below).push_back(it.index);
+            }
         }
-        if (newLast - descent < pageBottom) return fail(L"The new text needs more lines than fit on this page. Shorten the text or choose a smaller size.");
     }
 
     if (shift > 0) {
@@ -1693,7 +1737,7 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         for (const auto& r : ln.runs) { put(*r.set, r.text, along, static_cast<int>(row)); along += r.advance + r.fonts->space; }
     }
     if (!any && !text.empty()) return fail(nullptr);   // nothing could be placed: put the old lines back
-    contentgen::generate(d.handle(), pg);
+    if (!contentgen::generate(d, pg)) return fail(L"This page uses drawing that could not be written back exactly, so it was left as it was.");
     d.resetText(hit.page);
     return true;
 }
@@ -1721,7 +1765,7 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
     for (int i = n - 1; i >= 0; --i) {   // the topmost picture
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
         float l, b, r, t;
-        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_IMAGE || contentgen::drawnAsPicture(o) || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
         if (x < l || x > r || y < b || y > t) continue;
         g.found = true; g.kind = GroupHit::Picture; g.objects = {i};
         bounds(g.objects);
@@ -1758,7 +1802,7 @@ bool transformGroup(Document& d, int page, const std::vector<int>& objects, doub
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
         if (o) api.FPDFPageObj_Transform(o, sx, 0, 0, sy, e, f);
     }
-    contentgen::generate(d.handle(), pg);
+    if (!contentgen::generate(d, pg)) { d.rollbackChange(); d.resetText(page); return false; }
     d.resetText(page);
     return true;
 }
@@ -1776,7 +1820,7 @@ bool deleteGroup(Document& d, int page, std::vector<int> objects) {
         if (o && api.FPDFPage_RemoveObject(pg, o)) { api.FPDFPageObj_Destroy(o); any = true; }
     }
     if (!any) { d.cancelChange(); return false; }
-    contentgen::generate(d.handle(), pg);
+    if (!contentgen::generate(d, pg)) { d.rollbackChange(); d.resetText(page); return false; }
     d.resetText(page);
     return true;
 }
@@ -1898,7 +1942,7 @@ bool addHeaderFooter(Document& d, const std::vector<int>& pages, const HeaderFoo
             else api.FPDFPageObj_Destroy(o);
             (void)th;
         }
-        contentgen::generate(d.handle(), pg);
+        contentgen::generate(d, pg);
         ++num;
     }
     if (!any) { d.cancelChange(); return false; }
@@ -1918,7 +1962,7 @@ bool addBackground(Document& d, const std::vector<int>& pages, COLORREF color) {
         if (!o) continue;
         api.FPDFPageObj_SetFillColor(o, GetRValue(color), GetGValue(color), GetBValue(color), 255);
         api.FPDFPath_SetDrawMode(o, FPDF_FILLMODE_ALTERNATE, 0);
-        if (api.FPDFPage_InsertObjectAtIndex(pg, o, 0)) { contentgen::generate(d.handle(), pg); any = true; }
+        if (api.FPDFPage_InsertObjectAtIndex(pg, o, 0)) { contentgen::generate(d, pg); any = true; }
         else api.FPDFPageObj_Destroy(o);
     }
     if (!any) { d.cancelChange(); return false; }

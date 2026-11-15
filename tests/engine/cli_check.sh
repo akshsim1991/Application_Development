@@ -558,5 +558,71 @@ check "a PNG named .jpg: its picture, not a blank page" "'$prog' --convert '$W/c
 check "an existing PDF is not replaced"   "'$prog' --convert '$W/conv/Photo.png' </dev/null >/dev/null 2>&1 && [ -f '$W/conv/Photo (2).pdf' ]"
 check "a damaged picture, a Word file and a missing file refused" "! '$prog' --convert '$W/conv/bad.png' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/doc.docx' </dev/null >/dev/null 2>&1 && ! '$prog' --convert '$W/conv/none.png' </dev/null >/dev/null 2>&1 && [ ! -f '$W/conv/bad.pdf' ] && [ ! -f '$W/conv/doc.pdf' ]"
 
+echo "a page printed from a browser (gradient background, shadow, symbols in a Type3 font, a footer at the bottom)"
+# fixtures/printed-slide.pdf: fixtures/printed-slide.html printed to PDF by Chromium. PDFium cannot write a pattern fill (the
+# gradient became black) or Type3 text (the arrows were left out); such objects become pictures of themselves.
+S="$here/fixtures/printed-slide.pdf"
+run --paratest "$S" "$W/ps1.pdf" "$W/ps1.txt" 130 259 append "x"
+run --paratest "$S" "$W/ps2.pdf" "$W/ps2.txt" 130 259 append "dimensioning drawings and many more words so that the line wraps here"
+run --export png "$S" "$W/ps0.png" 40; run --export png "$W/ps1.pdf" "$W/ps1.png" 40; run --export png "$W/ps2.pdf" "$W/ps2.png" 40
+check "a short edit made" "grep -q 'result=ok' '$W/ps1.txt'"
+check "a longer one made too (the footer far below does not stop it)" "grep -q 'result=ok' '$W/ps2.txt'"
+python3 - "$W" > "$W/ps.txt" 2>&1 <<'PY'
+import sys, glob
+import numpy as np
+from PIL import Image
+w = sys.argv[1]
+def png(n): return np.array(Image.open(sorted(glob.glob(f'{w}/{n}*.png'))[0]).convert('RGB')).astype(int)
+a, b, c = png('ps0'), png('ps1'), png('ps2')
+H, W = a.shape[:2]
+def soft(x):
+    p = np.pad(x, ((1, 1), (1, 1), (0, 0)), mode='edge'); s = np.zeros(x.shape)
+    for dy in range(3):
+        for dx in range(3): s += p[dy:dy + x.shape[0], dx:dx + x.shape[1]]
+    return s / 9
+def differ(x, y):   # as the app compares: smoothed, and a pixel counts only if nothing next to it in the other is close
+    x, y = soft(x), soft(y)
+    def far(p, q):
+        qp = np.pad(q, ((1, 1), (1, 1), (0, 0)), mode='edge'); best = np.full(p.shape[:2], 1e9)
+        for dy in range(3):
+            for dx in range(3): best = np.minimum(best, np.abs(p - qp[dy:dy + p.shape[0], dx:dx + p.shape[1]]).max(-1))
+        return best > 28
+    return far(x, y) | far(y, x)
+def same(x, y, box):   # box: left, top, right, bottom in pixels
+    l, t, r, bo = box
+    return int(differ(x, y)[t:bo, l:r].sum()) <= 4
+top = (0, 0, W, int(H * 0.40)); right = (int(W * 0.57), 0, W, H)   # above the list; the card
+px = lambda im: tuple(int(v) for v in im[H // 2, W // 20])
+print('background', px(a), px(b), px(c))
+print('short-top', same(a, b, top), 'short-right', same(a, b, right))
+print('long-top', same(a, c, top), 'long-right', same(a, c, right))
+PY
+check "the gradient background kept (not black)" "python3 -c \"import ast,sys;l=open('$W/ps.txt').readline().split(' ',1)[1];v=ast.literal_eval('['+l.replace(') (','),(')+']');sys.exit(0 if all(min(p)>150 for p in v) else 1)\""
+check "the rest of the page, symbols and shadow, unchanged" "grep -q 'short-top True short-right True' '$W/ps.txt' && grep -q 'long-top True long-right True' '$W/ps.txt'"
+python3 - "$W/ps2.pdf" > "$W/ps2pos.txt" 2>&1 <<'PY'
+import sys
+from pdfminer.high_level import extract_pages
+from pdfminer.layout import LTTextLine, LTTextContainer, LTChar
+lines = []
+def walk(o):
+    if isinstance(o, LTTextLine): lines.append((round(o.y0, 1), round(o.x0, 1), o.get_text().strip()))
+    elif hasattr(o, '__iter__'):
+        for c in o: walk(c)
+for p in extract_pages(sys.argv[1]): walk(p)
+for l in sorted(lines, reverse=True): print(l)
+PY
+check "the wrapped lines start under the text, not under the bullet" "python3 -c \"
+import ast
+L=[ast.literal_eval(l) for l in open('$W/ps2pos.txt') if l.startswith('(')]
+first=[l for l in L if 'Revolve' in l[2]][0]; f=[l for l in L if 'Fillet' in l[2]][0]; nxt=[l for l in L if f[0] < l[0] < first[0]]
+import sys; sys.exit(0 if nxt and all(abs(l[1]-(first[1]+8))<1.5 for l in nxt) else 1)\""
+run --blocks "$W/ps1.pdf" "$W/ps1blocks.txt"
+check "edit mode offers no new pictures (the drawings set as pictures stand for drawings)" "grep -q '^pictures=0 text=7' '$W/ps1blocks.txt'"
+check "the next bullet moved down, the footer stayed" "python3 -c \"
+import ast,sys
+L=[ast.literal_eval(l) for l in open('$W/ps2pos.txt') if l.startswith('(')]
+f=[l for l in L if 'Fillet' in l[2]][0]; m=[l for l in L if l[2]=='Module 2'][0]
+sys.exit(0 if f[0] < 225 and abs(m[0]-8.0)<3 else 1)\""
+
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

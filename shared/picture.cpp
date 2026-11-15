@@ -130,7 +130,7 @@ FPDF_PAGEOBJECT pictureObject(Document& d, int page, int obj) {
     FPDF_PAGE pg = d.page(page);
     if (!pg || obj < 0 || obj >= api.FPDFPage_CountObjects(pg)) return nullptr;
     FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, obj);
-    return o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE ? o : nullptr;
+    return o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && !contentgen::drawnAsPicture(o) ? o : nullptr;
 }
 
 // Bounding box of objects on a page, and the objects themselves.
@@ -162,7 +162,7 @@ bool transformAboutCentre(Document& d, int page, const std::vector<int>& objs, d
     os.clear();
     if (!boundsOf(pg, objs, os, l, bo, r, t)) { d.cancelChange(); return false; }
     for (FPDF_PAGEOBJECT o : os) api.FPDFPageObj_Transform(o, a, b, c, dd, cx - (a * cx + c * cy), cy - (b * cx + dd * cy));
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(page);
     return true;
 }
@@ -231,7 +231,7 @@ bool addPicture(Document& d, int page, double atX, double atY, const std::wstrin
                 api.FPDFImageObj_SetMatrix(img, (pX.first - p0.first) * wPt, (pX.second - p0.second) * wPt,
                                            (pY.first - p0.first) * hPt, (pY.second - p0.second) * hPt, p0.first, p0.second);
                 api.FPDFPage_InsertObject(pg, img);
-                contentgen::generate(d.handle(), pg);
+                contentgen::generate(d, pg);
                 ok = true;
             }
         }
@@ -272,7 +272,7 @@ bool restackGroup(Document& d, int page, std::vector<int>& objs, bool toFront) {
         if (toFront) { api.FPDFPage_InsertObject(pg, os[k]); objs.push_back(n - static_cast<int>(os.size()) + static_cast<int>(k)); }
         else { api.FPDFPage_InsertObjectAtIndex(pg, os[k], k); objs.push_back(static_cast<int>(k)); }
     }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     d.resetText(page);
     return true;
 }
@@ -298,7 +298,7 @@ template <class F> bool repaintPicture(Document& d, int page, int obj, F change)
     double L = l, B = b, R = l + w / k, T = t;   // the rendered box (it may be a pixel larger than the bounds)
     B = T - h / k;
     if (!change(px, w, h, k, L, B, R, T) || w < 1 || h < 1 || !setPixels(pg, o, px, w, h, L, B, R, T)) { d.undo(); return false; }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     return true;
 }
 } // namespace
@@ -368,7 +368,7 @@ bool replacePicture(Document& d, int page, int obj, const std::wstring& path, st
         loaded = setPixels(pg, o, bmp.px, w, h, nl, nb, nl + nw, nb + nh);
     }
     if (!loaded) { d.undo(); error = L"The picture could not be put on the page."; return false; }
-    contentgen::generate(d.handle(), pg);
+    contentgen::generate(d, pg);
     return true;
 }
 

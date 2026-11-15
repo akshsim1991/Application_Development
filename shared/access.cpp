@@ -1,3 +1,4 @@
+#include "contentgen.hpp"
 #include "access.hpp"
 #include "attach.hpp"   // layers::decodeString
 #include "pdfedit.hpp"
@@ -173,7 +174,10 @@ std::vector<Item> check(Document& d) {
         if (!pg) continue;
         int images = 0;
         const int objs = api.FPDFPage_CountObjects(pg);
-        for (int i = 0; i < objs; ++i) if (api.FPDFPageObj_GetType(api.FPDFPage_GetObject(pg, i)) == FPDF_PAGEOBJ_IMAGE) ++images;
+        for (int i = 0; i < objs; ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            if (api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && !contentgen::drawnAsPicture(o)) ++images;
+        }
         pictures += images;
         const int n = d.charCount(p);
         if (n <= 0 && images > 0) { ++scanned; if (scannedPages.size() < 60) scannedPages += (scannedPages.empty() ? L"" : L", ") + std::to_wstring(p + 1); }

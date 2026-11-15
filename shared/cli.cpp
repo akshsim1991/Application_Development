@@ -799,6 +799,35 @@ int run(std::vector<std::wstring> files) {
         if (!ok) return 5;
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
+    if (!files.empty() && files[0] == L"--objects") {   // --objects in.pdf report.txt : page 1's objects, as PDFium sees them
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        const auto& api = pdfium::api();
+        FPDF_PAGE pg = doc.page(0);
+        std::string rep;
+        for (int i = 0; i < api.FPDFPage_CountObjects(pg); ++i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            float l = 0, b = 0, r = 0, t = 0;
+            api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t);
+            unsigned cr = 0, cg = 0, cb = 0, ca = 0;
+            const int fill = api.FPDFPageObj_GetFillColor(o, &cr, &cg, &cb, &ca);
+            int fm = -1; FPDF_BOOL st = 0;
+            if (api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_PATH) api.FPDFPath_GetDrawMode(o, &fm, &st);
+            std::string font;
+            if (api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT) {
+                FPDF_FONT f = api.FPDFTextObj_GetFont(o);
+                char nm[128] = {}; size_t n = 0;
+                const size_t nn = f ? api.FPDFFont_GetBaseFontName(f, nm, sizeof nm) : 0;
+                const bool data = f && api.FPDFFont_GetFontData(f, nullptr, 0, &n);
+                font = " font=" + std::string(nm) + " namelen=" + std::to_string(nn) + " data=" + std::to_string(data ? n : 0);
+            }
+            char line[400];
+            snprintf(line, sizeof line, "%d type=%d box=%.0f,%.0f,%.0f,%.0f fill=%d rgba=%u,%u,%u,%u mode=%d stroke=%d%s\n", i, api.FPDFPageObj_GetType(o), l, b, r, t, fill, cr, cg, cb, ca, fm, st, font.c_str());
+            rep += line;
+        }
+        return Document::writeFile(files[2], std::vector<unsigned char>(rep.begin(), rep.end())) == SaveResult::Ok ? 0 : 4;
+    }
     if (!files.empty() && files[0] == L"--paratest") {   // --paratest in.pdf out.pdf report.txt x y same|append [text] : edits the paragraph at (x, y) on page 1
         if (files.size() < 7) return 2;
         Document doc;
@@ -807,13 +836,21 @@ int run(std::vector<std::wstring> files) {
         if (!h.found) return 5;
         const std::wstring text = files[6] == L"append" && files.size() > 7 ? h.text + L" " + files[7] : h.text;
         std::wstring why;
-        const bool ok = pageobj::replaceParagraph(doc, h, text, h.style, h.align, &why);
+        bool ok = pageobj::replaceParagraph(doc, h, text, h.style, h.align, &why);
+        std::string again;
+        if (!ok && files.size() > 8 && files[8] == L"again") {   // as the editor does after a refusal: the same edit, shorter
+            std::wstring why2;
+            const pageobj::ParagraphHit h2 = pageobj::paragraphAt(doc, 0, wnum(files[4].c_str()), wnum(files[5].c_str()));
+            const bool ok2 = h2.found && pageobj::replaceParagraph(doc, h2, h2.text + L" again", h2.style, h2.align, &why2);
+            again = std::string("again=") + (ok2 ? "ok" : "refused") + "\n";
+            doc.saveAs(files[2]);
+        }
         char line[512];
         snprintf(line, sizeof line, "lines=%d align=%d wrap=%.2f step=%.2f origin=%.2f,%.2f result=%s\nstyle family=%d bold=%d italic=%d size=%.1f font=%s\n", h.lines, static_cast<int>(h.align), h.wrapWidth, h.lineStep,
                  h.originX, h.baseline, ok ? "ok" : "refused", static_cast<int>(h.style.family), h.style.bold, h.style.italic, h.style.sizePt, h.fontName.c_str());
-        const std::string rep = line + std::string(why.begin(), why.end()) + "\ntext=" + platform::utf8(h.text) + "\n";
+        const std::string rep = line + std::string(why.begin(), why.end()) + "\ntext=" + platform::utf8(h.text) + "\n" + again;
         Document::writeFile(files[3], std::vector<unsigned char>(rep.begin(), rep.end()));
-        if (!ok) return 6;
+        if (!ok) return 6;   // refused: nothing written (with "again", the document after the second try is)
         return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--checksig") {

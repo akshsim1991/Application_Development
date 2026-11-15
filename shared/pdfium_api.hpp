@@ -215,6 +215,7 @@
     X(FPDFPageObj_Transform)     \
     X(FPDFPageObj_GetBounds)     \
     X(FPDFPageObj_Destroy)       \
+    X(FPDFPageObj_SetIsActive)   \
     X(FPDFPage_InsertObject)     \
     X(FPDFPage_InsertObjectAtIndex) \
     X(FPDFPage_GenerateContent)

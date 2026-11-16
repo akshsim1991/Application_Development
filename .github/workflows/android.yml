@@ -35,7 +35,7 @@ jobs:
       - name: The engine bridge works (built for Linux, driven from Java)
         run: |
           sudo apt-get install -y -q ninja-build clang >/dev/null
-          python3 -m pip install --quiet --only-binary=:all: reportlab pikepdf pdfminer.six
+          python3 -m pip install --quiet --only-binary=:all: reportlab pikepdf pdfminer.six pillow
           bash tests/android/bridge_check.sh
 
       - name: Build the APK
@@ -90,7 +90,17 @@ jobs:
           cp Android/app/build/outputs/apk/release/app-release.apk "releases/FeatherPDF-$ver-android.apk"
           git config user.name "Feather PDF Android build"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A releases
+          # the emulator's pictures of the app, small, for the README and for checking the screen by eye
+          mkdir -p docs/android && rm -f docs/android/*.png
+          python3 -c "
+          import glob, os
+          from PIL import Image
+          for f in sorted(glob.glob('emulator-check/selftest/*.png')) + ['emulator-check/00-start.png']:
+              if os.path.exists(f):
+                  im = Image.open(f).convert('RGB'); im.thumbnail((540, 1200))
+                  im.save('docs/android/' + os.path.basename(f), optimize=True)
+          "
+          git add -A releases docs/android
           git commit -q -m "Android APK built from ${GITHUB_SHA::7}" || { echo "unchanged"; exit 0; }
           # the Mac build may have committed to the branch meanwhile: take its commit and try again
           for i in 1 2 3 4; do

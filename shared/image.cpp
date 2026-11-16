@@ -3,7 +3,12 @@
 #include <algorithm>
 #include <cstring>
 
-#if defined(_WIN32)
+#if defined(__ANDROID__) && !defined(FEATHER_SYSTEM_HOOKS)
+#define FEATHER_SYSTEM_HOOKS 1
+#endif
+#if defined(FEATHER_SYSTEM_HOOKS)
+// given by the app (image::setSystem)
+#elif defined(_WIN32)
 #include <windows.h>
 #include <objbase.h>
 #include <propidl.h>
@@ -21,7 +26,54 @@ using std::min; using std::max;
 
 namespace image {
 
-#if defined(_WIN32)
+#if defined(FEATHER_SYSTEM_HOOKS)
+
+namespace {
+System& sys() { static System s; return s; }
+} // namespace
+void setSystem(System s) { sys() = std::move(s); }
+
+bool encode(const unsigned char* bgra, int w, int h, int stride, Format f, int quality, bool alpha, std::vector<unsigned char>& out) {
+    if (!sys().encode || w <= 0 || h <= 0) return false;
+    std::vector<unsigned char> px(static_cast<size_t>(w) * h * 4);
+    for (int y = 0; y < h; ++y) memcpy(px.data() + static_cast<size_t>(y) * w * 4, bgra + static_cast<size_t>(y) * stride, static_cast<size_t>(w) * 4);
+    return sys().encode(px, w, h, f, quality, alpha, out) && !out.empty();
+}
+
+bool load(const std::wstring& path, Picture& out) {
+    return sys().load && sys().load(path, out) && out.w > 0 && out.h > 0 && out.px.size() == static_cast<size_t>(out.w) * out.h * 4;
+}
+
+bool sizeOf(const std::wstring& path, int& w, int& h) {
+    Picture p;
+    if (!load(path, p)) return false;
+    w = p.w; h = p.h;
+    return true;
+}
+
+bool scale(const unsigned char* bgra, int w, int h, int stride, int w2, int h2, Picture& out) {
+    // area averaging: each target pixel is the mean of the source pixels it covers
+    if (w <= 0 || h <= 0 || w2 <= 0 || h2 <= 0) return false;
+    out.w = w2; out.h = h2;
+    out.px.assign(static_cast<size_t>(w2) * h2 * 4, 0);
+    for (int y = 0; y < h2; ++y) {
+        const int y0 = y * h / h2, y1 = std::max(y0 + 1, (y + 1) * h / h2);
+        for (int x = 0; x < w2; ++x) {
+            const int x0 = x * w / w2, x1 = std::max(x0 + 1, (x + 1) * w / w2);
+            unsigned long sum[4] = {0, 0, 0, 0}, n = 0;
+            for (int sy = y0; sy < y1 && sy < h; ++sy)
+                for (int sx = x0; sx < x1 && sx < w; ++sx) {
+                    const unsigned char* p = bgra + static_cast<size_t>(sy) * stride + sx * 4;
+                    for (int c = 0; c < 4; ++c) sum[c] += p[c];
+                    ++n;
+                }
+            for (int c = 0; c < 4; ++c) out.px[(static_cast<size_t>(y) * w2 + x) * 4 + c] = static_cast<unsigned char>(n ? sum[c] / n : 0);
+        }
+    }
+    return true;
+}
+
+#elif defined(_WIN32)
 
 namespace {
 // GDI+ is started once, the first time a picture is needed, and stays for the life of the program.
@@ -259,5 +311,9 @@ bool save(const unsigned char* bgra, int w, int h, int stride, Format f, int qua
     if (!encode(bgra, w, h, stride, f, quality, alpha, bytes)) return false;
     return platform::writeFile(path, bytes);
 }
+
+#if !defined(FEATHER_SYSTEM_HOOKS)
+void setSystem(System) {}   // the system's own picture support is used
+#endif
 
 } // namespace image

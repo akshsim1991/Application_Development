@@ -176,5 +176,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A releases
           git commit -q -m "macOS disk image built from ${GITHUB_SHA::7}" || { echo "unchanged"; exit 0; }
-          # When the branch has moved on since this build started, the next build brings its own disk image.
-          git push origin "HEAD:${GITHUB_REF_NAME}" || echo "the branch moved on; the next build puts its disk image in releases/"
+          # the Android build may have committed to the branch meanwhile: take its commit and try again
+          for i in 1 2 3 4; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((i * 10))
+          done
+          echo "the branch moved on; the next build puts its disk image in releases/"

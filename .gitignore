@@ -3,8 +3,17 @@ dist/
 third_party/pdfium/
 third_party/pdfium-mac/
 third_party/pdfium-linux/
+third_party/pdfium-android/
+Android/.gradle/
+Android/build/
+Android/app/build/
+Android/app/.cxx/
+Android/local.properties
 third_party/tesseract/
 *.exe
 !FeatherPDF-Setup-2.12.0.exe
 !releases/*.exe
 __pycache__/
+tests/android/compile/.gradle/
+tests/android/compile/build/
+tests/android/compile/.kotlin/

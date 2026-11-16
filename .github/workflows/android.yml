@@ -1,0 +1,100 @@
+# Builds Feather PDF for Android, checks it (the engine bridge on Linux, the APK's contents and signature, and the app
+# itself on an Android emulator), and puts the APK in releases/ with a commit to the same branch.
+name: Android build
+
+on:
+  push:
+    paths: ["Android/**", "shared/**", "tests/android/**", "CMakeLists.txt", "cmake/**", "scripts/fetch-pdfium.sh", ".github/workflows/android.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit the APK to releases/
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: PDFium for Android (and Linux, for the bridge check)
+        run: |
+          bash scripts/fetch-pdfium.sh android
+          bash scripts/fetch-pdfium.sh linux
+          ls -la third_party/pdfium-android/*/lib/libpdfium.so
+
+      - name: The engine bridge works (built for Linux, driven from Java)
+        run: |
+          sudo apt-get install -y -q ninja-build clang >/dev/null
+          python3 -m pip install --quiet --only-binary=:all: reportlab pikepdf pdfminer.six
+          bash tests/android/bridge_check.sh
+
+      - name: Build the APK
+        working-directory: Android
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace assembleRelease
+          ls -la app/build/outputs/apk/release/
+
+      - name: The APK holds every ABI, is signed with the release key, and is aligned for 16 KB pages
+        run: |
+          apk=Android/app/build/outputs/apk/release/app-release.apk
+          bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          unzip -l "$apk" | grep -E "lib/.*\.so"
+          for abi in arm64-v8a armeabi-v7a x86_64; do
+            for lib in libpdfium.so libfeatherpdf.so libc++_shared.so; do unzip -l "$apk" | grep -q "lib/$abi/$lib" || { echo "missing lib/$abi/$lib"; exit 1; }; done
+          done
+          "$bt/apksigner" verify --print-certs "$apk" | tee certs.txt
+          grep -qi "5ece1a1bb33b104247f9bffd5069a2946b8f7de37ccb51176e751f0b5ebbee12" certs.txt || { echo "not signed with the Feather PDF release key"; exit 1; }
+          "$bt/zipalign" -c -P 16 4 "$apk" && echo "aligned for 16 KB pages"
+          "$bt/aapt2" dump badging "$apk" | head -3
+
+      - name: Let the emulator use KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: The app on an emulator (Android 14)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash tests/android/emulator_check.sh Android/app/build/outputs/apk/release/app-release.apk emulator-check
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FeatherPDF-android
+          path: |
+            Android/app/build/outputs/apk/release/app-release.apk
+            emulator-check/
+
+      - name: Put the APK in releases/
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          ver=$(grep -oP 'project\(FeatherPDF VERSION \K[0-9.]+' CMakeLists.txt)
+          rm -f releases/*-android.apk
+          cp Android/app/build/outputs/apk/release/app-release.apk "releases/FeatherPDF-$ver-android.apk"
+          git config user.name "Feather PDF Android build"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A releases
+          git commit -q -m "Android APK built from ${GITHUB_SHA::7}" || { echo "unchanged"; exit 0; }
+          # the Mac build may have committed to the branch meanwhile: take its commit and try again
+          for i in 1 2 3 4; do
+            git pull -q --rebase origin "${GITHUB_REF_NAME}" && git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            sleep $((i * 10))
+          done
+          echo "the branch moved on; the next build puts its APK in releases/"

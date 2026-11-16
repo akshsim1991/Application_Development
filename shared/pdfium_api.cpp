@@ -74,6 +74,8 @@ bool load(std::wstring& error) {
 #ifdef __APPLE__
     tries.push_back(dir + "../Frameworks/libpdfium.dylib");
     tries.push_back(dir + "libpdfium.dylib");
+#elif defined(__ANDROID__)
+    tries.push_back("libpdfium.so");   // the app's own libraries (lib/<abi>/ in the APK): the linker finds it by name
 #else
     tries.push_back(dir + "libpdfium.so");
 #endif

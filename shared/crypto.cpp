@@ -1,6 +1,11 @@
 #include "crypto.hpp"
 
-#if defined(_WIN32)
+#if defined(__ANDROID__) && !defined(FEATHER_SYSTEM_HOOKS)
+#define FEATHER_SYSTEM_HOOKS 1
+#endif
+#if defined(FEATHER_SYSTEM_HOOKS)
+// given by the app (crypto::setSystem)
+#elif defined(_WIN32)
 #include <windows.h>
 #include <bcrypt.h>
 #elif defined(__APPLE__)
@@ -14,7 +19,18 @@
 
 namespace crypto {
 
-#if defined(_WIN32)
+#if defined(FEATHER_SYSTEM_HOOKS)
+
+namespace {
+System& sys() { static System s; return s; }
+} // namespace
+void setSystem(System s) { sys() = std::move(s); }
+bool hash(Hash h, const Bytes& data, Bytes& out) { return sys().hash && sys().hash(h, data, out); }
+bool aesCbc(const Bytes& key, const Bytes& iv, const Bytes& in, Bytes& out) { return sys().aes && in.size() % 16 == 0 && sys().aes(true, key, &iv, in, out); }
+bool aesEcb(const Bytes& key, const Bytes& in, Bytes& out) { return sys().aes && in.size() % 16 == 0 && sys().aes(false, key, nullptr, in, out); }
+bool random(size_t n, Bytes& out) { return sys().random && sys().random(n, out) && out.size() == n; }
+
+#elif defined(_WIN32)
 
 namespace {
 struct Alg {
@@ -124,6 +140,10 @@ bool random(size_t n, Bytes& out) {
     return RAND_bytes(out.data(), static_cast<int>(n)) == 1;
 }
 
+#endif
+
+#if !defined(FEATHER_SYSTEM_HOOKS)
+void setSystem(System) {}   // the system's own cryptography is used
 #endif
 
 } // namespace crypto

@@ -2,6 +2,19 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.21.0 "Puma" (16 November 2026)
+
+- New: **Feather PDF for Android** (Android 7 or later; arm64, 32-bit ARM, x86_64). The essential reading and editing,
+  with the same PDF engine as Windows and Mac: open (file picker, "Open with", "Share to", password files, recent files
+  with the page last read), continuous scrolling, pinch and double-tap zoom with sharp pages, go to page, bookmarks,
+  find with every match highlighted, page colours (normal, night, dimmed, blackboard); select text to copy, highlight,
+  underline or strike out; edit text (paragraphs outlined, tap to change words, size, bold, italic); add text and
+  notes; draw with a pen; erase annotations; turn and delete pages; undo and redo; save, save a copy, share. See
+  Android/README.md.
+- Engine: the cryptography and pictures can be given by the app (Android's own classes); PDFium for Android in
+  scripts/fetch-pdfium.sh.
+- Windows and Mac: no change except the version.
+
 ## 2.20.4 (15 November 2026)
 
 - Fixed: after a change to a page (editing text, deleting, moving, redacting, a table, a picture), **a gradient

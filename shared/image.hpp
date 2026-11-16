@@ -1,6 +1,7 @@
 #pragma once
 // Pictures in and out, from the system: GDI+ on Windows, ImageIO / Core Graphics on the Mac, libpng on Linux (the engine
 // check; PNG only there). Pixels are 4 bytes each, blue first (BGRA, as PDFium renders them), alpha not premultiplied.
+#include <functional>
 #include <string>
 #include <vector>
 
@@ -22,5 +23,13 @@ bool load(const std::wstring& path, Picture& out);
 bool sizeOf(const std::wstring& path, int& w, int& h);
 // Scaled to w2 x h2 with high-quality (bicubic) filtering.
 bool scale(const unsigned char* bgra, int w, int h, int stride, int w2, int h2, Picture& out);
+
+// On Android (or with FEATHER_SYSTEM_HOOKS) the app encodes and reads pictures (Bitmap, BitmapFactory). `bgra`: w * h * 4
+// bytes, rows top first.
+struct System {
+    std::function<bool(const std::vector<unsigned char>& bgra, int w, int h, Format f, int quality, bool alpha, std::vector<unsigned char>& out)> encode;
+    std::function<bool(const std::wstring& path, Picture& out)> load;
+};
+void setSystem(System s);
 
 } // namespace image

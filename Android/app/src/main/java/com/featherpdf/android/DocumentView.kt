@@ -613,6 +613,13 @@ class DocumentView(context: Context) : View(context) {
 
     fun pageCenterOnScreen(page: Int): Pair<Float, Float> = Pair(pageX(page) + pageW(page) / 2 - scrollXf, pageTop[page] * zoom + pageH(page) / 2 - scrollYf)
 
+    /** Where match k of `marks` is on the screen (for the build check). */
+    fun markOnScreen(k: Int): RectF? {
+        val j = k * 5
+        if (j + 4 >= marks.size) return null
+        return screenRect(marks[j].toInt(), marks[j + 1], marks[j + 2], marks[j + 3], marks[j + 4])
+    }
+
     /** A page point on the screen (for the build check, which taps where the text is). */
     fun screenPoint(page: Int, x: Float, y: Float): Pair<Float, Float>? {
         val r = screenRect(page, x, y, x, y) ?: return null

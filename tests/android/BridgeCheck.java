@@ -134,6 +134,9 @@ public class BridgeCheck {
         check("the paragraph is changed (" + why + ")", why == null);
         float[] hits = Engine.find(d, "naïve", false, false);
         check("the new words are found, accents and all", hits.length == 5 && hits[0] == 0);
+        float[] q = Engine.find(d, "Quarterly", false, false);
+        check("a match is where its word is (the heading at 72, 760)", q.length == 5 && q[0] == 0 && Math.abs(q[1] - 72) < 2
+              && q[2] > 755 && q[2] < 765 && q[4] > 768 && q[4] < 780 && q[3] > 140 && q[3] < 170);
         check("the document is modified, undo offered", Engine.isModified(d) && Engine.canUndo(d));
         check("text past the basic plane passes both ways", Engine.describe(1, "📄 file.pdf").contains("📄"));
         check("a box of new text is added", Engine.addTextBox(d, 0, 72, 300, "Added on Android", 14, 0xFF2040A0));

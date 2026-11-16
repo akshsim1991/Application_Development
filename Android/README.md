@@ -37,7 +37,7 @@ Build (needs the Android SDK and NDK 27): `bash scripts/fetch-pdfium.sh android`
 
 - `tests/android/bridge_check.sh`: the bridge built for Linux and driven from Java with the system services given as on
   Android (opening, password files, drawing and page colours, selection, editing a paragraph, annotations, finding,
-  pages, undo and redo, saving and reopening, saving a protected file): 48 checks.
+  pages, undo and redo, saving and reopening, saving a protected file): 49 checks.
 - `tests/android/compile`: the app's code compiled against the Android framework's classes (no SDK needed).
 - The workflow builds the APK, checks it holds every ABI, is signed with the release key and is aligned for 16 KB pages,
   then runs it on an Android 14 emulator: `SelfTest` goes through the screen (edit mode, a paragraph changed, a

@@ -96,7 +96,10 @@ class SelfTest(private val a: ViewerActivity, private val out: File) {
         step("annotated picture") { shot("04-annotated") }
         step("find") {
             a.runSearch(append.split(' ').first())
-            check("finding shows the matches", a.documentView.marks.isNotEmpty())
+            val m = a.documentView.marks
+            check("finding shows the matches", m.isNotEmpty())
+            val r = a.documentView.markOnScreen(0)
+            check("the first match is scrolled into view", r != null && r.top >= 0 && r.bottom <= a.documentView.height && r.width() > 2)
         }
         step("found picture") { shot("05-found") }
         step("night colours") { a.documentView.colours = Engine.COLOURS_NIGHT }

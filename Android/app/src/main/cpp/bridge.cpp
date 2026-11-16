@@ -416,7 +416,9 @@ JNIEXPORT jboolean FN(addTextBox)(JNIEnv* env, jclass, jlong h, jint page, jdoub
     pageobj::TextStyle st;
     st.sizePt = size > 1 ? size : 12;
     st.color = colorref(color);
-    return pageobj::addTextBox(docOf(h)->d, page, x, y, wstr(env, text), st) ? JNI_TRUE : JNI_FALSE;
+    if (!pageobj::addTextBox(docOf(h)->d, page, x, y, wstr(env, text), st)) return JNI_FALSE;
+    docOf(h)->d.resetText(page);   // as the desktop apps do: the page's text is read again (finding, selecting)
+    return JNI_TRUE;
 }
 
 // ---- annotations
@@ -496,10 +498,22 @@ JNIEXPORT jfloatArray FN(find)(JNIEnv* env, jclass, jlong h, jstring query, jboo
     if (h) {
         search::Options o;
         o.matchCase = matchCase; o.wholeWord = wholeWord;
-        for (const auto& t : search::find(docOf(h)->d, wstr(env, query), o)) {
-            if (t.annot >= 0) continue;
-            v.insert(v.end(), {static_cast<float>(t.page), static_cast<float>(t.left), static_cast<float>(t.bottom),
-                               static_cast<float>(t.right), static_cast<float>(t.top)});
+        const auto& api = pdfium::api();
+        Document& d = docOf(h)->d;
+        for (const auto& t : search::find(d, wstr(env, query), o)) {
+            if (t.annot >= 0 || t.count <= 0) continue;
+            // a match in the text is its letters: the box around the rectangles PDFium gives for them
+            FPDF_TEXTPAGE tp = d.text(t.page);
+            if (!tp) continue;
+            double l = 1e9, b = 1e9, r = -1e9, top = -1e9;
+            const int n = api.FPDFText_CountRects(tp, t.start, t.count);
+            for (int i = 0; i < n; ++i) {
+                double rl, rt, rr, rb;
+                if (!api.FPDFText_GetRect(tp, i, &rl, &rt, &rr, &rb)) continue;
+                l = std::min(l, rl); r = std::max(r, rr); b = std::min(b, std::min(rb, rt)); top = std::max(top, std::max(rb, rt));
+            }
+            if (r < l) continue;
+            v.insert(v.end(), {static_cast<float>(t.page), static_cast<float>(l), static_cast<float>(b), static_cast<float>(r), static_cast<float>(top)});
         }
     }
     return floats(env, v);

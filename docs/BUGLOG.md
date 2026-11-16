@@ -1268,3 +1268,12 @@ below it down", then "The paragraph could not be changed", and the page's backgr
   text. Verified: the wrapped line starts within 0.5 pt of the text after the bullet.
 
 - **Published:** 2.20.4 on 15 November (Windows installer and Mac disk image; both downloads checked against latest.json: size and SHA-256).
+
+## Version 2.21.0 "Puma": the first Android version
+
+- B-088 (found while building it, Android only, fixed before release): search matches scrolled to the page's corner (the
+  engine gives a text match as its letters; the bridge passed its empty rectangle on) and text added with Add text could
+  not be found or selected (the page's text was not read again). Fixed in the bridge; checked by the bridge check (a
+  match's place) and on the emulator (the first match on screen).
+- **Published:** 2.21.0 on 16 November (Windows installer, Mac disk image and Android APK; all three downloads checked
+  against latest.json: size and SHA-256).

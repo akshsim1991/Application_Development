@@ -2,6 +2,19 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.22.0 "Kuga" (17 November 2026)
+
+- New (Windows): **Convert to PDF and combine all the selected file(s)** in File Explorer's right-click menu. Select
+  pictures, text, Markdown, Word, PowerPoint and Excel files (and PDFs) together: each is made into a PDF and all of
+  them become one PDF, in the order of their names (as Explorer lists them: 2 before 10), with a bookmark for each file
+  (a PDF's own bookmarks inside its one), saved next to the first file as "<its name> (combined).pdf". Offered for any
+  number of selected files. A file that cannot be converted is left out and named.
+- New (Windows): after **Convert to PDF** (and the combining one) Feather PDF asks: open it, show it in its folder, or
+  close; "Do this every time" keeps the answer. Before, the PDF always opened.
+- New (Windows): **Settings > File Explorer**: what happens after converting (ask, open, show in its folder, nothing),
+  and each of the two right-click entries on or off (Windows asks for permission, as they are for every user of the PC;
+  an update keeps the choice).
+
 ## 2.21.0 "Puma" (16 November 2026)
 
 - New: **Feather PDF for Android** (Android 7 or later; arm64, 32-bit ARM, x86_64). The essential reading and editing,

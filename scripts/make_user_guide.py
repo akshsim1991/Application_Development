@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.21.0"
+VERSION = "2.22.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -452,6 +452,12 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.22 \u201cKuga\u201d", "h2")]
+story += bullets([
+    "<b>Convert to PDF and combine all the selected file(s)</b> (File Explorer, right-click): select pictures, text, Word, PowerPoint or Excel files, and PDFs, together; they become one PDF in the order of their names, with a bookmark for each file, next to the first file (\u201c&lt;its name&gt; (combined).pdf\u201d). On Windows 11 the entry is under Show more options.",
+    "After converting, Feather PDF asks whether to open the PDF, show it in its folder, or do nothing; tick Do this every time to stop the question.",
+    "<b>Settings > File Explorer</b>: choose what happens after converting, and turn either right-click entry on or off.",
+])
 story += [P("New in 2.21 \u201cPuma\u201d", "h2")]
 story += bullets([
     "<b>Feather PDF for Android</b> (phones and tablets, Android 7 or later): open PDFs (also from other apps), read them with pinch to zoom, find, bookmarks and the page colours; select text to copy, highlight, underline or strike out; edit any paragraph, add text and notes, draw with a pen; turn and delete pages; undo, save, save a copy and share. It uses the same PDF engine as Windows and Mac. Download the APK from the releases page and open it.",

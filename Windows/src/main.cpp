@@ -7,6 +7,7 @@
 #include <shlobj.h>
 #include <cryptuiapi.h>
 #include <commctrl.h>
+#include <shlwapi.h>
 #include <algorithm>
 #include <cmath>
 #include <memory>
@@ -24,6 +25,7 @@
 #include "textpdf.hpp"
 #include "topdf.hpp"
 #include "officepdf.hpp"
+#include "explorermenu.hpp"
 #include "sanitize.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
@@ -144,6 +146,7 @@ struct App {
     bool restorePositions = true;   // documents open where they were last read
     int cacheIdx = 1;         // pages kept ready in memory: 3, 6, 12
     int autosaveIdx = 0;      // recovery copy of unsaved changes: every 20 s, 1 min, 5 min, never
+    int afterConvert = 0;     // after Convert to PDF (and combine) in File Explorer: ask, open it, show it in its folder, nothing
     int tabDrag = -1;         // the tab held down by the mouse (dragged to another place once it moves)
     int tabDragX = 0;
     bool tabDragging = false;
@@ -801,6 +804,7 @@ void forEachPref(const std::function<void(const wchar_t*, const std::wstring&)>&
     n(L"restorePositions", app.restorePositions);
     n(L"pageCache", app.cacheIdx);
     n(L"recoveryCopy", app.autosaveIdx);
+    n(L"afterConvert", app.afterConvert);
     n(L"layout", app.layout);
     n(L"cover", app.cover);
     n(L"units", app.units);
@@ -838,6 +842,7 @@ void loadSettings() {
     app.restorePositions = num(L"restorePositions", 1) != 0;
     app.cacheIdx = std::clamp(num(L"pageCache", 1), 0, 2);
     app.autosaveIdx = std::clamp(num(L"recoveryCopy", 0), 0, 3);
+    app.afterConvert = std::clamp(num(L"afterConvert", 0), 0, 3);
     app.viewer.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
     app.viewer2.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
     app.layout = std::clamp(num(L"layout", 1), 0, 2);
@@ -3955,7 +3960,32 @@ void restartAutosave() {
 }
 
 // Settings: every preference lives here (and only here), in six groups; a change applies at once and is saved.
-enum SettingsPage { SP_APPEARANCE, SP_TABS, SP_VIEWING, SP_EDITING, SP_PERFORMANCE, SP_ADVANCED };
+enum SettingsPage { SP_APPEARANCE, SP_TABS, SP_VIEWING, SP_EDITING, SP_PERFORMANCE, SP_EXPLORER, SP_ADVANCED };
+
+// Settings > File Explorer: the right-click entries are machine-wide (HKLM), so a copy of Feather PDF with the right to
+// change them does it (Windows asks for permission). False when it was refused or failed.
+bool setExplorerMenu(bool convert, bool combine) {
+    wchar_t exe[MAX_PATH * 2];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH * 2);
+    const std::wstring args = std::wstring(L"--explorer-menu convert=") + (convert ? L"1" : L"0") + L" combine=" + (combine ? L"1" : L"0");
+    SHELLEXECUTEINFOW sei{sizeof(sei)};
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC;
+    sei.hwnd = GetActiveWindow();
+    sei.lpVerb = L"runas";
+    sei.lpFile = exe;
+    sei.lpParameters = args.c_str();
+    sei.nShow = SW_HIDE;
+    if (!ShellExecuteExW(&sei) || !sei.hProcess) {
+        MessageBoxW(GetActiveWindow(), L"Windows did not give permission to change File Explorer's right-click menu, so nothing was changed.", L"Settings", MB_OK | MB_ICONINFORMATION);
+        return false;
+    }
+    WaitForSingleObject(sei.hProcess, 30000);
+    DWORD code = 1;
+    GetExitCodeProcess(sei.hProcess, &code);
+    CloseHandle(sei.hProcess);
+    if (code != 0) MessageBoxW(GetActiveWindow(), L"File Explorer's right-click menu could not be changed.", L"Settings", MB_OK | MB_ICONWARNING);
+    return code == 0;
+}
 void showSettings(int first) {
     using settingsdlg::Item;
     auto toggle = [](const wchar_t* label, const wchar_t* help, bool& v, std::function<void()> after = nullptr) {
@@ -3979,7 +4009,7 @@ void showSettings(int first) {
     static const int themeOrder[] = {ThemeLight, ThemeModernLight, ThemeDark, ThemeAmoled, ThemeMidnight, ThemeGraphite, ThemeSystem};
     static const wchar_t* colourNames[] = {L"Yellow", L"Green", L"Blue", L"Pink", L"Orange", L"Red", L"Purple"};
     const std::vector<std::wstring> colours(std::begin(colourNames), std::end(colourNames));
-    std::vector<settingsdlg::Category> cats(6);
+    std::vector<settingsdlg::Category> cats(7);
     cats[SP_APPEARANCE] = {L"Appearance", {
         choice(L"Theme", L"Colours of the window, menus, dialogs and scroll bars. Like Windows follows Windows' light or dark mode.",
                {L"Light", L"Modern Light", L"Dark", L"AMOLED Dark (true black)", L"Midnight Blue", L"Graphite", L"Like Windows"},
@@ -4013,6 +4043,23 @@ void showSettings(int first) {
         choice(L"Recovery copy of unsaved changes", L"Unsaved changes are copied so they come back after a crash. Never: no copy is kept.",
                {L"Every 20 seconds", L"Every minute", L"Every 5 minutes", L"Never"}, [] { return app.autosaveIdx; },
                [](int i) { app.autosaveIdx = i; restartAutosave(); })}};
+    auto menuToggle = [](const wchar_t* label, const wchar_t* help, bool combineEntry) {
+        Item it; it.kind = Item::Toggle; it.label = label; it.help = help;
+        it.get = [combineEntry] { return (combineEntry ? explorermenu::combineOn() : explorermenu::convertOn()) ? 1 : 0; };
+        it.set = [combineEntry](int x) {
+            const bool convert = combineEntry ? explorermenu::convertOn() : x != 0;
+            const bool combine = combineEntry ? x != 0 : explorermenu::combineOn();
+            setExplorerMenu(convert, combine);
+        };
+        return it;
+    };
+    cats[SP_EXPLORER] = {L"File Explorer", {
+        choice(L"After converting to PDF", L"What happens when Convert to PDF, or Convert to PDF and combine, in File Explorer's right-click menu has made the PDF.",
+               {L"Ask each time", L"Open it in Feather PDF", L"Show it in its folder", L"Nothing"},
+               [] { app.afterConvert = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"view", L"afterConvert", app.afterConvert, settingsPath().c_str())), 0, 3); return app.afterConvert; },
+               [](int i) { app.afterConvert = std::clamp(i, 0, 3); }),
+        menuToggle(L"Convert to PDF", L"For pictures, text, Markdown, Word, PowerPoint and Excel files: a PDF of each selected file, next to it. Windows asks for permission to change this.", false),
+        menuToggle(L"Convert to PDF and combine all the selected file(s)", L"For the same files and PDFs: the selected files as one PDF, in the order of their names, a bookmark for each, next to the first file. Windows asks for permission to change this.", true)}};
     cats[SP_ADVANCED] = {L"Advanced", {
         toggle(L"Look for new versions", L"When Feather PDF starts, it checks whether a new version is out and asks whether to update now or later.", app.checkUpdates),
         button(L"Update", L"Checks now whether a new version of Feather PDF is out.", L"Update to new version\x2026", [] {
@@ -4029,7 +4076,7 @@ void showSettings(int first) {
             if (MessageBoxW(GetActiveWindow(), L"Put every setting back to its default? Recent files and reading positions are kept.", L"Settings", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
             app.theme = ThemeSystem; app.colourIcons = true; app.tabColours = false; app.tabNumbers = false; app.dupMode = 0; app.ownWindows = false; app.restorePositions = true;
             app.viewer.setColours(Viewer::Colours::Normal); app.viewer2.setColours(Viewer::Colours::Normal);
-            app.readRate = 0; app.hlColour = 0; app.drawColour = 5; app.widthIdx = 1; app.cacheIdx = 1; app.autosaveIdx = 0;
+            app.readRate = 0; app.hlColour = 0; app.drawColour = 5; app.widthIdx = 1; app.cacheIdx = 1; app.autosaveIdx = 0; app.afterConvert = 0;
             app.viewer.setCacheLimit(6); app.viewer2.setCacheLimit(6);
             restartAutosave(); applyTheme(); saveSettings(); refresh(); })}};
     settingsdlg::run(app.wnd, app.inst, cats, first, app.dpi, app.font, app.fontBold);
@@ -6317,6 +6364,7 @@ void commandPalette() {
     add(L"Settings: theme, icons and tab colours", [] { showSettings(SP_APPEARANCE); });
     add(L"Settings: tab numbers", [] { showSettings(SP_TABS); });
     add(L"Settings: page colours and reading speed", [] { showSettings(SP_VIEWING); });
+    add(L"Settings: File Explorer (Convert to PDF, and combine)", [] { showSettings(SP_EXPLORER); });
     add(L"Settings: highlight and drawing colours", [] { showSettings(SP_EDITING); });
     add(L"Set as default PDF application", [] { registerAsViewer(); });
     add(L"About Feather PDF", [] { showAbout(); });
@@ -7542,6 +7590,247 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
+// ---- Convert to PDF (and combine) from File Explorer's right-click menu ----
+
+// A small note in the middle of the screen while files are converted (no window of Feather PDF is open yet).
+HWND convertNote(const std::wstring& text) {
+    const int sw = GetSystemMetrics(SM_CXSCREEN), sh = GetSystemMetrics(SM_CYSCREEN);
+    HWND note = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW, L"STATIC", text.c_str(), WS_POPUP | WS_BORDER | WS_VISIBLE | SS_CENTER | SS_CENTERIMAGE,
+                                sw / 2 - 260, sh / 2 - 40, 520, 80, nullptr, nullptr, app.inst, nullptr);
+    if (note) {
+        SendMessageW(note, WM_SETFONT, reinterpret_cast<WPARAM>(GetStockObject(DEFAULT_GUI_FONT)), TRUE);
+        UpdateWindow(note);
+    }
+    return note;
+}
+void setNote(HWND note, const std::wstring& text) {
+    if (!note) return;
+    SetWindowTextW(note, text.c_str());
+    UpdateWindow(note);
+}
+
+std::wstring fileNameOf(const std::wstring& path) { return path.substr(path.find_last_of(L"\\/") + 1); }
+std::wstring stemOf(const std::wstring& path) {
+    std::wstring n = fileNameOf(path);
+    const size_t dot = n.find_last_of(L'.');
+    return dot == std::wstring::npos || dot == 0 ? n : n.substr(0, dot);
+}
+
+// One file as a PDF document in memory: a PDF as it is; pictures, text and Markdown made here (shared/topdf); Word,
+// PowerPoint and Excel files by the office program on the PC (officepdf).
+bool fileAsPdf(const std::wstring& path, Document& out, std::wstring& why) {
+    std::wstring ext = path.substr(std::min(path.size(), path.find_last_of(L'.')));
+    for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+    if (ext == L".pdf") {
+        const OpenResult r = out.open(path);
+        if (r == OpenResult::Ok) return true;
+        why = r == OpenResult::PasswordNeeded ? L"it is protected by a password" : Document::describe(r, fileNameOf(path));
+        return false;
+    }
+    std::vector<unsigned char> bytes;
+    if (officepdf::kindOf(path) != officepdf::Kind::None) {
+        wchar_t tmp[MAX_PATH];
+        GetTempPathW(MAX_PATH, tmp);
+        const std::wstring pdf = std::wstring(tmp) + L"FeatherPDF-combine-" + std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount()) + L".pdf";
+        std::wstring program;
+        const bool ok = officepdf::convert(path, pdf, program, why) && platform::readFile(pdf, bytes);
+        DeleteFileW(pdf.c_str());
+        if (!ok) { if (why.empty()) why = L"the office program could not make it into a PDF"; return false; }
+    } else {
+        const topdf::Result r = topdf::fromFile(path, bytes);
+        if (!r.ok) { why = r.error.empty() ? L"it cannot be made into a PDF" : r.error; return false; }
+    }
+    if (out.load(std::move(bytes), {}) != OpenResult::Ok) { why = L"the PDF made of it could not be read"; return false; }
+    return true;
+}
+
+// After a PDF is made from File Explorer: asks whether to open it, show it in its folder, or do nothing (Settings > File
+// Explorer can make the choice for every time). True: open it in Feather PDF.
+bool afterConverting(const std::wstring& pdf, const std::wstring& title, const std::wstring& details) {
+    const std::wstring ini = settingsPath();
+    int mode = std::clamp(static_cast<int>(GetPrivateProfileIntW(L"view", L"afterConvert", 0, ini.c_str())), 0, 3);
+    if (mode == 0) {
+        const std::wstring folder = pdf.substr(0, pdf.find_last_of(L"\\/"));
+        const std::wstring content = L"Saved in the folder \u201C" + fileNameOf(folder) + L"\u201D.\n" + folder + (details.empty() ? L"" : L"\n\n" + details);
+        const TASKDIALOG_BUTTON buttons[] = {{100, L"Open it in Feather PDF"}, {101, L"Show it in its folder"}};
+        TASKDIALOGCONFIG c{};
+        c.cbSize = sizeof(c);
+        c.hInstance = app.inst;
+        c.dwFlags = TDF_ALLOW_DIALOG_CANCELLATION | TDF_POSITION_RELATIVE_TO_WINDOW;
+        c.dwCommonButtons = TDCBF_CLOSE_BUTTON;
+        c.pszWindowTitle = L"Convert to PDF";
+        c.pszMainIcon = details.empty() ? TD_INFORMATION_ICON : TD_WARNING_ICON;
+        c.pszMainInstruction = title.c_str();
+        c.pszContent = content.c_str();
+        c.pButtons = buttons;
+        c.cButtons = 2;
+        c.nDefaultButton = 100;
+        c.pszVerificationText = L"Do this every time (Settings > File Explorer can change it)";
+        c.cxWidth = 300;   // dialog units: room for a file name and a folder
+        // started from File Explorer with no window of its own: the question comes to the front, with the keyboard
+        c.pfCallback = [](HWND h, UINT n, WPARAM, LPARAM, LONG_PTR) -> HRESULT {
+            if (n == TDN_CREATED) { SetForegroundWindow(h); SetFocus(h); }
+            return S_OK;
+        };
+        int pressed = 0;
+        BOOL every = FALSE;
+        if (SUCCEEDED(TaskDialogIndirect(&c, &pressed, nullptr, &every))) {
+            mode = pressed == 100 ? 1 : pressed == 101 ? 2 : 3;
+            if (every) {   // kept as other windows keep their settings: only this one is written
+                SettingsLock lock;
+                WritePrivateProfileStringW(L"view", L"afterConvert", std::to_wstring(mode).c_str(), ini.c_str());
+            }
+        } else {
+            mode = MessageBoxW(nullptr, (title + L"\n\n" + content + L"\n\nOpen it in Feather PDF?").c_str(), L"Convert to PDF",
+                               MB_YESNO | MB_ICONQUESTION | MB_SETFOREGROUND) == IDYES ? 1 : 3;
+        }
+    } else if (!details.empty()) {
+        // not asked: what was left out is still told
+        MessageBoxW(nullptr, (title + L"\n\n" + details).c_str(), L"Convert to PDF", MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+    }
+    if (mode == 2) ShellExecuteW(nullptr, L"open", L"explorer.exe", (L"/select,\"" + pdf + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
+    return mode == 1;
+}
+
+// "Convert to PDF and combine all the selected file(s)": File Explorer starts Feather PDF once for each selected file.
+// The first one to start gathers the files of the others (a hidden window they hand their file to), until none has
+// come for a moment; then it makes each into a PDF and combines them, in the order of their names (as Explorer lists
+// them), with a bookmark for each file, into "<first file> (combined).pdf" next to the first file.
+constexpr wchar_t kGatherClass[] = L"FeatherPdfCombineGather";
+constexpr ULONG_PTR kGatherFile = 0xFC01;
+struct Gather {
+    std::vector<std::wstring> files;
+    DWORD last = 0;
+    bool open = true;
+    HWND note = nullptr;
+};
+Gather* g_gather = nullptr;
+
+LRESULT CALLBACK gatherProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_COPYDATA && g_gather) {
+        const auto* cds = reinterpret_cast<const COPYDATASTRUCT*>(l);
+        if (!g_gather->open || cds->dwData != kGatherFile || cds->cbData == 0) return 0;
+        g_gather->files.emplace_back(static_cast<const wchar_t*>(cds->lpData), cds->cbData / sizeof(wchar_t));
+        g_gather->last = GetTickCount();
+        setNote(g_gather->note, L"Gathering the selected files\u2026  " + std::to_wstring(g_gather->files.size()));
+        return 1;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+// Waits for a mutex while still answering messages sent to this thread (another copy may be handing over its file).
+void takeMutex(HANDLE mx) {
+    for (;;) {
+        const DWORD r = MsgWaitForMultipleObjects(1, &mx, FALSE, 15000, QS_SENDMESSAGE);
+        if (r != WAIT_OBJECT_0 + 1) return;   // taken (or abandoned, or timed out: go on)
+        MSG msg;
+        PeekMessageW(&msg, nullptr, 0, 0, PM_NOREMOVE);   // runs the sent message
+    }
+}
+
+// Returns the exit code; `openThis` gets the combined PDF when it is to be opened in Feather PDF.
+int convertCombine(const std::wstring& file, std::wstring& openThis) {
+    wchar_t full[MAX_PATH * 2];
+    const std::wstring me = GetFullPathNameW(file.c_str(), MAX_PATH * 2, full, nullptr) ? std::wstring(full) : file;
+    WNDCLASSW wc{};
+    wc.lpfnWndProc = gatherProc;
+    wc.hInstance = app.inst;
+    wc.lpszClassName = kGatherClass;
+    RegisterClassW(&wc);
+    HWND gatherer = nullptr;
+    HANDLE mx = CreateMutexW(nullptr, FALSE, L"Local\\FeatherPDF.CombineGather");
+    for (int attempt = 0; attempt < 40 && !gatherer; ++attempt) {
+        takeMutex(mx);
+        HWND first = FindWindowExW(HWND_MESSAGE, nullptr, kGatherClass, nullptr);
+        if (first) {
+            COPYDATASTRUCT cds{kGatherFile, static_cast<DWORD>(me.size() * sizeof(wchar_t)), const_cast<wchar_t*>(me.c_str())};
+            DWORD_PTR taken = 0;
+            SendMessageTimeoutW(first, WM_COPYDATA, 0, reinterpret_cast<LPARAM>(&cds), SMTO_ABORTIFHUNG, 8000, &taken);
+            ReleaseMutex(mx);
+            if (taken == 1) { CloseHandle(mx); return 0; }   // the first one combines it
+            Sleep(200);   // it had just finished gathering: try again (this one may become the next first)
+            continue;
+        }
+        gatherer = CreateWindowExW(0, kGatherClass, L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr, app.inst, nullptr);
+        ReleaseMutex(mx);
+    }
+    if (!gatherer) { CloseHandle(mx); return 5; }
+
+    Gather g;
+    g.files.push_back(me);
+    g.last = GetTickCount();
+    g.note = convertNote(L"Gathering the selected files\u2026  1");
+    g_gather = &g;
+    const DWORD start = GetTickCount();
+    // the others start within moments of each other; a pause of 2.5 s means they have all handed over theirs
+    while (GetTickCount() - g.last < 2500 && GetTickCount() - start < 120000) {
+        MSG msg;
+        while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) { TranslateMessage(&msg); DispatchMessageW(&msg); }
+        MsgWaitForMultipleObjects(0, nullptr, FALSE, 100, QS_ALLINPUT);
+    }
+    takeMutex(mx);   // no copy is handing over a file now; later ones find no gatherer and start their own
+    g.open = false;
+    DestroyWindow(gatherer);
+    ReleaseMutex(mx);
+    CloseHandle(mx);
+
+    std::vector<std::wstring> files;
+    for (const auto& f : g.files) if (std::none_of(files.begin(), files.end(), [&](const std::wstring& x) { return _wcsicmp(x.c_str(), f.c_str()) == 0; })) files.push_back(f);
+    std::stable_sort(files.begin(), files.end(), [](const std::wstring& a, const std::wstring& b) {
+        const int byName = StrCmpLogicalW(fileNameOf(a).c_str(), fileNameOf(b).c_str());
+        return byName != 0 ? byName < 0 : StrCmpLogicalW(a.c_str(), b.c_str()) < 0;
+    });
+
+    std::vector<std::unique_ptr<Document>> docs;
+    std::vector<splitmerge::Source> src;
+    std::vector<std::wstring> included;   // the files in the PDF (the first one names it)
+    std::wstring failed;
+    int failedCount = 0;
+    for (size_t i = 0; i < files.size(); ++i) {
+        setNote(g.note, L"Converting " + std::to_wstring(i + 1) + L" of " + std::to_wstring(files.size()) + L":  " + fileNameOf(files[i]) + L"\u2026");
+        auto d = std::make_unique<Document>();
+        std::wstring why;
+        if (fileAsPdf(files[i], *d, why)) {
+            src.push_back({d.get(), fileNameOf(files[i])});
+            docs.push_back(std::move(d));
+            included.push_back(files[i]);
+        } else {
+            ++failedCount;
+            if (failedCount <= 12) failed += L"\n\u2022 " + fileNameOf(files[i]) + L": " + why;
+        }
+    }
+    if (failedCount > 12) failed += L"\n\u2026 and " + std::to_wstring(failedCount - 12) + L" more";
+    if (src.empty()) {
+        if (g.note) DestroyWindow(g.note);
+        MessageBoxW(nullptr, (L"None of the selected files could be converted to PDF:" + failed).c_str(), L"Convert to PDF and combine", MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        return 4;
+    }
+    setNote(g.note, L"Combining " + std::to_wstring(src.size()) + (src.size() == 1 ? L" file\u2026" : L" files\u2026"));
+    std::vector<unsigned char> bytes;
+    const bool merged = splitmerge::merge(src, splitmerge::Marks::UnderFileNames, bytes);
+    int pages = 0;
+    for (const auto& d : docs) pages += d->pageCount();
+    docs.clear();
+    // next to the first file in it: "<its name> (combined).pdf", or "... (combined 2).pdf" when that exists
+    const std::wstring& first = included.front();
+    const std::wstring dir = first.substr(0, first.find_last_of(L"\\/") + 1);
+    std::wstring out = dir + stemOf(first) + L" (combined).pdf";
+    for (int n = 2; GetFileAttributesW(out.c_str()) != INVALID_FILE_ATTRIBUTES && n < 1000; ++n) out = dir + stemOf(first) + L" (combined " + std::to_wstring(n) + L").pdf";
+    const SaveResult saved = merged ? Document::writeFile(out, bytes) : SaveResult::Failed;
+    if (g.note) DestroyWindow(g.note);
+    if (saved != SaveResult::Ok) {
+        MessageBoxW(nullptr, (merged ? L"The combined PDF could not be saved in " + dir + L" (is the folder read-only, or the disk full?)."
+                                     : std::wstring(L"The files could not be combined (a PDF protected against changes cannot be copied from).")).c_str(),
+                    L"Convert to PDF and combine", MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        return 4;
+    }
+    const std::wstring title = L"\u201C" + fileNameOf(out) + L"\u201D is ready: " + std::to_wstring(src.size()) +
+                               (src.size() == 1 ? L" file, " : L" files, ") + std::to_wstring(pages) + (pages == 1 ? L" page." : L" pages.");
+    const std::wstring details = failed.empty() ? L"" : L"Left out (could not be converted):" + failed;
+    if (afterConverting(out, title, details)) openThis = out;
+    return 0;
+}
+
 } // namespace
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
@@ -7584,7 +7873,22 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
             MessageBoxW(nullptr, (L"\"" + name + L"\" could not be converted to PDF.\n\n" + r.error).c_str(), L"Convert to PDF", MB_OK | MB_ICONWARNING);
             return 4;
         }
+        // ask whether to open it (or as chosen in Settings > File Explorer)
+        if (!afterConverting(written, L"\u201C" + fileNameOf(written) + L"\u201D is ready.", L"")) return 0;
         files = {written};
+    }
+    // "--convert-combine file": Convert to PDF and combine all the selected file(s), from File Explorer
+    if (files.size() == 2 && files[0] == L"--convert-combine") {
+        std::wstring combined;
+        const int rc = convertCombine(files[1], combined);
+        if (combined.empty()) return rc;
+        files = {combined};
+    }
+    // "--explorer-menu convert=0|1 combine=0|1": Settings > File Explorer, run with the right to change HKLM
+    if (files.size() == 3 && files[0] == L"--explorer-menu") {
+        wchar_t exe[MAX_PATH * 2];
+        GetModuleFileNameW(nullptr, exe, MAX_PATH * 2);
+        return explorermenu::apply(exe, files[1] == L"convert=1", files[2] == L"combine=1") ? 0 : 5;
     }
 
     // The command line (shared/cli.cpp): every feature that runs without a window, the same as on the Mac.

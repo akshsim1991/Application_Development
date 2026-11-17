@@ -82,7 +82,7 @@ if(EXISTS "${TESS_DIR}/lib/libtesseract.a")
     COMMAND ${CMAKE_COMMAND} -E copy_directory "${TESS_DIR}/licenses" "$<TARGET_FILE_DIR:FeatherPDF>/licenses")
 endif()
 
-target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt crypt32 ncrypt cryptui comdlg32 shell32 comctl32 ole32 oleaut32 uxtheme dwmapi winspool winhttp)
+target_link_libraries(FeatherPDF PRIVATE user32 gdi32 gdiplus msimg32 uuid bcrypt crypt32 ncrypt cryptui comdlg32 shell32 comctl32 ole32 oleaut32 uxtheme dwmapi winspool winhttp shlwapi)
 
 if(MINGW)
   target_link_options(FeatherPDF PRIVATE -municode -static -static-libgcc -static-libstdc++)
@@ -98,7 +98,7 @@ add_custom_command(TARGET FeatherPDF POST_BUILD
 
 # ---- the installer: a setup program with the files packed into it (installer/README in installer/pack.py) ----
 add_executable(FeatherPDFSetup WIN32 installer/setup.cpp installer/inflate.cpp installer/setup.rc)
-target_include_directories(FeatherPDFSetup PRIVATE installer "${CMAKE_BINARY_DIR}")
+target_include_directories(FeatherPDFSetup PRIVATE installer src "${CMAKE_BINARY_DIR}")
 target_compile_definitions(FeatherPDFSetup PRIVATE UNICODE _UNICODE NOMINMAX)
 add_dependencies(FeatherPDFSetup buildinfo)
 set_target_properties(FeatherPDFSetup PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")

@@ -1,6 +1,7 @@
 # Feather PDF: Windows and macOS features
 
-Android (from 2.21.0 "Puma") has the essential reading and editing only; what it does is listed in
+Windows only (File Explorer): Convert to PDF, and Convert to PDF and combine all the selected file(s), in the right-click
+menu, with Settings > File Explorer (2.22.0). Android (from 2.21.0 "Puma") has the essential reading and editing only; what it does is listed in
 [Android/README.md](../Android/README.md).
 
 Version 2.20.0 "Aspire" on both. "Yes" for the Mac means the feature is in the Mac app's menus or windows (not only in the shared

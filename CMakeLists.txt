@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
-project(FeatherPDF VERSION 2.21.0 LANGUAGES CXX)
+project(FeatherPDF VERSION 2.22.0 LANGUAGES CXX)
 # Each minor version (2.15, 2.16, ...) has a name of its own, shown with the number in About and the status bar.
-set(FEATHER_CODENAME "Puma")
+set(FEATHER_CODENAME "Kuga")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

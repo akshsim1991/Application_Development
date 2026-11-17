@@ -1277,3 +1277,12 @@ below it down", then "The paragraph could not be changed", and the page's backgr
   match's place) and on the emulator (the first match on screen).
 - **Published:** 2.21.0 on 16 November (Windows installer, Mac disk image and Android APK; all three downloads checked
   against latest.json: size and SHA-256).
+
+## Version 2.22.0 "Kuga"
+
+- B-089 (publishing, found while checking an update): right after a release is pushed, GitHub's servers hand out the
+  old latest.json for a few minutes, but the old installers were already deleted, so an update started then failed to
+  download. scripts/publish-release.sh now keeps the previous release's files one release longer. Verified: with 2.21.0
+  published and 2.22.0 arriving, 2.20.4 goes and 2.21.0 and 2.22.0 stay.
+- **Published:** 2.22.0 on 17 November (Windows, Mac and Android; all three downloads checked against latest.json: size
+  and SHA-256; the Windows app's own update check reads 2.22.0 once GitHub's servers have the new file).

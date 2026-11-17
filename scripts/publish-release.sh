@@ -12,7 +12,17 @@ version="$(sed -n 's/^project(FeatherPDF VERSION \([0-9.]*\).*/\1/p' "$root/CMak
 win="FeatherPDF-Setup-$version.exe"; mac="FeatherPDF-$version-mac.dmg"; apk="FeatherPDF-$version-android.apk"
 for f in "$win" "$mac" "$apk"; do [ -f "$root/releases/$f" ] || { echo "missing releases/$f"; exit 1; }; done
 base="https://raw.githubusercontent.com/akshsim1991/FeatherPDF-releases/main"
-rm -f "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/FeatherPDF-*-android.apk
+# The previous release's files stay one release longer: GitHub's servers go on handing out the old latest.json for a few
+# minutes after this is pushed, and an update started then fetches the old installer. Older ones go.
+previous="$(sed -n 's/.*"version": "\([0-9.]*\)".*/\1/p' "$dest/latest.json" 2>/dev/null | head -1)"
+for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/FeatherPDF-*-android.apk; do
+  [ -e "$f" ] || continue
+  case "$(basename "$f")" in *"-$version"[.-]*|*"-$version-"*) continue ;; esac
+  if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
+    case "$(basename "$f")" in *"-$previous."*|*"-$previous-"*) continue ;; esac
+  fi
+  rm -f "$f"
+done
 cp "$root/releases/$win" "$root/releases/$mac" "$root/releases/$apk" "$dest/"
 python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" <<'PY'
 import hashlib, json, os, sys, datetime

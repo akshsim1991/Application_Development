@@ -10,6 +10,8 @@ on:
 
 jobs:
   build-test-package:
+    permissions:
+      contents: write
     runs-on: windows-latest
     defaults:
       run:
@@ -83,6 +85,24 @@ jobs:
           path: |
             PneuSim-Windows/src/PneuSim/bin/Release/net472/PneuSim.exe
             PneuSim-Windows/src/PneuSim/bin/Release/net472/PneuSim.exe.config
+
+      - name: Keep the installer of a new version in release/ (claude branches only)
+        if: startsWith(github.ref_name, 'claude/')
+        shell: pwsh
+        working-directory: PneuSim-Windows
+        run: |
+          $ver = (Get-Content VERSION).Trim()
+          $src = "installer/output/PneuSim-Setup-$ver.exe"
+          $dst = "release/PneuSim-Setup-$ver.exe"
+          if ((Test-Path $src) -and -not (Test-Path $dst)) {
+            Copy-Item $src $dst
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add $dst
+            git commit -m "CI: installer $ver [skip ci]"
+            git pull --rebase origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }}
+          } else { "Installer $ver already in release/ or not built: nothing to commit" }
 
       - uses: actions/upload-artifact@v4
         if: always()

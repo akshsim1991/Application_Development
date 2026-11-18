@@ -55,9 +55,259 @@ public class Tube
 		};
 	}
 
+	internal Func<IEnumerable<CircuitElement>> Obstacles { get; set; }
+
+	private PointF[] _cache;
+
+	private int _cacheKey;
+
+	/// <summary>The line of this tube. The normal neat route is used unless it would run through a component; then an automatic route around the components is found (a line the user dragged by hand is kept as it is).</summary>
 	public PointF[] Route()
 	{
-		return RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
+		PointF[] def = RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
+		if (Mid.HasValue || Obstacles == null || def.Length < 4)
+		{
+			return def;
+		}
+		List<RectangleF> obs = new List<RectangleF>();
+		foreach (CircuitElement e in Obstacles())
+		{
+			if (e is Junction || e is TextNote)
+			{
+				continue;
+			}
+			RectangleF r = e.WorldBounds();
+			r.Inflate(4f, 4f);
+			obs.Add(r);
+		}
+		if (CountHits(def, obs) == 0)
+		{
+			return def;
+		}
+		int key = 17;
+		unchecked
+		{
+			foreach (float v in new float[8] { def[0].X, def[0].Y, def[def.Length - 1].X, def[def.Length - 1].Y, A.WorldDir().X, A.WorldDir().Y, B.WorldDir().X, B.WorldDir().Y })
+			{
+				key = key * 31 + v.GetHashCode();
+			}
+			foreach (RectangleF r in obs)
+			{
+				key = key * 31 + r.X.GetHashCode();
+				key = key * 31 + r.Y.GetHashCode();
+				key = key * 31 + r.Width.GetHashCode();
+				key = key * 31 + r.Height.GetHashCode();
+			}
+		}
+		if (_cache != null && key == _cacheKey)
+		{
+			return _cache;
+		}
+		PointF[] found = null;
+		try
+		{
+			found = FindRoute(obs);
+		}
+		catch (Exception)
+		{
+			found = null;
+		}
+		found = found ?? def;
+		_cache = found;
+		_cacheKey = key;
+		return found;
+	}
+
+	private static int CountHits(PointF[] r, List<RectangleF> obs)
+	{
+		int n = 0;
+		for (int i = 1; i < r.Length - 2; i++)
+		{
+			RectangleF seg = RectangleF.FromLTRB(Math.Min(r[i].X, r[i + 1].X) - 0.5f, Math.Min(r[i].Y, r[i + 1].Y) - 0.5f, Math.Max(r[i].X, r[i + 1].X) + 0.5f, Math.Max(r[i].Y, r[i + 1].Y) + 0.5f);
+			foreach (RectangleF o in obs)
+			{
+				RectangleF b = o;
+				b.Inflate(-2f, -2f);
+				if (b.Width > 0f && b.Height > 0f && b.IntersectsWith(seg))
+				{
+					n++;
+				}
+			}
+		}
+		return n;
+	}
+
+	private static readonly int[] Dx = new int[4] { 1, 0, -1, 0 };
+
+	private static readonly int[] Dy = new int[4] { 0, 1, 0, -1 };
+
+	private static int DirIndex(PointF d)
+	{
+		if (Math.Abs(d.X) > 0.5f)
+		{
+			return (d.X > 0f) ? 0 : 2;
+		}
+		return (d.Y > 0f) ? 1 : 3;
+	}
+
+	/// <summary>Shortest neat (horizontal and vertical lines only) route between the two stub ends that avoids every obstacle, with few bends.</summary>
+	private PointF[] FindRoute(List<RectangleF> obs)
+	{
+		PointF a = A.WorldPos();
+		PointF b = B.WorldPos();
+		PointF da = EffectiveDir(a, A.WorldDir(), b);
+		PointF db = EffectiveDir(b, B.WorldDir(), a);
+		float la = (A.WorldDir().X == 0f && A.WorldDir().Y == 0f) ? 0f : 10f;
+		float lb = (B.WorldDir().X == 0f && B.WorldDir().Y == 0f) ? 0f : 10f;
+		PointF sa = new PointF(a.X + da.X * la, a.Y + da.Y * la);
+		PointF sb = new PointF(b.X + db.X * lb, b.Y + db.Y * lb);
+		SortedSet<float> xset = new SortedSet<float> { sa.X, sb.X };
+		SortedSet<float> yset = new SortedSet<float> { sa.Y, sb.Y };
+		foreach (RectangleF r in obs)
+		{
+			xset.Add(r.Left - 6f);
+			xset.Add(r.Right + 6f);
+			yset.Add(r.Top - 6f);
+			yset.Add(r.Bottom + 6f);
+		}
+		List<float> xs = Dedup(xset);
+		List<float> ys = Dedup(yset);
+		int nx = xs.Count;
+		int ny = ys.Count;
+		int si = xs.FindIndex((float v) => Math.Abs(v - sa.X) < 0.05f);
+		int sj = ys.FindIndex((float v) => Math.Abs(v - sa.Y) < 0.05f);
+		int gi = xs.FindIndex((float v) => Math.Abs(v - sb.X) < 0.05f);
+		int gj = ys.FindIndex((float v) => Math.Abs(v - sb.Y) < 0.05f);
+		if (si < 0 || sj < 0 || gi < 0 || gj < 0)
+		{
+			return null;
+		}
+		bool Free(int i, int j)
+		{
+			if ((i == si && j == sj) || (i == gi && j == gj))
+			{
+				return true;
+			}
+			foreach (RectangleF r in obs)
+			{
+				if (xs[i] > r.Left && xs[i] < r.Right && ys[j] > r.Top && ys[j] < r.Bottom)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		bool SegmentFree(int i1, int j1, int i2, int j2)
+		{
+			RectangleF seg = RectangleF.FromLTRB(Math.Min(xs[i1], xs[i2]), Math.Min(ys[j1], ys[j2]), Math.Max(xs[i1], xs[i2]), Math.Max(ys[j1], ys[j2]));
+			foreach (RectangleF r in obs)
+			{
+				RectangleF b2 = r;
+				b2.Inflate(-1f, -1f);
+				if (b2.Width <= 0f || b2.Height <= 0f)
+				{
+					continue;
+				}
+				if (seg.Right > b2.Left && seg.Left < b2.Right && seg.Bottom > b2.Top && seg.Top < b2.Bottom)
+				{
+					return false;
+				}
+				if (seg.Width == 0f && seg.X > b2.Left && seg.X < b2.Right && seg.Bottom > b2.Top && seg.Top < b2.Bottom)
+				{
+					return false;
+				}
+				if (seg.Height == 0f && seg.Y > b2.Top && seg.Y < b2.Bottom && seg.Right > b2.Left && seg.Left < b2.Right)
+				{
+					return false;
+				}
+			}
+			return true;
+		}
+		int total = nx * ny * 4;
+		float[] dist = new float[total];
+		int[] prev = new int[total];
+		for (int k = 0; k < total; k++)
+		{
+			dist[k] = float.MaxValue;
+			prev[k] = -1;
+		}
+		int startDir = DirIndex(da);
+		int goalBack = DirIndex(db);
+		SortedSet<(float, int)> queue = new SortedSet<(float, int)>();
+		int start = (si * ny + sj) * 4 + startDir;
+		dist[start] = 0f;
+		queue.Add((0f, start));
+		int goal = -1;
+		while (queue.Count > 0)
+		{
+			(float, int) top = queue.Min;
+			queue.Remove(top);
+			int state = top.Item2;
+			if (top.Item1 > dist[state])
+			{
+				continue;
+			}
+			int dir = state % 4;
+			int cell = state / 4;
+			int ci = cell / ny;
+			int cj = cell % ny;
+			if (ci == gi && cj == gj && dir != goalBack)
+			{
+				goal = state;
+				break;
+			}
+			for (int nd = 0; nd < 4; nd++)
+			{
+				if (nd == (dir + 2) % 4)
+				{
+					continue;
+				}
+				int ni = ci + Dx[nd];
+				int nj = cj + Dy[nd];
+				if (ni < 0 || nj < 0 || ni >= nx || nj >= ny || !Free(ni, nj) || !SegmentFree(ci, cj, ni, nj))
+				{
+					continue;
+				}
+				float len = Math.Abs(xs[ni] - xs[ci]) + Math.Abs(ys[nj] - ys[cj]);
+				float cost = top.Item1 + len + ((nd != dir) ? 30f : 0f);
+				int ns = (ni * ny + nj) * 4 + nd;
+				if (cost < dist[ns])
+				{
+					dist[ns] = cost;
+					prev[ns] = state;
+					queue.Add((cost, ns));
+				}
+			}
+		}
+		if (goal < 0)
+		{
+			return null;
+		}
+		List<PointF> path = new List<PointF>();
+		for (int st = goal; st >= 0; st = prev[st])
+		{
+			int cell = st / 4;
+			path.Add(new PointF(xs[cell / ny], ys[cell % ny]));
+		}
+		path.Reverse();
+		List<PointF> all = new List<PointF> { a };
+		all.AddRange(path);
+		all.Add(b);
+		PointF[] result = Simplify(all);
+		return (result.Length < 2) ? null : result;
+	}
+
+	private static List<float> Dedup(SortedSet<float> set)
+	{
+		List<float> list = new List<float>();
+		foreach (float v in set)
+		{
+			if (list.Count == 0 || v - list[list.Count - 1] > 0.05f)
+			{
+				list.Add(v);
+			}
+		}
+		return list;
 	}
 
 	private int Collisions(PointF[] r, IEnumerable<CircuitElement> obstacles)
@@ -82,44 +332,14 @@ public class Tube
 	/// <summary>Picks the middle-segment position so the line does not run through components and is short. With force the manual position is discarded first; otherwise it is only changed when the current line crosses a component.</summary>
 	public void AutoRoute(IEnumerable<CircuitElement> obstacles, bool force)
 	{
-		List<CircuitElement> list = new List<CircuitElement>(obstacles);
-		if (!force && Mid.HasValue && Collisions(Route(), list) == 0)
-		{
-			return;
-		}
-		string axis = MidAxis();
-		if (axis == null)
+		if (force)
 		{
 			Mid = null;
-			return;
 		}
-		Mid = null;
-		PointF a = A.WorldPos();
-		PointF b = B.WorldPos();
-		float centre = (axis == "X") ? (a.X + b.X) / 2f : (a.Y + b.Y) / 2f;
-		float? best = null;
-		int bestHits = Collisions(Route(), list);
-		float bestLen = Length(Route());
-		for (int k = 1; k <= 40 && bestHits > 0; k++)
+		else if (Mid.HasValue && Collisions(Route(), new List<CircuitElement>(obstacles)) > 0)
 		{
-			foreach (int sign in new int[2] { 1, -1 })
-			{
-				float c = centre + sign * k * 10f;
-				float? saved = Mid;
-				Mid = c;
-				PointF[] r = Route();
-				int h = Collisions(r, list);
-				float len = Length(r);
-				if (h < bestHits || (h == bestHits && len < bestLen))
-				{
-					bestHits = h;
-					bestLen = len;
-					best = c;
-				}
-				Mid = saved;
-			}
+			Mid = null;
 		}
-		Mid = best;
 	}
 
 	private static float Length(PointF[] r)

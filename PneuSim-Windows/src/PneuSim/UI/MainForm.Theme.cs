@@ -112,6 +112,7 @@ public partial class MainForm
 		{
 			_menuDark.Checked = dark;
 		}
+		Theme.ScrollBars(this, dark);
 		_canvas.Invalidate();
 		_diagram.Invalidate();
 		_plotter.Invalidate();

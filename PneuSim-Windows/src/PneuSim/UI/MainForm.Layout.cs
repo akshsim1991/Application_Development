@@ -655,6 +655,7 @@ public partial class MainForm
 		_ribbon.Collapsed = AppSettings.RibbonCollapsed;
 		RibbonBuilder.Build(_ribbon, CmdLookup, ExamplesMenu, ColorScheme.Light);
 		_ribbon.FileRequested += ShowBackstage;
+		_ribbon.Interacted += HideBackstage;
 		_ribbon.CollapsedChanged += delegate
 		{
 			AppSettings.RibbonCollapsed = _ribbon.Collapsed;

@@ -3,6 +3,11 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.13 "Mistral" (18 Nov 2026)
+- Connections now route themselves around components: when the normal neat line would run through a component, PneuSim finds a path of horizontal and vertical lines that goes around, with few bends. Works after rotating, moving or connecting. Lines you drag by hand are kept until they would cross a component.
+- Scroll bars follow the dark theme (Windows 10 and later).
+- Choosing any other ribbon tab or button closes the File view.
+
 ## 3.3.12 "Mistral" (18 Nov 2026)
 - Ribbon completeness check against the old menu and toolbar: added the Bottom panel on/off button (View > Panels) and the replay slider (now in the status bar, next to "Replay"). Everything else from the old menus is in the ribbon (or in the File view / Quick access toolbar).
 

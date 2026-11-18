@@ -134,4 +134,41 @@ public sealed class Theme
 			TextRenderer.DrawText(e.Graphics, tc.TabPages[e.Index].Text, tc.Font, e.Bounds, foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
 		};
 	}
+
+	[System.Runtime.InteropServices.DllImport("uxtheme.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+	private static extern int SetWindowTheme(System.IntPtr hwnd, string subAppName, string subIdList);
+
+	private static readonly System.Collections.Generic.HashSet<Control> Watched = new System.Collections.Generic.HashSet<Control>();
+
+	/// <summary>Makes the native scroll bars of every control follow the dark or light theme (Windows 10 and later; ignored elsewhere).</summary>
+	public static void ScrollBars(Control root, bool dark)
+	{
+		try
+		{
+			if (root.IsHandleCreated)
+			{
+				SetWindowTheme(root.Handle, dark ? "DarkMode_Explorer" : "Explorer", null);
+			}
+			else if (Watched.Add(root))
+			{
+				root.HandleCreated += delegate
+				{
+					try
+					{
+						SetWindowTheme(root.Handle, AppSettings.DarkMode ? "DarkMode_Explorer" : "Explorer", null);
+					}
+					catch (System.Exception)
+					{
+					}
+				};
+			}
+		}
+		catch (System.Exception)
+		{
+		}
+		foreach (Control child in root.Controls)
+		{
+			ScrollBars(child, dark);
+		}
+	}
 }

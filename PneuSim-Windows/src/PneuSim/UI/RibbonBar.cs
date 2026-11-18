@@ -123,6 +123,9 @@ public sealed class RibbonBar : Control
 	/// <summary>Raised when the File tab is clicked (the owner shows the backstage view).</summary>
 	public event Action FileRequested;
 
+	/// <summary>Raised when the user clicks anywhere on the ribbon except the File tab (used to close the File view).</summary>
+	public event Action Interacted;
+
 	public event Action CollapsedChanged;
 
 	public IEnumerable<string> TabNames => _tabs.Select((Tab t) => t.Name);
@@ -581,6 +584,18 @@ public sealed class RibbonBar : Control
 		if (e.Button != MouseButtons.Left)
 		{
 			return;
+		}
+		bool onFileTab = false;
+		for (int t = 0; t < _tabRects.Count; t++)
+		{
+			if (_tabRects[t].Contains(e.Location) && _tabs[t].IsFile)
+			{
+				onFileTab = true;
+			}
+		}
+		if (!onFileTab)
+		{
+			Interacted?.Invoke();
 		}
 		if (_chevron.Contains(e.Location))
 		{

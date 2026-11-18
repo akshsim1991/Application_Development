@@ -176,6 +176,7 @@ public class Circuit
 			return null;
 		}
 		Tube tube = new Tube(a, b);
+		tube.Obstacles = () => Elements;
 		Tubes.Add(tube);
 		checked
 		{

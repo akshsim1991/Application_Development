@@ -2289,7 +2289,9 @@ public class MainForm : Form
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel2.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_rightSplit);
 			_status = new StatusStrip();
 			_status.Items.AddRange(new ToolStripItem[3] { _statusMode, _statusMessage, _statusZoom });
+			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel1Collapsed = true;
 			base.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit);
+			BuildRibbon();
 			_toolbar = BuildToolbar();
 			base.Controls.Add(_toolbar);
 			_menu = BuildMenu();
@@ -2801,6 +2803,40 @@ public class MainForm : Form
 		UpdateReplayUi();
 	}
 
+	private RibbonBar _ribbon;
+
+	private Dictionary<string, Action> _ribbonCommands;
+
+	private void BuildRibbon()
+	{
+		_ribbon = new RibbonBar();
+		_ribbonCommands = new Dictionary<string, Action>
+		{
+			["Generator"] = delegate { OnGenerator(null, EventArgs.Empty); },
+			["Check"] = delegate { OnFullCheck(null, EventArgs.Empty); },
+			["Explain"] = delegate { OnExplain(null, EventArgs.Empty); },
+			["Calculators"] = delegate { OnCalculators(null, EventArgs.Empty); },
+			["Parts"] = delegate { OnPartsList(null, EventArgs.Empty); },
+			["Sweep"] = delegate { OnSweep(null, EventArgs.Empty); },
+			["Cutaway"] = delegate { OnCutaway(null, EventArgs.Empty); },
+			["Settings"] = delegate { OnSettings(null, EventArgs.Empty); },
+			["NewFault"] = delegate { StartExercise(); }
+		};
+		RibbonBuilder.Build(_ribbon, _ribbonCommands, ColorScheme.Light);
+		_ribbon.PresetChosen += delegate(LibraryPreset preset)
+		{
+			if (_running)
+			{
+				_statusMessage.Text = "Stop the simulation to place components.";
+				return;
+			}
+			_canvas.PlacingPreset = preset;
+			_statusMessage.Text = $"Click on the drawing area to place: {preset.Name}  (hold Shift to place several, Esc to cancel)";
+			_canvas.Focus();
+		};
+		base.Controls.Add(_ribbon);
+	}
+
 	private void OnSettings(object sender, EventArgs e)
 	{
 		using SettingsDialog settingsDialog = new SettingsDialog();
@@ -2834,6 +2870,17 @@ public class MainForm : Form
 		_diagram.Scheme = scheme;
 		_plotter.Scheme = scheme;
 		RenderLibraryImages(scheme);
+		if (_ribbon != null)
+		{
+			string activeTabName = _ribbon.ActiveTabName;
+			_ribbon.Reset();
+			RibbonBuilder.Build(_ribbon, _ribbonCommands, scheme);
+			_ribbon.SetDark(dark);
+			if (activeTabName != null)
+			{
+				_ribbon.SelectTab(activeTabName);
+			}
+		}
 		Color color = (dark ? Color.FromArgb(37, 39, 46) : SystemColors.Control);
 		Color color2 = (dark ? Color.FromArgb(225, 228, 235) : SystemColors.ControlText);
 		Color color3 = (dark ? Color.FromArgb(28, 30, 36) : SystemColors.Window);

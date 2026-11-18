@@ -119,7 +119,7 @@ build + harness, a commit and a push, and a tick below. Resume at the first unti
 - [x] M2 De-academic pass (item 1) + README/About/installer text (18 Nov; builds, harness identical locally)
 - [x] M3 Settings dialog (Tools > Settings, Ctrl+,), theme Light/Dark/Follow Windows (default), units bar/MPa/kPa on canvas labels, sound+update flags stored. Still open: unit-aware property inputs/Cutaways text; Advanced-mode filtering of properties (do in M5/M9); rated pressure is M4
 - [x] M4 Rated-pressure warning (red frame + status message + alarm; property 'Rated maximum pressure' visible in Advanced mode, not saved when 0) and sound engine (Core/SoundEngine.cs waveOut mixer, UI/SoundMonitor.cs). Self-test: tools/selftest (also in CI). NOT yet heard on a real PC: owner to check sounds on Windows
-- [ ] M5 Ribbon framework + tabs + search (item 4); remove left panel
+- [x] M5 Ribbon (UI/RibbonBar.cs, RibbonBuilder.cs, RibbonIcons.cs) replaces the left library panel (collapsed, ListView kept only as image store); NOT yet seen on screen: check CI screenshot or run on PC. Group icons for Home tab still thumbnails. No double-click properties window (rule in DESIGN.md)
 - [ ] M6 Start screen + About box (items 3, 5)
 - [ ] M7 Robustness: atomic save, error log, damaged-file handling, DPI (item 10)
 - [ ] M8 Updater (item 6) + installer .NET check (item 12)

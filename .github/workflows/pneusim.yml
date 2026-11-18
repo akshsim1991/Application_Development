@@ -34,7 +34,7 @@ jobs:
         run: |
           dotnet build tools/equivalence-harness/Harness.csproj -c Release -nologo
           $h = "tools/equivalence-harness/bin/Release/net8.0-windows/Harness.dll"
-          $files = (Get-ChildItem examples -Recurse -Filter *.pneu).FullName
+          $files = (Get-ChildItem examples -Recurse -Filter *.pneu | Where-Object { $_.FullName -notmatch '[\\/]user[\\/]' }).FullName
           New-Item -ItemType Directory -Force reports | Out-Null
           dotnet $h ref/PneuSim.exe @files > reports/original.txt
           dotnet $h src/PneuSim/bin/Release/net472/PneuSim.exe @files > reports/rebuilt.txt

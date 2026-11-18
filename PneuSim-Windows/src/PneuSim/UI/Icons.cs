@@ -219,6 +219,45 @@ public sealed class Icons
 		});
 	}
 
+	public static Image PanIcon()
+	{
+		return Draw([SpecialName] (Graphics g) =>
+		{
+			g.SmoothingMode = SmoothingMode.AntiAlias;
+			using Pen pen = new Pen(Color.FromArgb(0, 118, 132), 1.8f)
+			{
+				StartCap = LineCap.Round,
+				EndCap = LineCap.Round
+			};
+			g.DrawLine(pen, 8, 2, 8, 14);
+			g.DrawLine(pen, 2, 8, 14, 8);
+			g.DrawLines(pen, new PointF[3]
+			{
+				new PointF(6f, 4f),
+				new PointF(8f, 2f),
+				new PointF(10f, 4f)
+			});
+			g.DrawLines(pen, new PointF[3]
+			{
+				new PointF(6f, 12f),
+				new PointF(8f, 14f),
+				new PointF(10f, 12f)
+			});
+			g.DrawLines(pen, new PointF[3]
+			{
+				new PointF(4f, 6f),
+				new PointF(2f, 8f),
+				new PointF(4f, 10f)
+			});
+			g.DrawLines(pen, new PointF[3]
+			{
+				new PointF(12f, 6f),
+				new PointF(14f, 8f),
+				new PointF(12f, 10f)
+			});
+		});
+	}
+
 	public static Image ZoomOut()
 	{
 		return Draw([SpecialName] (Graphics g) =>

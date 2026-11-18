@@ -17,9 +17,8 @@ namespace PneuSim;
 public partial class MainForm
 {
 
-	private void NewProject(Project p, string path = null)
+	private void ActivateProject(Project p, string path)
 	{
-		StopSimulation();
 		_project = p;
 		_pageIndex = 0;
 		_filePath = path;
@@ -56,18 +55,11 @@ public partial class MainForm
 
 	private void OnNew(object sender, EventArgs e)
 	{
-		if (ConfirmDiscard())
-		{
-			NewProject(new Project(new Circuit()));
-		}
+		NewProject(new Project(new Circuit()));
 	}
 
 	private void OnOpen(object sender, EventArgs e)
 	{
-		if (!ConfirmDiscard())
-		{
-			return;
-		}
 		using OpenFileDialog openFileDialog = new OpenFileDialog
 		{
 			Filter = "PneuSim projects (*.pneu)|*.pneu|All files (*.*)|*.*"
@@ -290,21 +282,15 @@ public partial class MainForm
 
 	private void OpenExample(Func<Circuit> build)
 	{
-		if (ConfirmDiscard())
-		{
-			NewProject(new Project(build()));
-			_statusMessage.Text = "Example loaded. Press Start (F9), then click the push buttons and switches.";
-		}
+		NewProject(new Project(build()));
+		_statusMessage.Text = "Example loaded. Press Start (F9), then click the push buttons and switches.";
 	}
 
 	private void LoadLessonCircuit(Circuit c)
 	{
-		if (ConfirmDiscard())
-		{
-			NewProject(new Project(c, "Lesson"));
-			FitView();
-			_statusMessage.Text = "Tutorial parts loaded. Connect them, then press 'Check my solution'.";
-		}
+		NewProject(new Project(c, "Lesson"));
+		FitView();
+		_statusMessage.Text = "Tutorial parts loaded. Connect them, then press 'Check my solution'.";
 	}
 
 	private void StartAutosave()

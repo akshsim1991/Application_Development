@@ -381,6 +381,16 @@ class SelfTest
             var namesC = ((IList)P(cc, "Elements")).Cast<object>().Select(e => e.GetType().Name).ToList();
             Check(namesC.Contains("HydraulicValve43") && namesC.Contains("HydraulicPump") && namesC.Contains("HydraulicTank") && namesC.Contains("ReliefValve"), $"complete: hydraulic cylinder gets valve, pump, tank, relief valve ({((IList)P(cc, "Tubes")).Count} tubes)");
         }
+        // Sizing sheets (generic standard sizes)
+        {
+            var sz = T("Sizing");
+            double Call(string name, params object[] a) => (double)sz.GetMethod(name).Invoke(null, a);
+            Check(Call("RecommendedBoreMm", 1000.0, 6.0, 0.7) == 63.0, "sizing: 1000 N at 6 bar needs a 63 mm cylinder");
+            Check(Math.Abs(Call("Force", 63.0, 20.0, 6.0, 0.7, false) - 1309.0) < 5, $"sizing: force of a 63 mm cylinder at 6 bar ({Call("Force", 63.0, 20.0, 6.0, 0.7, false):0} N)");
+            Check(Math.Abs(Call("MotorPowerKw", 20.0, 160.0, 0.85) - 6.27) < 0.05, $"sizing: 20 l/min at 160 bar needs about 6.3 kW ({Call("MotorPowerKw", 20.0, 160.0, 0.85):0.00} kW)");
+            Check(Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4) > 3.0 && Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4) < 12.0, $"sizing: accumulator for 1 l between 100 and 200 bar ({Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4):0.0} l)");
+            Check(Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0) > 12.0 && Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0) < 16.0, $"sizing: tube for 1000 NL/min ({Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0):0.0} mm inner)");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

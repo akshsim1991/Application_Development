@@ -187,7 +187,7 @@ public partial class MainForm
 			ShowBottomTab("Explain");
 			_statusMessage.Text = "Circuit completed from the components in the workspace (you can undo this). Press Start (F9).";
 		}
-		else if (generatorDialog.DialogResult == DialogResult.OK && generatorDialog.Result != null && ConfirmDiscard())
+		else if (generatorDialog.DialogResult == DialogResult.OK && generatorDialog.Result != null)
 		{
 			NewProject(new Project(generatorDialog.Result.Circuit, "Generated circuit"));
 			FitView();

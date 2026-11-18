@@ -103,7 +103,7 @@ public partial class MainForm
 
 	protected override void OnFormClosing(FormClosingEventArgs e)
 	{
-		if (!ConfirmDiscard())
+		if (!ConfirmCloseAll())
 		{
 			e.Cancel = true;
 		}

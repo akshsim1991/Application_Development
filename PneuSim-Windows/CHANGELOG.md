@@ -3,6 +3,12 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.8 "Mistral" (18 Nov 2026)
+- Several circuits can be open at once: file tabs along the top (click to switch, x or middle-click to close, + for a new circuit). New, Open, examples and generated circuits open in a new tab; a file that is already open is switched to. File > Close (Ctrl+W) and Close all (Ctrl+Shift+W). Closing PneuSim asks about every tab with unsaved changes.
+- Pages (sheets) of a circuit are now tabs at the bottom of the workspace, like Excel sheets.
+- Panning: Pan (hand) button, middle mouse button drag, Space + drag. Touchpad: two-finger sideways swipe scrolls the workspace and the ribbon; Shift + wheel scrolls sideways.
+- Sizing calculations library (cylinder bore and force, air use, valve and tube size, pump, motor, accumulator, compressor and receiver); dialog follows.
+
 ## 3.3.7 "Mistral" (18 Nov 2026)
 - Circuit generator "Complete my circuit" is smarter: one valve drives several actuators in parallel (a valve is added only if no suitable one exists); shuttle (OR) and two-pressure (AND) valves are fed by the nearest push-button / selector / roller valves and drive the cylinder or a pilot valve; air-preparation chain (shut-off valve, service unit / regulator); gauges and switches on the air line; silencers on valve exhausts; flow control valves spliced into cylinder lines; hydraulic circuits (pump, tank, relief valve, 4/3 valve, cylinder or motor).
 

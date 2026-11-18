@@ -414,6 +414,22 @@ public sealed class RibbonBar : Control
 		}
 	}
 
+	protected override void WndProc(ref Message m)
+	{
+		if (m.Msg == 526)
+		{
+			int num = (short)(((long)m.WParam >> 16) & 0xFFFF);
+			int num2 = Math.Max(0, _contentWidth - base.Width);
+			_scroll = Math.Max(0, Math.Min(num2, _scroll + num / 120 * 80));
+			Invalidate();
+			m.Result = IntPtr.Zero;
+		}
+		else
+		{
+			base.WndProc(ref m);
+		}
+	}
+
 	protected override void OnMouseWheel(MouseEventArgs e)
 	{
 		base.OnMouseWheel(e);

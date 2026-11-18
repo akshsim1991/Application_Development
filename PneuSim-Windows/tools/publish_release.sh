@@ -3,7 +3,7 @@
 # Usage: bash PneuSim-Windows/tools/publish_release.sh 3.3.5 "release notes"   (repo clone expected at /home/user/pneusim-releases)
 set -e
 VER="$1"; NOTES="${2:-Improvements and fixes.}"
-SRC="$(cd "$(dirname "$0")/.." && pwd)/release/PneuSim-Setup-$VER.exe"
+SRC="${INSTALLER:-$(cd "$(dirname "$0")/.." && pwd)/release/PneuSim-Setup-$VER.exe}"
 REPO=/home/user/pneusim-releases
 [ -f "$SRC" ] || { echo "No installer for $VER in release/"; exit 1; }
 SHA=$(sha256sum "$SRC" | cut -d' ' -f1)

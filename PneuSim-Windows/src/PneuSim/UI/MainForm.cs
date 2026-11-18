@@ -457,8 +457,9 @@ public partial class MainForm : Form
 		};
 		_pageTabs = new TabControl
 		{
-			Dock = DockStyle.Top,
-			Height = 24
+			Dock = DockStyle.Bottom,
+			Alignment = TabAlignment.Bottom,
+			Height = 28
 		};
 		_diagram = new DiagramPanel
 		{
@@ -502,6 +503,7 @@ public partial class MainForm : Form
 		base.StartPosition = FormStartPosition.CenterScreen;
 		base.KeyPreview = true;
 		base.Icon = Icons.AppIcon();
+		BuildDocumentTabs();
 		BuildLayout();
 		Theme.OwnerDrawTabs(_bottomTabs);
 		Theme.OwnerDrawTabs(_pageTabs);

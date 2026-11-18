@@ -868,8 +868,69 @@ public class CircuitCanvas : ScrollableControl
 		}
 	}
 
+	private bool _panning;
+
+	private Point _panStartMouse;
+
+	private Point _panStartScroll;
+
+	private bool _spaceDown;
+
+	private bool _panMode;
+
+	/// <summary>Hand tool: dragging with the left mouse button moves the view. Middle mouse button, Space + drag and the touchpad always pan.</summary>
+	public bool PanMode
+	{
+		get
+		{
+			return _panMode;
+		}
+		set
+		{
+			_panMode = value;
+			Cursor = (value ? Cursors.Hand : Cursors.Default);
+		}
+	}
+
+	private bool WantsPan(MouseEventArgs e)
+	{
+		return e.Button == MouseButtons.Middle || (e.Button == MouseButtons.Left && (_panMode || _spaceDown));
+	}
+
+	/// <summary>Moves the view by dx, dy pixels (positive = right / down).</summary>
+	public void ScrollBy(int dx, int dy)
+	{
+		Point autoScrollPosition = base.AutoScrollPosition;
+		base.AutoScrollPosition = new Point(Math.Max(0, -autoScrollPosition.X + dx), Math.Max(0, -autoScrollPosition.Y + dy));
+		Invalidate();
+	}
+
+	protected override void WndProc(ref Message m)
+	{
+		if (m.Msg == 526)
+		{
+			int num = (short)(((long)m.WParam >> 16) & 0xFFFF);
+			ScrollBy(num / 120 * 60, 0);
+			m.Result = IntPtr.Zero;
+		}
+		else
+		{
+			base.WndProc(ref m);
+		}
+	}
+
 	protected override void OnMouseDown(MouseEventArgs e)
 	{
+		if (WantsPan(e))
+		{
+			Focus();
+			_panning = true;
+			_panStartMouse = e.Location;
+			_panStartScroll = new Point(-base.AutoScrollPosition.X, -base.AutoScrollPosition.Y);
+			Cursor = Cursors.SizeAll;
+			base.Capture = true;
+			return;
+		}
 		base.OnMouseDown(e);
 		Focus();
 		PointF pointF = (_mouseWorld = ToWorld(e.Location));
@@ -995,6 +1056,12 @@ public class CircuitCanvas : ScrollableControl
 
 	protected override void OnMouseMove(MouseEventArgs e)
 	{
+		if (_panning)
+		{
+			base.AutoScrollPosition = new Point(Math.Max(0, _panStartScroll.X - (e.X - _panStartMouse.X)), Math.Max(0, _panStartScroll.Y - (e.Y - _panStartMouse.Y)));
+			Invalidate();
+			return;
+		}
 		base.OnMouseMove(e);
 		PointF pointF = (_mouseWorld = ToWorld(e.Location));
 		TrackHover(pointF);
@@ -1076,6 +1143,13 @@ public class CircuitCanvas : ScrollableControl
 
 	protected override void OnMouseUp(MouseEventArgs e)
 	{
+		if (_panning)
+		{
+			_panning = false;
+			base.Capture = false;
+			Cursor = (_panMode ? Cursors.Hand : (_spaceDown ? Cursors.Hand : Cursors.Default));
+			return;
+		}
 		base.OnMouseUp(e);
 		PointF p = ToWorld(e.Location);
 		if (Simulating)
@@ -1175,6 +1249,10 @@ public class CircuitCanvas : ScrollableControl
 			base.AutoScrollPosition = checked(new Point((int)Math.Round(Math.Max(0f, pointF.X * _zoom - (float)e.X)), (int)Math.Round(Math.Max(0f, pointF.Y * _zoom - (float)e.Y))));
 			Invalidate();
 		}
+		else if ((Control.ModifierKeys & Keys.Shift) != 0)
+		{
+			ScrollBy(-e.Delta / 2, 0);
+		}
 		else
 		{
 			base.OnMouseWheel(e);
@@ -1198,8 +1276,25 @@ public class CircuitCanvas : ScrollableControl
 		return base.IsInputKey(keyData);
 	}
 
+	protected override void OnKeyUp(KeyEventArgs e)
+	{
+		base.OnKeyUp(e);
+		if (e.KeyCode == Keys.Space)
+		{
+			_spaceDown = false;
+			Cursor = (_panMode ? Cursors.Hand : Cursors.Default);
+		}
+	}
+
 	protected override void OnKeyDown(KeyEventArgs e)
 	{
+		if (e.KeyCode == Keys.Space && !e.Control)
+		{
+			_spaceDown = true;
+			Cursor = Cursors.Hand;
+			e.Handled = true;
+			return;
+		}
 		base.OnKeyDown(e);
 		if (e.Control)
 		{

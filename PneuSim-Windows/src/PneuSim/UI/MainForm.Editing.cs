@@ -144,6 +144,7 @@ public partial class MainForm
 	{
 		string text = ((_filePath == null) ? _project.Info.Title : Path.GetFileNameWithoutExtension(_filePath));
 		Text = string.Format("{0}{1} - {2} {3}", text, _dirty ? " *" : "", "PneuSim", AppInfo.ShortVersion);
+		RefreshDocTabs();
 	}
 
 	private CheckIssue SelectedIssue()

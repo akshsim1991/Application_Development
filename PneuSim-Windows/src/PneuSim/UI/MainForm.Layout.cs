@@ -147,6 +147,7 @@ public partial class MainForm
 			};
 			panel.Controls.Add(_canvas);
 			panel.Controls.Add(_pageTabs);
+			panel.Controls.Add(_docTabs);
 			ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
 			contextMenuStrip.Items.Add("Add page", null, [SpecialName] (object a0, EventArgs a1) =>
 			{
@@ -265,6 +266,8 @@ public partial class MainForm
 		toolStripMenuItem.DropDownItems.Add(Item("&Open...", OnOpen, Keys.O | Keys.Control));
 		toolStripMenuItem.DropDownItems.Add(Item("&Save", OnSave, Keys.S | Keys.Control));
 		toolStripMenuItem.DropDownItems.Add(Item("Save &As...", OnSaveAs));
+		toolStripMenuItem.DropDownItems.Add(Item("&Close", OnClose, Keys.W | Keys.Control));
+		toolStripMenuItem.DropDownItems.Add(Item("Close a&ll", OnCloseAll, Keys.W | Keys.Control | Keys.Shift));
 		toolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
 		toolStripMenuItem.DropDownItems.Add(Item("Project &information (title block)...", OnProjectInfo));
 		ToolStripMenuItem toolStripMenuItem2 = new ToolStripMenuItem("&Export");
@@ -534,6 +537,17 @@ public partial class MainForm
 		{
 			_Lambda_0024__173_002D5();
 		}, iconOnly: true));
+		ToolStripButton panButton = new ToolStripButton("Pan", Icons.PanIcon(), null)
+		{
+			CheckOnClick = true,
+			DisplayStyle = ToolStripItemDisplayStyle.Image,
+			ToolTipText = "Pan (hand tool): drag to move the view. Middle mouse button, Space + drag and touchpad swipes also pan."
+		};
+		panButton.Click += delegate
+		{
+			_canvas.PanMode = panButton.Checked;
+		};
+		toolStrip.Items.Add(panButton);
 		toolStrip.Items.Add(new ToolStripButton("Fit")
 		{
 			ToolTipText = "Zoom to fit (Ctrl+9)"

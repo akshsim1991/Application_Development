@@ -114,7 +114,8 @@ of ISO 1219-1 and -2 as reference. Produce `docs/SYMBOLS.md` (conformity table) 
 ## Work schedule (18 Nov 2026 -> Fri 20 Nov 2026 05:30)
 Owner may hit usage limits at any time, so work is cut into small milestones; each ends with
 build + harness, a commit and a push, and a tick below. Resume at the first unticked item.
-- [ ] M1 Design doc + symbol conformity audit (docs only); version bump to 3.3.0 "Mistral"
+- [x] M1a docs: DESIGN.md, SYMBOLS.md draft (18 Nov). [ ] M1b palette/icon grid; version bump to 3.3.0 "Mistral" is deferred to M9 (title is checked by CI smoke test)
+- NOTE: no .NET SDK in the cloud container; builds/harness run on the CI Windows runner or the owner's PC. Check CI result after each push.
 - [ ] M2 De-academic pass (item 1) + README/About/installer text
 - [ ] M3 Settings dialog + theme/units/sounds model (items 8, 9)
 - [ ] M4 Rated-pressure warning + sounds engine (items 7, 9)

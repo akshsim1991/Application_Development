@@ -1,0 +1,64 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="DoubleActingCylinder" id="1" x="220" y="40" rotation="0">
+    <Property name="StrokeTime" value="0.8" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="FlowControlValve" id="2" x="200" y="210" rotation="3">
+    <Property name="Hydraulic" value="False" />
+    <Property name="OpeningPercent" value="40" />
+    <Property name="HasCheckValve" value="True" />
+    <Property name="Label" value="1V2" />
+  </Element>
+  <Element type="FlowControlValve" id="3" x="300" y="210" rotation="3">
+    <Property name="Hydraulic" value="False" />
+    <Property name="OpeningPercent" value="15" />
+    <Property name="HasCheckValve" value="True" />
+    <Property name="Label" value="1V3" />
+  </Element>
+  <Element type="Valve52" id="4" x="130" y="280" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="AirSupply" id="5" x="220" y="380" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="0Z" />
+  </Element>
+  <Element type="Valve32" id="6" x="10" y="380" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="PushButton" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S1" />
+  </Element>
+  <Element type="AirSupply" id="7" x="60" y="480" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="2" fromPort="2" to="1" toPort="1" />
+  <Tube from="3" fromPort="2" to="1" toPort="2" />
+  <Tube from="4" fromPort="4" to="2" toPort="1" />
+  <Tube from="4" fromPort="2" to="3" toPort="1" />
+  <Tube from="5" fromPort="1" to="4" toPort="1" />
+  <Tube from="6" fromPort="2" to="4" toPort="14" />
+  <Tube from="7" fromPort="1" to="6" toPort="1" />
+</PneuSimCircuit>

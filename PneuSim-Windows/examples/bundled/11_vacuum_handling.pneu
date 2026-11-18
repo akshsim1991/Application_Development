@@ -1,0 +1,70 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="SuctionCup" id="1" x="240" y="180" rotation="0">
+    <Property name="DiameterMm" value="40" />
+    <Property name="WorkpieceAtStart" value="True" />
+    <Property name="Label" value="1U1" />
+  </Element>
+  <Element type="PressureSwitch" id="2" x="320" y="40" rotation="0">
+    <Property name="Setting" value="-0.5" />
+    <Property name="Hydraulic" value="False" />
+    <Property name="Label" value="B1" />
+  </Element>
+  <Element type="Junction" id="3" x="170" y="140" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="VacuumGenerator" id="4" x="150" y="190" rotation="0">
+    <Property name="VacuumLevel" value="-0.85" />
+    <Property name="AirConsumptionNlMin" value="60" />
+    <Property name="Label" value="1Z1" />
+  </Element>
+  <Element type="Valve32" id="5" x="100" y="300" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="Selector" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S1" />
+  </Element>
+  <Element type="AirSupply" id="6" x="150" y="420" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="0Z" />
+  </Element>
+  <Element type="PowerTerminal" id="7" x="520" y="40" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="8" x="520" y="120" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="PressureSwitch" />
+    <Property name="Reference" value="B1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="9" x="520" y="230" rotation="0">
+    <Property name="Kind" value="Lamp" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="H1" />
+  </Element>
+  <Element type="PowerTerminal" id="10" x="520" y="330" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="11" x="40" y="0" rotation="0">
+    <Property name="Text" value="Switch on 1S1: the ejector sucks the air out of the cup. Click the cup to take the part away or put it back." />
+    <Property name="FontSize" value="10" />
+    <Property name="Bold" value="False" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="6" fromPort="1" to="5" toPort="1" />
+  <Tube from="5" fromPort="2" to="4" toPort="1" />
+  <Tube from="4" fromPort="V" to="3" toPort="1" />
+  <Tube from="3" fromPort="1" to="1" toPort="1" />
+  <Tube from="3" fromPort="1" to="2" toPort="1" />
+  <Tube from="7" fromPort="1" to="8" toPort="1" />
+  <Tube from="8" fromPort="2" to="9" toPort="A1" />
+  <Tube from="9" fromPort="A2" to="10" toPort="1" />
+</PneuSimCircuit>

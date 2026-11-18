@@ -1,0 +1,108 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="HydraulicCylinder" id="1" x="200" y="60" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="200" />
+    <Property name="BoreMm" value="40" />
+    <Property name="RodMm" value="22" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="2000" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="HydraulicValve43" id="2" x="126" y="200" rotation="0">
+    <Property name="Centre" value="Tandem" />
+    <Property name="Actuator" value="Solenoid" />
+    <Property name="ReturnType" value="Solenoid" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="HydraulicPump" id="3" x="180" y="380" rotation="0">
+    <Property name="FlowLpm" value="8" />
+    <Property name="MaxPressureBar" value="250" />
+    <Property name="Label" value="0P1" />
+  </Element>
+  <Element type="Junction" id="4" x="210" y="340" rotation="0">
+    <Property name="Medium" value="Hydraulic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ReliefValve" id="5" x="280" y="340" rotation="0">
+    <Property name="Setting" value="60" />
+    <Property name="Label" value="0V1" />
+  </Element>
+  <Element type="HydraulicTank" id="6" x="280" y="430" rotation="0">
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="HydraulicTank" id="7" x="250" y="290" rotation="0">
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PressureGauge" id="8" x="360" y="240" rotation="0">
+    <Property name="Hydraulic" value="True" />
+    <Property name="Label" value="0G1" />
+  </Element>
+  <Element type="PowerTerminal" id="9" x="470" y="60" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="10" x="470" y="120" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="PushButton" />
+    <Property name="Reference" value="" />
+    <Property name="Label" value="S1" />
+  </Element>
+  <Element type="ElectricCoil" id="11" x="470" y="220" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1M1" />
+  </Element>
+  <Element type="PowerTerminal" id="12" x="470" y="300" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="13" x="560" y="60" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="14" x="560" y="120" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="PushButton" />
+    <Property name="Reference" value="" />
+    <Property name="Label" value="S2" />
+  </Element>
+  <Element type="ElectricCoil" id="15" x="560" y="220" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1M2" />
+  </Element>
+  <Element type="PowerTerminal" id="16" x="560" y="300" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="17" x="40" y="470" rotation="0">
+    <Property name="Text" value="Hold S1 to extend, S2 to retract. Watch the gauge: the pressure is set by the load&#xD;&#xA;while the cylinder moves, and rises to the relief setting at the end of the stroke.&#xD;&#xA;In the tandem centre the pump flow returns to tank at low pressure." />
+    <Property name="FontSize" value="10" />
+    <Property name="Bold" value="False" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="2" fromPort="A" to="1" toPort="1" />
+  <Tube from="2" fromPort="B" to="1" toPort="2" />
+  <Tube from="3" fromPort="P" to="4" toPort="1" />
+  <Tube from="4" fromPort="1" to="2" toPort="P" />
+  <Tube from="4" fromPort="1" to="5" toPort="P" />
+  <Tube from="5" fromPort="T" to="6" toPort="T" />
+  <Tube from="2" fromPort="T" to="7" toPort="T" />
+  <Tube from="8" fromPort="1" to="5" toPort="P" />
+  <Tube from="9" fromPort="1" to="10" toPort="1" />
+  <Tube from="10" fromPort="2" to="11" toPort="A1" />
+  <Tube from="11" fromPort="A2" to="12" toPort="1" />
+  <Tube from="13" fromPort="1" to="14" toPort="1" />
+  <Tube from="14" fromPort="2" to="15" toPort="A1" />
+  <Tube from="15" fromPort="A2" to="16" toPort="1" />
+</PneuSimCircuit>

@@ -1,0 +1,66 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="Compressor" id="1" x="40" y="440" rotation="0">
+    <Property name="DeliveryNlMin" value="250" />
+    <Property name="CutOutPressure" value="8" />
+    <Property name="CutInPressure" value="6.5" />
+    <Property name="Label" value="0P1" />
+  </Element>
+  <Element type="AirReceiver" id="2" x="120" y="340" rotation="0">
+    <Property name="VolumeLitres" value="10" />
+    <Property name="InitialPressure" value="0" />
+    <Property name="Label" value="0Z1" />
+  </Element>
+  <Element type="ShutOffValve" id="3" x="260" y="340" rotation="0">
+    <Property name="OpenAtStart" value="True" />
+    <Property name="Hydraulic" value="False" />
+    <Property name="Label" value="0V1" />
+  </Element>
+  <Element type="PressureRegulator" id="4" x="360" y="340" rotation="0">
+    <Property name="Setting" value="6" />
+    <Property name="Hydraulic" value="False" />
+    <Property name="Style" value="ServiceUnit" />
+    <Property name="Label" value="0Z2" />
+  </Element>
+  <Element type="FlowMeter" id="5" x="500" y="340" rotation="0">
+    <Property name="Hydraulic" value="False" />
+    <Property name="Label" value="0F1" />
+  </Element>
+  <Element type="Valve32" id="6" x="560" y="200" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="PushButton" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S1" />
+  </Element>
+  <Element type="SingleActingCylinder" id="7" x="600" y="40" rotation="0">
+    <Property name="SpringPreloadN" value="40" />
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="TextNote" id="8" x="40" y="0" rotation="0">
+    <Property name="Text" value="The receiver starts empty: watch the compressor fill it, then operate 1S1 and read the flow meter." />
+    <Property name="FontSize" value="10" />
+    <Property name="Bold" value="False" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="1" fromPort="1" to="2" toPort="1" />
+  <Tube from="2" fromPort="2" to="3" toPort="1" />
+  <Tube from="3" fromPort="2" to="4" toPort="1" />
+  <Tube from="4" fromPort="2" to="5" toPort="1" />
+  <Tube from="5" fromPort="2" to="6" toPort="1" />
+  <Tube from="6" fromPort="2" to="7" toPort="1" />
+</PneuSimCircuit>

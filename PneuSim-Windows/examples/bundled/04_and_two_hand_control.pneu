@@ -1,0 +1,71 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="DoubleActingCylinder" id="1" x="360" y="40" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="Valve52" id="2" x="270" y="170" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="AirSupply" id="3" x="360" y="270" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="0Z" />
+  </Element>
+  <Element type="TwoPressureValve" id="4" x="150" y="260" rotation="0">
+    <Property name="Label" value="1V2" />
+  </Element>
+  <Element type="Valve32" id="5" x="50" y="360" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="PushButton" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S1" />
+  </Element>
+  <Element type="Valve32" id="6" x="170" y="360" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="PushButton" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S2" />
+  </Element>
+  <Element type="AirSupply" id="7" x="100" y="460" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="AirSupply" id="8" x="220" y="460" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="2" fromPort="4" to="1" toPort="1" />
+  <Tube from="2" fromPort="2" to="1" toPort="2" />
+  <Tube from="3" fromPort="1" to="2" toPort="1" />
+  <Tube from="4" fromPort="2" to="2" toPort="14" />
+  <Tube from="5" fromPort="2" to="4" toPort="1a" />
+  <Tube from="6" fromPort="2" to="4" toPort="1b" />
+  <Tube from="7" fromPort="1" to="5" toPort="1" />
+  <Tube from="8" fromPort="1" to="6" toPort="1" />
+</PneuSimCircuit>

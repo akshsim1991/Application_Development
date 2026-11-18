@@ -1,0 +1,366 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="TextNote" id="1" x="20" y="10" rotation="0">
+    <Property name="Text" value="Sequence A+ B+ A- B-   —   electro-pneumatic control with a relay step chain" />
+    <Property name="FontSize" value="11" />
+    <Property name="Bold" value="True" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="2" x="120" y="70" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="1B1" />
+    <Property name="ExtendedMark" value="1B2" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="Valve52" id="3" x="30" y="200" rotation="0">
+    <Property name="Actuator" value="Solenoid" />
+    <Property name="ReturnType" value="Solenoid" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="AirSupply" id="4" x="120" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="5" x="440" y="70" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="2B1" />
+    <Property name="ExtendedMark" value="2B2" />
+    <Property name="Label" value="2A" />
+  </Element>
+  <Element type="Valve52" id="6" x="350" y="200" rotation="0">
+    <Property name="Actuator" value="Solenoid" />
+    <Property name="ReturnType" value="Solenoid" />
+    <Property name="SolenoidLabel" value="2M1" />
+    <Property name="ReturnSolenoidLabel" value="2M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2V1" />
+  </Element>
+  <Element type="AirSupply" id="7" x="440" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="8" x="20" y="390" rotation="0">
+    <Property name="Text" value="Electrical control circuit (24 V DC)" />
+    <Property name="FontSize" value="9" />
+    <Property name="Bold" value="True" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="9" x="20" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="10" x="20" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="PushButton" />
+    <Property name="Reference" value="" />
+    <Property name="Label" value="S1" />
+  </Element>
+  <Element type="ElectricContact" id="11" x="20" y="540" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="ProximitySensor" />
+    <Property name="Reference" value="2B1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="12" x="20" y="620" rotation="0">
+    <Property name="NormallyClosed" value="True" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K3" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="13" x="100" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="14" x="40" y="690" rotation="0">
+    <Property name="Medium" value="Electric" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="15" x="20" y="700" rotation="0">
+    <Property name="NormallyClosed" value="True" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="16" x="20" y="780" rotation="0">
+    <Property name="Kind" value="Relay" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="K1" />
+  </Element>
+  <Element type="PowerTerminal" id="17" x="20" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="18" x="210" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="19" x="210" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="20" x="210" y="540" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="ProximitySensor" />
+    <Property name="Reference" value="1B2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="21" x="290" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="22" x="230" y="610" rotation="0">
+    <Property name="Medium" value="Electric" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="23" x="210" y="620" rotation="0">
+    <Property name="NormallyClosed" value="True" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K3" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="24" x="210" y="780" rotation="0">
+    <Property name="Kind" value="Relay" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="K2" />
+  </Element>
+  <Element type="PowerTerminal" id="25" x="210" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="26" x="400" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="27" x="400" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="28" x="400" y="540" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="ProximitySensor" />
+    <Property name="Reference" value="2B2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="29" x="480" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K3" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="30" x="420" y="610" rotation="0">
+    <Property name="Medium" value="Electric" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="31" x="400" y="620" rotation="0">
+    <Property name="NormallyClosed" value="True" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K4" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="32" x="400" y="780" rotation="0">
+    <Property name="Kind" value="Relay" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="K3" />
+  </Element>
+  <Element type="PowerTerminal" id="33" x="400" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="34" x="590" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="35" x="590" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K3" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="36" x="590" y="540" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="ProximitySensor" />
+    <Property name="Reference" value="1B1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="37" x="670" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K4" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="38" x="610" y="610" rotation="0">
+    <Property name="Medium" value="Electric" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="39" x="590" y="620" rotation="0">
+    <Property name="NormallyClosed" value="True" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="40" x="590" y="780" rotation="0">
+    <Property name="Kind" value="Relay" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="K4" />
+  </Element>
+  <Element type="PowerTerminal" id="41" x="590" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="42" x="780" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="43" x="780" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K1" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="44" x="780" y="780" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1M1" />
+  </Element>
+  <Element type="PowerTerminal" id="45" x="780" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="46" x="890" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="47" x="890" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K3" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="48" x="890" y="780" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1M2" />
+  </Element>
+  <Element type="PowerTerminal" id="49" x="890" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="50" x="1000" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="51" x="1000" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K2" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="52" x="1000" y="780" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2M1" />
+  </Element>
+  <Element type="PowerTerminal" id="53" x="1000" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PowerTerminal" id="54" x="1110" y="410" rotation="0">
+    <Property name="Polarity" value="Plus24V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricContact" id="55" x="1110" y="460" rotation="0">
+    <Property name="NormallyClosed" value="False" />
+    <Property name="Operator" value="Relay" />
+    <Property name="Reference" value="K4" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="ElectricCoil" id="56" x="1110" y="780" rotation="0">
+    <Property name="Kind" value="Solenoid" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2M2" />
+  </Element>
+  <Element type="PowerTerminal" id="57" x="1110" y="860" rotation="0">
+    <Property name="Polarity" value="Zero0V" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="3" fromPort="4" to="2" toPort="1" />
+  <Tube from="3" fromPort="2" to="2" toPort="2" />
+  <Tube from="4" fromPort="1" to="3" toPort="1" />
+  <Tube from="6" fromPort="4" to="5" toPort="1" />
+  <Tube from="6" fromPort="2" to="5" toPort="2" />
+  <Tube from="7" fromPort="1" to="6" toPort="1" />
+  <Tube from="10" fromPort="2" to="11" toPort="1" />
+  <Tube from="11" fromPort="2" to="12" toPort="1" />
+  <Tube from="9" fromPort="1" to="10" toPort="1" />
+  <Tube from="9" fromPort="1" to="13" toPort="1" />
+  <Tube from="12" fromPort="2" to="14" toPort="1" mid="690" />
+  <Tube from="13" fromPort="2" to="14" toPort="1" mid="690" />
+  <Tube from="14" fromPort="1" to="15" toPort="1" />
+  <Tube from="15" fromPort="2" to="16" toPort="A1" mid="770" />
+  <Tube from="16" fromPort="A2" to="17" toPort="1" />
+  <Tube from="19" fromPort="2" to="20" toPort="1" />
+  <Tube from="18" fromPort="1" to="19" toPort="1" />
+  <Tube from="18" fromPort="1" to="21" toPort="1" />
+  <Tube from="20" fromPort="2" to="22" toPort="1" mid="610" />
+  <Tube from="21" fromPort="2" to="22" toPort="1" mid="610" />
+  <Tube from="22" fromPort="1" to="23" toPort="1" />
+  <Tube from="23" fromPort="2" to="24" toPort="A1" mid="770" />
+  <Tube from="24" fromPort="A2" to="25" toPort="1" />
+  <Tube from="27" fromPort="2" to="28" toPort="1" />
+  <Tube from="26" fromPort="1" to="27" toPort="1" />
+  <Tube from="26" fromPort="1" to="29" toPort="1" />
+  <Tube from="28" fromPort="2" to="30" toPort="1" mid="610" />
+  <Tube from="29" fromPort="2" to="30" toPort="1" mid="610" />
+  <Tube from="30" fromPort="1" to="31" toPort="1" />
+  <Tube from="31" fromPort="2" to="32" toPort="A1" mid="770" />
+  <Tube from="32" fromPort="A2" to="33" toPort="1" />
+  <Tube from="35" fromPort="2" to="36" toPort="1" />
+  <Tube from="34" fromPort="1" to="35" toPort="1" />
+  <Tube from="34" fromPort="1" to="37" toPort="1" />
+  <Tube from="36" fromPort="2" to="38" toPort="1" mid="610" />
+  <Tube from="37" fromPort="2" to="38" toPort="1" mid="610" />
+  <Tube from="38" fromPort="1" to="39" toPort="1" />
+  <Tube from="39" fromPort="2" to="40" toPort="A1" mid="770" />
+  <Tube from="40" fromPort="A2" to="41" toPort="1" />
+  <Tube from="42" fromPort="1" to="43" toPort="1" />
+  <Tube from="43" fromPort="2" to="44" toPort="A1" mid="770" />
+  <Tube from="44" fromPort="A2" to="45" toPort="1" />
+  <Tube from="46" fromPort="1" to="47" toPort="1" />
+  <Tube from="47" fromPort="2" to="48" toPort="A1" mid="770" />
+  <Tube from="48" fromPort="A2" to="49" toPort="1" />
+  <Tube from="50" fromPort="1" to="51" toPort="1" />
+  <Tube from="51" fromPort="2" to="52" toPort="A1" mid="770" />
+  <Tube from="52" fromPort="A2" to="53" toPort="1" />
+  <Tube from="54" fromPort="1" to="55" toPort="1" />
+  <Tube from="55" fromPort="2" to="56" toPort="A1" mid="770" />
+  <Tube from="56" fromPort="A2" to="57" toPort="1" />
+</PneuSimCircuit>

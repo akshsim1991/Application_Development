@@ -1,0 +1,303 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="TextNote" id="1" x="20" y="10" rotation="0">
+    <Property name="Text" value="Sequence A+ B+ C+ C- B- A-   —   pneumatic cascade control, 2 groups" />
+    <Property name="FontSize" value="11" />
+    <Property name="Bold" value="True" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="2" x="120" y="70" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="1S1" />
+    <Property name="ExtendedMark" value="1S2" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="Valve52" id="3" x="30" y="200" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Pilot" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="AirSupply" id="4" x="120" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="5" x="440" y="70" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="2S1" />
+    <Property name="ExtendedMark" value="2S2" />
+    <Property name="Label" value="2A" />
+  </Element>
+  <Element type="Valve52" id="6" x="350" y="200" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Pilot" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2V1" />
+  </Element>
+  <Element type="AirSupply" id="7" x="440" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="8" x="760" y="70" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="3S1" />
+    <Property name="ExtendedMark" value="3S2" />
+    <Property name="Label" value="3A" />
+  </Element>
+  <Element type="Valve52" id="9" x="670" y="200" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Pilot" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="3V1" />
+  </Element>
+  <Element type="AirSupply" id="10" x="760" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve52" id="11" x="30" y="690" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Pilot" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="0V1" />
+  </Element>
+  <Element type="AirSupply" id="12" x="120" y="790" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="0Z" />
+  </Element>
+  <Element type="Valve32" id="13" x="130" y="520" rotation="2">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="PushButton" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S0" />
+  </Element>
+  <Element type="Valve32" id="14" x="230" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="1S2" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S2" />
+  </Element>
+  <Element type="Junction" id="15" x="330" y="360" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve32" id="16" x="400" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="2S2" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2S2" />
+  </Element>
+  <Element type="Junction" id="17" x="650" y="370" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve32" id="18" x="570" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="3S2" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="3S2" />
+  </Element>
+  <Element type="Junction" id="19" x="210" y="380" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve32" id="20" x="870" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="3S1" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="3S1" />
+  </Element>
+  <Element type="Junction" id="21" x="530" y="390" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve32" id="22" x="1040" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="2S1" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2S1" />
+  </Element>
+  <Element type="Junction" id="23" x="210" y="400" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Valve32" id="24" x="1210" y="460" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="RollerLever" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="1S1" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1S1" />
+  </Element>
+  <Element type="Junction" id="25" x="60" y="410" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="26" x="10" y="540" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="27" x="10" y="580" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="28" x="130" y="580" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="29" x="300" y="580" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="30" x="470" y="580" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="31" x="640" y="580" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="32" x="-20" y="572" rotation="0">
+    <Property name="Text" value="I" />
+    <Property name="FontSize" value="8" />
+    <Property name="Bold" value="True" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="33" x="150" y="610" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="34" x="850" y="610" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="35" x="940" y="610" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="36" x="1110" y="610" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="37" x="1280" y="610" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="38" x="120" y="602" rotation="0">
+    <Property name="Text" value="II" />
+    <Property name="FontSize" value="8" />
+    <Property name="Bold" value="True" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="3" fromPort="4" to="2" toPort="1" />
+  <Tube from="3" fromPort="2" to="2" toPort="2" />
+  <Tube from="4" fromPort="1" to="3" toPort="1" />
+  <Tube from="6" fromPort="4" to="5" toPort="1" />
+  <Tube from="6" fromPort="2" to="5" toPort="2" />
+  <Tube from="7" fromPort="1" to="6" toPort="1" />
+  <Tube from="9" fromPort="4" to="8" toPort="1" />
+  <Tube from="9" fromPort="2" to="8" toPort="2" />
+  <Tube from="10" fromPort="1" to="9" toPort="1" />
+  <Tube from="12" fromPort="1" to="11" toPort="1" />
+  <Tube from="14" fromPort="2" to="15" toPort="1" />
+  <Tube from="15" fromPort="1" to="6" toPort="14" />
+  <Tube from="16" fromPort="2" to="17" toPort="1" />
+  <Tube from="17" fromPort="1" to="9" toPort="14" />
+  <Tube from="18" fromPort="2" to="19" toPort="1" />
+  <Tube from="19" fromPort="1" to="11" toPort="12" />
+  <Tube from="20" fromPort="2" to="21" toPort="1" />
+  <Tube from="21" fromPort="1" to="6" toPort="12" />
+  <Tube from="22" fromPort="2" to="23" toPort="1" />
+  <Tube from="23" fromPort="1" to="3" toPort="12" />
+  <Tube from="24" fromPort="2" to="25" toPort="1" />
+  <Tube from="25" fromPort="1" to="13" toPort="1" />
+  <Tube from="13" fromPort="2" to="26" toPort="1" />
+  <Tube from="26" fromPort="1" to="11" toPort="14" />
+  <Tube from="27" fromPort="1" to="3" toPort="14" />
+  <Tube from="28" fromPort="1" to="11" toPort="4" />
+  <Tube from="27" fromPort="1" to="28" toPort="1" />
+  <Tube from="29" fromPort="1" to="14" toPort="1" />
+  <Tube from="28" fromPort="1" to="29" toPort="1" />
+  <Tube from="30" fromPort="1" to="16" toPort="1" />
+  <Tube from="29" fromPort="1" to="30" toPort="1" />
+  <Tube from="31" fromPort="1" to="18" toPort="1" />
+  <Tube from="30" fromPort="1" to="31" toPort="1" />
+  <Tube from="33" fromPort="1" to="11" toPort="2" />
+  <Tube from="34" fromPort="1" to="9" toPort="12" />
+  <Tube from="33" fromPort="1" to="34" toPort="1" />
+  <Tube from="35" fromPort="1" to="20" toPort="1" />
+  <Tube from="34" fromPort="1" to="35" toPort="1" />
+  <Tube from="36" fromPort="1" to="22" toPort="1" />
+  <Tube from="35" fromPort="1" to="36" toPort="1" />
+  <Tube from="37" fromPort="1" to="24" toPort="1" />
+  <Tube from="36" fromPort="1" to="37" toPort="1" />
+</PneuSimCircuit>

@@ -1,0 +1,107 @@
+using System.Drawing;
+using System.Runtime.CompilerServices;
+using System.Windows.Forms;
+using Microsoft.VisualBasic.CompilerServices;
+
+namespace PneuSim;
+
+[StandardModule]
+public sealed class Theme
+{
+	public static readonly Color DarkBack = Color.FromArgb(37, 39, 46);
+
+	public static readonly Color DarkFore = Color.FromArgb(225, 228, 235);
+
+	public static readonly Color DarkField = Color.FromArgb(28, 30, 36);
+
+	public static readonly Color DarkHeader = Color.FromArgb(52, 56, 66);
+
+	public static void Apply(Control root)
+	{
+		if (AppSettings.DarkMode)
+		{
+			root.BackColor = DarkBack;
+			root.ForeColor = DarkFore;
+			ApplyChildren(root.Controls);
+		}
+	}
+
+	private static void ApplyChildren(Control.ControlCollection controls)
+	{
+		foreach (Control control in controls)
+		{
+			bool flag = true;
+			if (flag == control is TextBoxBase || flag == control is ListBox || flag == control is ListView || flag == control is ComboBox || flag == control is NumericUpDown)
+			{
+				control.BackColor = DarkField;
+				control.ForeColor = DarkFore;
+			}
+			else if (flag == control is DataGridView)
+			{
+				DataGridView obj = (DataGridView)control;
+				obj.BackgroundColor = DarkField;
+				obj.GridColor = DarkHeader;
+				obj.EnableHeadersVisualStyles = false;
+				obj.DefaultCellStyle.BackColor = DarkField;
+				obj.DefaultCellStyle.ForeColor = DarkFore;
+				obj.DefaultCellStyle.SelectionBackColor = Color.FromArgb(62, 68, 82);
+				obj.ColumnHeadersDefaultCellStyle.BackColor = DarkHeader;
+				obj.ColumnHeadersDefaultCellStyle.ForeColor = DarkFore;
+				obj.RowHeadersDefaultCellStyle.BackColor = DarkHeader;
+			}
+			else if (flag == control is PropertyGrid)
+			{
+				PropertyGrid obj2 = (PropertyGrid)control;
+				obj2.ViewBackColor = DarkField;
+				obj2.ViewForeColor = DarkFore;
+				obj2.LineColor = DarkHeader;
+				obj2.CategoryForeColor = DarkFore;
+				obj2.HelpBackColor = DarkBack;
+				obj2.HelpForeColor = DarkFore;
+				obj2.BackColor = DarkBack;
+			}
+			else if (flag == control is Button)
+			{
+				control.BackColor = DarkHeader;
+				control.ForeColor = DarkFore;
+				((Button)control).FlatStyle = FlatStyle.Flat;
+			}
+			else if (flag == control is TabControl)
+			{
+				OwnerDrawTabs((TabControl)control);
+				control.BackColor = DarkBack;
+				control.ForeColor = DarkFore;
+			}
+			else if (flag != control is PictureBox)
+			{
+				control.BackColor = DarkBack;
+				control.ForeColor = DarkFore;
+			}
+			if (control.HasChildren)
+			{
+				ApplyChildren(control.Controls);
+			}
+		}
+	}
+
+	public static void OwnerDrawTabs(TabControl tc)
+	{
+		if (tc.DrawMode == TabDrawMode.OwnerDrawFixed)
+		{
+			return;
+		}
+		tc.DrawMode = TabDrawMode.OwnerDrawFixed;
+		tc.DrawItem += [SpecialName] (object s, DrawItemEventArgs e) =>
+		{
+			bool darkMode = AppSettings.DarkMode;
+			bool flag = e.Index == tc.SelectedIndex;
+			Color color = ((!darkMode) ? (flag ? SystemColors.Window : SystemColors.Control) : (flag ? DarkHeader : DarkBack));
+			Color foreColor = (darkMode ? DarkFore : SystemColors.ControlText);
+			using (SolidBrush brush = new SolidBrush(color))
+			{
+				e.Graphics.FillRectangle(brush, e.Bounds);
+			}
+			TextRenderer.DrawText(e.Graphics, tc.TabPages[e.Index].Text, tc.Font, e.Bounds, foreColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+		};
+	}
+}

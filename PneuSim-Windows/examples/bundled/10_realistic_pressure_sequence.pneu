@@ -1,0 +1,98 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<PneuSimCircuit version="2">
+  <Element type="SingleActingCylinder" id="1" x="200" y="60" rotation="0">
+    <Property name="SpringPreloadN" value="40" />
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="100" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="1A" />
+  </Element>
+  <Element type="DoubleActingCylinder" id="2" x="560" y="60" rotation="0">
+    <Property name="StrokeTime" value="1" />
+    <Property name="StrokeLength" value="100" />
+    <Property name="BoreMm" value="32" />
+    <Property name="RodMm" value="12" />
+    <Property name="LoadMassKg" value="2" />
+    <Property name="LoadForceN" value="0" />
+    <Property name="FrictionN" value="25" />
+    <Property name="Cushioning" value="True" />
+    <Property name="RetractedMark" value="" />
+    <Property name="ExtendedMark" value="" />
+    <Property name="Label" value="2A" />
+  </Element>
+  <Element type="Valve32" id="3" x="140" y="190" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="Selector" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V1" />
+  </Element>
+  <Element type="Valve32" id="4" x="400" y="200" rotation="0">
+    <Property name="NormallyOpen" value="False" />
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="4" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="1V2" />
+  </Element>
+  <Element type="Valve52" id="5" x="470" y="190" rotation="0">
+    <Property name="Actuator" value="Pilot" />
+    <Property name="ReturnType" value="Spring" />
+    <Property name="SolenoidLabel" value="1M1" />
+    <Property name="ReturnSolenoidLabel" value="1M2" />
+    <Property name="TriggerMark" value="" />
+    <Property name="SwitchingPressure" value="1.5" />
+    <Property name="DelaySeconds" value="2" />
+    <Property name="Label" value="2V1" />
+  </Element>
+  <Element type="AirSupply" id="6" x="190" y="290" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="0Z" />
+  </Element>
+  <Element type="AirSupply" id="7" x="560" y="290" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="AirSupply" id="8" x="450" y="300" rotation="0">
+    <Property name="Pressure" value="6" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="PressureGauge" id="9" x="290" y="90" rotation="0">
+    <Property name="Hydraulic" value="False" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="Junction" id="10" x="210" y="150" rotation="0">
+    <Property name="Medium" value="Pneumatic" />
+    <Property name="Label" value="" />
+  </Element>
+  <Element type="TextNote" id="11" x="40" y="380" rotation="0">
+    <Property name="Text" value="Switch on Simulation &gt; Realistic physics, start, and switch on 1V1.&#xD;&#xA;1A clamps; the sequence valve 1V2 starts 2A only when the clamping&#xD;&#xA;pressure has risen to 4 bar (watch the gauge)." />
+    <Property name="FontSize" value="10" />
+    <Property name="Bold" value="False" />
+    <Property name="Label" value="" />
+  </Element>
+  <Tube from="1" fromPort="1" to="10" toPort="1" />
+  <Tube from="10" fromPort="1" to="3" toPort="2" />
+  <Tube from="10" fromPort="1" to="4" toPort="12" />
+  <Tube from="10" fromPort="1" to="9" toPort="1" />
+  <Tube from="6" fromPort="1" to="3" toPort="1" />
+  <Tube from="5" fromPort="4" to="2" toPort="1" />
+  <Tube from="5" fromPort="2" to="2" toPort="2" />
+  <Tube from="7" fromPort="1" to="5" toPort="1" />
+  <Tube from="8" fromPort="1" to="4" toPort="1" />
+  <Tube from="4" fromPort="2" to="5" toPort="14" />
+</PneuSimCircuit>

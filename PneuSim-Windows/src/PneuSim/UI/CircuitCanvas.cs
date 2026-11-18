@@ -558,6 +558,7 @@ public class CircuitCanvas : ScrollableControl
 			DrawInspected(g);
 		}
 		DrawSelection(g);
+		DrawAlarm(g);
 		if (_connectFrom != null && _connectMoved)
 		{
 			using Pen pen = new Pen(Color.FromArgb(0, 140, 70), 1.5f)
@@ -612,6 +613,27 @@ public class CircuitCanvas : ScrollableControl
 			if (tube.Fault != 0 && (!tube.FaultHidden || RevealFaults))
 			{
 				DrawTubeFault(g, tube, array);
+			}
+		}
+	}
+
+	/// <summary>Elements above their rated pressure; drawn with a red frame while simulating.</summary>
+	public List<CircuitElement> AlarmElements { get; set; }
+
+	private void DrawAlarm(DrawSurface g)
+	{
+		if (AlarmElements == null)
+		{
+			return;
+		}
+		using Pen pen = new Pen(Color.Red, 3f);
+		foreach (CircuitElement alarmElement in AlarmElements)
+		{
+			if (_circuit.Elements.Contains(alarmElement))
+			{
+				RectangleF rectangleF = alarmElement.WorldBounds();
+				rectangleF.Inflate(5f, 5f);
+				g.DrawRectangle(pen, rectangleF.X, rectangleF.Y, rectangleF.Width, rectangleF.Height);
 			}
 		}
 	}

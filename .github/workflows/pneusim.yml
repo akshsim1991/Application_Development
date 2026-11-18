@@ -42,6 +42,12 @@ jobs:
           if ($d) { $d | Format-Table -AutoSize | Out-String -Width 400 | Write-Host; throw "Reports differ" }
           "IDENTICAL"
 
+      - name: Self-test (sounds, rated pressure, units)
+        run: |
+          dotnet build tools/selftest/SelfTest.csproj -c Release -nologo
+          dotnet tools/selftest/bin/Release/net8.0-windows/SelfTest.dll src/PneuSim/bin/Release/net472/PneuSim.exe
+          if ($LASTEXITCODE -ne 0) { throw "Self-test failed" }
+
       - name: GUI smoke test (start-up and all 12 examples)
         run: |
           New-Item -ItemType Directory -Force shots | Out-Null

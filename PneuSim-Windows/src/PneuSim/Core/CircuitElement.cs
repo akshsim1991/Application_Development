@@ -73,6 +73,52 @@ public abstract class CircuitElement
 		CrossReference = "";
 	}
 
+	/// <summary>Rated maximum pressure in bar. 0 means the default for the medium (10 bar air, 160 bar oil).</summary>
+	[Category("Safety")]
+	[DisplayName("Rated maximum pressure (bar)")]
+	[Description("The highest pressure this component is built for. PneuSim sounds an alarm if it is exceeded. 0 = default (10 bar air, 160 bar oil).")]
+	public double RatedPressureBar { get; set; }
+
+	/// <summary>Pneumatic or Hydraulic for components that carry a fluid; null for purely electrical parts.</summary>
+	public PortKind? FluidKind()
+	{
+		foreach (Port port in Ports)
+		{
+			if (port.Kind != PortKind.Electric)
+			{
+				return port.Kind;
+			}
+		}
+		return null;
+	}
+
+	public double EffectiveRatedPressure => (RatedPressureBar > 0.0) ? RatedPressureBar : ((FluidKind() == PortKind.Hydraulic) ? 160.0 : 10.0);
+
+	/// <summary>Highest offending pressure in bar if a port exceeds the rating (or the -0.95 bar vacuum rating); otherwise null.</summary>
+	public double? OverRatedPressure()
+	{
+		if (!FluidKind().HasValue)
+		{
+			return null;
+		}
+		double effectiveRatedPressure = EffectiveRatedPressure;
+		foreach (Port port in Ports)
+		{
+			if (port.Kind != PortKind.Electric && port.ConnectionCount > 0)
+			{
+				if (port.Pressure > effectiveRatedPressure + 0.05)
+				{
+					return port.Pressure;
+				}
+				if (port.Kind == PortKind.Pneumatic && port.Pressure < -0.97)
+				{
+					return port.Pressure;
+				}
+			}
+		}
+		return null;
+	}
+
 	public virtual bool ShowProperty(string name)
 	{
 		return true;

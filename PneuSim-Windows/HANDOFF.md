@@ -118,7 +118,7 @@ build + harness, a commit and a push, and a tick below. Resume at the first unti
 - NOTE: .NET 8 SDK installed in the cloud container via apt (apt-get update; apt-get install dotnet-sdk-8.0). Build: `dotnet build ... -p:EnableWindowsTargeting=true`. Harness runs on Linux too (partial: 'static checks' threw in both builds; compare reports/original.txt vs rebuilt.txt). CI now also runs on claude/** branches.
 - [x] M2 De-academic pass (item 1) + README/About/installer text (18 Nov; builds, harness identical locally)
 - [x] M3 Settings dialog (Tools > Settings, Ctrl+,), theme Light/Dark/Follow Windows (default), units bar/MPa/kPa on canvas labels, sound+update flags stored. Still open: unit-aware property inputs/Cutaways text; Advanced-mode filtering of properties (do in M5/M9); rated pressure is M4
-- [ ] M4 Rated-pressure warning + sounds engine (items 7, 9)
+- [x] M4 Rated-pressure warning (red frame + status message + alarm; property 'Rated maximum pressure' visible in Advanced mode, not saved when 0) and sound engine (Core/SoundEngine.cs waveOut mixer, UI/SoundMonitor.cs). Self-test: tools/selftest (also in CI). NOT yet heard on a real PC: owner to check sounds on Windows
 - [ ] M5 Ribbon framework + tabs + search (item 4); remove left panel
 - [ ] M6 Start screen + About box (items 3, 5)
 - [ ] M7 Robustness: atomic save, error log, damaged-file handling, DPI (item 10)

@@ -8,6 +8,8 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
   Troubleshooting became Fault finding (wording only; engine unchanged, harness identical).
 - New user README and About text; the installer ships `installer/README-user.md`.
 - New Settings dialog (Tools > Settings, Ctrl+,): theme Light / Dark / Follow Windows (default), pressure unit bar / MPa / kPa for canvas labels, Simple/Advanced flag, sound and update options.
+- Synthesised sounds (valve click, end-stop thud, exhaust hiss, compressor/pump hum, relief chatter, alarm), on by default; settings for master, volume and each sound.
+- Rated maximum pressure per component (10 bar air, 160 bar oil, -0.95 bar vacuum by default): red frame, status warning and alarm when exceeded.
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

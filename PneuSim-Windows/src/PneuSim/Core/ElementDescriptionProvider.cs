@@ -34,7 +34,7 @@ public class ElementDescriptionProvider : TypeDescriptionProvider
 				return all;
 			}
 			return new PropertyDescriptorCollection((from PropertyDescriptor p in all
-				where _element.ShowProperty(p.Name)
+				where _element.ShowProperty(p.Name) && (p.Name != "RatedPressureBar" || (AppSettings.AdvancedMode && _element.FluidKind().HasValue))
 				select p).ToArray());
 		}
 	}

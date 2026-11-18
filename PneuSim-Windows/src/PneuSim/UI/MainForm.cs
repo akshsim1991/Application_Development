@@ -301,6 +301,8 @@ public class MainForm : Form
 
 	private TroubleshootExercise _exercise;
 
+	private SoundMonitor _sounds = new SoundMonitor();
+
 	private readonly Random _rnd;
 
 	private SimulationRecorder _recorder;
@@ -890,6 +892,7 @@ public class MainForm : Form
 		}
 		if (!e.Cancel)
 		{
+			_sounds.Stop();
 			DeleteAutosave();
 		}
 		base.OnFormClosing(e);
@@ -1070,6 +1073,8 @@ public class MainForm : Form
 		}
 		_running = false;
 		_paused = false;
+		_sounds.Stop();
+		_canvas.AlarmElements = null;
 		foreach (CircuitElement item in _project.AllElements())
 		{
 			item.ResetSim();
@@ -1132,6 +1137,7 @@ public class MainForm : Form
 			while (num2 <= 4);
 			_recorder?.Record();
 			_tickCount++;
+			UpdateSoundsAndAlarm();
 			ShowSimulationStatus();
 			_canvas.Invalidate();
 			_diagram.Invalidate();
@@ -1151,6 +1157,29 @@ public class MainForm : Form
 			CaptureFrame();
 		}
 	}
+
+	private void UpdateSoundsAndAlarm()
+	{
+		_sounds.Update(_simulator.Circuit);
+		string text = _sounds.WarningText();
+		bool flag = text != null;
+		_canvas.AlarmElements = (flag ? _sounds.OverRated.Select((KeyValuePair<CircuitElement, double> o) => o.Key).ToList() : null);
+		_alarmShown = flag;
+		if (flag)
+		{
+			_statusMessage.Text = text;
+			_statusMessage.ForeColor = ((_tickCount / 12 % 2 == 0) ? Color.Firebrick : (AppSettings.DarkMode ? Color.Gainsboro : SystemColors.ControlText));
+		}
+		else if (_alarmWasShown)
+		{
+			_statusMessage.ForeColor = (AppSettings.DarkMode ? Color.Gainsboro : SystemColors.ControlText);
+		}
+		_alarmWasShown = flag;
+	}
+
+	private bool _alarmShown;
+
+	private bool _alarmWasShown;
 
 	private void OnElementOperated(object sender, EventArgs e)
 	{

@@ -370,6 +370,10 @@ public class Circuit
 			foreach (PropertyInfo item2 in PersistentProperties(item))
 			{
 				object objectValue = RuntimeHelpers.GetObjectValue(item2.GetValue(item));
+				if (item2.Name == "RatedPressureBar" && Convert.ToDouble(objectValue, invariantCulture) == 0.0)
+				{
+					continue;
+				}
 				xElement2.Add(new XElement("Property", new XAttribute("name", item2.Name), new XAttribute("value", Convert.ToString(RuntimeHelpers.GetObjectValue(objectValue), invariantCulture))));
 			}
 			xElement.Add(xElement2);

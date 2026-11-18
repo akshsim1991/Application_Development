@@ -23,6 +23,11 @@ public partial class MainForm
 		_project = p;
 		_pageIndex = 0;
 		_filePath = path;
+		HideStartScreen();
+		if (path != null)
+		{
+			AppSettings.AddRecent(path);
+		}
 		_dirty = false;
 		_history.Clear();
 		_history.Add((p.ToXml(), 0));
@@ -131,6 +136,7 @@ public partial class MainForm
 		{
 			_project.Save(path);
 			_filePath = path;
+			AppSettings.AddRecent(path);
 			_dirty = false;
 			UpdateTitle();
 			_statusMessage.Text = $"Saved {path}";

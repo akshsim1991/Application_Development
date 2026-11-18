@@ -229,7 +229,9 @@ public partial class MainForm
 
 	private void OnAbout(object sender, EventArgs e)
 	{
-		MessageBox.Show(string.Format("{0} {1}{2}Pneumatic, electro-pneumatic and hydraulic circuit design and simulation{3}{4}", "PneuSim", "3.2", "\r\n", "\r\n", "\r\n") + "(c) 2026 Akshaya Simha.\r\n\r\nDeveloped in VB.NET initially, and improved it with vibe coding using Claude Pro.\r\n\r\nDesign, simulate and check pneumatic and hydraulic circuits before you build them.\r\n\r\nSymbols based on ISO 1219 / IEC 60617.", "About PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+		using AboutDialog aboutDialog = new AboutDialog();
+		Theme.Apply(aboutDialog);
+		aboutDialog.ShowDialog(this);
 	}
 
 	private void OnSweep(object sender, EventArgs e)

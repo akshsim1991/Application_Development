@@ -34,6 +34,7 @@ internal sealed class Program
 		else
 		{
 			_mainForm.OfferRecovery();
+			_mainForm.ShowStartScreen();
 		}
 		Application.Run(_mainForm);
 	}

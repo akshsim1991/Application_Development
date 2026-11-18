@@ -182,7 +182,13 @@ public partial class MainForm
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel1.Controls.Add(value);
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel2.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_rightSplit);
 			_status = new StatusStrip();
-			_status.Items.AddRange(new ToolStripItem[3] { _statusMode, _statusMessage, _statusZoom });
+			_status.Items.AddRange(new ToolStripItem[4]
+			{
+				_statusMode,
+				_statusMessage,
+				_statusZoom,
+				new ToolStripStatusLabel(AppInfo.Full)
+			});
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel1Collapsed = true;
 			base.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit);
 			BuildRibbon();
@@ -590,6 +596,7 @@ public partial class MainForm
 		RibbonBuilder.Build(_ribbon, _ribbonCommands, ColorScheme.Light);
 		_ribbon.PresetChosen += delegate(LibraryPreset preset)
 		{
+			HideStartScreen();
 			if (_running)
 			{
 				_statusMessage.Text = "Stop the simulation to place components.";

@@ -65,11 +65,11 @@ concept; talk to other modules through their public classes only.
 | `Core/EnumDescriptionConverter.cs` | 51 |
 | `Core/ElementDescriptionProvider.cs` | 51 |
 
-### M-SETTINGS - Settings, units, sound  (7 files, 1043 lines)
+### M-SETTINGS - Settings, units, sound  (7 files, 1068 lines)
 
 | File | Lines |
 |---|---|
-| `Core/AppSettings.cs` | 171 |
+| `Core/AppSettings.cs` | 196 |
 | `Core/Units.cs` | 33 |
 | `Core/SoundEngine.cs` | 387 |
 | `UI/SoundMonitor.cs` | 117 |
@@ -232,21 +232,22 @@ concept; talk to other modules through their public classes only.
 | `UI/RibbonBuilder.cs` | 126 |
 | `UI/RibbonIcons.cs` | 116 |
 
-### M-SHELL - Main window (partial class, split by concern)  (11 files, 3534 lines)
+### M-SHELL - Main window (partial class, split by concern)  (12 files, 3603 lines)
 
 | File | Lines |
 |---|---|
 | `UI/MainForm.Editing.cs` | 195 |
 | `UI/MainForm.FaultFinding.cs` | 185 |
-| `UI/MainForm.Files.cs` | 370 |
+| `UI/MainForm.Files.cs` | 376 |
 | `UI/MainForm.Lambdas.cs` | 324 |
-| `UI/MainForm.Layout.cs` | 604 |
+| `UI/MainForm.Layout.cs` | 611 |
 | `UI/MainForm.Other.cs` | 446 |
 | `UI/MainForm.Simulation.cs` | 373 |
+| `UI/MainForm.StartScreen.cs` | 53 |
 | `UI/MainForm.Theme.cs` | 184 |
-| `UI/MainForm.Tools.cs` | 249 |
+| `UI/MainForm.Tools.cs` | 251 |
 | `UI/MainForm.cs` | 550 |
-| `UI/Program.cs` | 54 |
+| `UI/Program.cs` | 55 |
 
 ### M-COMPAT - Visual Basic compatibility shims  (26 files, 163 lines)
 
@@ -279,4 +280,9 @@ concept; talk to other modules through their public classes only.
 | `VBCompat/VB-AnonymousDelegate_9.cs` | 6 |
 | `VBCompat/VB-AnonymousType_0.cs` | 13 |
 
+### Unassigned
+
+- `Core/AppInfo.cs`
+- `UI/AboutDialog.cs`
+- `UI/StartScreen.cs`
 <!-- AUTO-END -->

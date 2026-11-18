@@ -10,6 +10,8 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - New Settings dialog (Tools > Settings, Ctrl+,): theme Light / Dark / Follow Windows (default), pressure unit bar / MPa / kPa for canvas labels, Simple/Advanced flag, sound and update options.
 - Synthesised sounds (valve click, end-stop thud, exhaust hiss, compressor/pump hum, relief chatter, alarm), on by default; settings for master, volume and each sound.
 - Rated maximum pressure per component (10 bar air, 160 bar oil, -0.95 bar vacuum by default): red frame, status warning and alarm when exceeded.
+- Own ribbon (tabs, groups, More drop-downs, search) replaces the left library panel. New start screen (new, open, drop a file, recent circuits, examples). New About box. Status bar shows "PneuSim 3.3.0 Mistral". Window title now "PneuSim 3.3".
+- Internal: MainForm and CircuitAnalysis split into partial-class files; docs/MODULES.md added.
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

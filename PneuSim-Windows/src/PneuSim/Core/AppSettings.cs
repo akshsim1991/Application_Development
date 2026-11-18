@@ -24,6 +24,24 @@ public sealed class AppSettings
 
 	public static bool AdvancedMode { get; set; }
 
+	/// <summary>Most recently used files, newest first (at most 8).</summary>
+	public static List<string> RecentFiles { get; } = new List<string>();
+
+	public static void AddRecent(string path)
+	{
+		if (string.IsNullOrEmpty(path))
+		{
+			return;
+		}
+		RecentFiles.RemoveAll((string p) => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+		RecentFiles.Insert(0, path);
+		if (RecentFiles.Count > 8)
+		{
+			RecentFiles.RemoveRange(8, RecentFiles.Count - 8);
+		}
+		Save();
+	}
+
 	public static bool CheckForUpdates { get; set; } = true;
 
 	public static bool SoundsOn { get; set; } = true;
@@ -103,6 +121,12 @@ public sealed class AppSettings
 						PressureUnit = text3;
 					}
 					break;
+				case "Recent":
+					if (text3 != "" && RecentFiles.Count < 8)
+					{
+						RecentFiles.Add(text3);
+					}
+					break;
 				case "Advanced":
 					AdvancedMode = text3 == "1";
 					break;
@@ -157,6 +181,7 @@ public sealed class AppSettings
 				$"Sounds={(SoundsOn ? 1 : 0)}",
 				"Volume=" + SoundVolume.ToString(CultureInfo.InvariantCulture)
 			};
+			list.AddRange(RecentFiles.Select([SpecialName] (string r) => "Recent=" + r));
 			list.AddRange(MutedSounds.Select([SpecialName] (string m) => "MutedSound=" + m));
 			list.AddRange(CompletedLessons.Select([SpecialName] (string l) => "Lesson=" + l));
 			File.WriteAllLines(FilePath, list);

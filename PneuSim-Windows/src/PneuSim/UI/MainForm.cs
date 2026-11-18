@@ -323,7 +323,7 @@ public partial class MainForm : Form
 
 	private const string AppName = "PneuSim";
 
-	private const string AppVersion = "3.2";
+	private const string AppVersion = AppInfo.ShortVersion;
 
 	private const string FileFilter = "PneuSim projects (*.pneu)|*.pneu|All files (*.*)|*.*";
 

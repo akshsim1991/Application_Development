@@ -143,7 +143,7 @@ public partial class MainForm
 	private void UpdateTitle()
 	{
 		string text = ((_filePath == null) ? _project.Info.Title : Path.GetFileNameWithoutExtension(_filePath));
-		Text = string.Format("{0}{1} - {2} {3}", text, _dirty ? " *" : "", "PneuSim", "3.2");
+		Text = string.Format("{0}{1} - {2} {3}", text, _dirty ? " *" : "", "PneuSim", AppInfo.ShortVersion);
 	}
 
 	private CheckIssue SelectedIssue()

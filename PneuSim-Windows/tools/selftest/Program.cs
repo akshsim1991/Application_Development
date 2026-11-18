@@ -49,6 +49,64 @@ class SelfTest
             if (pass == 0) Check(text == null, "6 bar supply: no rated-pressure warning");
             else Check(text != null && text.Contains("Rated pressure exceeded"), "12 bar supply: warning raised -> " + text);
         }
+        // Manifold: pressure reaches every outlet
+        {
+            var circuit = Activator.CreateInstance(T("Circuit"));
+            var sup = Activator.CreateInstance(T("AirSupply"));
+            var manifold1 = Activator.CreateInstance(T("Manifold"));
+            var g1 = Activator.CreateInstance(T("PressureGauge"));
+            var g2 = Activator.CreateInstance(T("PressureGauge"));
+            var add = circuit.GetType().GetMethods().First(m => m.Name == "Add");
+            foreach (var e in new[] { sup, manifold1, g1, g2 }) add.MakeGenericMethod(e.GetType()).Invoke(circuit, new object[] { e, 0f, 0f, null });
+            Func<object, int, object> port = (e, i) => ((IList)P(e, "Ports"))[i];
+            var conn = circuit.GetType().GetMethod("Connect", new[] { T("Port"), T("Port") });
+            conn.Invoke(circuit, new object[] { port(sup, 0), port(manifold1, 0) });
+            conn.Invoke(circuit, new object[] { port(manifold1, 1), port(g1, 0) });
+            conn.Invoke(circuit, new object[] { port(manifold1, 4), port(g2, 0) });
+            var sim = Activator.CreateInstance(T("Simulator"), circuit);
+            sim.GetType().GetMethod("Reset").Invoke(sim, null);
+            for (int k = 0; k < 200; k++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+            double p1 = (double)P(port(g1, 0), "Pressure"), p2 = (double)P(port(g2, 0), "Pressure");
+            Check(p1 > 5 && p2 > 5, $"manifold feeds both outlets ({p1:0.0} / {p2:0.0} bar)");
+            Check(((IList)P(manifold1, "Ports")).Count == 5, "manifold has an inlet and 4 outlets");
+        }
+        // Pneumatic counterbalance circuit (owner's file): loads with all tubes, holds, raises and lowers
+        {
+            string path = Path.Combine(AppContext.BaseDirectory, "data", "Pneumatic_Counterbalance.pneu");
+            if (!File.Exists(path)) path = Path.Combine(Directory.GetCurrentDirectory(), "tools", "selftest", "data", "Pneumatic_Counterbalance.pneu");
+            if (!File.Exists(path)) path = Path.Combine(Directory.GetCurrentDirectory(), "data", "Pneumatic_Counterbalance.pneu");
+            string xmlText = File.ReadAllText(path);
+            xmlText = System.Text.RegularExpressions.Regex.Replace(xmlText, "<Element type=\"TextNote\".*?</Element>", "", System.Text.RegularExpressions.RegexOptions.Singleline);
+            string tmp = Path.Combine(Path.GetTempPath(), "cb-test.pneu");
+            File.WriteAllText(tmp, xmlText);
+            var cbDoc = System.Xml.Linq.XDocument.Parse(xmlText);
+            var circuit = T("Circuit").GetMethod("FromXElement").Invoke(null, new object[] { cbDoc.Descendants("PneuSimCircuit").First() });
+            Check(((IList)P(circuit, "Tubes")).Count == 13, "counterbalance file keeps all 13 tubes after loading");
+            var els = (IList)P(circuit, "Elements");
+            object Find(string label) { foreach (var e in els) if ((string)P(e, "Label") == label) return e; return null; }
+            var cyl = Find("1A1"); var s1 = Find("S1"); var s2 = Find("S2");
+            var sim = Activator.CreateInstance(T("Simulator"), circuit);
+            sim.GetType().GetProperty("RealPhysics").SetValue(sim, true);
+            sim.GetType().GetMethod("Reset").Invoke(sim, null);
+            Action<double> run = secs => { for (int k = 0; k < (int)(secs / 0.005); k++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 }); };
+            run(3);
+            double hold = (double)P(cyl, "Position");
+            run(3);
+            Check(Math.Abs((double)P(cyl, "Position") - hold) < 0.02, $"load held with no input (position {hold:0.00})");
+            var down = s2.GetType().GetMethod("OnSimMouseDown"); var up = s2.GetType().GetMethod("OnSimMouseUp");
+            down.Invoke(s2, new object[] { new System.Drawing.PointF(10, 10) });
+            run(4);
+            double raised = (double)P(cyl, "Position");
+            up.Invoke(s2, null);
+            run(1);
+            down.Invoke(s1, new object[] { new System.Drawing.PointF(10, 10) });
+            run(6);
+            double lowered = (double)P(cyl, "Position");
+            up.Invoke(s1, null);
+            Console.WriteLine($"INFO counterbalance positions: hold {hold:0.00}, after RAISE {raised:0.00}, after LOWER {lowered:0.00}");
+            Check(raised != hold, "RAISE button moves the cylinder");
+            Check(lowered != raised, "LOWER button moves the cylinder back");
+        }
         // Hidden-fault encryption
         var faults = T("Faults"); var kindT = T("FaultKind");
         var leak = Enum.Parse(kindT, Enum.GetNames(kindT).First(n => n != "None"));

@@ -45,6 +45,8 @@ public sealed class RibbonBar : Control
 		public string Title;
 
 		public List<Item> Items = new List<Item>();
+
+		public int Shown = int.MaxValue;
 	}
 
 	public sealed class Tab
@@ -416,8 +418,12 @@ public sealed class RibbonBar : Control
 		foreach (Group group in tab.Groups)
 		{
 			int num4 = num;
-			bool flag = group.Items.Any((Item i) => !i.IsSmall) && group.Items.Count((Item i) => !i.IsSmall) > MaxPerGroup && group.Items.All((Item i) => i.Preset != null);
-			List<Item> list = (flag ? group.Items.Take(MaxPerGroup - 1).ToList() : group.Items);
+			bool allPresets = group.Items.Count > 0 && group.Items.All((Item i) => i.Preset != null);
+			int fit = Math.Max(1, (base.Width - num - 16 - LargeWidth) / LargeWidth);
+			bool flag = allPresets && (group.Items.Count > MaxPerGroup || group.Items.Count > fit);
+			int take = Math.Min(MaxPerGroup - 1, fit);
+			group.Shown = flag ? take : int.MaxValue;
+			List<Item> list = (flag ? group.Items.Take(take).ToList() : group.Items);
 			List<Item> list2 = new List<Item>();
 			foreach (Item item in list)
 			{
@@ -715,7 +721,7 @@ public sealed class RibbonBar : Control
 			ImageScalingSize = new Size(56, 40),
 			ShowImageMargin = true
 		};
-		foreach (Item item in hit.MoreOf.Items.Skip(MaxPerGroup - 1))
+		foreach (Item item in hit.MoreOf.Items.Skip(Math.Min(hit.MoreOf.Shown, hit.MoreOf.Items.Count)))
 		{
 			Item captured = item;
 			ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(item.Label, item.Icon);

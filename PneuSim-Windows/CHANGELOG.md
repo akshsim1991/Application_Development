@@ -3,6 +3,12 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.10 "Mistral" (18 Nov 2026)
+- New Manifold (distribution block, 2 to 8 outlets, air or hydraulic): one inlet feeds many tubes or hoses without a pile of T-junctions.
+- Counterbalance valve now works with air as well as oil (property "Hydraulic"; new library entry "Counterbalance valve (air)", Logic & Flow tab). Circuits such as the pneumatic load-holding circuit now keep all their tubes and run: held, raised, lowered under control.
+- Ribbon: groups that do not fit the window width now show fewer buttons plus a "More" menu instead of being cut off.
+- Dark mode: the tab strip under the Workspace is drawn flat in the theme colours (no white outlines); buttons have a dark border.
+
 ## 3.3.9 "Mistral" (18 Nov 2026)
 - New full ribbon replaces the menu bar and toolbar, giving the Workspace more room: File, Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Simulate, Tools, View, Learn, Help tabs; quick-access buttons (New, Open, Save, Undo, Redo); double-click a tab or press Ctrl+F1 to collapse the ribbon. The classic menu and toolbar can be switched back on in Settings.
 - File opens a full-page view (New, Open, Recent, Save, Save As, Close, Export, Information, Options, Exit).

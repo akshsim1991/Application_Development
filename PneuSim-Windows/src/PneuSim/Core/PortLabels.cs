@@ -31,6 +31,10 @@ public static class PortLabels
 			}
 			return n;
 		}
+		if (o is Manifold)
+		{
+			return n == "1" ? "P" : ("O" + (int.Parse(n) - 1));
+		}
 		if (o is Silencer)
 		{
 			return "E";

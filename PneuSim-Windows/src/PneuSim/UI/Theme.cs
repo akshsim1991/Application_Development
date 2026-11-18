@@ -88,6 +88,13 @@ public sealed class Theme
 				control.BackColor = DarkHeader;
 				control.ForeColor = DarkFore;
 				((Button)control).FlatStyle = FlatStyle.Flat;
+				((Button)control).FlatAppearance.BorderColor = Dk(Color.FromArgb(78, 84, 98));
+			}
+			else if (flag == control is ThemedTabControl)
+			{
+				control.BackColor = DarkBack;
+				control.ForeColor = DarkFore;
+				control.Invalidate();
 			}
 			else if (flag == control is TabControl)
 			{

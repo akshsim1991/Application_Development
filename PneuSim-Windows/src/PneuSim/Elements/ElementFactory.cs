@@ -28,6 +28,7 @@ public sealed class ElementFactory
 			"PressureRegulator" => new PressureRegulator(), 
 			"Silencer" => new Silencer(), 
 			"Junction" => new Junction(), 
+			"Manifold" => new Manifold(), 
 			"TextNote" => new TextNote(), 
 			"PageConnector" => new PageConnector(), 
 			"HydraulicPump" => new HydraulicPump(), 

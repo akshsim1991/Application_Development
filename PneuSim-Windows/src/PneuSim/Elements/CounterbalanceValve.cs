@@ -20,6 +20,42 @@ public class CounterbalanceValve : CircuitElement
 
 	public override string DisplayName { get; }
 
+	private bool _externalPilot = true;
+
+	[Category("Valve")]
+	[DisplayName("Hydraulic")]
+	[Description("True: hydraulic hose connections. False: air (pneumatic) tube connections.")]
+	public bool Hydraulic
+	{
+		get
+		{
+			return base.Ports[0].Kind == PortKind.Hydraulic;
+		}
+		set
+		{
+			PortKind kind = (value ? PortKind.Hydraulic : PortKind.Pneumatic);
+			foreach (Port port in base.Ports)
+			{
+				port.Kind = kind;
+			}
+		}
+	}
+
+	[Category("Valve")]
+	[DisplayName("External pilot")]
+	[Description("True: the pilot port X can also open the valve. False: only the pressure at the load port (2) opens it (the load pressure itself acts as the pilot).")]
+	public bool ExternalPilot
+	{
+		get
+		{
+			return _externalPilot;
+		}
+		set
+		{
+			_externalPilot = value;
+		}
+	}
+
 	[Category("Valve")]
 	[DisplayName("Opening pressure (bar)")]
 	[Description("Set about 1.3 times the load-induced pressure.")]
@@ -95,9 +131,14 @@ public class CounterbalanceValve : CircuitElement
 		_open = false;
 	}
 
+	public override bool ShowProperty(string name)
+	{
+		return name != "PilotPressure" || _externalPilot;
+	}
+
 	public override bool UpdateLogic(Simulator sim)
 	{
-		bool flag = base.Ports[1].Pressure >= Setting - 0.01 || base.Ports[2].Pressure >= PilotPressure;
+		bool flag = base.Ports[1].Pressure >= Setting - 0.01 || (_externalPilot && base.Ports[2].Pressure >= PilotPressure);
 		if (flag == _open)
 		{
 			return false;

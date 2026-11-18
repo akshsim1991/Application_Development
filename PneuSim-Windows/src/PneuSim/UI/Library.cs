@@ -47,6 +47,7 @@ public sealed class Library
 		}),
 		new LibraryPreset("Supply, air preparation and measuring", "Silencer", [SpecialName] () => new Silencer()),
 		new LibraryPreset("Supply, air preparation and measuring", "Tube junction (T)", [SpecialName] () => new Junction()),
+		new LibraryPreset("Supply, air preparation and measuring", "Manifold (4 outlets)", [SpecialName] () => new Manifold()),
 		new LibraryPreset("Actuators", "Single-acting cylinder", [SpecialName] () => new SingleActingCylinder()),
 		new LibraryPreset("Actuators", "Double-acting cylinder", [SpecialName] () => new DoubleActingCylinder()),
 		new LibraryPreset("Actuators", "Tandem cylinder", [SpecialName] () => new TandemCylinder()),
@@ -187,12 +188,22 @@ public sealed class Library
 			Setting = 30.0
 		}),
 		new LibraryPreset("Hydraulics", "Counterbalance valve", [SpecialName] () => new CounterbalanceValve()),
+		new LibraryPreset("Logic, non-return and flow valves", "Counterbalance valve (air)", [SpecialName] () => new CounterbalanceValve
+		{
+			Hydraulic = false,
+			Setting = 3.2,
+			PilotPressure = 3.0
+		}),
 		new LibraryPreset("Hydraulics", "Accumulator", [SpecialName] () => new Accumulator()),
 		new LibraryPreset("Hydraulics", "Hydraulic pressure gauge", [SpecialName] () => new PressureGauge
 		{
 			Hydraulic = true
 		}),
 		new LibraryPreset("Hydraulics", "Hydraulic junction (T)", [SpecialName] () => new Junction
+		{
+			Medium = PortKind.Hydraulic
+		}),
+		new LibraryPreset("Hydraulics", "Hydraulic manifold (4 outlets)", [SpecialName] () => new Manifold
 		{
 			Medium = PortKind.Hydraulic
 		}),

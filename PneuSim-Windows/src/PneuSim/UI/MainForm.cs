@@ -476,7 +476,7 @@ public partial class MainForm : Form
 		{
 			Dock = DockStyle.Fill
 		};
-		_bottomTabs = new TabControl
+		_bottomTabs = new ThemedTabControl
 		{
 			Dock = DockStyle.Fill
 		};
@@ -508,7 +508,6 @@ public partial class MainForm : Form
 		base.Icon = Icons.AppIcon();
 		BuildDocumentTabs();
 		BuildLayout();
-		Theme.OwnerDrawTabs(_bottomTabs);
 		_canvas.SelectionChanged += [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__167_002D0();

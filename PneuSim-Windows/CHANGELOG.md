@@ -8,6 +8,7 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - File opens a full-page view (New, Open, Recent, Save, Save As, Close, Export, Information, Options, Exit).
 - Page tabs at the bottom of the Workspace now look like sheet tabs with arrows and a + button.
 - Rotating (or moving) a component now re-routes its connecting lines automatically so they do not run through components or overlap; lines you drag by hand are kept unless they would cross a component.
+- Check circuit now warns about components lying on top of each other, lines running through components, and lines lying on top of each other.
 - PDF report shows a print preview first (Save as PDF or Print).
 
 ## 3.3.8 "Mistral" (18 Nov 2026)

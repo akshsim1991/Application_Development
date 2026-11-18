@@ -12,6 +12,89 @@ namespace PneuSim;
 public sealed partial class CircuitAnalysis
 {
 
+	/// <summary>Finds components lying on top of each other, lines running through components, and lines lying on top of each other.</summary>
+	public static List<CheckIssue> OverlapChecks(Circuit c)
+	{
+		List<CheckIssue> res = new List<CheckIssue>();
+		List<CircuitElement> els = c.Elements.Where((CircuitElement e) => !(e is TextNote)).ToList();
+		for (int i = 0; i < els.Count; i++)
+		{
+			for (int j = i + 1; j < els.Count; j++)
+			{
+				RectangleF a = els[i].WorldBounds();
+				RectangleF b = els[j].WorldBounds();
+				a.Inflate(-3f, -3f);
+				b.Inflate(-3f, -3f);
+				if (a.Width > 0f && b.Width > 0f && a.IntersectsWith(b))
+				{
+					res.Add(new CheckIssue { Severity = IssueSeverity.Warning, Element = els[i], Message = "Components overlap in the Workspace: " + els[i].Label + " " + els[i].DisplayName + " and " + els[j].Label + " " + els[j].DisplayName + ". Move one of them." });
+				}
+			}
+		}
+		List<(Tube T, PointF[] R)> routes = c.Tubes.Select((Tube t) => (t, t.Route())).ToList();
+		foreach (var item in routes)
+		{
+			bool hit = false;
+			for (int k = 1; k < item.R.Length - 2 && !hit; k++)
+			{
+				RectangleF seg = RectangleF.FromLTRB(Math.Min(item.R[k].X, item.R[k + 1].X) - 0.5f, Math.Min(item.R[k].Y, item.R[k + 1].Y) - 0.5f, Math.Max(item.R[k].X, item.R[k + 1].X) + 0.5f, Math.Max(item.R[k].Y, item.R[k + 1].Y) + 0.5f);
+				foreach (CircuitElement e in els)
+				{
+					if (e is Junction || e == item.T.A.Owner || e == item.T.B.Owner)
+					{
+						continue;
+					}
+					RectangleF bb = e.WorldBounds();
+					bb.Inflate(-2f, -2f);
+					if (bb.Width > 0f && bb.IntersectsWith(seg))
+					{
+						res.Add(new CheckIssue { Severity = IssueSeverity.Warning, Element = e, Message = "A line runs through " + e.Label + " " + e.DisplayName + ". Drag the line sideways or move the component (Rotate re-routes lines automatically)." });
+						hit = true;
+						break;
+					}
+				}
+			}
+		}
+		for (int p = 0; p < routes.Count; p++)
+		{
+			for (int q = p + 1; q < routes.Count; q++)
+			{
+				if (routes[p].T.A.Owner == routes[q].T.A.Owner || routes[p].T.A.Owner == routes[q].T.B.Owner || routes[p].T.B.Owner == routes[q].T.A.Owner || routes[p].T.B.Owner == routes[q].T.B.Owner)
+				{
+					continue;
+				}
+				if (SegmentsOverlap(routes[p].R, routes[q].R))
+				{
+					res.Add(new CheckIssue { Severity = IssueSeverity.Warning, Element = routes[p].T.A.Owner, Message = "Two lines lie on top of each other near " + routes[p].T.A.Owner.Label + ". Drag one of them sideways so they can be told apart." });
+				}
+			}
+		}
+		return res;
+	}
+
+	private static bool SegmentsOverlap(PointF[] r1, PointF[] r2)
+	{
+		for (int i = 0; i < r1.Length - 1; i++)
+		{
+			for (int j = 0; j < r2.Length - 1; j++)
+			{
+				PointF a = r1[i], b = r1[i + 1], c = r2[j], d = r2[j + 1];
+				if (Math.Abs(a.X - b.X) < 0.01f && Math.Abs(c.X - d.X) < 0.01f && Math.Abs(a.X - c.X) < 1f)
+				{
+					if (Math.Min(Math.Max(a.Y, b.Y), Math.Max(c.Y, d.Y)) - Math.Max(Math.Min(a.Y, b.Y), Math.Min(c.Y, d.Y)) > 4f)
+					{
+						return true;
+					}
+				}
+				else if (Math.Abs(a.Y - b.Y) < 0.01f && Math.Abs(c.Y - d.Y) < 0.01f && Math.Abs(a.Y - c.Y) < 1f && Math.Min(Math.Max(a.X, b.X), Math.Max(c.X, d.X)) - Math.Max(Math.Min(a.X, b.X), Math.Min(c.X, d.X)) > 4f)
+				{
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	public static List<CheckIssue> StaticChecks(Circuit c)
 	{
 		_Closure_0024__11_002D0 arg = default(_Closure_0024__11_002D0);
@@ -52,6 +135,10 @@ public sealed partial class CircuitAnalysis
 		if (num && !elements.OfType<PowerTerminal>().Any([SpecialName] (PowerTerminal t) => t.Polarity == Polarity.Zero0V))
 		{
 			vB_0024AnonymousDelegate_(IssueSeverity.Error, "The electrical circuit has no 0 V connection.", null);
+		}
+		foreach (CheckIssue overlap in OverlapChecks(c))
+		{
+			CS_0024_003C_003E8__locals0._0024VB_0024Local_issues.Add(overlap);
 		}
 		foreach (CircuitElement item in elements)
 		{

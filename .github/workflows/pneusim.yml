@@ -1,0 +1,91 @@
+name: PneuSim (Windows)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "PneuSim-Windows/**"
+      - ".github/workflows/pneusim.yml"
+  workflow_dispatch:
+
+jobs:
+  build-test-package:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: PneuSim-Windows
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Build PneuSim (Release)
+        run: dotnet build src/PneuSim/PneuSim.csproj -c Release -nologo
+
+      - name: Extract the 3.2.0 reference build from the installer
+        run: python tools/extract_installer.py release/PneuSim-Setup-3.2.0.exe ref
+
+      - name: Equivalence test (original 3.2.0 vs rebuilt engine)
+        run: |
+          dotnet build tools/equivalence-harness/Harness.csproj -c Release -nologo -p:TargetFramework=net8.0-windows -p:UseWindowsForms=true
+          $h = "tools/equivalence-harness/bin/Release/net8.0-windows/Harness.dll"
+          $files = (Get-ChildItem examples -Recurse -Filter *.pneu).FullName
+          New-Item -ItemType Directory -Force reports | Out-Null
+          dotnet $h ref/PneuSim.exe @files > reports/original.txt
+          dotnet $h src/PneuSim/bin/Release/net472/PneuSim.exe @files > reports/rebuilt.txt
+          "original: $((Get-Content reports/original.txt).Count) lines, rebuilt: $((Get-Content reports/rebuilt.txt).Count) lines"
+          "threw (original): $((Select-String -Path reports/original.txt -Pattern 'threw').Count)"
+          $d = Compare-Object (Get-Content reports/original.txt) (Get-Content reports/rebuilt.txt)
+          if ($d) { $d | Format-Table -AutoSize | Out-String -Width 400 | Write-Host; throw "Reports differ" }
+          "IDENTICAL"
+
+      - name: GUI smoke test (start-up and all 12 examples)
+        run: |
+          New-Item -ItemType Directory -Force shots | Out-Null
+          $bad = 0
+          $runs = @(@{n="original-empty"; exe="ref/PneuSim.exe"; f=""}, @{n="rebuilt-empty"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=""})
+          foreach ($e in (Get-ChildItem examples/bundled -Filter "[01]*.pneu" | Sort-Object Name)) {
+            $runs += @{n="rebuilt-$($e.BaseName)"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=$e.FullName}
+          }
+          $runs += @{n="rebuilt-user-counterbalance"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=(Resolve-Path examples/user/Pneumatic_Counterbalance.pneu).Path}
+          foreach ($r in $runs) {
+            Remove-Item -Recurse -Force "$env:APPDATA\PneuSim" -ErrorAction SilentlyContinue
+            Write-Host "== $($r.n)"
+            pwsh -File tools/gui-smoke.ps1 -Exe (Resolve-Path $r.exe).Path -Shot "shots/$($r.n).png" -File $r.f -Seconds 10
+            if ($LASTEXITCODE -ne 0) { $bad++ }
+          }
+          if ($bad) { throw "$bad GUI smoke run(s) failed" }
+
+      - name: Build installer (Inno Setup)
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress | Out-Null }
+          $ver = (Get-Content VERSION).Trim()
+          & $iscc "/DAppVersion=$ver" installer/PneuSim.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC failed" }
+          Get-ChildItem installer/output
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PneuSim-Windows
+          path: |
+            PneuSim-Windows/src/PneuSim/bin/Release/net472/PneuSim.exe
+            PneuSim-Windows/src/PneuSim/bin/Release/net472/PneuSim.exe.config
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PneuSim-Setup
+          path: PneuSim-Windows/installer/output/*.exe
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            PneuSim-Windows/reports/
+            PneuSim-Windows/shots/

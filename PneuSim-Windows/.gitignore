@@ -3,3 +3,8 @@ obj/
 .vs/
 *.user
 *.suo
+installer/output/
+ref/
+reports/
+shots/
+__pycache__/

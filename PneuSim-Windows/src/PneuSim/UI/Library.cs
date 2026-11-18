@@ -25,7 +25,7 @@ public sealed class Library
 
 	public const string CatDrawing = "Drawing";
 
-	public static readonly LibraryPreset[] Presets = new LibraryPreset[84]
+	public static readonly LibraryPreset[] Presets = new LibraryPreset[]
 	{
 		new LibraryPreset("Supply, air preparation and measuring", "Compressed air supply", [SpecialName] () => new AirSupply()),
 		new LibraryPreset("Supply, air preparation and measuring", "Compressor", [SpecialName] () => new Compressor()),
@@ -49,6 +49,13 @@ public sealed class Library
 		new LibraryPreset("Supply, air preparation and measuring", "Tube junction (T)", [SpecialName] () => new Junction()),
 		new LibraryPreset("Actuators", "Single-acting cylinder", [SpecialName] () => new SingleActingCylinder()),
 		new LibraryPreset("Actuators", "Double-acting cylinder", [SpecialName] () => new DoubleActingCylinder()),
+		new LibraryPreset("Actuators", "Tandem cylinder", [SpecialName] () => new TandemCylinder()),
+		new LibraryPreset("Actuators", "Double-end cylinder (through rod)", [SpecialName] () => new ThroughRodCylinder()),
+		new LibraryPreset("Actuators", "Telescopic cylinder", [SpecialName] () => new TelescopicCylinder()),
+		new LibraryPreset("Actuators", "Telescopic cylinder, single-acting", [SpecialName] () => new TelescopicSingleActingCylinder()),
+		new LibraryPreset("Actuators", "DC motor", [SpecialName] () => new DCMotor()),
+		new LibraryPreset("Actuators", "Servo motor", [SpecialName] () => new ServoMotor()),
+		new LibraryPreset("Actuators", "Electric cylinder (lead screw)", [SpecialName] () => new ElectricCylinder()),
 		new LibraryPreset("Actuators", "Semi-rotary actuator", [SpecialName] () => new SemiRotaryActuator()),
 		new LibraryPreset("Actuators", "Air motor", [SpecialName] () => new AirMotor()),
 		new LibraryPreset("Actuators", "Parallel gripper", [SpecialName] () => new Gripper()),
@@ -147,6 +154,9 @@ public sealed class Library
 		new LibraryPreset("Hydraulics", "Tank", [SpecialName] () => new HydraulicTank()),
 		new LibraryPreset("Hydraulics", "Pressure relief valve", [SpecialName] () => new ReliefValve()),
 		new LibraryPreset("Hydraulics", "Hydraulic cylinder", [SpecialName] () => new HydraulicCylinder()),
+		new LibraryPreset("Hydraulics", "Hydraulic double-end cylinder (through rod)", [SpecialName] () => new HydraulicThroughRodCylinder()),
+		new LibraryPreset("Hydraulics", "Hydraulic telescopic cylinder", [SpecialName] () => new HydraulicTelescopicCylinder()),
+		new LibraryPreset("Hydraulics", "Hydraulic telescopic cylinder, single-acting", [SpecialName] () => new HydraulicTelescopicSingleActingCylinder()),
 		new LibraryPreset("Hydraulics", "Hydraulic single-acting cylinder", [SpecialName] () => new HydraulicSingleActingCylinder()),
 		new LibraryPreset("Hydraulics", "Hydraulic motor", [SpecialName] () => new HydraulicMotor()),
 		new LibraryPreset("Hydraulics", "4/3 valve, tandem centre, solenoids", [SpecialName] () => new HydraulicValve43()),

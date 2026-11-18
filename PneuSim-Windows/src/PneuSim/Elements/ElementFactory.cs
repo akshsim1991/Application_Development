@@ -54,6 +54,16 @@ public sealed class ElementFactory
 			"AirReceiver" => new AirReceiver(), 
 			"FlowMeter" => new FlowMeter(), 
 			"ForceSensor" => new ForceSensor(), 
+			"TandemCylinder" => new TandemCylinder(), 
+			"ThroughRodCylinder" => new ThroughRodCylinder(), 
+			"HydraulicThroughRodCylinder" => new HydraulicThroughRodCylinder(), 
+			"TelescopicCylinder" => new TelescopicCylinder(), 
+			"TelescopicSingleActingCylinder" => new TelescopicSingleActingCylinder(), 
+			"HydraulicTelescopicCylinder" => new HydraulicTelescopicCylinder(), 
+			"HydraulicTelescopicSingleActingCylinder" => new HydraulicTelescopicSingleActingCylinder(), 
+			"DCMotor" => new DCMotor(), 
+			"ServoMotor" => new ServoMotor(), 
+			"ElectricCylinder" => new ElectricCylinder(), 
 			_ => null, 
 		};
 	}

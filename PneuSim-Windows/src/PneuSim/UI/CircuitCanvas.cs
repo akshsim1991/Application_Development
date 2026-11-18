@@ -112,7 +112,7 @@ public class CircuitCanvas : ScrollableControl
 		}
 		set
 		{
-			_zoom = Math.Max(0.3f, Math.Min(3f, value));
+			_zoom = Math.Max(0.1f, Math.Min(3f, value));
 			UpdateScrollSize();
 			Invalidate();
 			ZoomChanged?.Invoke(this, EventArgs.Empty);
@@ -408,15 +408,56 @@ public class CircuitCanvas : ScrollableControl
 		CircuitModified?.Invoke(this, EventArgs.Empty);
 	}
 
+	/// <summary>Everything that is drawn: components, their labels, and every tube bend.</summary>
+	private RectangleF DrawnBounds()
+	{
+		RectangleF result = _circuit.Bounds();
+		if (result.IsEmpty)
+		{
+			return result;
+		}
+		foreach (CircuitElement element in _circuit.Elements)
+		{
+			PointF pointF = element.ToWorld(element.LabelAnchor);
+			result = RectangleF.Union(result, new RectangleF(pointF.X - 8f, pointF.Y - 22f, 90f, 30f));
+		}
+		foreach (Tube tube in _circuit.Tubes)
+		{
+			try
+			{
+				PointF[] array = tube.Route();
+				if (array != null)
+				{
+					foreach (PointF pointF2 in array)
+					{
+						result = RectangleF.Union(result, new RectangleF(pointF2.X - 2f, pointF2.Y - 2f, 4f, 4f));
+					}
+				}
+			}
+			catch (Exception)
+			{
+			}
+		}
+		return result;
+	}
+
+	/// <summary>Zooms and scrolls so that the whole circuit (components, labels and tubes) is visible, with a margin.</summary>
 	public void ZoomToFit()
 	{
-		RectangleF rectangleF = _circuit.Bounds();
-		if (!rectangleF.IsEmpty && base.ClientSize.Width >= 50 && base.ClientSize.Height >= 50)
+		RectangleF rectangleF = DrawnBounds();
+		if (rectangleF.IsEmpty || base.ClientSize.Width < 50 || base.ClientSize.Height < 50)
 		{
-			rectangleF.Inflate(30f, 30f);
-			Zoom = Math.Min(1f, Math.Min((float)base.ClientSize.Width / rectangleF.Width, (float)base.ClientSize.Height / rectangleF.Height));
-			ScrollToCircuit();
+			return;
 		}
+		float num = 36f;
+		float num2 = 24f;
+		rectangleF.Inflate(num, num);
+		float num3 = (float)(base.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
+		float num4 = (float)(base.ClientSize.Height - SystemInformation.HorizontalScrollBarHeight - 4) - num2;
+		Zoom = Math.Max(0.1f, Math.Min(1f, Math.Min(num3 / rectangleF.Width, num4 / rectangleF.Height)));
+		PerformLayout();
+		base.AutoScrollPosition = new Point((int)Math.Round(Math.Max(0f, rectangleF.Left * _zoom)), (int)Math.Round(Math.Max(0f, (rectangleF.Top - num2 / _zoom) * _zoom)));
+		Invalidate();
 	}
 
 	public void ScrollToCircuit()

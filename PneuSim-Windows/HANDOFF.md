@@ -103,6 +103,10 @@ current; choose per component, global on/off). Optional later: stepper motor, ro
 ### Differentiators
 See `docs/DIFFERENTIATORS.md` (ranked shortlist; market check needed before any "first/only" claim).
 
+### 3.4 items already built in 3.3 line (18 Nov 2026)
+Done: tandem, through-rod, telescopic (4 variants), hydraulic through-rod, DC motor, servo motor, electric cylinder, live value labels.
+Still open: multi-position (back-to-back, 4-port) double-end cylinder; hydraulic tandem; servo analogue 0-10 V setpoint (needs an analogue source element); stepper motor; rodless cylinder; examples using the new parts; cutaway drawings for the new parts; unit-aware property inputs.
+
 ### Before selling (owner's decisions)
 Code-signing certificate; licensing model; EULA; trademark search for "PneuSim"; check the
 employer's IP policy; obfuscation (limits: .NET can always be decompiled).

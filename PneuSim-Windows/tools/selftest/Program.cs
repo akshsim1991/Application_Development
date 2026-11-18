@@ -153,6 +153,77 @@ class SelfTest
             var xmlAfter = (string)circuit.GetType().GetMethod("ToXml").Invoke(circuit, null);
             Check(xmlAfter.Contains("ValueLabel"), "chosen live label is saved");
         }
+        // New actuators
+        {
+            object Make(string n) => T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n });
+            object Port(object e, int i) => ((IList)P(e, "Ports"))[i];
+            void SetP(object e, int i, double bar) => Port(e, i).GetType().GetProperty("Pressure").SetValue(Port(e, i), bar);
+            void SetS(object e, int i, string st) => Port(e, i).GetType().GetProperty("State").SetValue(Port(e, i), Enum.Parse(T("PortState"), st));
+            double Force(object e) => (double)e.GetType().GetMethod("PistonForce").Invoke(e, null);
+            void SetPos(object e, double v) { var f = T("CylinderBase").GetField("_position", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance); f.SetValue(e, v); }
+            var da = Make("DoubleActingCylinder"); var tandem = Make("TandemCylinder"); var tr = Make("ThroughRodCylinder"); var tele = Make("TelescopicCylinder");
+            foreach (var c in new[] { da, tandem }) { SetP(c, 0, 6); SetP(c, 1, 0); }
+            Check(Math.Abs(Force(tandem) / Force(da) - 2.0) < 0.01, $"tandem cylinder gives twice the force ({Force(da):0} N -> {Force(tandem):0} N)");
+            SetP(tr, 0, 6); SetP(tr, 1, 0); var fOut = Force(tr);
+            SetP(tr, 0, 0); SetP(tr, 1, 6); var fIn = Force(tr);
+            Check(Math.Abs(fOut + fIn) < 1e-6 * Math.Abs(fOut) && fOut > 0, $"double-end cylinder pushes and pulls with equal force ({fOut:0} N / {fIn:0} N)");
+            SetP(tele, 0, 6); SetP(tele, 1, 0);
+            SetPos(tele, 0.05); var f1 = Force(tele); SetPos(tele, 0.5); var f2 = Force(tele); SetPos(tele, 0.95); var f3 = Force(tele);
+            Check(f1 > f2 && f2 > f3 && f3 > 0, $"telescopic cylinder: force falls as smaller stages extend ({f1:0} > {f2:0} > {f3:0} N)");
+            // DC motor
+            var m = Make("DCMotor"); SetS(m, 0, "Pressurized"); SetS(m, 1, "Exhausted");
+            for (int k = 0; k < 600; k++) m.GetType().GetMethod("UpdateDynamics").Invoke(m, new object[] { null, 0.005 });
+            var rpm = (double)P(m, "Rpm");
+            Check(rpm > 3600 && rpm < 3850, $"DC motor on 24 V reaches about 3750 rpm ({rpm:0} rpm)");
+            SetS(m, 0, "Exhausted"); SetS(m, 1, "Pressurized");
+            for (int k = 0; k < 1200; k++) m.GetType().GetMethod("UpdateDynamics").Invoke(m, new object[] { null, 0.005 });
+            Check((double)P(m, "Rpm") < -3600, $"DC motor reverses with reversed polarity ({(double)P(m, "Rpm"):0} rpm)");
+            SetS(m, 0, "Exhausted"); SetS(m, 1, "Exhausted");
+            for (int k = 0; k < 2000; k++) m.GetType().GetMethod("UpdateDynamics").Invoke(m, new object[] { null, 0.005 });
+            Check(Math.Abs((double)P(m, "Rpm")) < 1, "DC motor stops when the supply is removed");
+            // Servo
+            var sv = Make("ServoMotor"); sv.GetType().GetProperty("MarkP2").SetValue(sv, "atP2");
+            void Servo(int select) { SetS(sv, 0, "Pressurized"); SetS(sv, 1, "Exhausted"); SetS(sv, 2, "Pressurized"); for (int i = 3; i <= 5; i++) SetS(sv, i, i - 2 == select ? "Pressurized" : "Exhausted"); }
+            Servo(2);
+            for (int k = 0; k < 800; k++) { sv.GetType().GetMethod("UpdateLogic").Invoke(sv, new object[] { null }); sv.GetType().GetMethod("UpdateDynamics").Invoke(sv, new object[] { null, 0.005 }); }
+            var pos = (double)P(sv, "Position");
+            Check(Math.Abs(pos - 180) <= 0.6 && (bool)P(sv, "InPosition"), $"servo goes to stored position P2 and reports in position ({pos:0.0} deg)");
+            Check((bool)sv.GetType().GetMethod("IsSignalOn").Invoke(sv, new object[] { "atP2" }), "servo position mark switches on at P2");
+            Servo(0);
+            for (int k = 0; k < 1200; k++) { sv.GetType().GetMethod("UpdateLogic").Invoke(sv, new object[] { null }); sv.GetType().GetMethod("UpdateDynamics").Invoke(sv, new object[] { null, 0.005 }); }
+            Check(Math.Abs((double)P(sv, "Position")) <= 0.6, "servo returns home with no position selected");
+            // Electric cylinder
+            var ec = Make("ElectricCylinder");
+            SetS(ec, 0, "Pressurized"); SetS(ec, 1, "Exhausted"); SetS(ec, 2, "Pressurized"); SetS(ec, 3, "Exhausted"); SetS(ec, 4, "Exhausted"); SetS(ec, 5, "Pressurized");
+            for (int k = 0; k < 800; k++) { ec.GetType().GetMethod("UpdateLogic").Invoke(ec, new object[] { null }); ec.GetType().GetMethod("UpdateDynamics").Invoke(ec, new object[] { null, 0.005 }); }
+            Check(Math.Abs((double)P(ec, "Position") - 150) <= 0.3 && (bool)P(ec, "InPosition"), $"electric cylinder reaches P3 = 150 mm ({(double)P(ec, "Position"):0.0} mm)");
+            // every new component can be created from the library, saved and described
+            foreach (var n in new[] { "TandemCylinder", "ThroughRodCylinder", "HydraulicThroughRodCylinder", "TelescopicCylinder", "TelescopicSingleActingCylinder", "HydraulicTelescopicCylinder", "HydraulicTelescopicSingleActingCylinder", "DCMotor", "ServoMotor", "ElectricCylinder" })
+            {
+                var el = Make(n); var cc = Activator.CreateInstance(T("Circuit")); cc.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement")).Invoke(cc, new object[] { el, 100f, 100f, null });
+                var xml = (string)cc.GetType().GetMethod("ToXml").Invoke(cc, null);
+                var back = cc.GetType().GetMethod("FromXml", new[] { typeof(string) })?.Invoke(null, new object[] { xml });
+                Check(xml.Contains($"type=\"{n}\"") && back != null, $"{n}: saves and loads");
+            }
+        }
+        // Servo wired to 24 V terminals and run through the real simulator
+        {
+            var c = Activator.CreateInstance(T("Circuit"));
+            var add = c.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement"));
+            object NewEl(string n, float x, float y) { var e = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n }); add.Invoke(c, new object[] { e, x, y, null }); return e; }
+            var servo = NewEl("ServoMotor", 300f, 100f);
+            var conn = c.GetType().GetMethod("Connect", new[] { T("CircuitElement"), typeof(string), T("CircuitElement"), typeof(string) });
+            object Term(string pol, float x, float y) { var t = NewEl("PowerTerminal", x, y); t.GetType().GetProperty("Polarity").SetValue(t, Enum.Parse(T("Polarity"), pol)); return t; }
+            foreach (var (port, pol) in new[] { ("24V", "Plus24V"), ("0V", "Zero0V"), ("EN", "Plus24V"), ("P2", "Plus24V") })
+            { var t = Term(pol, 100f, 100f + 40f * Array.IndexOf(new[] { "24V", "0V", "EN", "P2" }, port)); conn.Invoke(c, new object[] { t, "1", servo, port }); }
+            var sim = Activator.CreateInstance(T("Simulator"), c);
+            sim.GetType().GetMethod("Reset").Invoke(sim, null);
+            for (int k = 0; k < 800; k++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+            var pos = (double)P(servo, "Position");
+            Check(Math.Abs(pos - 180) <= 0.6 && (bool)P(servo, "InPosition"), $"servo wired to terminals runs in the real simulator ({pos:0.0} deg, in position)");
+            var okPort = ((IList)P(servo, "Ports"))[6];
+            Check(P(okPort, "State").ToString() == "Pressurized", "servo OK output is 24 V when in position");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

@@ -108,3 +108,6 @@ Taken from the recovered code and the README that shipped with 3.2.0.
 
 The installer also shipped six generator outputs (cascade and relay chain for A+B+A-B-,
 A+B+B-A- and A+B+C+C-B-A-). All 18 files are in `examples/bundled/`.
+
+## Added in 3.3 (18 Nov 2026)
+- Tandem, double-end (through-rod) and telescopic cylinders; DC motor, servo motor and electric cylinder; live value labels; PDF user guide (Help > Quick Guide).

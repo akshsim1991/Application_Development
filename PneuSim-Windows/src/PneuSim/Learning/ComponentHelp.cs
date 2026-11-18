@@ -16,6 +16,30 @@ public sealed class ComponentHelp
 	private static string Body(CircuitElement e)
 	{
 		bool flag = true;
+		if (e is TandemCylinder)
+		{
+			return "Tandem cylinder: two (or more) pistons on one rod, so it pushes and pulls with twice the force of an ordinary cylinder of the same bore and pressure, and uses twice the air.";
+		}
+		if (e is ThroughRodCylinder || e is HydraulicThroughRodCylinder)
+		{
+			return "Double-end cylinder: the rod comes out of both ends, so the area is the same on both sides and it pushes and pulls with equal force at equal speed. The second rod can carry a sensor or a second load.";
+		}
+		if (e is TelescopicCylinder || e is HydraulicTelescopicCylinder || e is TelescopicSingleActingCylinder || e is HydraulicTelescopicSingleActingCylinder)
+		{
+			return "Telescopic cylinder: nested stages give a long stroke from a short body. The largest stage extends first (most force, slowest), then the smaller ones (less force, faster); they retract in reverse order.";
+		}
+		if (e is DCMotor)
+		{
+			return "DC motor: +24 V on M1 and 0 V on M2 turns it one way, the reverse turns it the other way. Speed follows voltage, current and torque follow the load. A 12 V motor on the 24 V supply is shown as over-voltage.";
+		}
+		if (e is ServoMotor)
+		{
+			return "Servo motor: connect +24 V, 0 V and Enable (24 V). The inputs P1, P2 and P3 select a stored angle; with none selected it goes home (0 deg). It moves with a smooth speed profile and gives 24 V on OK when it is in position. A sensor with the same name as a position mark reacts at that angle.";
+		}
+		if (e is ElectricCylinder)
+		{
+			return "Electric cylinder: a servo motor turning a lead screw. Connect +24 V, 0 V and Enable; inputs P1 to P3 select stored positions (none = home, 0 mm); OK shows 24 V when in position. Position marks can drive proximity sensors.";
+		}
 		if (flag == e is Compressor)
 		{
 			return "Compressor with pressure switch: charges the air receiver, starting at the cut-in pressure and stopping at the cut-out pressure. Click it during simulation to switch it off or on.";

@@ -438,12 +438,12 @@ public abstract class CylinderBase : CircuitElement, ISignalSource
 		}
 	}
 
-	protected double CapArea()
+	protected virtual double CapArea()
 	{
 		return Math.PI / 4.0 * Math.Pow(BoreMm / 1000.0, 2.0);
 	}
 
-	protected double RodArea()
+	protected virtual double RodArea()
 	{
 		return Math.PI / 4.0 * (Math.Pow(BoreMm / 1000.0, 2.0) - Math.Pow(Math.Min(RodMm, BoreMm * 0.9) / 1000.0, 2.0));
 	}

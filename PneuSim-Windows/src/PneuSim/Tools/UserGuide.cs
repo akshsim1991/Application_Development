@@ -212,26 +212,40 @@ public static class UserGuide
 		w.Bullet("Help > Update to new version checks for a newer release. Your work is saved first; PneuSim closes, updates and restarts.");
 		w.Bullet("The error log is in %LOCALAPPDATA%\\PneuSim\\logs. It stays on your computer.");
 		w.Chapter("9  Keyboard shortcuts");
-		(string, string)[] array3 = new(string, string)[18]
+		(string, string)[] array3 = new(string, string)[32]
 		{
 			("F1", "This guide"),
-			("F6", "Check circuit"),
-			("F7", "Cutaway view"),
-			("F8", "Explain circuit"),
-			("F9", "Start simulation"),
+			("F6", "Check my circuit"),
+			("F7", "Cutaway view of the selected part"),
+			("F8", "Explain my circuit"),
+			("F9", "Start the simulation"),
+			("F10", "Pause"),
+			("F11", "Stop and reset"),
+			("F12 / Shift+F12", "Step forward / back in time"),
+			("Ctrl+F12 / Ctrl+Shift+F12", "Forward / back to the next / previous event"),
 			("Ctrl+G", "Circuit generator"),
 			("Ctrl+,", "Settings"),
-			("Ctrl+S", "Save"),
-			("Ctrl+O", "Open"),
-			("Ctrl+N", "New"),
+			("Ctrl+N / Ctrl+O / Ctrl+S", "New / open / save"),
+			("Ctrl+P", "PDF report with title block"),
 			("Ctrl+Z / Ctrl+Y", "Undo / redo"),
-			("Ctrl+C, X, V", "Copy, cut, paste"),
+			("Ctrl+X / Ctrl+C / Ctrl+V", "Cut / copy / paste"),
 			("Ctrl+D", "Duplicate"),
+			("Ctrl+A", "Select all"),
+			("Ctrl+H", "Hint (fault finding)"),
+			("Ctrl+PgDn / Ctrl+PgUp", "Next / previous page"),
+			("Ctrl++ / Ctrl+-", "Zoom in / out"),
+			("Ctrl+0", "Actual size (100%)"),
+			("Ctrl+9", "Zoom to fit the whole circuit"),
 			("R", "Rotate the selected part"),
 			("Del", "Delete the selection"),
 			("Arrow keys", "Nudge the selection"),
 			("Shift + click", "Place several copies of a component"),
-			("Esc", "Cancel placing")
+			("Esc", "Cancel placing"),
+			("Right-click (running)", "Live values of a part or tube"),
+			("Mouse wheel (plotter)", "Zoom the plot"),
+			("Mouse wheel (ribbon)", "Scroll a long ribbon tab"),
+			("Drag a port to a port", "Connect with a tube"),
+			("Drag a box", "Select several parts")
 		};
 		(string, string)[] array4 = array3;
 		for (int j = 0; j < array4.Length; j++)

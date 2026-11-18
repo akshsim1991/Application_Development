@@ -16,6 +16,12 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - Automatic updates (Help > Update to new version, daily check): checksum-verified download, silent in-place upgrade. Installer checks for .NET Framework 4.7.2.
 - Properties panel: name column wider; clicking a check result selects the part and scrolls to it.
 - Automatic tests: physics invariants and speed on all examples, golden file of the 3.2.0 behaviour (see docs/VALIDATION.md).
+- Ribbon fixes: buttons now respond to clicks (hit targets were rebuilt on every repaint), hover highlight and tooltips work, "&" no longer shows as an underscore in tab names, taller ribbon with three-line labels.
+- Help > Quick Guide now opens a PDF user guide (what is new, quick start, screen tour, shortcuts, and every component with its symbol).
+- Live value labels: choose values (speed, force, position, pressure, flow...) in a part's properties (Display > Live value label); View > Live value labels switches them all on or off.
+- New components: tandem cylinder, double-end (through-rod) cylinder, telescopic cylinders (pneumatic and hydraulic, single- and double-acting), hydraulic double-end cylinder, DC motor (reversing, 12/24 V), servo motor (stored positions P1-P3, trapezoidal profile, In-position output, position marks), electric cylinder (lead screw).
+- Fit now includes labels and tube bends and allows zooming out to 10%. New undo/redo icons. Shortcut hints fixed (Ctrl+, and Ctrl+PgUp/PgDn were shown with internal key names).
+- Update check treats a missing latest.json as "up to date".
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

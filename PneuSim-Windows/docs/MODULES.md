@@ -40,7 +40,7 @@ concept; talk to other modules through their public classes only.
 `python tools/module_map.py` rewrites the table below from the source tree.
 
 <!-- AUTO-START -->
-### M-ENGINE - Engine and data model  (20 files, 4066 lines)
+### M-ENGINE - Engine and data model  (20 files, 4098 lines)
 
 | File | Lines |
 |---|---|
@@ -53,7 +53,7 @@ concept; talk to other modules through their public classes only.
 | `Core/PortKind.cs` | 14 |
 | `Core/PortState.cs` | 8 |
 | `Core/Tube.cs` | 195 |
-| `Core/CircuitElement.cs` | 274 |
+| `Core/CircuitElement.cs` | 306 |
 | `Core/Faults.cs` | 152 |
 | `Core/FaultKind.cs` | 30 |
 | `Core/Polarity.cs` | 12 |
@@ -65,11 +65,11 @@ concept; talk to other modules through their public classes only.
 | `Core/EnumDescriptionConverter.cs` | 51 |
 | `Core/ElementDescriptionProvider.cs` | 51 |
 
-### M-SETTINGS - Settings, units, sound  (13 files, 1619 lines)
+### M-SETTINGS - Settings, units, sound  (13 files, 1626 lines)
 
 | File | Lines |
 |---|---|
-| `Core/AppSettings.cs` | 206 |
+| `Core/AppSettings.cs` | 213 |
 | `Core/Units.cs` | 33 |
 | `Core/SoundEngine.cs` | 387 |
 | `UI/SoundMonitor.cs` | 117 |
@@ -83,7 +83,7 @@ concept; talk to other modules through their public classes only.
 | `UI/StartScreen.cs` | 211 |
 | `UI/MainForm.StartScreen.cs` | 53 |
 
-### M-DRAWING - Drawing surfaces and export  (11 files, 1697 lines)
+### M-DRAWING - Drawing surfaces and export  (11 files, 1709 lines)
 
 | File | Lines |
 |---|---|
@@ -97,13 +97,13 @@ concept; talk to other modules through their public classes only.
 | `Core/PdfPage.cs` | 183 |
 | `Core/RenderContext.cs` | 132 |
 | `UI/Symbols.cs` | 94 |
-| `UI/Icons.cs` | 280 |
+| `UI/Icons.cs` | 292 |
 
-### M-ELEMENTS - Components (one file per component)  (56 files, 6488 lines)
+### M-ELEMENTS - Components (one file per component)  (59 files, 7866 lines)
 
 | File | Lines |
 |---|---|
-| `Elements/Accumulator.cs` | 123 |
+| `Elements/Accumulator.cs` | 131 |
 | `Elements/AirMotor.cs` | 137 |
 | `Elements/AirReceiver.cs` | 127 |
 | `Elements/AirSupply.cs` | 75 |
@@ -115,19 +115,21 @@ concept; talk to other modules through their public classes only.
 | `Elements/ContactOperator.cs` | 22 |
 | `Elements/CounterbalanceValve.cs` | 113 |
 | `Elements/CylinderBase.cs` | 667 |
+| `Elements/CylinderVariants.cs` | 372 |
 | `Elements/DirectionalValve.cs` | 878 |
-| `Elements/DoubleActingCylinder.cs` | 61 |
+| `Elements/DoubleActingCylinder.cs` | 64 |
 | `Elements/ElectricCoil.cs` | 218 |
 | `Elements/ElectricContact.cs` | 300 |
 | `Elements/ElectricCounter.cs` | 158 |
-| `Elements/ElementFactory.cs` | 60 |
+| `Elements/ElectricDrives.cs` | 940 |
+| `Elements/ElementFactory.cs` | 70 |
 | `Elements/FlowControlValve.cs` | 159 |
 | `Elements/FlowMeter.cs` | 103 |
 | `Elements/ForceSensor.cs` | 62 |
 | `Elements/Gripper.cs` | 57 |
 | `Elements/HydraulicCentre.cs` | 16 |
 | `Elements/HydraulicCylinder.cs` | 106 |
-| `Elements/HydraulicMotor.cs` | 137 |
+| `Elements/HydraulicMotor.cs` | 144 |
 | `Elements/HydraulicPump.cs` | 151 |
 | `Elements/HydraulicSingleActingCylinder.cs` | 72 |
 | `Elements/HydraulicTank.cs` | 36 |
@@ -137,7 +139,7 @@ concept; talk to other modules through their public classes only.
 | `Elements/LogicValve.cs` | 43 |
 | `Elements/PageConnector.cs` | 82 |
 | `Elements/PowerTerminal.cs` | 83 |
-| `Elements/PressureGauge.cs` | 53 |
+| `Elements/PressureGauge.cs` | 61 |
 | `Elements/PressureRegulator.cs` | 180 |
 | `Elements/PressureSwitch.cs` | 184 |
 | `Elements/QuickExhaustValve.cs` | 96 |
@@ -159,6 +161,7 @@ concept; talk to other modules through their public classes only.
 | `Elements/Valve53.cs` | 102 |
 | `Elements/ValveActuator.cs` | 22 |
 | `Elements/ValveReturn.cs` | 14 |
+| `Core/ValueLabelConverter.cs` | 30 |
 
 ### M-GENERATOR - Circuit generator (sequence to circuit)  (6 files, 1328 lines)
 
@@ -186,13 +189,14 @@ concept; talk to other modules through their public classes only.
 | `Tools/CircuitMove.cs` | 38 |
 | `Tools/MoveTrigger.cs` | 23 |
 
-### M-TOOLS - Parts list, reports, sweep, GIF, fault finding  (13 files, 2752 lines)
+### M-TOOLS - Parts list, reports, sweep, GIF, fault finding  (14 files, 3090 lines)
 
 | File | Lines |
 |---|---|
 | `Tools/PartLine.cs` | 14 |
 | `Tools/PartsList.cs` | 446 |
 | `Tools/Reports.cs` | 143 |
+| `Tools/UserGuide.cs` | 338 |
 | `Tools/SweepResult.cs` | 64 |
 | `Tools/SweepSettings.cs` | 29 |
 | `Tools/ParameterSweep.cs` | 97 |
@@ -204,21 +208,21 @@ concept; talk to other modules through their public classes only.
 | `UI/TroubleshootPanel.cs` | 146 |
 | `UI/CalculatorsDialog.cs` | 239 |
 
-### M-LEARNING - Getting-started tutorials and component help  (5 files, 961 lines)
+### M-LEARNING - Getting-started tutorials and component help  (5 files, 985 lines)
 
 | File | Lines |
 |---|---|
-| `Learning/ComponentHelp.cs` | 242 |
+| `Learning/ComponentHelp.cs` | 266 |
 | `Learning/Lesson.cs` | 21 |
 | `Learning/LessonResult.cs` | 8 |
 | `Learning/Lessons.cs` | 480 |
 | `UI/LessonsPanel.cs` | 210 |
 
-### M-CANVAS - Drawing canvas and live views  (11 files, 5014 lines)
+### M-CANVAS - Drawing canvas and live views  (11 files, 5097 lines)
 
 | File | Lines |
 |---|---|
-| `UI/CircuitCanvas.cs` | 1222 |
+| `UI/CircuitCanvas.cs` | 1295 |
 | `UI/DiagramPanel.cs` | 131 |
 | `UI/PlotterPanel.cs` | 964 |
 | `UI/InspectorPanel.cs` | 266 |
@@ -226,27 +230,27 @@ concept; talk to other modules through their public classes only.
 | `UI/CutawayView.cs` | 325 |
 | `UI/CutawayWindow.cs` | 65 |
 | `UI/Cutaways.cs` | 1302 |
-| `UI/Library.cs` | 243 |
+| `UI/Library.cs` | 253 |
 | `UI/LibraryPreset.cs` | 19 |
 | `UI/Examples.cs` | 414 |
 
-### M-UPDATE - Automatic updates  (3 files, 408 lines)
+### M-UPDATE - Automatic updates  (3 files, 417 lines)
 
 | File | Lines |
 |---|---|
-| `Core/UpdateService.cs` | 140 |
+| `Core/UpdateService.cs` | 149 |
 | `UI/UpdateDialog.cs` | 142 |
 | `UI/MainForm.Update.cs` | 126 |
 
-### M-RIBBON - Ribbon  (3 files, 768 lines)
+### M-RIBBON - Ribbon  (3 files, 777 lines)
 
 | File | Lines |
 |---|---|
-| `UI/RibbonBar.cs` | 526 |
+| `UI/RibbonBar.cs` | 535 |
 | `UI/RibbonBuilder.cs` | 126 |
 | `UI/RibbonIcons.cs` | 116 |
 
-### M-SHELL - Main window (partial class, split by concern)  (11 files, 3585 lines)
+### M-SHELL - Main window (partial class, split by concern)  (11 files, 3619 lines)
 
 | File | Lines |
 |---|---|
@@ -254,11 +258,11 @@ concept; talk to other modules through their public classes only.
 | `UI/MainForm.FaultFinding.cs` | 185 |
 | `UI/MainForm.Files.cs` | 376 |
 | `UI/MainForm.Lambdas.cs` | 324 |
-| `UI/MainForm.Layout.cs` | 621 |
+| `UI/MainForm.Layout.cs` | 643 |
 | `UI/MainForm.Other.cs` | 446 |
 | `UI/MainForm.Simulation.cs` | 373 |
 | `UI/MainForm.Theme.cs` | 202 |
-| `UI/MainForm.Tools.cs` | 252 |
+| `UI/MainForm.Tools.cs` | 264 |
 | `UI/MainForm.cs` | 550 |
 | `UI/Program.cs` | 61 |
 

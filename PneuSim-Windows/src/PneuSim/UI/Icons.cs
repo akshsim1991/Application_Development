@@ -159,20 +159,32 @@ public sealed class Icons
 	{
 		return Draw([SpecialName] (Graphics g) =>
 		{
+			g.SmoothingMode = SmoothingMode.AntiAlias;
 			if (redo)
 			{
 				g.TranslateTransform(16f, 0f);
 				g.ScaleTransform(-1f, 1f);
 			}
-			using (Pen pen = new Pen(Color.SteelBlue, 2f))
+			Color color = Color.FromArgb(0, 118, 132);
+			using Pen pen = new Pen(color, 2.2f)
 			{
-				g.DrawArc(pen, 3, 4, 11, 10, 180, 200);
-			}
-			g.FillPolygon(Brushes.SteelBlue, new Point[3]
+				StartCap = LineCap.Round,
+				EndCap = LineCap.Round,
+				LineJoin = LineJoin.Round
+			};
+			g.DrawLines(pen, new PointF[4]
 			{
-				new Point(0, 6),
-				new Point(7, 6),
-				new Point(3, 12)
+				new PointF(7f, 6.5f),
+				new PointF(11f, 6.5f),
+				new PointF(13.5f, 9f),
+				new PointF(13.5f, 12.5f)
+			});
+			using SolidBrush brush = new SolidBrush(color);
+			g.FillPolygon(brush, new PointF[3]
+			{
+				new PointF(1.5f, 6.5f),
+				new PointF(7.5f, 2f),
+				new PointF(7.5f, 11f)
 			});
 		});
 	}

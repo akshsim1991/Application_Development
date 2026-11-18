@@ -6,6 +6,9 @@ public class DoubleActingCylinder : CylinderBase
 {
 	private const double RodSideArea = 0.7;
 
+	/// <summary>Rod-side area as a fraction of the cap-side area (used by the simple, non-realistic motion).</summary>
+	protected virtual double RodSideRatio => 0.7;
+
 	public override string TypeName { get; }
 
 	public override string DisplayName { get; }
@@ -37,7 +40,7 @@ public class DoubleActingCylinder : CylinderBase
 		}
 		Port port = base.Ports[0];
 		Port port2 = base.Ports[1];
-		double num = port.Pressure - port2.Pressure * 0.7;
+		double num = port.Pressure - port2.Pressure * RodSideRatio;
 		if (num > 0.2)
 		{
 			Move(1, Speed(port, port2), dt, sim);

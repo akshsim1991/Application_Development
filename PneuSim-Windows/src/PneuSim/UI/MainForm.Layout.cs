@@ -579,6 +579,18 @@ public partial class MainForm
 			case Keys.Oemplus:
 				obj = "+";
 				break;
+			case Keys.Oemcomma:
+				obj = ",";
+				break;
+			case Keys.OemPeriod:
+				obj = ".";
+				break;
+			case Keys.Next:
+				obj = "PgDn";
+				break;
+			case Keys.Prior:
+				obj = "PgUp";
+				break;
 			}
 			string text2 = (string)obj;
 			if (text2 != null)

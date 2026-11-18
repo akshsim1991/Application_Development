@@ -100,6 +100,9 @@ mode; trapezoidal profile; position marks); electric cylinder (lead screw, posit
 **live value labels** on the canvas (force, velocity, position, pressure, flow, rpm, torque,
 current; choose per component, global on/off). Optional later: stepper motor, rodless cylinder.
 
+### Differentiators
+See `docs/DIFFERENTIATORS.md` (ranked shortlist; market check needed before any "first/only" claim).
+
 ### Before selling (owner's decisions)
 Code-signing certificate; licensing model; EULA; trademark search for "PneuSim"; check the
 employer's IP policy; obfuscation (limits: .NET can always be decompiled).

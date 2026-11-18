@@ -36,6 +36,10 @@ internal sealed class Program
 			_mainForm.OfferRecovery();
 			_mainForm.ShowStartScreen();
 		}
+		_mainForm.Shown += delegate
+		{
+			_mainForm.StartDailyUpdateCheck();
+		};
 		Application.Run(_mainForm);
 	}
 

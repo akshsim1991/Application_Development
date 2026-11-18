@@ -65,17 +65,23 @@ concept; talk to other modules through their public classes only.
 | `Core/EnumDescriptionConverter.cs` | 51 |
 | `Core/ElementDescriptionProvider.cs` | 51 |
 
-### M-SETTINGS - Settings, units, sound  (7 files, 1068 lines)
+### M-SETTINGS - Settings, units, sound  (13 files, 1619 lines)
 
 | File | Lines |
 |---|---|
-| `Core/AppSettings.cs` | 196 |
+| `Core/AppSettings.cs` | 206 |
 | `Core/Units.cs` | 33 |
 | `Core/SoundEngine.cs` | 387 |
 | `UI/SoundMonitor.cs` | 117 |
 | `UI/SettingsDialog.cs` | 162 |
 | `UI/Theme.cs` | 107 |
 | `UI/ColorScheme.cs` | 66 |
+| `Core/AppInfo.cs` | 40 |
+| `Core/ErrorLog.cs` | 51 |
+| `UI/ErrorDialog.cs` | 67 |
+| `UI/AboutDialog.cs` | 119 |
+| `UI/StartScreen.cs` | 211 |
+| `UI/MainForm.StartScreen.cs` | 53 |
 
 ### M-DRAWING - Drawing surfaces and export  (11 files, 1697 lines)
 
@@ -224,6 +230,14 @@ concept; talk to other modules through their public classes only.
 | `UI/LibraryPreset.cs` | 19 |
 | `UI/Examples.cs` | 414 |
 
+### M-UPDATE - Automatic updates  (3 files, 408 lines)
+
+| File | Lines |
+|---|---|
+| `Core/UpdateService.cs` | 140 |
+| `UI/UpdateDialog.cs` | 142 |
+| `UI/MainForm.Update.cs` | 126 |
+
 ### M-RIBBON - Ribbon  (3 files, 768 lines)
 
 | File | Lines |
@@ -232,7 +246,7 @@ concept; talk to other modules through their public classes only.
 | `UI/RibbonBuilder.cs` | 126 |
 | `UI/RibbonIcons.cs` | 116 |
 
-### M-SHELL - Main window (partial class, split by concern)  (12 files, 3605 lines)
+### M-SHELL - Main window (partial class, split by concern)  (11 files, 3557 lines)
 
 | File | Lines |
 |---|---|
@@ -240,14 +254,13 @@ concept; talk to other modules through their public classes only.
 | `UI/MainForm.FaultFinding.cs` | 185 |
 | `UI/MainForm.Files.cs` | 376 |
 | `UI/MainForm.Lambdas.cs` | 324 |
-| `UI/MainForm.Layout.cs` | 611 |
+| `UI/MainForm.Layout.cs` | 612 |
 | `UI/MainForm.Other.cs` | 446 |
 | `UI/MainForm.Simulation.cs` | 373 |
-| `UI/MainForm.StartScreen.cs` | 53 |
 | `UI/MainForm.Theme.cs` | 184 |
 | `UI/MainForm.Tools.cs` | 251 |
 | `UI/MainForm.cs` | 550 |
-| `UI/Program.cs` | 57 |
+| `UI/Program.cs` | 61 |
 
 ### M-COMPAT - Visual Basic compatibility shims  (26 files, 163 lines)
 
@@ -280,11 +293,4 @@ concept; talk to other modules through their public classes only.
 | `VBCompat/VB-AnonymousDelegate_9.cs` | 6 |
 | `VBCompat/VB-AnonymousType_0.cs` | 13 |
 
-### Unassigned
-
-- `Core/AppInfo.cs`
-- `Core/ErrorLog.cs`
-- `UI/AboutDialog.cs`
-- `UI/ErrorDialog.cs`
-- `UI/StartScreen.cs`
 <!-- AUTO-END -->

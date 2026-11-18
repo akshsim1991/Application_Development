@@ -72,6 +72,25 @@ class SelfTest
         try { T("Project").GetMethod("Load").Invoke(null, new object[] { file }); Check(false, "newer file rejected"); }
         catch (System.Reflection.TargetInvocationException e) { Check(e.InnerException.Message.Contains("newer version"), "file from a newer version gives a friendly message"); }
         Directory.Delete(dir, true);
+        // Updater
+        var us = T("UpdateService"); var um = T("UpdateManifest");
+        bool Newer(string a, string b) => (bool)us.GetMethod("IsNewer").Invoke(null, new object[] { a, b });
+        Check(Newer("3.3.1", "3.3.0") && Newer("3.10.0", "3.9.0") && !Newer("3.3.0", "3.3.0") && !Newer("3.2.0", "3.3.0") && !Newer("junk", "3.3.0"), "version comparison");
+        var tmpf = Path.GetTempFileName(); File.WriteAllText(tmpf, "abc");
+        var sha = (string)us.GetMethod("Sha256Of").Invoke(null, new object[] { tmpf });
+        Check(sha == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad", "SHA-256 of a known file");
+        var good = "{\"version\":\"3.4.0\",\"codename\":\"Sirocco\",\"released\":\"2027-01-05\",\"installerUrl\":\"https://example.org/x.exe\",\"sha256\":\"" + sha.ToUpper() + "\",\"notes\":\"n\"}";
+        var man = um.GetMethod("Parse").Invoke(null, new object[] { good });
+        Check(man != null && um.GetProperty("Sha256").GetValue(man).ToString() == sha, "update manifest parses (hash normalised)");
+        Check((bool)us.GetMethod("Verify").Invoke(null, new object[] { tmpf, man }), "verify accepts the matching installer");
+        File.WriteAllText(tmpf, "abd");
+        Check(!(bool)us.GetMethod("Verify").Invoke(null, new object[] { tmpf, man }), "verify rejects a changed installer");
+        File.Delete(tmpf);
+        foreach (var bad in new[] { good.Replace("https://", "http://"), "{\"version\":\"x\"}", "not json" })
+        {
+            try { um.GetMethod("Parse").Invoke(null, new object[] { bad }); Check(false, "bad manifest rejected"); }
+            catch (System.Reflection.TargetInvocationException) { Check(true, "bad manifest rejected"); }
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

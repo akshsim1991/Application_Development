@@ -5,7 +5,7 @@ import os, re, glob
 SRC = "src/PneuSim"
 MODULES = [
  ("M-ENGINE", "Engine and data model", ["Core/Simulator.cs", "Core/Circuit.cs", "Core/Project*.cs", "Core/Port*.cs", "Core/Tube.cs", "Core/CircuitElement.cs", "Core/Faults.cs", "Core/FaultKind.cs", "Core/Polarity.cs", "Core/LiveTuning.cs", "Core/Naming.cs", "Core/I*.cs", "Core/SimulationRecorder.cs", "Core/EnumDescriptionConverter.cs", "Core/ElementDescriptionProvider.cs"]),
- ("M-SETTINGS", "Settings, units, sound", ["Core/AppSettings.cs", "Core/Units.cs", "Core/SoundEngine.cs", "UI/SoundMonitor.cs", "UI/SettingsDialog.cs", "UI/Theme.cs", "UI/ColorScheme.cs"]),
+ ("M-SETTINGS", "Settings, units, sound", ["Core/AppSettings.cs", "Core/Units.cs", "Core/SoundEngine.cs", "UI/SoundMonitor.cs", "UI/SettingsDialog.cs", "UI/Theme.cs", "UI/ColorScheme.cs", "Core/AppInfo.cs", "Core/ErrorLog.cs", "UI/ErrorDialog.cs", "UI/AboutDialog.cs", "UI/StartScreen.cs", "UI/MainForm.StartScreen.cs"]),
  ("M-DRAWING", "Drawing surfaces and export", ["Core/DrawSurface.cs", "Core/GdiSurface.cs", "Core/Vector*.cs", "Core/Pdf*.cs", "Core/RenderContext.cs", "UI/Symbols.cs", "UI/Icons.cs"]),
  ("M-ELEMENTS", "Components (one file per component)", ["Elements/*.cs"]),
  ("M-GENERATOR", "Circuit generator (sequence to circuit)", ["Generator/*.cs", "UI/GeneratorDialog.cs"]),
@@ -13,6 +13,7 @@ MODULES = [
  ("M-TOOLS", "Parts list, reports, sweep, GIF, fault finding", ["Tools/PartLine.cs", "Tools/PartsList.cs", "Tools/Reports.cs", "Tools/Sweep*.cs", "Tools/ParameterSweep.cs", "Tools/GifRecorder.cs", "Tools/TroubleshootExercise.cs", "UI/PartsListDialog.cs", "UI/SweepDialog.cs", "UI/FaultDialog.cs", "UI/TroubleshootPanel.cs", "UI/CalculatorsDialog.cs"]),
  ("M-LEARNING", "Getting-started tutorials and component help", ["Learning/*.cs", "UI/LessonsPanel.cs"]),
  ("M-CANVAS", "Drawing canvas and live views", ["UI/CircuitCanvas.cs", "UI/DiagramPanel.cs", "UI/PlotterPanel.cs", "UI/InspectorPanel.cs", "UI/Cutaway*.cs", "UI/Library*.cs", "UI/Examples.cs"]),
+ ("M-UPDATE", "Automatic updates", ["Core/UpdateService.cs", "UI/UpdateDialog.cs", "UI/MainForm.Update.cs"]),
  ("M-RIBBON", "Ribbon", ["UI/Ribbon*.cs"]),
  ("M-SHELL", "Main window (partial class, split by concern)", ["UI/MainForm*.cs", "UI/Program.cs"]),
  ("M-COMPAT", "Visual Basic compatibility shims", ["VBCompat/*.cs"]),

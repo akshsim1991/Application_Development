@@ -81,3 +81,32 @@ Root: HKA; Subkey: "Software\Classes\PneuSim.Circuit\shell\open\command"; ValueT
 
 [Run]
 Filename: "{app}\PneuSim.exe"; Description: "{cm:LaunchProgram,PneuSim}"; Flags: nowait postinstall skipifsilent
+; Silent in-place update (started by PneuSim itself): start the new version again.
+Filename: "{app}\PneuSim.exe"; Flags: nowait runasoriginaluser; Check: WizardSilent
+
+[Code]
+{ PneuSim needs .NET Framework 4.7.2 (release 461808) or newer. Built into Windows 10 1803+ and Windows 11;
+  Windows 7 SP1 and 8.1 may need it installed. We offer the Microsoft download page instead of installing silently. }
+function Net472Installed(): Boolean;
+var
+  Release: Cardinal;
+begin
+  Result := RegQueryDWordValue(HKLM, 'SOFTWARE\Microsoft\NET Framework Setup\NDP\v4\Full', 'Release', Release) and (Release >= 461808);
+end;
+
+function InitializeSetup(): Boolean;
+var
+  Err: Integer;
+begin
+  Result := True;
+  if (not WizardSilent) and (not Net472Installed()) then
+  begin
+    if MsgBox('PneuSim needs Microsoft .NET Framework 4.7.2 or newer, which is not installed on this computer.' + #13#10 + #13#10 + 'Open the Microsoft download page now? Install the framework, then run this setup again.', mbConfirmation, MB_YESNO) = IDYES then
+    begin
+      ShellExec('open', 'https://go.microsoft.com/fwlink/?LinkId=863262', '', '', SW_SHOW, ewNoWait, Err);
+      Result := False;
+    end
+    else
+      Result := MsgBox('Continue anyway? PneuSim will not start until the framework is installed.', mbConfirmation, MB_YESNO) = IDYES;
+  end;
+end;

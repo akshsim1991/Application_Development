@@ -13,6 +13,7 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - Own ribbon (tabs, groups, More drop-downs, search) replaces the left library panel. New start screen (new, open, drop a file, recent circuits, examples). New About box. Status bar shows "PneuSim 3.3.0 Mistral". Window title now "PneuSim 3.3".
 - Internal: MainForm and CircuitAnalysis split into partial-class files; docs/MODULES.md added.
 - Safer saving (checked temporary file, previous version kept as .bak), friendly messages for damaged files and files from a newer version, local error log with "Copy error report", stronger encryption of hidden faults (new files use hf2; 3.2 files still open).
+- Automatic updates (Help > Update to new version, daily check): checksum-verified download, silent in-place upgrade. Installer checks for .NET Framework 4.7.2.
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

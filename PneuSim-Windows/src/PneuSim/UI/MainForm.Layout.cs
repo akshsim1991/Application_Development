@@ -447,6 +447,7 @@ public partial class MainForm
 		}
 		ToolStripMenuItem toolStripMenuItem17 = new ToolStripMenuItem("&Help");
 		toolStripMenuItem17.DropDownItems.Add(Item("&Quick Guide", OnQuickGuide, Keys.F1));
+		toolStripMenuItem17.DropDownItems.Add(Item("&Update to new version...", OnUpdateCheck));
 		toolStripMenuItem17.DropDownItems.Add(Item("&About PneuSim", OnAbout));
 		menuStrip.Items.AddRange(new ToolStripItem[9] { toolStripMenuItem, toolStripMenuItem3, toolStripMenuItem11, toolStripMenuItem12, toolStripMenuItem13, toolStripMenuItem14, toolStripMenuItem15, toolStripMenuItem16, toolStripMenuItem17 });
 		base.MainMenuStrip = menuStrip;

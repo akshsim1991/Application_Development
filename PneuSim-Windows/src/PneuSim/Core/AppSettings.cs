@@ -44,6 +44,9 @@ public sealed class AppSettings
 
 	public static bool CheckForUpdates { get; set; } = true;
 
+	/// <summary>When the last automatic update check ran (UTC ticks).</summary>
+	public static long LastUpdateCheckUtcTicks { get; set; }
+
 	public static bool SoundsOn { get; set; } = true;
 
 	/// <summary>Master volume, 0 to 100.</summary>
@@ -133,6 +136,12 @@ public sealed class AppSettings
 				case "CheckForUpdates":
 					CheckForUpdates = text3 != "0";
 					break;
+				case "LastUpdateCheck":
+					if (long.TryParse(text3, NumberStyles.Integer, CultureInfo.InvariantCulture, out var result2))
+					{
+						LastUpdateCheckUtcTicks = result2;
+					}
+					break;
 				case "Sounds":
 					SoundsOn = text3 != "0";
 					break;
@@ -178,6 +187,7 @@ public sealed class AppSettings
 				"PressureUnit=" + PressureUnit,
 				$"Advanced={(AdvancedMode ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",
+				"LastUpdateCheck=" + LastUpdateCheckUtcTicks.ToString(CultureInfo.InvariantCulture),
 				$"Sounds={(SoundsOn ? 1 : 0)}",
 				"Volume=" + SoundVolume.ToString(CultureInfo.InvariantCulture)
 			};

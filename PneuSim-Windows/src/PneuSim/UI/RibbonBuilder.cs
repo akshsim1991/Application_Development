@@ -44,7 +44,7 @@ public static class RibbonBuilder
 		AddTab(bar, "Annotate", Library.CatDrawing, scheme, all);
 		RibbonBar.Tab tab2 = bar.AddTab("Tools");
 		AddCommands(bar, tab2, "Design", commands, scheme, ("Circuit generator", "Generator"), ("Calculators", "Calculators"), ("Parts list and costs", "Parts"), ("Parameter sweep", "Sweep"));
-		AddCommands(bar, tab2, "Check", commands, scheme, ("Check circuit", "Check"), ("Explain circuit", "Explain"), ("Cutaway view", "Cutaway"));
+		AddCommands(bar, tab2, "Check", commands, scheme, ("Check circuit", "Check"), ("Explain circuit", "Explain"), ("Cutaway view", "Cutaway"), ("Cutaway: whole workspace", "CutawayAll"));
 		AddCommands(bar, tab2, "Fault finding", commands, scheme, ("New fault-finding task", "NewFault"));
 		AddCommands(bar, tab2, "PneuSim", commands, scheme, ("Settings", "Settings"));
 		bar.IndexForSearch();

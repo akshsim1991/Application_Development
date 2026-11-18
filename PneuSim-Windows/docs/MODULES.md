@@ -40,7 +40,7 @@ concept; talk to other modules through their public classes only.
 `python tools/module_map.py` rewrites the table below from the source tree.
 
 <!-- AUTO-START -->
-### M-ENGINE - Engine and data model  (20 files, 4098 lines)
+### M-ENGINE - Engine and data model  (20 files, 4099 lines)
 
 | File | Lines |
 |---|---|
@@ -53,7 +53,7 @@ concept; talk to other modules through their public classes only.
 | `Core/PortKind.cs` | 14 |
 | `Core/PortState.cs` | 8 |
 | `Core/Tube.cs` | 195 |
-| `Core/CircuitElement.cs` | 306 |
+| `Core/CircuitElement.cs` | 307 |
 | `Core/Faults.cs` | 152 |
 | `Core/FaultKind.cs` | 30 |
 | `Core/Polarity.cs` | 12 |
@@ -65,7 +65,7 @@ concept; talk to other modules through their public classes only.
 | `Core/EnumDescriptionConverter.cs` | 51 |
 | `Core/ElementDescriptionProvider.cs` | 51 |
 
-### M-SETTINGS - Settings, units, sound  (13 files, 1626 lines)
+### M-SETTINGS - Settings, units, sound  (13 files, 1629 lines)
 
 | File | Lines |
 |---|---|
@@ -73,7 +73,7 @@ concept; talk to other modules through their public classes only.
 | `Core/Units.cs` | 33 |
 | `Core/SoundEngine.cs` | 387 |
 | `UI/SoundMonitor.cs` | 117 |
-| `UI/SettingsDialog.cs` | 162 |
+| `UI/SettingsDialog.cs` | 165 |
 | `UI/Theme.cs` | 107 |
 | `UI/ColorScheme.cs` | 66 |
 | `Core/AppInfo.cs` | 40 |
@@ -163,16 +163,17 @@ concept; talk to other modules through their public classes only.
 | `Elements/ValveReturn.cs` | 14 |
 | `Core/ValueLabelConverter.cs` | 30 |
 
-### M-GENERATOR - Circuit generator (sequence to circuit)  (6 files, 1328 lines)
+### M-GENERATOR - Circuit generator (sequence to circuit)  (7 files, 1475 lines)
 
 | File | Lines |
 |---|---|
-| `Generator/GeneratedCircuit.cs` | 8 |
-| `Generator/GeneratorDialog.cs` | 205 |
+| `Generator/GeneratedCircuit.cs` | 11 |
+| `Generator/GeneratorDialog.cs` | 226 |
 | `Generator/GeneratorMethod.cs` | 7 |
 | `Generator/MotionSequence.cs` | 150 |
 | `Generator/SequenceGenerator.cs` | 937 |
 | `Generator/SequenceMove.cs` | 21 |
+| `Generator/WorkspaceMerge.cs` | 123 |
 
 ### M-ANALYSIS - Checker, explainer, sequence finder  (10 files, 2691 lines)
 
@@ -189,14 +190,14 @@ concept; talk to other modules through their public classes only.
 | `Tools/CircuitMove.cs` | 38 |
 | `Tools/MoveTrigger.cs` | 23 |
 
-### M-TOOLS - Parts list, reports, sweep, GIF, fault finding  (14 files, 3090 lines)
+### M-TOOLS - Parts list, reports, sweep, GIF, fault finding  (14 files, 3091 lines)
 
 | File | Lines |
 |---|---|
 | `Tools/PartLine.cs` | 14 |
 | `Tools/PartsList.cs` | 446 |
 | `Tools/Reports.cs` | 143 |
-| `Tools/UserGuide.cs` | 338 |
+| `Tools/UserGuide.cs` | 339 |
 | `Tools/SweepResult.cs` | 64 |
 | `Tools/SweepSettings.cs` | 29 |
 | `Tools/ParameterSweep.cs` | 97 |
@@ -218,7 +219,7 @@ concept; talk to other modules through their public classes only.
 | `Learning/Lessons.cs` | 480 |
 | `UI/LessonsPanel.cs` | 210 |
 
-### M-CANVAS - Drawing canvas and live views  (11 files, 5097 lines)
+### M-CANVAS - Drawing canvas and live views  (11 files, 5180 lines)
 
 | File | Lines |
 |---|---|
@@ -228,9 +229,9 @@ concept; talk to other modules through their public classes only.
 | `UI/InspectorPanel.cs` | 266 |
 | `UI/CutawayPalette.cs` | 63 |
 | `UI/CutawayView.cs` | 325 |
-| `UI/CutawayWindow.cs` | 65 |
+| `UI/CutawayWindow.cs` | 123 |
 | `UI/Cutaways.cs` | 1302 |
-| `UI/Library.cs` | 253 |
+| `UI/Library.cs` | 278 |
 | `UI/LibraryPreset.cs` | 19 |
 | `UI/Examples.cs` | 414 |
 
@@ -242,27 +243,27 @@ concept; talk to other modules through their public classes only.
 | `UI/UpdateDialog.cs` | 142 |
 | `UI/MainForm.Update.cs` | 126 |
 
-### M-RIBBON - Ribbon  (3 files, 777 lines)
+### M-RIBBON - Ribbon  (3 files, 779 lines)
 
 | File | Lines |
 |---|---|
-| `UI/RibbonBar.cs` | 535 |
+| `UI/RibbonBar.cs` | 536 |
 | `UI/RibbonBuilder.cs` | 126 |
-| `UI/RibbonIcons.cs` | 116 |
+| `UI/RibbonIcons.cs` | 117 |
 
-### M-SHELL - Main window (partial class, split by concern)  (11 files, 3619 lines)
+### M-SHELL - Main window (partial class, split by concern)  (11 files, 3692 lines)
 
 | File | Lines |
 |---|---|
-| `UI/MainForm.Editing.cs` | 195 |
+| `UI/MainForm.Editing.cs` | 247 |
 | `UI/MainForm.FaultFinding.cs` | 185 |
 | `UI/MainForm.Files.cs` | 376 |
 | `UI/MainForm.Lambdas.cs` | 324 |
-| `UI/MainForm.Layout.cs` | 643 |
+| `UI/MainForm.Layout.cs` | 645 |
 | `UI/MainForm.Other.cs` | 446 |
-| `UI/MainForm.Simulation.cs` | 373 |
+| `UI/MainForm.Simulation.cs` | 374 |
 | `UI/MainForm.Theme.cs` | 202 |
-| `UI/MainForm.Tools.cs` | 264 |
+| `UI/MainForm.Tools.cs` | 282 |
 | `UI/MainForm.cs` | 550 |
 | `UI/Program.cs` | 61 |
 
@@ -297,4 +298,7 @@ concept; talk to other modules through their public classes only.
 | `VBCompat/VB-AnonymousDelegate_9.cs` | 6 |
 | `VBCompat/VB-AnonymousType_0.cs` | 13 |
 
+### Unassigned
+
+- `UI/SystemCutawayView.cs`
 <!-- AUTO-END -->

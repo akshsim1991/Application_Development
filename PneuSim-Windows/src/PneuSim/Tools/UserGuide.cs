@@ -181,19 +181,19 @@ public static class UserGuide
 		w.Bullet("Status bar: mode, messages, zoom and the version.");
 		w.Chapter("4  Simulating and measuring");
 		w.Bullet("Realistic physics (toolbar) makes pressures build up and cylinders move according to bore, load and friction. Air use and its cost are shown.");
-		w.Bullet("Right-click any part or tube while simulating to see its live values in the Inspector, and change settings with sliders.");
+		w.Bullet("Point at any part while simulating: the description is shown together with its live values (force, pressure, speed, flow, current...). Right-click a part or tube to see the values in the Inspector and change settings with sliders.");
 		w.Bullet("Replay: the step and event buttons, or the time slider, go back and forward in time.");
 		w.Bullet("Plotter: tick any quantity, click for cursor A, right-click for cursor B (minimum, maximum, average). Set a trigger, zoom with the mouse wheel, export CSV or PNG.");
 		w.Bullet("Record GIF saves an animation of the running circuit.");
 		w.Bullet("Live value labels: choose a value (such as force, velocity or pressure) for a part in its properties and it is written next to the part while simulating. Switch all labels on or off under View.");
 		w.Chapter("5  Tools");
-		w.Bullet("Circuit generator (Ctrl+G): type a cylinder sequence such as A+ B+ B- A-, choose electro-pneumatic or pneumatic, and PneuSim draws the circuit and explains it.");
+		w.Bullet("Circuit generator (Ctrl+G): type a cylinder sequence such as A+ B+ B- A-, choose electro-pneumatic or pneumatic, and PneuSim draws the circuit and explains it. Tick \"Build around the cylinders already in the workspace\" to keep the cylinders (and everything else) you have placed and let the generator add the valves, sensors and wiring around them; you can undo it.");
 		w.Bullet("Check circuit (F6): finds unconnected ports, missing exhausts, signal overlap and more; click a result to jump to the part.");
 		w.Bullet("Explain circuit (F8): a step-by-step description of what happens when you operate the circuit.");
 		w.Bullet("Parts list and costs: every part with price, running cost of air per year, and a PDF report with a title block.");
 		w.Bullet("Parameter sweep: run the circuit with one setting changed step by step and compare cycle time, air use and speed.");
 		w.Bullet("Calculators: cylinder force, air consumption, tube sizing and more.");
-		w.Bullet("Cutaway view (F7): an animated look inside any component.");
+		w.Bullet("Cutaway view (F7): an animated look inside any component. Choose \"Whole workspace\" (or Learn > Cutaway: whole workspace, Shift+F7) to see every component of the workspace from the inside at once, laid out like the workspace and joined by animated tubes and wires that follow the real pressures and currents.");
 		w.Chapter("6  Fault finding");
 		w.Bullet("Tools > Fault finding > New fault-finding task hides one fault in the circuit. Run it, measure with right-click, ask for hints, then say where the fault is.");
 		w.Bullet("Add fault puts a chosen fault into the selected part or tube. Tick Hidden to save a file that does not show the fault.");
@@ -212,11 +212,12 @@ public static class UserGuide
 		w.Bullet("Help > Update to new version checks for a newer release. Your work is saved first; PneuSim closes, updates and restarts.");
 		w.Bullet("The error log is in %LOCALAPPDATA%\\PneuSim\\logs. It stays on your computer.");
 		w.Chapter("9  Keyboard shortcuts");
-		(string, string)[] array3 = new(string, string)[32]
+		(string, string)[] array3 = new(string, string)[33]
 		{
 			("F1", "This guide"),
 			("F6", "Check my circuit"),
 			("F7", "Cutaway view of the selected part"),
+			("Shift+F7", "Cutaway of the whole workspace"),
 			("F8", "Explain my circuit"),
 			("F9", "Start the simulation"),
 			("F10", "Pause"),

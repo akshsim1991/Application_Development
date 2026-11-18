@@ -3,6 +3,13 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.2 "Mistral" (18 Nov 2026)
+- Fixed: crash when choosing an item from a ribbon "More" menu (and it no longer repeats items already on the ribbon); Settings dialog no longer cuts off options (scrolls); error dialog message no longer cut off.
+- Hovering a part while simulating shows its live values (force, pressure, speed, flow, current...) with its description.
+- Ribbon icons are drawn without tiny text and smoothed. User-visible wording now says "workspace".
+- Circuit generator: "Build around the cylinders already in the workspace" keeps your cylinders and everything else and adds valves, sensors and wiring (undoable).
+- Cutaway window: new "Whole workspace" view (Shift+F7) showing all components together, connected by animated tubes and wires.
+
 ## 3.3.1 "Mistral" (18 Nov 2026)
 Fixes after first test on a PC: ribbon clicks, update message, Quick Guide PDF, Fit, undo/redo icons, shortcut hints; adds live value labels and new actuators (see below).
 

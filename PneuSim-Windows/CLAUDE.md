@@ -24,6 +24,7 @@ reference only.
   this on every push (`.github/workflows/pneusim.yml`). Intended behaviour changes must be
   listed in `CHANGELOG.md`.
 - Keep the installer AppId `{6F1E9A52-3C1B-4B7E-9D0A-5A2C3E7B8D41}` (in-place upgrades).
+- Say **Workspace** (not "drawing" or "canvas") for the area where components are placed and simulated, in all user-visible text.
 - Double-clicking a component must never open a properties window; properties stay in the side
   Properties panel.
 - Work on branch `claude/vigilant-sagan-opwt41`; commit small and push after every milestone

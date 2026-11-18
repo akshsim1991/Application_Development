@@ -226,11 +226,19 @@ public partial class MainForm
 				Owner = this,
 				Location = checked(new Point(base.Right - 640, base.Top + 120)),
 				ElementSource = [SpecialName] () => _canvas.SelectedElement ?? _canvas.LastHoveredElement,
-				SimulatingSource = [SpecialName] () => _running
+				SimulatingSource = [SpecialName] () => _running,
+				CircuitSource = [SpecialName] () => (_running && _simulator != null) ? _simulator.Circuit : CurrentCircuit
 			};
 		}
+		_cutaway.ShowWholeWorkspace(whole: false);
 		_cutaway.Show();
 		_cutaway.BringToFront();
+	}
+
+	private void OnCutawayWhole(object sender, EventArgs e)
+	{
+		OnCutaway(sender, e);
+		_cutaway.ShowWholeWorkspace(whole: true);
 	}
 
 	private void OnQuickGuide(object sender, EventArgs e)

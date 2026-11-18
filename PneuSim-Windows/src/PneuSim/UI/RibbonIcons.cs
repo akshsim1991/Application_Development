@@ -84,6 +84,7 @@ public static class RibbonIcons
 			});
 			break;
 		case "Cutaway":
+		case "CutawayAll":
 			graphics.DrawEllipse(pen, 14, 8, 34, 26);
 			graphics.DrawLine(pen2, 31, 8, 31, 34);
 			graphics.DrawLine(pen, 14, 21, 48, 21);

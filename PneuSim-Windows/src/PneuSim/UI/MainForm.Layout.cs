@@ -453,6 +453,7 @@ public partial class MainForm
 			_Lambda_0024__172_002D25();
 		}));
 		toolStripMenuItem15.DropDownItems.Add(Item("&Cutaway view (inside the components)", OnCutaway));
+		toolStripMenuItem15.DropDownItems.Add(Item("Cutaway: &whole workspace (all components together)", OnCutawayWhole, Keys.F7 | Keys.Shift));
 		ToolStripMenuItem toolStripMenuItem16 = new ToolStripMenuItem("E&xamples");
 		(string, Func<Circuit>)[] all = Examples.All;
 		_Closure_0024__172_002D1 closure_0024__172_002D = default(_Closure_0024__172_002D1);
@@ -622,6 +623,7 @@ public partial class MainForm
 			["Parts"] = delegate { OnPartsList(null, EventArgs.Empty); },
 			["Sweep"] = delegate { OnSweep(null, EventArgs.Empty); },
 			["Cutaway"] = delegate { OnCutaway(null, EventArgs.Empty); },
+			["CutawayAll"] = delegate { OnCutawayWhole(null, EventArgs.Empty); },
 			["Settings"] = delegate { OnSettings(null, EventArgs.Empty); },
 			["NewFault"] = delegate { StartExercise(); }
 		};

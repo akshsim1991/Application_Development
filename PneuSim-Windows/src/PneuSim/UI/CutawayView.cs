@@ -111,7 +111,7 @@ public class CutawayView : Control
 		SetStyle(ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, value: true);
 	}
 
-	private float TargetShift(DirectionalValve v)
+	public static float TargetShift(DirectionalValve v)
 	{
 		if (v == null)
 		{
@@ -188,13 +188,19 @@ public class CutawayView : Control
 
 	private void DrawValve(Graphics g, DirectionalValve v, CutawayPalette pal, Font f, Font fb)
 	{
+		DrawValveCutaway(g, v, pal, f, fb, base.Width, _shift);
+	}
+
+	/// <summary>Draws the inside of a directional valve in a virtual space viewWidth wide (about 215 high); shift is the current spool position.</summary>
+	public static void DrawValveCutaway(Graphics g, DirectionalValve v, CutawayPalette pal, Font f, Font fb, float viewWidth, float shift)
+	{
 		_Closure_0024__19_002D0 arg = default(_Closure_0024__19_002D0);
 		_Closure_0024__19_002D0 CS_0024_003C_003E8__locals0 = new _Closure_0024__19_002D0(arg);
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_v = v;
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_pal = pal;
 		(string, float, bool, bool)[] array = CS_0024_003C_003E8__locals0._0024VB_0024Local_v.WorkingPortLayout();
 		float num = CS_0024_003C_003E8__locals0._0024VB_0024Local_v.BoxSize * 3.2f + 120f;
-		CS_0024_003C_003E8__locals0._0024VB_0024Local_left = ((float)base.Width - num) / 2f;
+		CS_0024_003C_003E8__locals0._0024VB_0024Local_left = (viewWidth - num) / 2f;
 		float num2 = 70f;
 		float num3 = num2 + 34f;
 		float num4 = num3 + 36f;
@@ -241,10 +247,10 @@ public class CutawayView : Control
 				g.FillRectangle(brush5, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + 10f, num3, num - 20f, num4 - num3);
 			}
 			float num7 = TargetShift(CS_0024_003C_003E8__locals0._0024VB_0024Local_v);
-			float num8 = _shift - num7;
+			float num8 = shift - num7;
 			using (SolidBrush brush6 = new SolidBrush(CS_0024_003C_003E8__locals0._0024VB_0024Local_pal.MetalDark))
 			{
-				g.FillRectangle(brush6, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + 14f + _shift, num3 + 2f, num - 28f, num4 - num3 - 4f);
+				g.FillRectangle(brush6, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + 14f + shift, num3 + 2f, num - 28f, num4 - num3 - 4f);
 			}
 			string[][] array4 = array2;
 			_Closure_0024__19_002D1 closure_0024__19_002D = default(_Closure_0024__19_002D1);
@@ -273,8 +279,8 @@ public class CutawayView : Control
 			float num12 = (num3 + num4) / 2f;
 			using (SolidBrush brush8 = new SolidBrush(CS_0024_003C_003E8__locals0._0024VB_0024Local_pal.MetalDark))
 			{
-				g.FillRectangle(brush8, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 18f + _shift, num12 - 4f, 32f, 8f);
-				g.FillRectangle(brush8, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num - 14f + _shift, num12 - 4f, 32f, 8f);
+				g.FillRectangle(brush8, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 18f + shift, num12 - 4f, 32f, 8f);
+				g.FillRectangle(brush8, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num - 14f + shift, num12 - 4f, 32f, 8f);
 			}
 			bool flag = CS_0024_003C_003E8__locals0._0024VB_0024Local_v.Positions == 3;
 			bool flag2 = CS_0024_003C_003E8__locals0._0024VB_0024Local_v.Positions == 3 || CS_0024_003C_003E8__locals0._0024VB_0024Local_v.ReturnType == ValveReturn.Spring;
@@ -282,11 +288,11 @@ public class CutawayView : Control
 			{
 				if (flag2)
 				{
-					Cutaways.Zigzag(g, pen3, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 18f + _shift, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 64f, num12, 8f);
+					Cutaways.Zigzag(g, pen3, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 18f + shift, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 64f, num12, 8f);
 				}
 				if (flag)
 				{
-					Cutaways.Zigzag(g, pen3, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 64f, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 18f + _shift, num12, 8f);
+					Cutaways.Zigzag(g, pen3, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 64f, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 18f + shift, num12, 8f);
 				}
 			}
 			string text;
@@ -319,7 +325,7 @@ public class CutawayView : Control
 			}
 			SizeF sizeF = g.MeasureString(text, f);
 			g.DrawString(text, f, brush4, Math.Max(2f, CS_0024_003C_003E8__locals0._0024VB_0024Local_left - 4f - sizeF.Width), num3 - 6f - sizeF.Height);
-			g.DrawString(text2, f, brush4, Math.Min((float)base.Width - g.MeasureString(text2, f).Width - 2f, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 4f), num3 - 6f - sizeF.Height);
+			g.DrawString(text2, f, brush4, Math.Min(viewWidth - g.MeasureString(text2, f).Width - 2f, CS_0024_003C_003E8__locals0._0024VB_0024Local_left + num + 4f), num3 - 6f - sizeF.Height);
 		}
 	}
 }

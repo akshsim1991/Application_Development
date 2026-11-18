@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.3 "Mistral" (18 Nov 2026)
+- Whole-workspace cutaway now shows the inside of valves too (spool, passages, springs) instead of their symbol; symbols are used only for parts with no inside view.
+
 ## 3.3.2 "Mistral" (18 Nov 2026)
 - Fixed: crash when choosing an item from a ribbon "More" menu (and it no longer repeats items already on the ribbon); Settings dialog no longer cuts off options (scrolls); error dialog message no longer cut off.
 - Hovering a part while simulating shows its live values (force, pressure, speed, flow, current...) with its description.

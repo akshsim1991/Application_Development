@@ -34,6 +34,8 @@ public sealed class SystemCutawayView : Control
 
 	private double _flow;
 
+	private readonly Dictionary<DirectionalValve, float> _shifts = new Dictionary<DirectionalValve, float>();
+
 	private int _layoutCount = -1;
 
 	public bool Simulating { get; set; }
@@ -63,6 +65,16 @@ public sealed class SystemCutawayView : Control
 	{
 		_phase = (_phase + 120.0 * dt) % 360.0;
 		_flow = (_flow + 60.0 * dt) % 1000.0;
+		foreach (Panel_ panel in _panels)
+		{
+			if (panel.Element is DirectionalValve directionalValve)
+			{
+				float num = CutawayView.TargetShift(directionalValve);
+				_shifts.TryGetValue(directionalValve, out var value);
+				float num2 = (float)(260.0 * dt);
+				_shifts[directionalValve] = ((Math.Abs(num - value) <= num2) ? num : (value + (float)Math.Sign(num - value) * num2));
+			}
+		}
 		Invalidate();
 	}
 
@@ -272,12 +284,35 @@ public sealed class SystemCutawayView : Control
 		}
 		RectangleF area = new RectangleF(p.Rect.X + 6f, p.Rect.Y + 24f, p.Rect.Width - 12f, p.Rect.Height - 24f - 40f);
 		bool flag = false;
-		if (Cutaways.Supports(element) && !(element is DirectionalValve))
+		if (element is DirectionalValve directionalValve)
 		{
 			try
 			{
-				Cutaways.Draw(g, element, area, pal, _phase, Simulating);
+				_shifts.TryGetValue(directionalValve, out var value);
+				float num = directionalValve.BoxSize * 3.2f + 120f;
+				float num2 = Math.Max(num + 140f, 320f);
+				float num3 = Math.Min(area.Width / num2, area.Height / 215f);
+				GraphicsState state = g.Save();
+				g.TranslateTransform(area.X, area.Y);
+				g.ScaleTransform(num3, num3);
+				using (Font font = new Font("Segoe UI", 8.5f))
+				{
+					using Font font2 = new Font("Segoe UI", 9f, FontStyle.Bold);
+					CutawayView.DrawValveCutaway(g, directionalValve, pal, font, font2, num2, value);
+				}
+				g.Restore(state);
 				flag = true;
+			}
+			catch (Exception)
+			{
+			}
+		}
+		else if (Cutaways.Supports(element))
+		{
+			try
+			{
+				string text2 = Cutaways.Draw(g, element, area, pal, _phase, Simulating);
+				flag = text2 == null || text2.IndexOf("nothing inside", StringComparison.OrdinalIgnoreCase) < 0;
 			}
 			catch (Exception)
 			{

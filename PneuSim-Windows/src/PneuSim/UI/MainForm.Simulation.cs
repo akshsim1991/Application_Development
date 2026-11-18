@@ -131,6 +131,7 @@ public partial class MainForm
 		{
 			_plotter.RefreshPlot();
 			_inspector.RefreshValues();
+			RefreshHoverTip();
 			UpdateReplayUi();
 		}
 		if (_tickCount % 25 == 0 && _exercise != null)

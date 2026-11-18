@@ -15,12 +15,12 @@ public sealed class ErrorDialog : Form
 		MaximizeBox = false;
 		MinimizeBox = false;
 		Font = new Font("Segoe UI", 9f);
-		ClientSize = new Size(560, 330);
+		ClientSize = new Size(560, 372);
 		Label value = new Label
 		{
 			Text = friendlyMessage,
 			Location = new Point(14, 12),
-			Size = new Size(532, 64)
+			Size = new Size(532, 96)
 		};
 		TextBox textBox = new TextBox
 		{
@@ -29,21 +29,21 @@ public sealed class ErrorDialog : Form
 			ScrollBars = ScrollBars.Both,
 			WordWrap = false,
 			Text = report,
-			Location = new Point(14, 82),
+			Location = new Point(14, 114),
 			Size = new Size(532, 190),
 			Font = new Font("Consolas", 8.5f)
 		};
 		Button button = new Button
 		{
 			Text = "Copy error report",
-			Location = new Point(14, 286),
+			Location = new Point(14, 322),
 			Size = new Size(140, 30)
 		};
 		Button button2 = new Button
 		{
 			Text = "OK",
 			DialogResult = DialogResult.OK,
-			Location = new Point(466, 286),
+			Location = new Point(466, 322),
 			Size = new Size(80, 30)
 		};
 		button.Click += delegate

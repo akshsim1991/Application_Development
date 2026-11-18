@@ -124,6 +124,7 @@ public abstract class CircuitElement
 		return null;
 	}
 
+	[Browsable(false)]
 	public double EffectiveRatedPressure => (RatedPressureBar > 0.0) ? RatedPressureBar : ((FluidKind() == PortKind.Hydraulic) ? 160.0 : 10.0);
 
 	/// <summary>Highest offending pressure in bar if a port exceeds the rating (or the -0.95 bar vacuum rating); otherwise null.</summary>

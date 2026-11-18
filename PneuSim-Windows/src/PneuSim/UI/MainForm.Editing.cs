@@ -176,15 +176,67 @@ public partial class MainForm
 		{
 			LibraryPreset libraryPreset = (LibraryPreset)_library.SelectedItems[0].Tag;
 			_canvas.PlacingPreset = libraryPreset;
-			_statusMessage.Text = $"Click on the drawing area to place: {libraryPreset.Name}  (hold Shift to place several, Esc to cancel)";
+			_statusMessage.Text = $"Click in the workspace to place: {libraryPreset.Name}  (hold Shift to place several, Esc to cancel)";
 			_canvas.Focus();
 		}
 	}
 
+	private CircuitElement _hoverTipElement;
+
+	private string _hoverTipText;
+
+	/// <summary>The description of a component and, while simulating, its live values (force, pressure, speed, flow, current...).</summary>
+	private string HoverTipFor(CircuitElement e)
+	{
+		if (e == null)
+		{
+			return null;
+		}
+		string text = ComponentHelp.HelpFor(e);
+		if (!_running)
+		{
+			return text;
+		}
+		try
+		{
+			System.Collections.Generic.List<(string Name, string Value)> list = e.InspectValues();
+			if (list.Count > 0)
+			{
+				System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder(text);
+				stringBuilder.Append("\r\n\r\nLive values");
+				foreach (var item in list)
+				{
+					stringBuilder.Append("\r\n  " + item.Name + ": " + item.Value);
+				}
+				return stringBuilder.ToString();
+			}
+		}
+		catch (Exception)
+		{
+		}
+		return text;
+	}
+
 	private void OnHoverElement(object sender, CircuitElement e)
 	{
-		string caption = ((e == null) ? null : ComponentHelp.HelpFor(e));
-		_tooltip.SetToolTip(_canvas, caption);
+		_hoverTipElement = e;
+		_hoverTipText = HoverTipFor(e);
+		_tooltip.SetToolTip(_canvas, _hoverTipText);
+	}
+
+	/// <summary>Keeps the live values in the hover tip current while the simulation runs.</summary>
+	private void RefreshHoverTip()
+	{
+		if (_hoverTipElement == null)
+		{
+			return;
+		}
+		string text = HoverTipFor(_hoverTipElement);
+		if (text != _hoverTipText)
+		{
+			_hoverTipText = text;
+			_tooltip.SetToolTip(_canvas, text);
+		}
 	}
 
 	private void SetZoom(float z)

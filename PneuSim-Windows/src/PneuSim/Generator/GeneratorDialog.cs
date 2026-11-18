@@ -20,6 +20,10 @@ public class GeneratorDialog : Form
 
 	private readonly Button _generate;
 
+	private readonly CheckBox _useWorkspace;
+
+	private readonly Circuit _workspace;
+
 	public GeneratedCircuit Result { get; set; }
 
 	private GeneratorMethod Method
@@ -34,8 +38,16 @@ public class GeneratorDialog : Form
 		}
 	}
 
-	public GeneratorDialog()
+	public GeneratorDialog(Circuit workspace = null)
 	{
+		_workspace = workspace;
+		int num = ((workspace == null) ? 0 : WorkspaceMerge.FindCylinders(workspace).Count);
+		_useWorkspace = new CheckBox
+		{
+			Text = (num > 0) ? $"Build around the cylinders already in the workspace ({num} found): keep them and everything else there, and add the valves, sensors and wiring" : "Build around the cylinders already in the workspace (none found - place double-acting cylinders first)",
+			AutoSize = true,
+			Enabled = num > 0
+		};
 		_sequence = new ComboBox
 		{
 			DropDownStyle = ComboBoxStyle.DropDown,
@@ -92,7 +104,7 @@ public class GeneratorDialog : Form
 		FlowLayoutPanel flowLayoutPanel = new FlowLayoutPanel
 		{
 			Dock = DockStyle.Top,
-			Height = 130,
+			Height = 158,
 			FlowDirection = FlowDirection.TopDown,
 			Padding = new Padding(10, 0, 10, 0),
 			WrapContents = false
@@ -109,7 +121,7 @@ public class GeneratorDialog : Form
 			Padding = new Padding(0, 7, 0, 0)
 		});
 		flowLayoutPanel2.Controls.Add(_sequence);
-		flowLayoutPanel.Controls.AddRange(new Control[4] { flowLayoutPanel2, _electro, _cascade, _continuous });
+		flowLayoutPanel.Controls.AddRange(new Control[5] { flowLayoutPanel2, _electro, _cascade, _continuous, _useWorkspace });
 		FlowLayoutPanel flowLayoutPanel3 = new FlowLayoutPanel
 		{
 			Dock = DockStyle.Bottom,
@@ -157,13 +169,22 @@ public class GeneratorDialog : Form
 		{
 			Preview();
 		};
+		_useWorkspace.CheckedChanged += [SpecialName] (object a0, EventArgs a1) =>
+		{
+			Preview();
+		};
 		_generate.Click += OnGenerate;
 		Preview();
 	}
 
 	private GeneratedCircuit TryGenerate()
 	{
-		return SequenceGenerator.Generate(MotionSequence.Parse(_sequence.Text), Method, _continuous.Checked);
+		GeneratedCircuit generatedCircuit = SequenceGenerator.Generate(MotionSequence.Parse(_sequence.Text), Method, _continuous.Checked);
+		if (_useWorkspace.Checked && _workspace != null)
+		{
+			return WorkspaceMerge.Merge(_workspace, generatedCircuit);
+		}
+		return generatedCircuit;
 	}
 
 	private void Preview()
@@ -171,7 +192,7 @@ public class GeneratorDialog : Form
 		try
 		{
 			GeneratedCircuit generatedCircuit = TryGenerate();
-			_explanation.Text = generatedCircuit.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+			_explanation.Text = ((_useWorkspace.Checked && _workspace != null) ? WorkspaceMerge.Describe(_workspace, MotionSequence.Parse(_sequence.Text)).Replace("\n", "\r\n") : "") + generatedCircuit.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
 			_explanation.ForeColor = Color.Black;
 			_generate.Enabled = true;
 		}

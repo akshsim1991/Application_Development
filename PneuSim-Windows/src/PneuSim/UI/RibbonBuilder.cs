@@ -41,7 +41,7 @@ public static class RibbonBuilder
 		AddTab(bar, "Logic & Flow", Library.CatFlow, scheme, all, R("Logic", Has("Shuttle", "Two-pressure")), R("Flow and non-return", Has("flow", "Check", "Quick exhaust")));
 		AddTab(bar, "Electrical", Library.CatElectric, scheme, all, R("Power", Has("24 V", "0 V")), R("Switches and sensors", Has("Push button", "Selector", "Emergency", "Proximity", "Limit", "Pressure switch")), R("Relays and outputs", Has("Relay", "Timer", "solenoid", "lamp", "counter")));
 		AddTab(bar, "Hydraulics", Library.CatHydraulic, scheme, all, R("Power and tank", Has("power unit", "Tank", "relief", "Accumulator")), R("Cylinders and motors", Has("cylinder", "motor")), R("Valves", Has("valve", "throttle", "Counterbalance")), R("Measuring and pipes", Has("gauge", "junction")));
-		AddTab(bar, "Drawing", Library.CatDrawing, scheme, all);
+		AddTab(bar, "Annotate", Library.CatDrawing, scheme, all);
 		RibbonBar.Tab tab2 = bar.AddTab("Tools");
 		AddCommands(bar, tab2, "Design", commands, scheme, ("Circuit generator", "Generator"), ("Calculators", "Calculators"), ("Parts list and costs", "Parts"), ("Parameter sweep", "Sweep"));
 		AddCommands(bar, tab2, "Check", commands, scheme, ("Check circuit", "Check"), ("Explain circuit", "Explain"), ("Cutaway view", "Cutaway"));

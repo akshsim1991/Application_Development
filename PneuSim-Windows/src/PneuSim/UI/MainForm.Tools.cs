@@ -37,7 +37,7 @@ public partial class MainForm
 				list.Add(new CheckIssue
 				{
 					Severity = IssueSeverity.Info,
-					Message = "No problems found while drawing. Click 'Run full check' to test-run the circuit as well."
+					Message = "No problems found while building the circuit. Click 'Run full check' to test-run the circuit as well."
 				});
 			}
 			ShowIssues(list);
@@ -175,9 +175,19 @@ public partial class MainForm
 		{
 			return;
 		}
-		using GeneratorDialog generatorDialog = new GeneratorDialog();
+		using GeneratorDialog generatorDialog = new GeneratorDialog(CurrentCircuit);
 		Theme.Apply(generatorDialog);
-		if (generatorDialog.ShowDialog(this) == DialogResult.OK && generatorDialog.Result != null && ConfirmDiscard())
+		if (generatorDialog.ShowDialog(this) == DialogResult.OK && generatorDialog.Result != null && generatorDialog.Result.MergedIntoWorkspace)
+		{
+			_project.Pages[_pageIndex].Circuit = generatorDialog.Result.Circuit;
+			ShowPage(_pageIndex);
+			FitView();
+			OnCircuitModified();
+			_explainText.Text = generatorDialog.Result.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+			ShowBottomTab("Explain");
+			_statusMessage.Text = "Circuit built around the components in the workspace (you can undo this). Press Start (F9), then press the start button.";
+		}
+		else if (generatorDialog.DialogResult == DialogResult.OK && generatorDialog.Result != null && ConfirmDiscard())
 		{
 			NewProject(new Project(generatorDialog.Result.Circuit, "Generated circuit"));
 			FitView();

@@ -259,7 +259,7 @@ public sealed class ComponentHelp
 		}
 		if (flag == e is TextNote)
 		{
-			return "Text on the drawing (title, notes). Edit it in the Properties panel.";
+			return "Text in the workspace (title, notes). Edit it in the Properties panel.";
 		}
 		return "";
 	}

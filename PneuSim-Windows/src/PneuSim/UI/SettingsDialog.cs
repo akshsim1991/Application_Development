@@ -44,14 +44,15 @@ public sealed class SettingsDialog : Form
 		MinimizeBox = false;
 		ShowInTaskbar = false;
 		Font = new Font("Segoe UI", 9f);
-		ClientSize = new Size(420, 520);
+		ClientSize = new Size(440, 640);
+		AutoScaleMode = AutoScaleMode.Font;
 		FlowLayoutPanel flow = new FlowLayoutPanel
 		{
-			Dock = DockStyle.Top,
-			Height = 460,
+			Dock = DockStyle.Fill,
+			AutoScroll = true,
 			FlowDirection = FlowDirection.TopDown,
 			WrapContents = false,
-			Padding = new Padding(14, 10, 14, 0)
+			Padding = new Padding(14, 10, 14, 10)
 		};
 		flow.Controls.Add(Heading("Appearance"));
 		FlowLayoutPanel theme = Row();
@@ -74,11 +75,13 @@ public sealed class SettingsDialog : Form
 		}
 		flow.Controls.Add(Heading("Updates"));
 		flow.Controls.Add(_updates);
-		Button ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(240, 480), Size = new Size(75, 28) };
-		Button cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(325, 480), Size = new Size(75, 28) };
+		Panel buttons = new Panel { Dock = DockStyle.Bottom, Height = 52 };
+		Button ok = new Button { Text = "OK", DialogResult = DialogResult.OK, Location = new Point(260, 12), Size = new Size(80, 30), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+		Button cancel = new Button { Text = "Cancel", DialogResult = DialogResult.Cancel, Location = new Point(348, 12), Size = new Size(80, 30), Anchor = AnchorStyles.Top | AnchorStyles.Right };
+		buttons.Controls.Add(ok);
+		buttons.Controls.Add(cancel);
 		base.Controls.Add(flow);
-		base.Controls.Add(ok);
-		base.Controls.Add(cancel);
+		base.Controls.Add(buttons);
 		base.AcceptButton = ok;
 		base.CancelButton = cancel;
 		_sounds.CheckedChanged += delegate

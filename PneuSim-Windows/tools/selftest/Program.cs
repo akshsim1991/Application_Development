@@ -224,6 +224,29 @@ class SelfTest
             var okPort = ((IList)P(servo, "Ports"))[6];
             Check(P(okPort, "State").ToString() == "Pressurized", "servo OK output is 24 V when in position");
         }
+        // Circuit generator building around cylinders already in the workspace (needs Windows drawing code)
+        if (!OperatingSystem.IsWindows()) Console.WriteLine("SKIP generator-around-workspace test (needs Windows)");
+        else {
+            var c = Activator.CreateInstance(T("Circuit"));
+            var add = c.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement"));
+            var c1 = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { "DoubleActingCylinder" });
+            var c2 = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { "DoubleActingCylinder" });
+            c1.GetType().GetProperty("BoreMm").SetValue(c1, 63.0);
+            add.Invoke(c, new object[] { c1, 500f, 400f, "1A" }); add.Invoke(c, new object[] { c2, 900f, 400f, "2A" });
+            var seq = T("MotionSequence").GetMethod("Parse").Invoke(null, new object[] { "A+ B+ B- A-" });
+            var gen = T("SequenceGenerator").GetMethod("Generate").Invoke(null, new object[] { seq, Enum.Parse(T("GeneratorMethod"), "ElectroRelayChain"), false });
+            var merged = T("WorkspaceMerge").GetMethod("Merge").Invoke(null, new object[] { c, gen });
+            Check((bool)P(merged, "MergedIntoWorkspace"), "workspace merge returns a merged circuit");
+            var mc = P(merged, "Circuit"); var mels = ((IList)P(mc, "Elements")).Cast<object>().ToList();
+            var cyl = mels.Where(e => e.GetType().Name == "DoubleActingCylinder").ToList();
+            Check(cyl.Count == 2 && (float)P(cyl[0], "X") == 500f && (float)P(cyl[1], "X") == 900f && (double)P(cyl[0], "BoreMm") == 63.0, "existing cylinders keep their place and settings");
+            Check(P(cyl[0], "ExtendedMark").ToString() != "" && mels.Count(e => e.GetType().Name == "Valve52") == 2, "generated valves added, cylinder marks set");
+            Check(((IList)P(mc, "Tubes")).Count >= 8, $"generated connections added ({((IList)P(mc, "Tubes")).Count} tubes)");
+            var issues = (IEnumerable)T("CircuitAnalysis").GetMethods().First(m => m.Name == "StaticChecks").Invoke(null, new object[] { mc });
+            Check(!issues.Cast<object>().Any(i => P(i, "Severity").ToString() == "Error"), "merged circuit has no checker errors");
+            var original = ((IList)P(c, "Elements")).Count;
+            Check(original == 2, "the original workspace is not modified by the preview");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

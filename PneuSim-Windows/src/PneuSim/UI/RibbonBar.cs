@@ -10,7 +10,7 @@ namespace PneuSim;
 
 /// <summary>
 /// PneuSim's own ribbon: tabs, groups of large symbol buttons, a "More" drop-down for long groups and a
-/// search box. Everything is custom-painted (no third-party library). Click or drag a symbol onto the drawing.
+/// search box. Everything is custom-painted (no third-party library). Click or drag a symbol into the workspace.
 /// </summary>
 public sealed class RibbonBar : Control
 {
@@ -52,7 +52,7 @@ public sealed class RibbonBar : Control
 
 	private const int ContentHeight = 112;
 
-	private const int ButtonWidth = 76;
+	private const int ButtonWidth = 84;
 
 	private const int MaxPerGroup = 5;
 
@@ -65,6 +65,8 @@ public sealed class RibbonBar : Control
 	private readonly TextBox _search = new TextBox();
 
 	private readonly ToolTip _tip = new ToolTip { InitialDelay = 500 };
+
+	private ContextMenuStrip _moreMenu;
 
 	private readonly ListBox _results = new ListBox { IntegralHeight = true, BorderStyle = BorderStyle.FixedSingle, Visible = false };
 
@@ -439,7 +441,7 @@ public sealed class RibbonBar : Control
 			ImageScalingSize = new Size(56, 40),
 			ShowImageMargin = true
 		};
-		foreach (Item item in hit.MoreOf.Items)
+		foreach (Item item in hit.MoreOf.Items.Skip(MaxPerGroup - 1))
 		{
 			Item captured = item;
 			ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(item.Label, item.Icon);
@@ -449,10 +451,8 @@ public sealed class RibbonBar : Control
 			};
 			contextMenuStrip.Items.Add(toolStripMenuItem);
 		}
-		contextMenuStrip.Closed += delegate
-		{
-			contextMenuStrip.Dispose();
-		};
+		_moreMenu?.Dispose();
+		_moreMenu = contextMenuStrip;
 		contextMenuStrip.Show(this, new Point(hit.Bounds.X, hit.Bounds.Bottom));
 	}
 
@@ -528,6 +528,7 @@ public sealed class RibbonBar : Control
 	{
 		if (disposing)
 		{
+			_moreMenu?.Dispose();
 			_results.Dispose();
 		}
 		base.Dispose(disposing);

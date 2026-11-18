@@ -635,7 +635,7 @@ public partial class MainForm
 				return;
 			}
 			_canvas.PlacingPreset = preset;
-			_statusMessage.Text = $"Click on the drawing area to place: {preset.Name}  (hold Shift to place several, Esc to cancel)";
+			_statusMessage.Text = $"Click in the workspace to place: {preset.Name}  (hold Shift to place several, Esc to cancel)";
 			_canvas.Focus();
 		};
 		base.Controls.Add(_ribbon);

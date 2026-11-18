@@ -276,7 +276,7 @@ public sealed partial class CircuitAnalysis
 						RectangleF rectangleF2 = RectangleF.Intersect(a2, rectangleF);
 						if ((double)(rectangleF2.Width * rectangleF2.Height) > 0.3 * (double)Math.Min(a2.Width * a2.Height, rectangleF.Width * rectangleF.Height))
 						{
-							vB_0024AnonymousDelegate_(IssueSeverity.Info, $"{Name(list2[l])} and {Name(list2[m])} overlap on the drawing.", list2[m]);
+							vB_0024AnonymousDelegate_(IssueSeverity.Info, $"{Name(list2[l])} and {Name(list2[m])} overlap in the workspace.", list2[m]);
 						}
 					}
 				}

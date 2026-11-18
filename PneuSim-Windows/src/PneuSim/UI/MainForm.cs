@@ -480,8 +480,8 @@ public partial class MainForm : Form
 		_properties = new PropertyGrid();
 		_tooltip = new ToolTip
 		{
-			AutoPopDelay = 12000,
-			InitialDelay = 700,
+			AutoPopDelay = 30000,
+			InitialDelay = 400,
 			ReshowDelay = 300
 		};
 		_statusMode = new ToolStripStatusLabel

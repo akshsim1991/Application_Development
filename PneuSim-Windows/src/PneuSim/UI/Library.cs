@@ -235,19 +235,44 @@ public sealed class Library
 		{
 			scheme = ColorScheme.Light;
 		}
+		// Draw 3x larger without any text (text becomes unreadable at icon size), then shrink smoothly.
+		const int num = 3;
 		Bitmap bitmap = new Bitmap(width, height);
-		using Graphics graphics = Graphics.FromImage(bitmap);
-		using RenderContext r = new RenderContext();
-		graphics.SmoothingMode = SmoothingMode.AntiAlias;
-		graphics.Clear(scheme.Background);
-		RectangleF localBounds = e.LocalBounds;
-		float val = checked(Math.Min((float)(width - 6) / localBounds.Width, (float)(height - 6) / localBounds.Height));
-		val = Math.Min(val, 1f);
-		graphics.TranslateTransform((float)width / 2f, (float)height / 2f);
-		graphics.ScaleTransform(val, val);
-		graphics.TranslateTransform(0f - (localBounds.Left + localBounds.Width / 2f), 0f - (localBounds.Top + localBounds.Height / 2f));
-		using GdiSurface g = new GdiSurface(graphics, scheme);
-		e.DrawSymbol(g, r);
+		using (Bitmap bitmap2 = new Bitmap(width * num, height * num))
+		{
+			using (Graphics graphics = Graphics.FromImage(bitmap2))
+			{
+				using RenderContext r = new RenderContext();
+				graphics.SmoothingMode = SmoothingMode.AntiAlias;
+				graphics.Clear(scheme.Background);
+				RectangleF localBounds = e.LocalBounds;
+				float val = Math.Min((float)(width * num - 6 * num) / localBounds.Width, (float)(height * num - 6 * num) / localBounds.Height);
+				val = Math.Min(val, 3.6f);
+				graphics.TranslateTransform((float)(width * num) / 2f, (float)(height * num) / 2f);
+				graphics.ScaleTransform(val, val);
+				graphics.TranslateTransform(0f - (localBounds.Left + localBounds.Width / 2f), 0f - (localBounds.Top + localBounds.Height / 2f));
+				using IconSurface g = new IconSurface(graphics, scheme);
+				e.DrawSymbol(g, r);
+			}
+			using Graphics graphics2 = Graphics.FromImage(bitmap);
+			graphics2.InterpolationMode = InterpolationMode.HighQualityBicubic;
+			graphics2.PixelOffsetMode = PixelOffsetMode.HighQuality;
+			graphics2.SmoothingMode = SmoothingMode.HighQuality;
+			graphics2.DrawImage(bitmap2, 0, 0, width, height);
+		}
 		return bitmap;
+	}
+}
+
+/// <summary>Drawing surface for ribbon icons: identical to the normal one but without text, which would be unreadable at icon size.</summary>
+internal sealed class IconSurface : GdiSurface
+{
+	public IconSurface(System.Drawing.Graphics g, ColorScheme scheme)
+		: base(g, scheme)
+	{
+	}
+
+	public override void DrawString(string text, System.Drawing.Font font, System.Drawing.Brush brush, float x, float y)
+	{
 	}
 }

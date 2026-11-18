@@ -152,7 +152,7 @@ public static class UserGuide
 		w.Para("Created by " + AppInfo.Developer + ".  Contact: " + AppInfo.DeveloperEmail, 10f, Writer.Faint);
 		w.Chapter("1  What is new in " + AppInfo.Version + " \"" + AppInfo.CodeName + "\"");
 		w.Heading("A new, simpler look");
-		w.Bullet("Ribbon: all components are now on tabs (Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Drawing, Tools). Click a symbol and then click the drawing, or drag it there. Use the search box at the top right to find any component by name.");
+		w.Bullet("Ribbon: all components are now on tabs (Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Tools). Click a symbol and then click in the workspace, or drag it there. Use the search box at the top right to find any component by name.");
 		w.Bullet("Start screen: new circuit, open, drop a file onto it, recent circuits and the examples.");
 		w.Bullet("Light, Dark or Follow Windows theme. Pressure in bar, MPa or kPa.");
 		w.Bullet("Properties stay in the panel on the right; nothing pops up when you double-click a part.");
@@ -167,7 +167,7 @@ public static class UserGuide
 		w.Bullet("Automatic updates (Help > Update to new version): checked once a day, verified by checksum, installed in place.");
 		w.Chapter("2  Quick start");
 		w.Bullet("Start PneuSim. On the start screen choose an example or New circuit.");
-		w.Bullet("Pick a component from the ribbon and click on the drawing. Place a supply, a cylinder and a valve.");
+		w.Bullet("Pick a component from the ribbon and click in the workspace. Place a supply, a cylinder and a valve.");
 		w.Bullet("Drag from one port (the small circle on a part) to another to connect them with a tube. Red circles are electrical terminals.");
 		w.Bullet("Press Start (F9). Click push buttons, switches and pumps with the mouse. Pressurised tubes turn blue, live wires red, oil lines orange.");
 		w.Bullet("Press Check (F6) to find mistakes, Explain (F8) to read how the circuit works, and Stop when you are done.");
@@ -175,7 +175,7 @@ public static class UserGuide
 		w.Chapter("3  The screen");
 		w.Bullet("Menu bar and toolbar at the top: file, edit, simulation, speed, realistic physics, record GIF, zoom.");
 		w.Bullet("Ribbon: component tabs. Long groups have a More button. The search box finds components by name.");
-		w.Bullet("Drawing area in the middle, with page tabs for multi-page circuits (join pages with page connectors of the same name).");
+		w.Bullet("Workspace in the middle (where you place the components and run the simulation), with page tabs for multi-page circuits (join pages with page connectors of the same name).");
 		w.Bullet("Properties panel on the right: select a part to see and change all its properties. Hover over a property for its explanation.");
 		w.Bullet("Bottom tabs: Displacement-step diagram, Plotter, Check circuit, Explain, Getting started, Inspector, Fault finding.");
 		w.Bullet("Status bar: mode, messages, zoom and the version.");
@@ -201,7 +201,7 @@ public static class UserGuide
 		w.Chapter("7  Settings, units, sounds and rated pressure");
 		w.Bullet("Open Settings with Ctrl+, (Tools > Settings).");
 		w.Bullet("Theme: Light, Dark or Follow Windows (default).");
-		w.Bullet("Pressure unit on drawing labels: bar, MPa or kPa. Values in the Properties panel are entered in bar.");
+		w.Bullet("Pressure unit on workspace labels: bar, MPa or kPa. Values in the Properties panel are entered in bar.");
 		w.Bullet("Simple / Advanced mode: Advanced shows engineering properties such as the rated maximum pressure.");
 		w.Bullet("Sounds: master switch, volume and one switch for each sound.");
 		w.Bullet("Updates: switch the daily check on or off.");

@@ -3,7 +3,10 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
-## 3.3.0 "Mistral" (in progress)
+## 3.3.1 "Mistral" (18 Nov 2026)
+Fixes after first test on a PC: ribbon clicks, update message, Quick Guide PDF, Fit, undo/redo icons, shortcut hints; adds live value labels and new actuators (see below).
+
+## 3.3.0 "Mistral" (18 Nov 2026)
 - Removed the practice quiz and timed exam. Lessons became Getting started tutorials;
   Troubleshooting became Fault finding (wording only; engine unchanged, harness identical).
 - New user README and About text; the installer ships `installer/README-user.md`.

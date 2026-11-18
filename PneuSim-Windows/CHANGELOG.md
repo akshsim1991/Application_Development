@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.18 "Mistral" (18 Nov 2026)
+- Ribbon search fixed: results now show the names of the commands and components (they showed an internal text), match words in the name or the tooltip, and list the best matches first.
+
 ## 3.3.17 "Mistral" (18 Nov 2026)
 - New example 13: Pneumatic counterbalance (vertical load held and lowered under control), in the Examples list and under File > New.
 

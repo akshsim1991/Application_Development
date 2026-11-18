@@ -56,7 +56,7 @@ class H
         var o = new StringBuilder();
         // 1) Built-in examples
         var all = (Array)T("Examples").GetField("All").GetValue(null);
-        foreach (var item in all)
+        foreach (var item in all.Cast<object>().Take(12)) // the 12 examples of 3.2.0; later examples are new and have no reference
         {
             var name = (string)item.GetType().GetField("Item1").GetValue(item);
             var build = (Delegate)item.GetType().GetField("Item2").GetValue(item);

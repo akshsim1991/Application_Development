@@ -38,6 +38,11 @@ public sealed class RibbonBar : Control
 		public Func<List<(string Text, Action Run)>> Menu;
 
 		public string Key;
+
+		public override string ToString()
+		{
+			return Label ?? "";
+		}
 	}
 
 	public sealed class Group
@@ -760,13 +765,17 @@ public sealed class RibbonBar : Control
 			return;
 		}
 		string[] terms = text.ToLowerInvariant().Split(new char[1] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-		List<Item> list = _allItems.Where((Item i) => i.Menu == null && terms.All((string t) => i.Label.ToLowerInvariant().Contains(t))).Take(14).ToList();
+		Func<Item, string> hay = (Item i) => ((i.Label ?? "") + " " + (i.Tip ?? "")).ToLowerInvariant();
+		List<Item> list = _allItems.Where((Item i) => i.Menu == null && !string.IsNullOrEmpty(i.Label) && terms.All((string t) => hay(i).Contains(t)))
+			.GroupBy((Item i) => i.Label).Select((IGrouping<string, Item> g) => g.First())
+			.OrderBy((Item i) => terms.All((string t) => i.Label.ToLowerInvariant().Contains(t)) ? 0 : 1)
+			.ThenBy((Item i) => i.Label.ToLowerInvariant().StartsWith(terms[0]) ? 0 : 1)
+			.Take(14).ToList();
 		_results.Items.Clear();
 		foreach (Item item in list)
 		{
 			_results.Items.Add(item);
 		}
-		_results.DisplayMember = "Label";
 		Form form = FindForm();
 		if (list.Count == 0 || form == null)
 		{

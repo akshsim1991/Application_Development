@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
@@ -9,8 +10,9 @@ using System.Windows.Forms;
 namespace PneuSim;
 
 /// <summary>
-/// PneuSim's own ribbon: tabs, groups of large symbol buttons, a "More" drop-down for long groups and a
-/// search box. Everything is custom-painted (no third-party library). Click or drag a symbol into the workspace.
+/// PneuSim's own ribbon: a quick access toolbar, a File tab (backstage), tabs with groups of large and small buttons, toggles and
+/// drop-downs, a search box and a collapse button. Everything is custom-painted (no third-party library).
+/// Component symbols can be clicked or dragged into the workspace.
 /// </summary>
 public sealed class RibbonBar : Control
 {
@@ -18,11 +20,24 @@ public sealed class RibbonBar : Control
 	{
 		public string Label;
 
+		public string Tip;
+
 		public LibraryPreset Preset;
 
 		public Action Command;
 
 		public Bitmap Icon;
+
+		public bool IsSmall;
+
+		public Func<bool> Enabled;
+
+		public Func<bool> Checked;
+
+		/// <summary>If set, clicking shows these entries in a drop-down menu instead of running Command.</summary>
+		public Func<List<(string Text, Action Run)>> Menu;
+
+		public string Key;
 	}
 
 	public sealed class Group
@@ -36,6 +51,8 @@ public sealed class RibbonBar : Control
 	{
 		public string Name;
 
+		public bool IsFile;
+
 		public List<Group> Groups = new List<Group>();
 	}
 
@@ -48,11 +65,15 @@ public sealed class RibbonBar : Control
 		public Group MoreOf;
 	}
 
-	private const int TabHeight = 30;
+	public const int HeaderHeight = 32;
 
 	private const int ContentHeight = 112;
 
-	private const int ButtonWidth = 84;
+	private const int LargeWidth = 84;
+
+	private const int SmallWidth = 124;
+
+	private const int SmallRow = 27;
 
 	private const int MaxPerGroup = 5;
 
@@ -66,13 +87,15 @@ public sealed class RibbonBar : Control
 
 	private readonly ToolTip _tip = new ToolTip { InitialDelay = 500 };
 
-	private ContextMenuStrip _moreMenu;
-
 	private readonly ListBox _results = new ListBox { IntegralHeight = true, BorderStyle = BorderStyle.FixedSingle, Visible = false };
 
 	private readonly List<Item> _allItems = new List<Item>();
 
-	private int _active;
+	private ContextMenuStrip _moreMenu;
+
+	private Rectangle _chevron;
+
+	private int _active = 1;
 
 	private int _scroll;
 
@@ -86,17 +109,52 @@ public sealed class RibbonBar : Control
 
 	private bool _dark;
 
+	private bool _collapsed;
+
+	private bool _tempOpen;
+
+	/// <summary>Quick access toolbar items (small icons at the left of the tab row).</summary>
+	public List<Item> QuickAccess { get; } = new List<Item>();
+
 	public event Action<LibraryPreset> PresetChosen;
 
-	/// <summary>Tab names, in order.</summary>
+	/// <summary>Raised when the File tab is clicked (the owner shows the backstage view).</summary>
+	public event Action FileRequested;
+
+	public event Action CollapsedChanged;
+
 	public IEnumerable<string> TabNames => _tabs.Select((Tab t) => t.Name);
+
+	public string ActiveTabName => (_active >= 0 && _active < _tabs.Count) ? _tabs[_active].Name : null;
+
+	/// <summary>True when only the tab row is shown (more room for the workspace).</summary>
+	public bool Collapsed
+	{
+		get
+		{
+			return _collapsed;
+		}
+		set
+		{
+			_collapsed = value;
+			_tempOpen = false;
+			ApplyHeight();
+			CollapsedChanged?.Invoke();
+		}
+	}
+
+	private void ApplyHeight()
+	{
+		base.Height = HeaderHeight + ((_collapsed && !_tempOpen) ? 2 : (ContentHeight + 2));
+		Invalidate();
+	}
 
 	public RibbonBar()
 	{
 		SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw | ControlStyles.UserPaint, value: true);
 		Dock = DockStyle.Top;
-		Height = TabHeight + ContentHeight + 2;
 		Font = new Font("Segoe UI", 9f);
+		base.Height = HeaderHeight + ContentHeight + 2;
 		_search.Width = 210;
 		_search.BorderStyle = BorderStyle.FixedSingle;
 		base.Controls.Add(_search);
@@ -136,21 +194,20 @@ public sealed class RibbonBar : Control
 		};
 		base.HandleCreated += delegate
 		{
-			SendMessage(_search.Handle, 5377, (IntPtr)1, "Search components…");
+			SendMessage(_search.Handle, 5377, (IntPtr)1, "Search commands and components…");
 		};
 	}
 
 	[DllImport("user32.dll", CharSet = CharSet.Unicode)]
 	private static extern IntPtr SendMessage(IntPtr hWnd, int msg, IntPtr wParam, string lParam);
 
-	public Tab AddTab(string name)
+	public Tab AddTab(string name, bool isFile = false)
 	{
-		Tab tab = new Tab { Name = name };
+		Tab tab = new Tab { Name = name, IsFile = isFile };
 		_tabs.Add(tab);
 		return tab;
 	}
 
-	/// <summary>Registers every item for the search box (called by the builder once).</summary>
 	public void IndexForSearch()
 	{
 		_allItems.Clear();
@@ -160,7 +217,7 @@ public sealed class RibbonBar : Control
 			{
 				foreach (Item item in group.Items)
 				{
-					if (!_allItems.Any((Item i) => i.Label == item.Label))
+					if (!string.IsNullOrEmpty(item.Label) && !_allItems.Any((Item i) => i.Label == item.Label))
 					{
 						_allItems.Add(item);
 					}
@@ -169,23 +226,21 @@ public sealed class RibbonBar : Control
 		}
 	}
 
-	public string ActiveTabName => (_active >= 0 && _active < _tabs.Count) ? _tabs[_active].Name : null;
-
-	/// <summary>Removes all tabs (used when the colour scheme changes and the ribbon is rebuilt).</summary>
 	public void Reset()
 	{
 		_tabs.Clear();
 		_allItems.Clear();
 		_hits.Clear();
+		QuickAccess.Clear();
 		_hover = null;
 		_down = null;
-		_active = 0;
+		_active = 1;
 		_scroll = 0;
 	}
 
 	public void SelectTab(string name)
 	{
-		int num = _tabs.FindIndex((Tab t) => t.Name == name);
+		int num = _tabs.FindIndex((Tab t) => t.Name == name && !t.IsFile);
 		if (num >= 0)
 		{
 			_active = num;
@@ -194,7 +249,6 @@ public sealed class RibbonBar : Control
 		}
 	}
 
-	/// <summary>Switches colours; call when the theme changes (icons are redrawn by the owner).</summary>
 	public void SetDark(bool dark)
 	{
 		_dark = dark;
@@ -218,7 +272,17 @@ public sealed class RibbonBar : Control
 	protected override void OnResize(EventArgs e)
 	{
 		base.OnResize(e);
-		_search.Location = new Point(Math.Max(8, base.Width - _search.Width - 12), 4);
+		_search.Location = new Point(Math.Max(8, base.Width - _search.Width - 44), 5);
+	}
+
+	private static bool IsEnabled(Item i)
+	{
+		return i == null || i.Enabled == null || i.Enabled();
+	}
+
+	private static bool IsChecked(Item i)
+	{
+		return i != null && i.Checked != null && i.Checked();
 	}
 
 	protected override void OnPaint(PaintEventArgs e)
@@ -228,99 +292,230 @@ public sealed class RibbonBar : Control
 		graphics.Clear(Back);
 		_hits.Clear();
 		_tabRects.Clear();
-		int num = 10;
-		using (Font font = new Font(Font.FontFamily, 9.5f, FontStyle.Regular))
+		int num = 6;
+		foreach (Item item in QuickAccess)
+		{
+			Rectangle rectangle = new Rectangle(num, 4, 26, 24);
+			Hit hit = new Hit { Bounds = rectangle, Item = item };
+			_hits.Add(hit);
+			bool flag = IsEnabled(item);
+			if (flag && Same(hit, _hover))
+			{
+				using SolidBrush brush = new SolidBrush(HoverBack);
+				graphics.FillRectangle(brush, rectangle);
+			}
+			if (item.Icon != null)
+			{
+				DrawIcon(graphics, item.Icon, new Rectangle(rectangle.X + 5, rectangle.Y + 4, 16, 16), flag);
+			}
+			num += 28;
+		}
+		num += 6;
+		using (Font font = new Font(Font.FontFamily, 9.5f))
 		{
 			for (int i = 0; i < _tabs.Count; i++)
 			{
 				Size size = TextRenderer.MeasureText(_tabs[i].Name, font);
-				Rectangle rectangle = new Rectangle(num, 4, size.Width + 22, TabHeight - 4);
-				_tabRects.Add(rectangle);
-				if (i == _active)
+				Rectangle rectangle2 = new Rectangle(num, 4, size.Width + (_tabs[i].IsFile ? 30 : 22), HeaderHeight - 4);
+				_tabRects.Add(rectangle2);
+				bool flag2 = i == _active && !_tabs[i].IsFile;
+				if (_tabs[i].IsFile)
 				{
-					using SolidBrush brush = new SolidBrush(Panel_);
-					graphics.FillRectangle(brush, rectangle);
 					using SolidBrush brush2 = new SolidBrush(Accent);
-					graphics.FillRectangle(brush2, rectangle.X, rectangle.Y, rectangle.Width, 3);
+					graphics.FillRectangle(brush2, rectangle2);
+					TextRenderer.DrawText(graphics, _tabs[i].Name, font, rectangle2, Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 				}
-				TextRenderer.DrawText(graphics, _tabs[i].Name, font, rectangle, (i == _active) ? Text_ : Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
-				num += rectangle.Width + 2;
+				else
+				{
+					if (flag2 && !(_collapsed && !_tempOpen))
+					{
+						using SolidBrush brush3 = new SolidBrush(Panel_);
+						graphics.FillRectangle(brush3, rectangle2);
+						using SolidBrush brush4 = new SolidBrush(Accent);
+						graphics.FillRectangle(brush4, rectangle2.X + 6, rectangle2.Bottom - 3, rectangle2.Width - 12, 3);
+					}
+					TextRenderer.DrawText(graphics, _tabs[i].Name, font, rectangle2, flag2 ? Text_ : Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
+				}
+				num += rectangle2.Width + 2;
 			}
 		}
-		Rectangle rect = new Rectangle(0, TabHeight, base.Width, ContentHeight + 2);
-		using (SolidBrush brush3 = new SolidBrush(Panel_))
+		_chevron = new Rectangle(base.Width - 34, 6, 22, 22);
+		using (Pen pen = new Pen(Faint, 1.8f))
 		{
-			graphics.FillRectangle(brush3, rect);
+			int num2 = _chevron.X + 6;
+			int num3 = _chevron.Y + 9;
+			if (_collapsed)
+			{
+				graphics.DrawLines(pen, new Point[3]
+				{
+					new Point(num2, num3),
+					new Point(num2 + 5, num3 + 5),
+					new Point(num2 + 10, num3)
+				});
+			}
+			else
+			{
+				graphics.DrawLines(pen, new Point[3]
+				{
+					new Point(num2, num3 + 5),
+					new Point(num2 + 5, num3),
+					new Point(num2 + 10, num3 + 5)
+				});
+			}
 		}
-		using (Pen pen = new Pen(Border_))
+		if (_collapsed && !_tempOpen)
 		{
-			graphics.DrawLine(pen, 0, TabHeight, base.Width, TabHeight);
-			graphics.DrawLine(pen, 0, rect.Bottom - 1, base.Width, rect.Bottom - 1);
+			using Pen pen2 = new Pen(Border_);
+			graphics.DrawLine(pen2, 0, base.Height - 1, base.Width, base.Height - 1);
+			return;
 		}
-		if (_active >= 0 && _active < _tabs.Count)
+		Rectangle rect = new Rectangle(0, HeaderHeight, base.Width, ContentHeight + 2);
+		using (SolidBrush brush5 = new SolidBrush(Panel_))
+		{
+			graphics.FillRectangle(brush5, rect);
+		}
+		using (Pen pen3 = new Pen(Border_))
+		{
+			graphics.DrawLine(pen3, 0, HeaderHeight, base.Width, HeaderHeight);
+			graphics.DrawLine(pen3, 0, rect.Bottom - 1, base.Width, rect.Bottom - 1);
+		}
+		if (_active >= 0 && _active < _tabs.Count && !_tabs[_active].IsFile)
 		{
 			DrawContent(graphics, _tabs[_active]);
 		}
 	}
 
+	private static void DrawIcon(Graphics g, Image icon, Rectangle target, bool enabled)
+	{
+		if (enabled)
+		{
+			g.DrawImage(icon, target);
+			return;
+		}
+		using ImageAttributes imageAttributes = new ImageAttributes();
+		ColorMatrix newColorMatrix = new ColorMatrix(new float[5][]
+		{
+			new float[5] { 0.3f, 0.3f, 0.3f, 0f, 0f },
+			new float[5] { 0.3f, 0.3f, 0.3f, 0f, 0f },
+			new float[5] { 0.3f, 0.3f, 0.3f, 0f, 0f },
+			new float[5] { 0f, 0f, 0f, 0.4f, 0f },
+			new float[5] { 0.25f, 0.25f, 0.25f, 0f, 1f }
+		});
+		imageAttributes.SetColorMatrix(newColorMatrix);
+		g.DrawImage(icon, target, 0, 0, icon.Width, icon.Height, GraphicsUnit.Pixel, imageAttributes);
+	}
+
 	private void DrawContent(Graphics g, Tab tab)
 	{
 		int num = 8 - _scroll;
-		int num2 = TabHeight + 4;
+		int num2 = HeaderHeight + 4;
 		int num3 = ContentHeight - 22;
-		using Font font = new Font(Font.FontFamily, 8.25f);
+		using Font font = new Font(Font.FontFamily, 8.75f);
 		using Font font2 = new Font(Font.FontFamily, 8f);
-		g.SetClip(new Rectangle(0, TabHeight + 1, base.Width, ContentHeight));
+		g.SetClip(new Rectangle(0, HeaderHeight + 1, base.Width, ContentHeight));
 		foreach (Group group in tab.Groups)
 		{
-			List<Item> list = group.Items.Take((group.Items.Count > MaxPerGroup) ? (MaxPerGroup - 1) : group.Items.Count).ToList();
-			int num4 = list.Count + ((group.Items.Count > MaxPerGroup) ? 1 : 0);
-			int num5 = num;
+			int num4 = num;
+			bool flag = group.Items.Any((Item i) => !i.IsSmall) && group.Items.Count((Item i) => !i.IsSmall) > MaxPerGroup && group.Items.All((Item i) => i.Preset != null);
+			List<Item> list = (flag ? group.Items.Take(MaxPerGroup - 1).ToList() : group.Items);
+			List<Item> list2 = new List<Item>();
 			foreach (Item item in list)
 			{
-				Rectangle bounds = new Rectangle(num, num2, ButtonWidth, num3);
+				if (item.IsSmall)
+				{
+					list2.Add(item);
+					if (list2.Count == 3)
+					{
+						num = FlushSmall(g, list2, num, num2, font);
+					}
+					continue;
+				}
+				num = FlushSmall(g, list2, num, num2, font);
+				Rectangle bounds = new Rectangle(num, num2, LargeWidth, num3);
 				Hit hit = new Hit { Bounds = bounds, Item = item };
 				_hits.Add(hit);
-				DrawButton(g, hit, item.Label, item.Icon, font);
-				num += ButtonWidth;
+				DrawLarge(g, hit, item, font);
+				num += LargeWidth;
 			}
-			if (group.Items.Count > MaxPerGroup)
+			num = FlushSmall(g, list2, num, num2, font);
+			if (flag)
 			{
-				Rectangle bounds2 = new Rectangle(num, num2, ButtonWidth, num3);
+				Rectangle bounds2 = new Rectangle(num, num2, LargeWidth, num3);
 				Hit hit2 = new Hit { Bounds = bounds2, MoreOf = group };
 				_hits.Add(hit2);
-				DrawButton(g, hit2, $"More ({group.Items.Count - list.Count})  ▾", null, font);
-				num += ButtonWidth;
+				DrawLarge(g, hit2, new Item { Label = $"More ({group.Items.Count - list.Count})  ▾" }, font);
+				num += LargeWidth;
 			}
-			Rectangle layoutRectangle = new Rectangle(num5, num2 + num3 + 1, Math.Max(10, num4 * ButtonWidth), 16);
+			Rectangle layoutRectangle = new Rectangle(num4, num2 + num3 + 1, Math.Max(10, num - num4), 16);
 			TextRenderer.DrawText(g, group.Title, font2, layoutRectangle, Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 			num += 6;
-			using (Pen pen = new Pen(Border_))
-			{
-				g.DrawLine(pen, num - 3, num2 + 4, num - 3, num2 + num3 + 12);
-			}
+			using Pen pen = new Pen(Border_);
+			g.DrawLine(pen, num - 3, num2 + 4, num - 3, num2 + num3 + 12);
 		}
 		_contentWidth = num + _scroll + 8;
 		g.ResetClip();
 	}
 
-	private void DrawButton(Graphics g, Hit hit, string label, Bitmap icon, Font font)
+	private int FlushSmall(Graphics g, List<Item> stack, int x, int y, Font font)
+	{
+		if (stack.Count == 0)
+		{
+			return x;
+		}
+		for (int i = 0; i < stack.Count; i++)
+		{
+			Item item = stack[i];
+			Rectangle bounds = new Rectangle(x, y + i * SmallRow, SmallWidth, SmallRow);
+			Hit hit = new Hit { Bounds = bounds, Item = item };
+			_hits.Add(hit);
+			DrawSmall(g, hit, item, font);
+		}
+		stack.Clear();
+		return x + SmallWidth;
+	}
+
+	private void DrawButtonBack(Graphics g, Hit hit, Item item, Rectangle bounds)
+	{
+		bool flag = IsEnabled(item);
+		bool flag2 = IsChecked(item);
+		bool flag3 = flag && (Same(hit, _hover) || Same(hit, _down));
+		if (!(flag3 || flag2))
+		{
+			return;
+		}
+		using GraphicsPath path = RoundRect(Rectangle.Inflate(bounds, -2, -1), 5);
+		using SolidBrush brush = new SolidBrush(Same(hit, _down) ? Color.FromArgb(70, Accent) : (flag2 ? Color.FromArgb(48, Accent) : HoverBack));
+		g.FillPath(brush, path);
+		using Pen pen = new Pen(flag2 ? Accent : Color.FromArgb(150, Accent));
+		g.DrawPath(pen, path);
+	}
+
+	private void DrawLarge(Graphics g, Hit hit, Item item, Font font)
 	{
 		Rectangle bounds = hit.Bounds;
-		if (Same(hit, _hover) || Same(hit, _down))
+		DrawButtonBack(g, hit, item, bounds);
+		bool flag = IsEnabled(item);
+		if (item.Icon != null)
 		{
-			using GraphicsPath path = RoundRect(Rectangle.Inflate(bounds, -2, -1), 5);
-			using SolidBrush brush = new SolidBrush(Same(hit, _down) ? Color.FromArgb(60, Accent) : HoverBack);
-			g.FillPath(brush, path);
-			using Pen pen = new Pen(Accent);
-			g.DrawPath(pen, path);
-		}
-		if (icon != null)
-		{
-			g.DrawImage(icon, bounds.X + (bounds.Width - icon.Width) / 2, bounds.Y + 3, icon.Width, icon.Height);
+			DrawIcon(g, item.Icon, new Rectangle(bounds.X + (bounds.Width - item.Icon.Width) / 2, bounds.Y + 3, item.Icon.Width, item.Icon.Height), flag);
 		}
 		Rectangle rectangle = new Rectangle(bounds.X + 2, bounds.Y + 46, bounds.Width - 4, bounds.Height - 46);
-		TextRenderer.DrawText(g, label, font, rectangle, Text_, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+		string text = ((item.Menu != null) ? (item.Label + " ▾") : item.Label);
+		TextRenderer.DrawText(g, text, font, rectangle, flag ? Text_ : Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+	}
+
+	private void DrawSmall(Graphics g, Hit hit, Item item, Font font)
+	{
+		Rectangle bounds = hit.Bounds;
+		DrawButtonBack(g, hit, item, bounds);
+		bool flag = IsEnabled(item);
+		if (item.Icon != null)
+		{
+			DrawIcon(g, item.Icon, new Rectangle(bounds.X + 6, bounds.Y + (bounds.Height - 16) / 2, 16, 16), flag);
+		}
+		Rectangle rectangle = new Rectangle(bounds.X + 26, bounds.Y, bounds.Width - 28, bounds.Height);
+		string text = ((item.Menu != null) ? (item.Label + " ▾") : item.Label);
+		TextRenderer.DrawText(g, text, font, rectangle, flag ? Text_ : Faint, TextFormatFlags.Left | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 	}
 
 	private static GraphicsPath RoundRect(Rectangle r, int radius)
@@ -340,7 +535,6 @@ public sealed class RibbonBar : Control
 		return _hits.FirstOrDefault((Hit h) => h.Bounds.Contains(p));
 	}
 
-	/// <summary>Hits are rebuilt on every repaint, so compare what they stand for, not the objects.</summary>
 	private static bool Same(Hit a, Hit b)
 	{
 		return a != null && b != null && a.Item == b.Item && a.MoreOf == b.MoreOf;
@@ -361,8 +555,9 @@ public sealed class RibbonBar : Control
 		if (!Same(hit, _hover) && !(hit == null && _hover == null))
 		{
 			_hover = hit;
-			Cursor = ((hit != null) ? Cursors.Hand : Cursors.Default);
-			_tip.SetToolTip(this, (hit == null) ? "" : ((hit.Item != null) ? hit.Item.Label : "Show the other items in this group"));
+			Cursor = ((hit != null && IsEnabled(hit.Item)) ? Cursors.Hand : Cursors.Default);
+			string text = ((hit == null) ? "" : ((hit.Item != null) ? (string.IsNullOrEmpty(hit.Item.Tip) ? hit.Item.Label : hit.Item.Tip) : "Show the other items in this group"));
+			_tip.SetToolTip(this, text);
 			Invalidate();
 		}
 	}
@@ -381,17 +576,48 @@ public sealed class RibbonBar : Control
 		{
 			return;
 		}
+		if (_chevron.Contains(e.Location))
+		{
+			Collapsed = !_collapsed;
+			return;
+		}
 		for (int i = 0; i < _tabRects.Count; i++)
 		{
-			if (_tabRects[i].Contains(e.Location))
+			if (!_tabRects[i].Contains(e.Location))
 			{
-				SelectTab(_tabs[i].Name);
+				continue;
+			}
+			if (_tabs[i].IsFile)
+			{
+				FileRequested?.Invoke();
 				return;
 			}
+			if (_collapsed)
+			{
+				_active = i;
+				_tempOpen = true;
+				ApplyHeight();
+			}
+			else
+			{
+				_active = i;
+				_scroll = 0;
+				Invalidate();
+			}
+			return;
 		}
 		_down = HitAt(e.Location);
 		_downPoint = e.Location;
 		Invalidate();
+	}
+
+	protected override void OnMouseDoubleClick(MouseEventArgs e)
+	{
+		base.OnMouseDoubleClick(e);
+		if (e.Button == MouseButtons.Left && e.Y < HeaderHeight && _tabRects.Any((Rectangle r) => r.Contains(e.Location)))
+		{
+			Collapsed = !_collapsed;
+		}
 	}
 
 	protected override void OnMouseUp(MouseEventArgs e)
@@ -408,9 +634,14 @@ public sealed class RibbonBar : Control
 		{
 			ShowMore(down);
 		}
-		else if (down.Item != null)
+		else if (down.Item != null && IsEnabled(down.Item))
 		{
-			Activate(down.Item);
+			Activate(down.Item, down.Bounds);
+			if (_collapsed && _tempOpen && down.Item.Preset == null)
+			{
+				_tempOpen = false;
+				ApplyHeight();
+			}
 		}
 	}
 
@@ -438,16 +669,43 @@ public sealed class RibbonBar : Control
 		Invalidate();
 	}
 
-	private void Activate(Item item)
+	private void Activate(Item item, Rectangle bounds)
 	{
-		if (item.Preset != null)
+		if (item.Menu != null)
 		{
-			this.PresetChosen?.Invoke(item.Preset);
+			ShowMenu(item.Menu(), new Point(bounds.X, bounds.Bottom));
+		}
+		else if (item.Preset != null)
+		{
+			PresetChosen?.Invoke(item.Preset);
 		}
 		else
 		{
 			item.Command?.Invoke();
 		}
+	}
+
+	private void ShowMenu(List<(string Text, Action Run)> entries, Point where)
+	{
+		ContextMenuStrip contextMenuStrip = new ContextMenuStrip();
+		foreach (var entry in entries)
+		{
+			if (entry.Text == "-")
+			{
+				contextMenuStrip.Items.Add(new ToolStripSeparator());
+				continue;
+			}
+			Action run = entry.Run;
+			ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(entry.Text);
+			toolStripMenuItem.Click += delegate
+			{
+				run?.Invoke();
+			};
+			contextMenuStrip.Items.Add(toolStripMenuItem);
+		}
+		_moreMenu?.Dispose();
+		_moreMenu = contextMenuStrip;
+		contextMenuStrip.Show(this, where);
 	}
 
 	private void ShowMore(Hit hit)
@@ -463,7 +721,7 @@ public sealed class RibbonBar : Control
 			ToolStripMenuItem toolStripMenuItem = new ToolStripMenuItem(item.Label, item.Icon);
 			toolStripMenuItem.Click += delegate
 			{
-				Activate(captured);
+				Activate(captured, Rectangle.Empty);
 			};
 			contextMenuStrip.Items.Add(toolStripMenuItem);
 		}
@@ -481,7 +739,7 @@ public sealed class RibbonBar : Control
 			return;
 		}
 		string[] terms = text.ToLowerInvariant().Split(new char[1] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-		List<Item> list = _allItems.Where((Item i) => terms.All((string t) => i.Label.ToLowerInvariant().Contains(t))).Take(14).ToList();
+		List<Item> list = _allItems.Where((Item i) => i.Menu == null && terms.All((string t) => i.Label.ToLowerInvariant().Contains(t))).Take(14).ToList();
 		_results.Items.Clear();
 		foreach (Item item in list)
 		{
@@ -502,7 +760,7 @@ public sealed class RibbonBar : Control
 		_results.Font = Font;
 		_results.BackColor = Panel_;
 		_results.ForeColor = Text_;
-		_results.Width = 320;
+		_results.Width = 340;
 		_results.Height = Math.Min(14, list.Count) * _results.ItemHeight + 4;
 		_results.Location = new Point(Math.Max(0, Math.Min(point.X, form.ClientSize.Width - _results.Width - 4)), point.Y);
 		_results.SelectedIndex = 0;
@@ -536,7 +794,10 @@ public sealed class RibbonBar : Control
 		{
 			_results.Visible = false;
 			_search.Text = "";
-			Activate(item);
+			if (IsEnabled(item))
+			{
+				Activate(item, Rectangle.Empty);
+			}
 		}
 	}
 

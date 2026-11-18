@@ -56,6 +56,11 @@ public sealed class AppSettings
 
 	public static bool ShowGrid { get; set; } = true;
 
+	/// <summary>Also show the classic menu bar and toolbar above the ribbon (applies after restart).</summary>
+	public static bool ClassicMenu { get; set; }
+
+	public static bool RibbonCollapsed { get; set; }
+
 	/// <summary>Currency symbol for costs (parts list, air cost).</summary>
 	public static string CurrencySymbol { get; set; } = "₹";
 
@@ -219,6 +224,12 @@ public sealed class AppSettings
 				case "Snap":
 					SnapToGrid = text3 != "0";
 					break;
+				case "ClassicMenu":
+					ClassicMenu = text3 == "1";
+					break;
+				case "RibbonCollapsed":
+					RibbonCollapsed = text3 == "1";
+					break;
 				case "Grid":
 					ShowGrid = text3 != "0";
 					break;
@@ -295,6 +306,8 @@ public sealed class AppSettings
 				$"StartScreen={(ShowStartScreen ? 1 : 0)}",
 				$"Snap={(SnapToGrid ? 1 : 0)}",
 				$"Grid={(ShowGrid ? 1 : 0)}",
+				$"ClassicMenu={(ClassicMenu ? 1 : 0)}",
+				$"RibbonCollapsed={(RibbonCollapsed ? 1 : 0)}",
 				"Currency=" + CurrencySymbol,
 				$"ValueLabels={(ShowValueLabels ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",

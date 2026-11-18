@@ -236,48 +236,59 @@ public partial class MainForm
 
 	private void OnExportPdf(object sender, EventArgs e)
 	{
-		string text = AskPath("PDF document (*.pdf)|*.pdf", "pdf", _project.Info.Title);
-		if (text == null)
-		{
-			return;
-		}
-		string text2 = "";
+		string text = "";
 		try
 		{
-			text2 = CircuitAnalysis.Explain(_project.SimulationCircuit(), null, _realPhysics);
+			text = CircuitAnalysis.Explain(_project.SimulationCircuit(), null, _realPhysics);
 		}
 		catch (Exception ex)
 		{
 			ProjectData.SetProjectError(ex);
-			Exception ex2 = ex;
-			text2 = "";
+			text = "";
 			ProjectData.ClearProjectError();
 		}
+		PdfDocument doc;
 		try
 		{
-			Reports.SavePdfReport(_project, text, includeParts: true, text2);
-			_statusMessage.Text = $"Exported {text}";
+			doc = Reports.BuildPdf(_project, includeParts: true, text);
+		}
+		catch (Exception ex2)
+		{
+			ProjectData.SetProjectError(ex2);
+			MessageBox.Show("Could not prepare the report: " + ex2.Message, "PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Hand);
+			ProjectData.ClearProjectError();
+			return;
+		}
+		using PrintPreviewForm preview = new PrintPreviewForm(doc, _project.Info.Title);
+		preview.SaveRequested += delegate
+		{
+			string text2 = AskPath("PDF document (*.pdf)|*.pdf", "pdf", _project.Info.Title);
+			if (text2 == null)
+			{
+				return;
+			}
 			try
 			{
-				Process.Start(new ProcessStartInfo(text)
+				doc.Save(text2);
+				_statusMessage.Text = $"Exported {text2}";
+				try
 				{
-					UseShellExecute = true
-				});
+					Process.Start(new ProcessStartInfo(text2)
+					{
+						UseShellExecute = true
+					});
+				}
+				catch (Exception)
+				{
+				}
 			}
 			catch (Exception ex3)
 			{
-				ProjectData.SetProjectError(ex3);
-				Exception ex4 = ex3;
-				ProjectData.ClearProjectError();
+				MessageBox.Show("Could not write the PDF: " + ex3.Message, "PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Hand);
 			}
-		}
-		catch (Exception ex5)
-		{
-			ProjectData.SetProjectError(ex5);
-			Exception ex6 = ex5;
-			MessageBox.Show("Could not write the PDF: " + ex6.Message, "PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Hand);
-			ProjectData.ClearProjectError();
-		}
+		};
+		Theme.Apply(preview);
+		preview.ShowDialog(this);
 	}
 
 	private void OpenExample(Func<Circuit> build)

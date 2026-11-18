@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace PneuSim;
 
-/// <summary>Defines PneuSim's ribbon tabs and groups from the component library. Pure layout data, no logic.</summary>
+/// <summary>Defines PneuSim's complete ribbon: File, Home, component tabs, Simulate, Tools, View, Learn and Help. Pure layout data, no logic.</summary>
 public static class RibbonBuilder
 {
 	private sealed class Rule
@@ -24,37 +24,106 @@ public static class RibbonBuilder
 		return (LibraryPreset p) => words.Any((string w) => p.Name.IndexOf(w, StringComparison.OrdinalIgnoreCase) >= 0);
 	}
 
-	/// <summary>Fills the ribbon. commands maps a command name to its action (Generator, Check, Explain, Parts, Sweep, Cutaway, Calculators, Settings, NewFault).</summary>
-	public static void Build(RibbonBar bar, Dictionary<string, Action> commands, ColorScheme scheme)
+	private static RibbonBar.Item It(Func<string, RCmd> cmd, ColorScheme sc, string key, string label, string icon, bool small, string tip = null)
 	{
-		LibraryPreset[] all = Library.Presets;
-		Func<string, RibbonBar.Item> thumb = (string name) => ItemFor(all.First((LibraryPreset p) => p.Name == name), scheme);
-		RibbonBar.Tab tab = bar.AddTab("Home");
-		AddNames(tab, "Air supply", thumb, "Compressed air supply", "Service unit", "Pressure gauge");
-		AddNames(tab, "Actuators", thumb, "Single-acting cylinder", "Double-acting cylinder");
-		AddNames(tab, "Valves", thumb, "3/2 valve, push button, NC", "5/2 valve, double solenoid", "One-way flow control valve", "Shuttle valve (OR)");
-		AddNames(tab, "Electrical", thumb, "Push button, NO", "Relay coil", "Valve solenoid");
-		AddCommands(bar, tab, "Quick tools", commands, scheme, ("Circuit generator", "Generator"), ("Check circuit", "Check"), ("Explain circuit", "Explain"));
-		AddTab(bar, "Supply & Air", Library.CatSupply, scheme, all, R("Air supply", Has("supply", "Compressor", "receiver")), R("Air preparation", Has("Shut-off", "Service unit", "regulator", "Silencer", "junction")), R("Measuring", Has("gauge", "Flow meter", "Force", "switch")));
-		AddTab(bar, "Actuators", Library.CatActuators, scheme, all, R("Electric drives", Has("DC motor", "Servo", "Electric cylinder")), R("Cylinders and drives", Has("cylinder", "actuator", "motor")), R("Handling and vacuum", Has("gripper", "Vacuum", "Suction")));
-		AddTab(bar, "Valves", null, scheme, all.Where((LibraryPreset p) => p.Category == Library.CatDirectional || p.Category == Library.CatSolenoid).ToArray(), R("Hand and mechanical", Has("push button", "selector", "roller")), R("Pilot and timing", Has("pilot", "delay", "sequence")), R("Solenoid operated", (LibraryPreset p) => p.Category == Library.CatSolenoid));
-		AddTab(bar, "Logic & Flow", Library.CatFlow, scheme, all, R("Logic", Has("Shuttle", "Two-pressure")), R("Flow and non-return", Has("flow", "Check", "Quick exhaust")));
-		AddTab(bar, "Electrical", Library.CatElectric, scheme, all, R("Power", Has("24 V", "0 V")), R("Switches and sensors", Has("Push button", "Selector", "Emergency", "Proximity", "Limit", "Pressure switch")), R("Relays and outputs", Has("Relay", "Timer", "solenoid", "lamp", "counter")));
-		AddTab(bar, "Hydraulics", Library.CatHydraulic, scheme, all, R("Power and tank", Has("power unit", "Tank", "relief", "Accumulator")), R("Cylinders and motors", Has("cylinder", "motor")), R("Valves", Has("valve", "throttle", "Counterbalance")), R("Measuring and pipes", Has("gauge", "junction")));
-		AddTab(bar, "Annotate", Library.CatDrawing, scheme, all);
-		RibbonBar.Tab tab2 = bar.AddTab("Tools");
-		AddCommands(bar, tab2, "Design", commands, scheme, ("Circuit generator", "Generator"), ("Calculators", "Calculators"), ("Sizing sheets", "Sizing"), ("Parts list and costs", "Parts"), ("Parameter sweep", "Sweep"));
-		AddCommands(bar, tab2, "Check", commands, scheme, ("Check circuit", "Check"), ("Explain circuit", "Explain"), ("Cutaway view", "Cutaway"), ("Cutaway: whole workspace", "CutawayAll"));
-		AddCommands(bar, tab2, "Fault finding", commands, scheme, ("New fault-finding task", "NewFault"));
-		AddCommands(bar, tab2, "PneuSim", commands, scheme, ("Settings", "Settings"));
-		bar.IndexForSearch();
-		bar.SelectTab("Home");
+		RCmd rCmd = cmd(key);
+		if (rCmd == null)
+		{
+			return null;
+		}
+		return new RibbonBar.Item
+		{
+			Key = key,
+			Label = label,
+			Command = rCmd.Run,
+			Enabled = rCmd.Enabled,
+			Checked = rCmd.Checked,
+			Tip = tip ?? rCmd.Tip ?? label,
+			Icon = RibbonGlyphs.Make(icon, sc, small ? 16 : 36),
+			IsSmall = small
+		};
 	}
 
-	/// <summary>Redraws all icons for a new colour scheme.</summary>
-	public static void Refresh(RibbonBar bar, ColorScheme scheme)
+	private static RibbonBar.Item Drop(Func<string, RCmd> cmd, ColorScheme sc, string label, string icon, Func<List<(string Text, Action Run)>> menu, string tip)
 	{
-		bar.SetDark(scheme.IsDark);
+		return new RibbonBar.Item
+		{
+			Label = label,
+			Menu = menu,
+			Tip = tip,
+			Icon = RibbonGlyphs.Make(icon, sc, 36)
+		};
+	}
+
+	private static void G(RibbonBar.Tab tab, string title, params RibbonBar.Item[] items)
+	{
+		RibbonBar.Group group = new RibbonBar.Group { Title = title };
+		group.Items.AddRange(items.Where((RibbonBar.Item i) => i != null));
+		if (group.Items.Count > 0)
+		{
+			tab.Groups.Add(group);
+		}
+	}
+
+	private static RibbonBar.Item Part(string name, ColorScheme scheme)
+	{
+		LibraryPreset libraryPreset = Library.Presets.FirstOrDefault((LibraryPreset p) => p.Name == name);
+		return (libraryPreset == null) ? null : ItemFor(libraryPreset, scheme);
+	}
+
+	/// <summary>Fills the ribbon. cmd looks up a command by key (null if it does not exist). examples lists the bundled examples for the Examples drop-down.</summary>
+	public static void Build(RibbonBar bar, Func<string, RCmd> cmd, Func<List<(string Text, Action Run)>> examples, ColorScheme sc)
+	{
+		bar.AddTab("File", isFile: true);
+		foreach (string key in new string[5] { "New", "Open", "Save", "Undo", "Redo" })
+		{
+			string icon = ((key == "New") ? "New" : ((key == "Open") ? "Open" : ((key == "Save") ? "Save" : key)));
+			RibbonBar.Item item = It(cmd, sc, key, key, icon, small: true);
+			if (item != null)
+			{
+				bar.QuickAccess.Add(item);
+			}
+		}
+		RibbonBar.Tab tab = bar.AddTab("Home");
+		G(tab, "Clipboard", It(cmd, sc, "Paste", "Paste", "Paste", small: false), It(cmd, sc, "Cut", "Cut", "Cut", small: true), It(cmd, sc, "Copy", "Copy", "Copy", small: true), It(cmd, sc, "Duplicate", "Duplicate", "Duplicate", small: true));
+		G(tab, "Edit", It(cmd, sc, "Undo", "Undo", "Undo", small: true), It(cmd, sc, "Redo", "Redo", "Redo", small: true), It(cmd, sc, "SelectAll", "Select all", "SelectAll", small: true), It(cmd, sc, "Delete", "Delete", "Delete", small: true), It(cmd, sc, "Rotate", "Rotate 90°", "Rotate", small: true));
+		G(tab, "Run", It(cmd, sc, "Start", "Start", "Start", small: false), It(cmd, sc, "Pause", "Pause", "Pause", small: true), It(cmd, sc, "Stop", "Stop", "Stop", small: true), It(cmd, sc, "Real", "Realistic", "Real", small: true));
+		G(tab, "View", It(cmd, sc, "Fit", "Fit", "Fit", small: false), It(cmd, sc, "ZoomIn", "Zoom in", "ZoomIn", small: true), It(cmd, sc, "ZoomOut", "Zoom out", "ZoomOut", small: true), It(cmd, sc, "Pan", "Pan", "Pan", small: true), It(cmd, sc, "Grid", "Grid", "Grid", small: true), It(cmd, sc, "ActualSize", "100 %", "ActualSize", small: true));
+		G(tab, "Pages", It(cmd, sc, "AddPage", "Add page", "AddPage", small: true), It(cmd, sc, "RenamePage", "Rename page", "RenamePage", small: true), It(cmd, sc, "DeletePage", "Delete page", "DeletePage", small: true), It(cmd, sc, "PrevPage", "Previous page", "PrevPage", small: true), It(cmd, sc, "NextPage", "Next page", "NextPage", small: true));
+		G(tab, "Quick tools", It(cmd, sc, "Generator", "Circuit generator", "Generator", small: false), It(cmd, sc, "Check", "Check circuit", "Check", small: false), It(cmd, sc, "Explain", "Explain circuit", "Explain", small: false));
+		G(tab, "Quick parts", Part("Compressed air supply", sc), Part("Single-acting cylinder", sc), Part("Double-acting cylinder", sc), Part("3/2 valve, push button, NC", sc), Part("5/2 valve, double solenoid", sc), Part("Push button, NO", sc));
+		LibraryPreset[] presets = Library.Presets;
+		AddTab(bar, "Supply & Air", Library.CatSupply, sc, presets, R("Air supply", Has("supply", "Compressor", "receiver")), R("Air preparation", Has("Shut-off", "Service unit", "regulator", "Silencer", "junction")), R("Measuring", Has("gauge", "Flow meter", "Force", "switch")));
+		AddTab(bar, "Actuators", Library.CatActuators, sc, presets, R("Electric drives", Has("DC motor", "Servo", "Electric cylinder")), R("Cylinders and drives", Has("cylinder", "actuator", "motor")), R("Handling and vacuum", Has("gripper", "Vacuum", "Suction")));
+		AddTab(bar, "Valves", null, sc, presets.Where((LibraryPreset p) => p.Category == Library.CatDirectional || p.Category == Library.CatSolenoid).ToArray(), R("Hand and mechanical", Has("push button", "selector", "roller")), R("Pilot and timing", Has("pilot", "delay", "sequence")), R("Solenoid operated", (LibraryPreset p) => p.Category == Library.CatSolenoid));
+		AddTab(bar, "Logic & Flow", Library.CatFlow, sc, presets, R("Logic", Has("Shuttle", "Two-pressure")), R("Flow and non-return", Has("flow", "Check", "Quick exhaust")));
+		AddTab(bar, "Electrical", Library.CatElectric, sc, presets, R("Power", Has("24 V", "0 V")), R("Switches and sensors", Has("Push button", "Selector", "Emergency", "Proximity", "Limit", "Pressure switch")), R("Relays and outputs", Has("Relay", "Timer", "solenoid", "lamp", "counter")));
+		AddTab(bar, "Hydraulics", Library.CatHydraulic, sc, presets, R("Power and tank", Has("power unit", "Tank", "relief", "Accumulator")), R("Cylinders and motors", Has("cylinder", "motor")), R("Valves", Has("valve", "throttle", "Counterbalance")), R("Measuring and pipes", Has("gauge", "junction")));
+		AddTab(bar, "Annotate", Library.CatDrawing, sc, presets);
+		RibbonBar.Tab tab2 = bar.AddTab("Simulate");
+		G(tab2, "Run", It(cmd, sc, "Start", "Start", "Start", small: false), It(cmd, sc, "Pause", "Pause", "Pause", small: false), It(cmd, sc, "Stop", "Stop and reset", "Stop", small: false));
+		G(tab2, "Replay", It(cmd, sc, "StepBack", "Step back", "StepBack", small: true), It(cmd, sc, "StepFwd", "Step forward", "StepFwd", small: true), It(cmd, sc, "PrevEvent", "Previous event", "PrevEvent", small: true), It(cmd, sc, "NextEvent", "Next event", "NextEvent", small: true));
+		G(tab2, "Speed", It(cmd, sc, "Speed0", "0.1x slow", "Speed", small: true), It(cmd, sc, "Speed1", "0.25x", "Speed", small: true), It(cmd, sc, "Speed2", "0.5x", "Speed", small: true), It(cmd, sc, "Speed3", "1x normal", "Speed", small: true), It(cmd, sc, "Speed4", "2x", "Speed", small: true), It(cmd, sc, "Speed5", "4x fast", "Speed", small: true));
+		G(tab2, "Options", It(cmd, sc, "Real", "Realistic physics", "Real", small: true), It(cmd, sc, "Record", "Record GIF", "Record", small: true), It(cmd, sc, "Settings", "Automatic operation…", "Settings", small: true));
+		G(tab2, "Analyse", It(cmd, sc, "Check", "Check circuit", "Check", small: false), It(cmd, sc, "Explain", "Explain circuit", "Explain", small: false), It(cmd, sc, "PanelGrafcet", "GRAFCET", "Grafcet", small: false), It(cmd, sc, "PanelDiagram", "Step diagram", "Diagram", small: false));
+		RibbonBar.Tab tab3 = bar.AddTab("Tools");
+		G(tab3, "Design", It(cmd, sc, "Generator", "Circuit generator", "Generator", small: false), It(cmd, sc, "Sizing", "Sizing sheets", "Sizing", small: false), It(cmd, sc, "Calculators", "Calculators", "Calculators", small: false));
+		G(tab3, "Documents", It(cmd, sc, "Parts", "Parts list and costs", "Parts", small: false), It(cmd, sc, "Sweep", "Parameter sweep", "Sweep", small: false), It(cmd, sc, "Pdf", "Print preview / PDF", "Pdf", small: false));
+		G(tab3, "Check", It(cmd, sc, "Check", "Check circuit", "Check", small: false), It(cmd, sc, "Explain", "Explain circuit", "Explain", small: false));
+		G(tab3, "Fault finding", It(cmd, sc, "NewFault", "New task", "Fault", small: false), It(cmd, sc, "Hint", "Hint", "Hint", small: true), It(cmd, sc, "Found", "I found it…", "Found", small: true), It(cmd, sc, "ShowFault", "Show the fault", "ShowFault", small: true), It(cmd, sc, "AddFault", "Add fault…", "AddFault", small: true), It(cmd, sc, "Repair", "Repair all", "Repair", small: true));
+		G(tab3, "Look inside", It(cmd, sc, "Cutaway", "Cutaway", "Cutaway", small: false), It(cmd, sc, "CutawayAll", "Whole workspace", "CutawayAll", small: false));
+		G(tab3, "PneuSim", It(cmd, sc, "Settings", "Settings", "Settings", small: false));
+		RibbonBar.Tab tab4 = bar.AddTab("View");
+		G(tab4, "Zoom", It(cmd, sc, "Fit", "Fit", "Fit", small: false), It(cmd, sc, "ZoomIn", "Zoom in", "ZoomIn", small: true), It(cmd, sc, "ZoomOut", "Zoom out", "ZoomOut", small: true), It(cmd, sc, "ActualSize", "100 %", "ActualSize", small: true), It(cmd, sc, "Pan", "Pan (hand)", "Pan", small: true));
+		G(tab4, "Show", It(cmd, sc, "Grid", "Grid", "Grid", small: true), It(cmd, sc, "Labels", "Live value labels", "Labels", small: true), It(cmd, sc, "Dark", "Dark mode", "Dark", small: true));
+		G(tab4, "Panels", It(cmd, sc, "PanelDiagram", "Step diagram", "Diagram", small: true), It(cmd, sc, "PanelGrafcet", "GRAFCET", "Grafcet", small: true), It(cmd, sc, "PanelPlotter", "Plotter", "Plotter", small: true), It(cmd, sc, "PanelCheck", "Check circuit", "CheckPanel", small: true), It(cmd, sc, "PanelExplain", "Explain", "ExplainPanel", small: true), It(cmd, sc, "PanelTutorial", "Getting started", "Tutorial", small: true), It(cmd, sc, "PanelInspector", "Inspector", "Inspector", small: true), It(cmd, sc, "PanelFault", "Fault finding", "Fault", small: true));
+		G(tab4, "Ribbon", It(cmd, sc, "Collapse", "Collapse ribbon", "Collapse", small: true));
+		RibbonBar.Tab tab5 = bar.AddTab("Learn");
+		G(tab5, "Learn", It(cmd, sc, "PanelTutorial", "Getting started", "Tutorial", small: false), It(cmd, sc, "Cutaway", "Cutaway", "Cutaway", small: false), It(cmd, sc, "CutawayAll", "Whole workspace", "CutawayAll", small: false), Drop(cmd, sc, "Examples", "Examples", examples, "Open one of the example circuits in a new tab"));
+		RibbonBar.Tab tab6 = bar.AddTab("Help");
+		G(tab6, "Help", It(cmd, sc, "Guide", "Quick guide (PDF)", "Guide", small: false), It(cmd, sc, "Update", "Update to new version", "Update", small: false), It(cmd, sc, "About", "About PneuSim", "About", small: false));
+		bar.IndexForSearch();
+		bar.SelectTab("Home");
 	}
 
 	private static RibbonBar.Item ItemFor(LibraryPreset preset, ColorScheme scheme)
@@ -65,34 +134,6 @@ public static class RibbonBuilder
 			Preset = preset,
 			Icon = Library.RenderThumbnail(preset.Factory(), 62, 42, scheme)
 		};
-	}
-
-	private static void AddNames(RibbonBar.Tab tab, string title, Func<string, RibbonBar.Item> thumb, params string[] names)
-	{
-		RibbonBar.Group group = new RibbonBar.Group { Title = title };
-		foreach (string arg in names)
-		{
-			group.Items.Add(thumb(arg));
-		}
-		tab.Groups.Add(group);
-	}
-
-	private static void AddCommands(RibbonBar bar, RibbonBar.Tab tab, string title, Dictionary<string, Action> commands, ColorScheme scheme, params (string Label, string Key)[] items)
-	{
-		RibbonBar.Group group = new RibbonBar.Group { Title = title };
-		foreach (var (label, key) in items)
-		{
-			if (commands.TryGetValue(key, out var value))
-			{
-				group.Items.Add(new RibbonBar.Item
-				{
-					Label = label,
-					Command = value,
-					Icon = RibbonIcons.Command(key, scheme)
-				});
-			}
-		}
-		tab.Groups.Add(group);
 	}
 
 	private static void AddTab(RibbonBar bar, string name, string category, ColorScheme scheme, LibraryPreset[] source, params Rule[] rules)

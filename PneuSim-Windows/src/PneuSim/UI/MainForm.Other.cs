@@ -423,6 +423,10 @@ public partial class MainForm
 				return true;
 			}
 		}
+		if (TryShortcut(keyData))
+		{
+			return true;
+		}
 		return base.ProcessCmdKey(ref msg, keyData);
 	}
 

@@ -203,11 +203,15 @@ public partial class MainForm
 			});
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel1Collapsed = true;
 			base.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit);
-			BuildRibbon();
 			_toolbar = BuildToolbar();
-			base.Controls.Add(_toolbar);
 			_menu = BuildMenu();
-			base.Controls.Add(_menu);
+			BuildCommands();
+			BuildRibbon();
+			if (AppSettings.ClassicMenu)
+			{
+				base.Controls.Add(_toolbar);
+				base.Controls.Add(_menu);
+			}
 			base.Controls.Add(_status);
 			base.Load += [SpecialName] (object a0, EventArgs a1) =>
 			{
@@ -273,7 +277,7 @@ public partial class MainForm
 		toolStripMenuItem.DropDownItems.Add(new ToolStripSeparator());
 		toolStripMenuItem.DropDownItems.Add(Item("Project &information (title block)...", OnProjectInfo));
 		ToolStripMenuItem toolStripMenuItem2 = new ToolStripMenuItem("&Export");
-		toolStripMenuItem2.DropDownItems.Add(Item("PDF report with title block...", OnExportPdf, Keys.P | Keys.Control));
+		toolStripMenuItem2.DropDownItems.Add(Item("PDF report: print preview, save and print (title block)...", OnExportPdf, Keys.P | Keys.Control));
 		toolStripMenuItem2.DropDownItems.Add(Item("SVG drawing (this page)...", OnExportSvg));
 		toolStripMenuItem2.DropDownItems.Add(Item("DXF drawing for CAD (this page)...", OnExportDxf));
 		toolStripMenuItem2.DropDownItems.Add(Item("PNG image (this page)...", OnExportImage));
@@ -642,21 +646,15 @@ public partial class MainForm
 	private void BuildRibbon()
 	{
 		_ribbon = new RibbonBar();
-		_ribbonCommands = new Dictionary<string, Action>
+		_ribbon.Collapsed = AppSettings.RibbonCollapsed;
+		RibbonBuilder.Build(_ribbon, CmdLookup, ExamplesMenu, ColorScheme.Light);
+		_ribbon.FileRequested += ShowBackstage;
+		_ribbon.CollapsedChanged += delegate
 		{
-			["Generator"] = delegate { OnGenerator(null, EventArgs.Empty); },
-			["Check"] = delegate { OnFullCheck(null, EventArgs.Empty); },
-			["Explain"] = delegate { OnExplain(null, EventArgs.Empty); },
-			["Calculators"] = delegate { OnCalculators(null, EventArgs.Empty); },
-			["Sizing"] = delegate { OnSizing(null, EventArgs.Empty); },
-			["Parts"] = delegate { OnPartsList(null, EventArgs.Empty); },
-			["Sweep"] = delegate { OnSweep(null, EventArgs.Empty); },
-			["Cutaway"] = delegate { OnCutaway(null, EventArgs.Empty); },
-			["CutawayAll"] = delegate { OnCutawayWhole(null, EventArgs.Empty); },
-			["Settings"] = delegate { OnSettings(null, EventArgs.Empty); },
-			["NewFault"] = delegate { StartExercise(); }
+			AppSettings.RibbonCollapsed = _ribbon.Collapsed;
+			AppSettings.Save();
+			LayoutBackstage();
 		};
-		RibbonBuilder.Build(_ribbon, _ribbonCommands, ColorScheme.Light);
 		_ribbon.PresetChosen += delegate(LibraryPreset preset)
 		{
 			HideStartScreen();

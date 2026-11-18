@@ -20,12 +20,7 @@ public partial class MainForm
 	private void RefreshPageTabs()
 	{
 		_switchingPages = true;
-		_pageTabs.TabPages.Clear();
-		foreach (ProjectPage page in _project.Pages)
-		{
-			_pageTabs.TabPages.Add(new TabPage(page.Name));
-		}
-		_pageTabs.SelectedIndex = Math.Min(_pageIndex, checked(_project.Pages.Count - 1));
+		_pageTabs.SetPages(_project.Pages.Select((ProjectPage p) => p.Name), Math.Min(_pageIndex, checked(_project.Pages.Count - 1)));
 		_switchingPages = false;
 	}
 

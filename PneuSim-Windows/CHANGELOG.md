@@ -3,6 +3,12 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.9 "Mistral" (18 Nov 2026)
+- New full ribbon replaces the menu bar and toolbar, giving the Workspace more room: File, Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Simulate, Tools, View, Learn, Help tabs; quick-access buttons (New, Open, Save, Undo, Redo); double-click a tab or press Ctrl+F1 to collapse the ribbon. The classic menu and toolbar can be switched back on in Settings.
+- File opens a full-page view (New, Open, Recent, Save, Save As, Close, Export, Information, Options, Exit).
+- Page tabs at the bottom of the Workspace now look like sheet tabs with arrows and a + button.
+- PDF report shows a print preview first (Save as PDF or Print).
+
 ## 3.3.8 "Mistral" (18 Nov 2026)
 - Several circuits can be open at once: file tabs along the top (click to switch, x or middle-click to close, + for a new circuit). New, Open, examples and generated circuits open in a new tab; a file that is already open is switched to. File > Close (Ctrl+W) and Close all (Ctrl+Shift+W). Closing PneuSim asks about every tab with unsaved changes.
 - Pages (sheets) of a circuit are now tabs at the bottom of the workspace, like Excel sheets.

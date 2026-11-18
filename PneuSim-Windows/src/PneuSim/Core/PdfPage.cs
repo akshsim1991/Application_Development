@@ -19,6 +19,9 @@ public class PdfPage
 
 	internal List<PdfImage> Images { get; }
 
+	/// <summary>The same drawing as drawing operations, so the page can be previewed and printed without a PDF viewer. Arguments: graphics, scale (pixels per point).</summary>
+	public List<Action<System.Drawing.Graphics, float>> Ops { get; } = new List<Action<System.Drawing.Graphics, float>>();
+
 	public PdfPage(float width, float height)
 	{
 		Content = new StringBuilder();
@@ -92,6 +95,35 @@ public class PdfPage
 
 	public void Path(PointF[] points, bool closed, Color stroke, float strokeWidth, bool dashed, Color fill)
 	{
+		if (points.Length >= 2 && (fill.A != 0 || stroke.A != 0))
+		{
+			PointF[] pts = (PointF[])points.Clone();
+			Ops.Add(delegate(System.Drawing.Graphics g, float s)
+			{
+				PointF[] array = Array.ConvertAll(pts, (PointF p) => new PointF(p.X * s, p.Y * s));
+				if (fill.A > 0 && array.Length >= 3)
+				{
+					using SolidBrush brush = new SolidBrush(fill);
+					g.FillPolygon(brush, array);
+				}
+				if (stroke.A > 0)
+				{
+					using Pen pen = new Pen(stroke, Math.Max(0.3f, strokeWidth) * s);
+					if (dashed)
+					{
+						pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
+					}
+					if (closed && array.Length >= 3)
+					{
+						g.DrawPolygon(pen, array);
+					}
+					else
+					{
+						g.DrawLines(pen, array);
+					}
+				}
+			});
+		}
 		checked
 		{
 			if (points.Length >= 2 && (fill.A != 0 || stroke.A != 0))
@@ -145,6 +177,24 @@ public class PdfPage
 
 	public void Text(float x, float baseline, float size, string txt, bool bold = false, Color color = default(Color), float angleDeg = 0f)
 	{
+		if (!string.IsNullOrEmpty(txt))
+		{
+			Color col = ((color.A == 0) ? Color.Black : color);
+			string text = VectorExport.Plain(txt);
+			Ops.Add(delegate(System.Drawing.Graphics g, float s)
+			{
+				using Font font = new Font("Arial", Math.Max(1f, size * s), bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
+				using SolidBrush brush = new SolidBrush(col);
+				System.Drawing.Drawing2D.GraphicsState gstate = g.Save();
+				g.TranslateTransform(x * s, baseline * s);
+				if (Math.Abs(angleDeg) > 0.1f)
+				{
+					g.RotateTransform(0f - angleDeg);
+				}
+				g.DrawString(text, font, brush, 0f, (0f - size) * s * 0.88f);
+				g.Restore(gstate);
+			});
+		}
 		if (!string.IsNullOrEmpty(txt))
 		{
 			if (color.A == 0)

@@ -53,6 +53,8 @@ public sealed class SettingsDialog : Form
 
 	private readonly CheckBox _snap = new CheckBox { Text = "Snap components to the grid", AutoSize = true };
 
+	private readonly CheckBox _classic = new CheckBox { Text = "Show the classic menu bar and toolbar above the ribbon (takes effect after restart)", AutoSize = true };
+
 	private readonly CheckBox _grid = new CheckBox { Text = "Show the grid dots in the workspace", AutoSize = true };
 
 	private readonly NumericUpDown _autosave = new NumericUpDown { Minimum = 0m, Maximum = 60m, Width = 80 };
@@ -131,6 +133,7 @@ public sealed class SettingsDialog : Form
 		flowLayoutPanel4.Controls.Add(_valueLabels);
 		flowLayoutPanel4.Controls.Add(_hoverValues);
 		flowLayoutPanel4.Controls.Add(_grid);
+		flowLayoutPanel4.Controls.Add(_classic);
 		flowLayoutPanel4.Controls.Add(Heading("Editing"));
 		flowLayoutPanel4.Controls.Add(_snap);
 		FlowLayoutPanel flowLayoutPanel5 = NewTab(tabs, "Sounds");
@@ -277,6 +280,7 @@ public sealed class SettingsDialog : Form
 		_valueLabels.Checked = AppSettings.ShowValueLabels;
 		_hoverValues.Checked = AppSettings.ShowHoverValues;
 		_grid.Checked = AppSettings.ShowGrid;
+		_classic.Checked = AppSettings.ClassicMenu;
 		_snap.Checked = AppSettings.SnapToGrid;
 		_sounds.Checked = AppSettings.SoundsOn;
 		_volume.Value = Math.Max(0, Math.Min(100, AppSettings.SoundVolume));
@@ -309,6 +313,7 @@ public sealed class SettingsDialog : Form
 		AppSettings.ShowValueLabels = _valueLabels.Checked;
 		AppSettings.ShowHoverValues = _hoverValues.Checked;
 		AppSettings.ShowGrid = _grid.Checked;
+		AppSettings.ClassicMenu = _classic.Checked;
 		AppSettings.SnapToGrid = _snap.Checked;
 		AppSettings.SoundsOn = _sounds.Checked;
 		AppSettings.SoundVolume = _volume.Value;

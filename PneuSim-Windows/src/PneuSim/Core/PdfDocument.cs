@@ -85,6 +85,8 @@ public class PdfDocument
 		_pages = new List<PdfPage>();
 	}
 
+	public IReadOnlyList<PdfPage> Pages => _pages;
+
 	public PdfPage AddPage(float width, float height)
 	{
 		PdfPage pdfPage = new PdfPage(width, height);

@@ -329,7 +329,7 @@ public partial class MainForm : Form
 
 	private readonly CircuitCanvas _canvas;
 
-	private readonly TabControl _pageTabs;
+	private readonly PageTabs _pageTabs;
 
 	private readonly GrafcetPanel _grafcet = new GrafcetPanel();
 
@@ -463,12 +463,7 @@ public partial class MainForm : Form
 		{
 			Dock = DockStyle.Fill
 		};
-		_pageTabs = new TabControl
-		{
-			Dock = DockStyle.Bottom,
-			Alignment = TabAlignment.Bottom,
-			Height = 28
-		};
+		_pageTabs = new PageTabs();
 		_diagram = new DiagramPanel
 		{
 			Dock = DockStyle.Fill
@@ -514,7 +509,6 @@ public partial class MainForm : Form
 		BuildDocumentTabs();
 		BuildLayout();
 		Theme.OwnerDrawTabs(_bottomTabs);
-		Theme.OwnerDrawTabs(_pageTabs);
 		_canvas.SelectionChanged += [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__167_002D0();
@@ -535,10 +529,14 @@ public partial class MainForm : Form
 		};
 		_properties.PropertyValueChanged += OnPropertyValueChanged;
 		_timer.Tick += OnTick;
-		_pageTabs.SelectedIndexChanged += [SpecialName] (object a0, EventArgs a1) =>
+		_pageTabs.SelectedIndexChanged += (int i) =>
 		{
-			_Lambda_0024__167_002D4();
+			if (!_switchingPages)
+			{
+				ShowPage(i);
+			}
 		};
+		_pageTabs.AddRequested += AddPage;
 		_lessons.LoadCircuit += [SpecialName] (object s, Circuit c) =>
 		{
 			LoadLessonCircuit(c);
@@ -558,5 +556,4 @@ public partial class MainForm : Form
 
 	private RibbonBar _ribbon;
 
-	private Dictionary<string, Action> _ribbonCommands;
 }

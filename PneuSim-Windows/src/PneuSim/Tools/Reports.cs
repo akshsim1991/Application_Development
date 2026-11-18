@@ -17,6 +17,12 @@ public sealed class Reports
 
 	public static void SavePdfReport(Project project, string path, bool includeParts, string explanation)
 	{
+		BuildPdf(project, includeParts, explanation).Save(path);
+	}
+
+	/// <summary>Builds the report (sheets, parts list, explanation) without saving it, so it can be previewed first.</summary>
+	public static PdfDocument BuildPdf(Project project, bool includeParts, string explanation)
+	{
 		PdfDocument pdfDocument = new PdfDocument();
 		project.UpdateCrossReferences();
 		checked
@@ -45,7 +51,7 @@ public sealed class Reports
 				DrawText(page3, "How the circuit works", explanation);
 				VectorExport.DrawTitleBlock(page3, project.Info, "Explanation", num2, sheets);
 			}
-			pdfDocument.Save(path);
+			return pdfDocument;
 		}
 	}
 

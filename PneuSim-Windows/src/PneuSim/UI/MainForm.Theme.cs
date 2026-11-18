@@ -66,14 +66,8 @@ public partial class MainForm
 		RenderLibraryImages(scheme);
 		if (_ribbon != null)
 		{
-			string activeTabName = _ribbon.ActiveTabName;
-			_ribbon.Reset();
-			RibbonBuilder.Build(_ribbon, _ribbonCommands, scheme);
-			_ribbon.SetDark(dark);
-			if (activeTabName != null)
-			{
-				_ribbon.SelectTab(activeTabName);
-			}
+			RebuildRibbon(scheme);
+			_pageTabs.Invalidate();
 		}
 		Color color = (dark ? Theme.Dk(Color.FromArgb(37, 39, 46)) : SystemColors.Control);
 		Color color2 = (dark ? Color.FromArgb(225, 228, 235) : SystemColors.ControlText);

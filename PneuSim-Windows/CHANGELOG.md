@@ -3,6 +3,12 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.4.1 "Mistral" (18 Nov 2026)
+Audit release (documentation and tooling, no new features). 3.4.0 was the first stabilisation build; the 3.4 feature work has not started.
+- README rewritten for first-time users; Quick Guide PDF updated to the ribbon, tabs, updates and shortcuts; installer readme updated.
+- Full audit report with a prioritised bug list (docs/AUDIT-3.4.md) and a manual test checklist (docs/TEST-CHECKLIST.md).
+- Test script no longer reports success when the self-test fails to build.
+
 ## 3.4.0 "Mistral" (18 Nov 2026)
 Stabilisation release: audit of the whole application (see docs/AUDIT-3.4.md), no new circuit features.
 - Updates: PneuSim checks for a new version every time it starts (when a network is connected, silently otherwise) and offers it right away; an update link stays in the status bar. New Settings option "Install new versions automatically": the installer is downloaded in the background, checked (SHA-256) and installed silently when PneuSim is closed, with no questions.

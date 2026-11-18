@@ -152,9 +152,12 @@ public static class UserGuide
 		w.Para("Created by " + AppInfo.Developer + ".  Contact: " + AppInfo.DeveloperEmail, 10f, Writer.Faint);
 		w.Chapter("1  What is new in " + AppInfo.Version + " \"" + AppInfo.CodeName + "\"");
 		w.Heading("A new, simpler look");
-		w.Bullet("Ribbon: all components are now on tabs (Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Tools). Click a symbol and then click in the workspace, or drag it there. Use the search box at the top right to find any component by name.");
+		w.Bullet("Full ribbon instead of menus and toolbar: File, Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Simulate, Tools, View, Learn, Help. Click a symbol and then click in the workspace to place it. The search box at the top right finds any command or component. Ctrl+F1 collapses the ribbon for more room. The classic menu bar can be switched back on in Settings.");
+		w.Bullet("File opens a full-page view: New, Open, Recent, Save, Save As, Close, Export, Information, Options, Exit.");
+		w.Bullet("Several circuits open at once in file tabs; the pages of a circuit are sheet tabs below the workspace with a + button.");
+		w.Bullet("Lines route themselves around components and keep off each other, and hop over each other where they cross. A component dropped on another is moved to free space. Rotating a group turns it as one piece.");
 		w.Bullet("Start screen: new circuit, open, drop a file onto it, recent circuits and the examples.");
-		w.Bullet("Light, Dark or Follow Windows theme. Pressure in bar, MPa or kPa.");
+		w.Bullet("Light, Dark, AMOLED or Follow Windows theme. Pressure in bar, MPa or kPa. Port names as numbers, letters (P, A, B, E, C, T) or both.");
 		w.Bullet("Properties stay in the panel on the right; nothing pops up when you double-click a part.");
 		w.Heading("Safety and awareness");
 		w.Bullet("Rated maximum pressure per component (10 bar air, 160 bar oil, -0.95 bar vacuum by default). If it is exceeded the part gets a red frame, the status bar explains it and an alarm sounds.");
@@ -164,7 +167,7 @@ public static class UserGuide
 		w.Heading("Reliability");
 		w.Bullet("Saving is safe: PneuSim writes and checks a temporary file, keeps your previous version as a .bak copy, and only then replaces the file.");
 		w.Bullet("Damaged files and files from a newer version give a clear message. Errors are written to a log on your computer, with a Copy error report button; nothing is sent anywhere.");
-		w.Bullet("Automatic updates (Help > Update to new version): checked once a day, verified by checksum, installed in place.");
+		w.Bullet("Updates: PneuSim checks for a new version every time it starts (when a network is connected), verifies the download by checksum and installs it in place. Settings can install new versions automatically when you close PneuSim.");
 		w.Chapter("2  Quick start");
 		w.Bullet("Start PneuSim. On the start screen choose an example or New circuit.");
 		w.Bullet("Pick a component from the ribbon and click in the workspace. Place a supply, a cylinder and a valve.");
@@ -173,8 +176,9 @@ public static class UserGuide
 		w.Bullet("Press Check (F6) to find mistakes, Explain (F8) to read how the circuit works, and Stop when you are done.");
 		w.Bullet("Save with Ctrl+S. Your previous version is kept as a .bak file next to it.");
 		w.Chapter("3  The screen");
-		w.Bullet("Menu bar and toolbar at the top: file, edit, simulation, speed, realistic physics, record GIF, zoom.");
-		w.Bullet("Ribbon: component tabs. Long groups have a More button. The search box finds components by name.");
+		w.Bullet("Quick-access buttons (New, Open, Save, Undo, Redo) and the ribbon at the top. The green File tab opens the File view. The Home tab has the everyday commands; Simulate has Start, Pause, Stop, replay, speed and realistic physics; Tools has the generator, sizing, calculators, parts list, fault finding and cutaway; View has zoom, pan, grid, panels and dark mode.");
+		w.Bullet("File tabs under the ribbon: one per open circuit (+ new, x close).");
+		w.Bullet("Component tabs: long groups have a More button. The search box finds components and commands by name.");
 		w.Bullet("Workspace in the middle (where you place the components and run the simulation), with page tabs for multi-page circuits (join pages with page connectors of the same name).");
 		w.Bullet("Properties panel on the right: select a part to see and change all its properties. Hover over a property for its explanation.");
 		w.Bullet("Bottom tabs: Displacement-step diagram, Plotter, Check circuit, Explain, Getting started, Inspector, Fault finding.");
@@ -204,17 +208,22 @@ public static class UserGuide
 		w.Bullet("Pressure unit on workspace labels: bar, MPa or kPa. Values in the Properties panel are entered in bar.");
 		w.Bullet("Simple / Advanced mode: Advanced shows engineering properties such as the rated maximum pressure.");
 		w.Bullet("Sounds: master switch, volume and one switch for each sound.");
-		w.Bullet("Updates: switch the daily check on or off.");
+		w.Bullet("Updates: check for a new version at every start, and install new versions automatically (downloaded in the background, installed silently when PneuSim is closed).");
+		w.Bullet("Workspace: port names (numbers, letters P A B E C T, or both), grid, snap, live value labels, classic menu bar.");
 		w.Chapter("8  Files, recovery and updates");
 		w.Bullet("Circuits are saved as .pneu files. Several pages live in one file.");
 		w.Bullet("PneuSim autosaves every minute and offers to restore your work after a crash.");
 		w.Bullet("If a file is damaged, look for the .bak copy next to it and rename it to end in .pneu.");
-		w.Bullet("Help > Update to new version checks for a newer release. Your work is saved first; PneuSim closes, updates and restarts.");
+		w.Bullet("A newer release is offered when PneuSim starts, or use Help > Update to new version. Your work is saved first; PneuSim closes, updates and starts again.");
 		w.Bullet("The error log is in %LOCALAPPDATA%\\PneuSim\\logs. It stays on your computer.");
 		w.Chapter("9  Keyboard shortcuts");
-		(string, string)[] array3 = new(string, string)[33]
+		(string, string)[] array3 = new(string, string)[37]
 		{
 			("F1", "This guide"),
+			("Ctrl+W / Ctrl+Shift+W", "Close circuit / close all"),
+			("Ctrl+F1", "Collapse or expand the ribbon"),
+			("Ctrl+' (apostrophe)", "Grid on or off"),
+			("Space + drag", "Pan the view"),
 			("F6", "Check my circuit"),
 			("F7", "Cutaway view of the selected part"),
 			("Shift+F7", "Cutaway of the whole workspace"),
@@ -227,7 +236,7 @@ public static class UserGuide
 			("Ctrl+G", "Circuit generator"),
 			("Ctrl+,", "Settings"),
 			("Ctrl+N / Ctrl+O / Ctrl+S", "New / open / save"),
-			("Ctrl+P", "PDF report with title block"),
+			("Ctrl+P", "PDF report: print preview, save, print"),
 			("Ctrl+Z / Ctrl+Y", "Undo / redo"),
 			("Ctrl+X / Ctrl+C / Ctrl+V", "Cut / copy / paste"),
 			("Ctrl+D", "Duplicate"),
@@ -241,7 +250,7 @@ public static class UserGuide
 			("Del", "Delete the selection"),
 			("Arrow keys", "Nudge the selection"),
 			("Shift + click", "Place several copies of a component"),
-			("Esc", "Cancel placing"),
+			("Esc", "Cancel placing; close the File view"),
 			("Right-click (running)", "Live values of a part or tube"),
 			("Mouse wheel (plotter)", "Zoom the plot"),
 			("Mouse wheel (ribbon)", "Scroll a long ribbon tab"),

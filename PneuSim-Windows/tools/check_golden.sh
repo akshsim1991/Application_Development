@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -o pipefail
 # Quick regression check for Linux/cloud sessions: builds PneuSim, runs the headless harness on all
 # example circuits and compares with the checked-in golden file made from the ORIGINAL 3.2.0 program.
 # Usage (from PneuSim-Windows): bash tools/check_golden.sh      Exit 0 = identical.

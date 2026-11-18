@@ -1,23 +1,19 @@
-# PneuSim 3.3 "Mistral"
+# PneuSim
 
-Design, simulate and check pneumatic, electro-pneumatic and hydraulic circuits before you
-build them.
+Design, simulate and check pneumatic, electro-pneumatic and hydraulic circuits before you build them.
 
 ## Quick start
-1. Start PneuSim and choose an example, or start a new circuit.
-2. Pick components from the library and drop them on the drawing. Drag from one port to another
-   to connect them.
-3. Press **Start (F9)**. Click push buttons and switches to operate the circuit.
-4. Use **Check circuit** to find mistakes, and **Explain** for a description of how it works.
+1. Start PneuSim. Choose an example, or **New circuit**.
+2. Pick a component from the ribbon and click in the workspace. Drag from one port (small circle) to another to connect them.
+3. Press **Start (F9)**. Press **Check circuit (F6)** to find mistakes and **Explain circuit (F8)** to read how it works.
+4. Save with **Ctrl+S**. Press **F1** for the Quick Guide (PDF) with every component and shortcut explained.
 
-## Main features
-- Pneumatic, electro-pneumatic and hydraulic components, with live animated simulation.
-- Circuit generator for cylinder sequences (for example A+ B+ B- A-).
-- Displacement-step diagram, plotter, parts list and costs, parameter sweep.
-- Fault finding: put faults into a circuit and track them down by measuring.
-- Getting-started tutorials and an animated cutaway of each component (F7).
-- Export to PDF, SVG, DXF, PNG and animated GIF.
+## Good to know
+- File opens a full-page view (New, Open, Recent, Save, Export, Settings).
+- Settings (**Ctrl+,**): theme, units, automatic operation, port names, sounds and updates.
+- Updates: PneuSim checks for a new version each time it starts. In Settings you can switch on automatic installation.
+- Your files are `.pneu` files; the previous version of a saved file is kept as `.bak`.
 
-Symbols are based on ISO 1219 and IEC 60617.
+Symbols are drawn by PneuSim based on ISO 1219 and IEC 60617 conventions.
 
 (c) 2026 Akshaya Simha. Contact: akshsimha@gmail.com

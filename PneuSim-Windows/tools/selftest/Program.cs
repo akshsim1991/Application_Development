@@ -247,6 +247,26 @@ class SelfTest
             var original = ((IList)P(c, "Elements")).Count;
             Check(original == 2, "the original workspace is not modified by the preview");
         }
+        // Automatic operation presses the start button for you
+        foreach (var idx in new[] { 0, 6, 4 })
+        {
+            var item = all.GetValue(idx);
+            var name = (string)item.GetType().GetField("Item1").GetValue(item);
+            var circuit = ((Delegate)item.GetType().GetField("Item2").GetValue(item)).DynamicInvoke();
+            var sim = Activator.CreateInstance(T("Simulator"), circuit);
+            sim.GetType().GetMethod("Reset").Invoke(sim, null);
+            var auto = Activator.CreateInstance(T("AutoOperator"), circuit, "Once");
+            var cyls = ((IList)P(circuit, "Elements")).Cast<object>().Where(e => e.GetType().BaseType?.Name == "CylinderBase" || e.GetType().BaseType?.BaseType?.Name == "CylinderBase").ToList();
+            double max = 0; double last = 1;
+            for (int k = 0; k < 2000; k++)
+            {
+                for (int j = 0; j < 4; j++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+                var t = (double)P(sim, "Time");
+                if ((bool)auto.GetType().GetMethod("Update").Invoke(auto, new object[] { t })) sim.GetType().GetMethod("RunLogic").Invoke(sim, null);
+                foreach (var c in cyls) { var pos = (double)P(c, "Position"); max = Math.Max(max, pos); last = pos; }
+            }
+            Check(max > 0.97, $"automatic operation moves the cylinder without clicking: {name} (max position {max:0.00}, end {last:0.00})");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

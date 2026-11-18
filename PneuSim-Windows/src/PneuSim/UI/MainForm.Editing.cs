@@ -193,7 +193,7 @@ public partial class MainForm
 			return null;
 		}
 		string text = ComponentHelp.HelpFor(e);
-		if (!_running)
+		if (!_running || !AppSettings.ShowHoverValues)
 		{
 			return text;
 		}

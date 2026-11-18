@@ -15,6 +15,9 @@
     <NoWarn>$(NoWarn);CS0162;CS0168;CS0169;CS0219;CS0414;CS0649;CS1998;CS8981</NoWarn>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="app.ico" LogicalName="app.ico" />
+  </ItemGroup>
+  <ItemGroup>
     <Reference Include="Microsoft.VisualBasic" />
     <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Drawing" />

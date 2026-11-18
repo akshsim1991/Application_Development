@@ -24,6 +24,38 @@ public sealed class AppSettings
 
 	public static bool AdvancedMode { get; set; }
 
+	/// <summary>True when the pure-black (AMOLED) theme is chosen.</summary>
+	public static bool Amoled => ThemeMode == "Amoled";
+
+	/// <summary>Automatic operation: Off, Once (press the start button for you) or Continuous (repeat the cycle).</summary>
+	public static string AutoMode { get; set; } = "Once";
+
+	/// <summary>Seconds after Start before the automatic start button press.</summary>
+	public static double AutoStartDelay { get; set; } = 0.5;
+
+	/// <summary>Seconds of rest between cycles in Continuous mode.</summary>
+	public static double AutoCyclePause { get; set; } = 1.5;
+
+	/// <summary>Seconds to hold a start button that must stay pressed (0 = work it out from the circuit).</summary>
+	public static double AutoHoldSeconds { get; set; }
+
+	/// <summary>Simulation speed at start-up, index into 0.1x, 0.25x, 0.5x, 1x, 2x, 4x.</summary>
+	public static int DefaultSpeedIndex { get; set; } = 3;
+
+	public static bool ShowHoverValues { get; set; } = true;
+
+	/// <summary>Minutes between automatic recovery saves; 0 = off.</summary>
+	public static int AutosaveMinutes { get; set; } = 1;
+
+	public static bool ShowStartScreen { get; set; } = true;
+
+	public static bool SnapToGrid { get; set; } = true;
+
+	public static bool ShowGrid { get; set; } = true;
+
+	/// <summary>Currency symbol for costs (parts list, air cost).</summary>
+	public static string CurrencySymbol { get; set; } = "₹";
+
 	/// <summary>Show live value labels next to components while simulating (View menu).</summary>
 	public static bool ShowValueLabels { get; set; } = true;
 
@@ -76,7 +108,7 @@ public sealed class AppSettings
 	/// <summary>The dark/light decision after applying ThemeMode.</summary>
 	public static bool ResolveDark()
 	{
-		return ThemeMode == "Dark" || (ThemeMode == "System" && WindowsPrefersDark());
+		return ThemeMode == "Dark" || ThemeMode == "Amoled" || (ThemeMode == "System" && WindowsPrefersDark());
 	}
 
 	public static bool IsSoundEnabled(string name)
@@ -116,7 +148,7 @@ public sealed class AppSettings
 					RealPhysics = Operators.CompareString(text3, "1", TextCompare: false) == 0;
 					break;
 				case "ThemeMode":
-					if (text3 == "Light" || text3 == "Dark" || text3 == "System")
+					if (text3 == "Light" || text3 == "Dark" || text3 == "System" || text3 == "Amoled")
 					{
 						ThemeMode = text3;
 					}
@@ -135,6 +167,60 @@ public sealed class AppSettings
 					break;
 				case "ValueLabels":
 					ShowValueLabels = text3 != "0";
+					break;
+				case "AutoMode":
+					if (text3 == "Off" || text3 == "Once" || text3 == "Continuous")
+					{
+						AutoMode = text3;
+					}
+					break;
+				case "AutoStartDelay":
+					if (double.TryParse(text3, NumberStyles.Float, CultureInfo.InvariantCulture, out var autoDelay))
+					{
+						AutoStartDelay = Math.Max(0.0, Math.Min(30.0, autoDelay));
+					}
+					break;
+				case "AutoCyclePause":
+					if (double.TryParse(text3, NumberStyles.Float, CultureInfo.InvariantCulture, out var autoPause))
+					{
+						AutoCyclePause = Math.Max(0.0, Math.Min(120.0, autoPause));
+					}
+					break;
+				case "AutoHold":
+					if (double.TryParse(text3, NumberStyles.Float, CultureInfo.InvariantCulture, out var autoHold))
+					{
+						AutoHoldSeconds = Math.Max(0.0, Math.Min(120.0, autoHold));
+					}
+					break;
+				case "DefaultSpeed":
+					if (int.TryParse(text3, NumberStyles.Integer, CultureInfo.InvariantCulture, out var speedIndex))
+					{
+						DefaultSpeedIndex = Math.Max(0, Math.Min(5, speedIndex));
+					}
+					break;
+				case "HoverValues":
+					ShowHoverValues = text3 != "0";
+					break;
+				case "AutosaveMinutes":
+					if (int.TryParse(text3, NumberStyles.Integer, CultureInfo.InvariantCulture, out var autosaveMinutes))
+					{
+						AutosaveMinutes = Math.Max(0, Math.Min(60, autosaveMinutes));
+					}
+					break;
+				case "StartScreen":
+					ShowStartScreen = text3 != "0";
+					break;
+				case "Snap":
+					SnapToGrid = text3 != "0";
+					break;
+				case "Grid":
+					ShowGrid = text3 != "0";
+					break;
+				case "Currency":
+					if (text3.Length > 0 && text3.Length <= 4)
+					{
+						CurrencySymbol = text3;
+					}
 					break;
 				case "Advanced":
 					AdvancedMode = text3 == "1";
@@ -192,6 +278,17 @@ public sealed class AppSettings
 				"ThemeMode=" + ThemeMode,
 				"PressureUnit=" + PressureUnit,
 				$"Advanced={(AdvancedMode ? 1 : 0)}",
+				"AutoMode=" + AutoMode,
+				"AutoStartDelay=" + AutoStartDelay.ToString(CultureInfo.InvariantCulture),
+				"AutoCyclePause=" + AutoCyclePause.ToString(CultureInfo.InvariantCulture),
+				"AutoHold=" + AutoHoldSeconds.ToString(CultureInfo.InvariantCulture),
+				"DefaultSpeed=" + DefaultSpeedIndex.ToString(CultureInfo.InvariantCulture),
+				$"HoverValues={(ShowHoverValues ? 1 : 0)}",
+				"AutosaveMinutes=" + AutosaveMinutes.ToString(CultureInfo.InvariantCulture),
+				$"StartScreen={(ShowStartScreen ? 1 : 0)}",
+				$"Snap={(SnapToGrid ? 1 : 0)}",
+				$"Grid={(ShowGrid ? 1 : 0)}",
+				"Currency=" + CurrencySymbol,
 				$"ValueLabels={(ShowValueLabels ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",
 				"LastUpdateCheck=" + LastUpdateCheckUtcTicks.ToString(CultureInfo.InvariantCulture),

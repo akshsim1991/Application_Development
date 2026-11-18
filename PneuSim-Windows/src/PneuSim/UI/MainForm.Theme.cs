@@ -24,6 +24,20 @@ public partial class MainForm
 		if (settingsDialog.ShowDialog(this) == DialogResult.OK)
 		{
 			settingsDialog.ApplyTo();
+			_realPhysics = AppSettings.RealPhysics;
+			_speedBox.SelectedIndex = AppSettings.DefaultSpeedIndex;
+			_autosaveTimer.Interval = Math.Max(1, AppSettings.AutosaveMinutes) * 60000;
+			_autosaveTimer.Enabled = AppSettings.AutosaveMinutes > 0;
+			_canvas.Invalidate();
+			try
+			{
+				object[] selectedObjects = _properties.SelectedObjects;
+				_properties.SelectedObjects = null;
+				_properties.SelectedObjects = selectedObjects;
+			}
+			catch (Exception)
+			{
+			}
 			ApplyTheme(AppSettings.ResolveDark());
 			UpdateUiState();
 			_statusMessage.Text = "Settings saved.";
@@ -61,10 +75,10 @@ public partial class MainForm
 				_ribbon.SelectTab(activeTabName);
 			}
 		}
-		Color color = (dark ? Color.FromArgb(37, 39, 46) : SystemColors.Control);
+		Color color = (dark ? Theme.Dk(Color.FromArgb(37, 39, 46)) : SystemColors.Control);
 		Color color2 = (dark ? Color.FromArgb(225, 228, 235) : SystemColors.ControlText);
-		Color color3 = (dark ? Color.FromArgb(28, 30, 36) : SystemColors.Window);
-		Color color4 = (dark ? Color.FromArgb(52, 56, 66) : Color.FromArgb(232, 236, 244));
+		Color color3 = (dark ? Theme.Dk(Color.FromArgb(28, 30, 36)) : SystemColors.Window);
+		Color color4 = (dark ? Theme.Dk(Color.FromArgb(52, 56, 66)) : Color.FromArgb(232, 236, 244));
 		BackColor = color;
 		ForeColor = color2;
 		ThemeControls(base.Controls, color, color2, color3, color4);

@@ -112,7 +112,7 @@ public class CalculatorsDialog : Form
 			("Stroke (mm)", 100.0),
 			("Pressure (bar)", 6.0),
 			("Cycles per minute", 10.0),
-			("Air cost (₹ per m³)", 2.0),
+			("Air cost (" + AppSettings.CurrencySymbol + " per m³)", 2.0),
 			("Hours per day", 8.0),
 			("Days per year", 300.0)
 		}, [SpecialName] (double[] v) =>

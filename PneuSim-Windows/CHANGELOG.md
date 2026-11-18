@@ -3,6 +3,12 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.4 "Mistral" (18 Nov 2026)
+- Automatic operation (Settings > Simulation): PneuSim presses the start button for you when you press Start. One cycle, or repeat continuously; direct-control circuits hold the button until the cylinders have moved, memory circuits get a short pulse. Manual mode is still available.
+- Settings window rebuilt with tabs (General, Simulation, Workspace, Sounds), always showing OK and Cancel. New: AMOLED (pure black) theme, currency symbol, start screen on/off, recovery-copy interval, default simulation speed, realistic physics default, live value labels, hover values, grid and snap options.
+- Fit now fills the workspace (zooms in as well as out) and centres the circuit.
+- About box: large logo, no mention of AI. Whole-workspace cutaway shows valve interiors.
+
 ## 3.3.3 "Mistral" (18 Nov 2026)
 - Whole-workspace cutaway now shows the inside of valves too (spool, passages, springs) instead of their symbol; symbols are used only for parts with no inside view.
 

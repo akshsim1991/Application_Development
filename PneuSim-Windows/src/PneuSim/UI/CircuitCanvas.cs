@@ -449,14 +449,16 @@ public class CircuitCanvas : ScrollableControl
 		{
 			return;
 		}
-		float num = 36f;
+		float num = 14f;
 		float num2 = 24f;
 		rectangleF.Inflate(num, num);
 		float num3 = (float)(base.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
 		float num4 = (float)(base.ClientSize.Height - SystemInformation.HorizontalScrollBarHeight - 4) - num2;
-		Zoom = Math.Max(0.1f, Math.Min(1f, Math.Min(num3 / rectangleF.Width, num4 / rectangleF.Height)));
+		Zoom = Math.Max(0.1f, Math.Min(3f, Math.Min(num3 / rectangleF.Width, num4 / rectangleF.Height)));
 		PerformLayout();
-		base.AutoScrollPosition = new Point((int)Math.Round(Math.Max(0f, rectangleF.Left * _zoom)), (int)Math.Round(Math.Max(0f, (rectangleF.Top - num2 / _zoom) * _zoom)));
+		float num5 = (rectangleF.Left + rectangleF.Width / 2f) * _zoom - num3 / 2f;
+		float num6 = (rectangleF.Top + rectangleF.Height / 2f) * _zoom - (num4 / 2f + num2);
+		base.AutoScrollPosition = new Point((int)Math.Round(Math.Max(0f, num5)), (int)Math.Round(Math.Max(0f, num6)));
 		Invalidate();
 	}
 
@@ -471,6 +473,10 @@ public class CircuitCanvas : ScrollableControl
 
 	private static float Snap(float v)
 	{
+		if (!AppSettings.SnapToGrid)
+		{
+			return (float)Math.Round(v);
+		}
 		return (float)(Math.Round(v / 10f) * 10.0);
 	}
 
@@ -490,7 +496,7 @@ public class CircuitCanvas : ScrollableControl
 		graphics.ScaleTransform(_zoom, _zoom);
 		using (GdiSurface g = new GdiSurface(graphics, Scheme))
 		{
-			if (!Simulating)
+			if (!Simulating && AppSettings.ShowGrid)
 			{
 				DrawGrid(g, base.ClientRectangle);
 			}

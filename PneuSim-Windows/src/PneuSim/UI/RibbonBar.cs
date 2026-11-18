@@ -201,9 +201,9 @@ public sealed class RibbonBar : Control
 		Invalidate();
 	}
 
-	private Color Back => _dark ? Color.FromArgb(34, 37, 43) : Color.FromArgb(240, 243, 246);
+	private Color Back => _dark ? Theme.Dk(Color.FromArgb(34, 37, 43)) : Color.FromArgb(240, 243, 246);
 
-	private Color Panel_ => _dark ? Color.FromArgb(44, 48, 57) : Color.FromArgb(252, 253, 254);
+	private Color Panel_ => _dark ? Theme.Dk(Color.FromArgb(44, 48, 57)) : Color.FromArgb(252, 253, 254);
 
 	private Color Accent => _dark ? Color.FromArgb(70, 200, 210) : Color.FromArgb(0, 118, 132);
 

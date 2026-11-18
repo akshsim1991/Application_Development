@@ -18,11 +18,11 @@ public partial class MainForm : Form
 {
 	private class DarkColorTable : ProfessionalColorTable
 	{
-		private static readonly Color Back = Color.FromArgb(37, 39, 46);
+		private static Color Back => Theme.Dk(Color.FromArgb(37, 39, 46));
 
-		private static readonly Color Hot = Color.FromArgb(62, 68, 82);
+		private static Color Hot => Theme.Dk(Color.FromArgb(62, 68, 82));
 
-		private static readonly Color Edge = Color.FromArgb(70, 74, 86);
+		private static Color Edge => Theme.Dk(Color.FromArgb(70, 74, 86));
 
 		public override Color MenuStripGradientBegin { get; }
 
@@ -397,7 +397,7 @@ public partial class MainForm : Form
 		_historyIndex = -1;
 		_autosaveTimer = new Timer
 		{
-			Interval = 60000
+			Interval = Math.Max(1, AppSettings.AutosaveMinutes) * 60000
 		};
 		_timer = new Timer
 		{
@@ -538,6 +538,8 @@ public partial class MainForm : Form
 		InitTroubleshooting();
 		NewProject(new Project(new Circuit()));
 		_realPhysics = AppSettings.RealPhysics;
+		_speedBox.SelectedIndex = AppSettings.DefaultSpeedIndex;
+		_autosaveTimer.Enabled = AppSettings.AutosaveMinutes > 0;
 		ApplyTheme(AppSettings.ResolveDark());
 		Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnWindowsPreferenceChanged;
 		UpdateUiState();

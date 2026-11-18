@@ -41,6 +41,8 @@ public partial class MainForm
 			_canvas.Simulator = _simulator;
 			_canvas.Simulating = true;
 			_simulator.Reset();
+			_auto = ((AppSettings.AutoMode == "Off") ? null : new AutoOperator(_simulator.Circuit, AppSettings.AutoMode));
+			_autoStatusShown = null;
 			_recorder = new SimulationRecorder(_simulator);
 			_recorder.Record(force: true);
 			_diagram.Simulator = _simulator;
@@ -90,6 +92,8 @@ public partial class MainForm
 		_running = false;
 		_paused = false;
 		_sounds.Stop();
+		_auto?.Stop();
+		_auto = null;
 		_canvas.AlarmElements = null;
 		foreach (CircuitElement item in _project.AllElements())
 		{
@@ -107,6 +111,10 @@ public partial class MainForm
 		UpdateUiState();
 	}
 
+	private AutoOperator _auto;
+
+	private string _autoStatusShown;
+
 	private void SimulationTick()
 	{
 		double num = (new double[6] { 0.1, 0.25, 0.5, 1.0, 2.0, 4.0 })[Math.Max(0, _speedBox.SelectedIndex)];
@@ -121,6 +129,18 @@ public partial class MainForm
 			}
 			while (num2 <= 4);
 			_recorder?.Record();
+			if (_auto != null)
+			{
+				if (_auto.Update(_simulator.Time))
+				{
+					_simulator.RunLogic();
+				}
+				if (_auto.Status != null && _auto.Status != _autoStatusShown && !_alarmShown)
+				{
+					_autoStatusShown = _auto.Status;
+					_statusMessage.Text = _auto.Status;
+				}
+			}
 			_tickCount++;
 			UpdateSoundsAndAlarm();
 			ShowSimulationStatus();

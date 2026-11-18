@@ -9,7 +9,7 @@ public static class AppInfo
 {
 	public const string Name = "PneuSim";
 
-	public const string Version = "3.3.3";
+	public const string Version = "3.3.4";
 
 	public const string ShortVersion = "3.3";
 

@@ -4,8 +4,8 @@ PneuSim is a desktop program for designing, simulating, checking and documenting
 pneumatic, electro-pneumatic and hydraulic circuits. It is written for Windows Forms on
 .NET Framework 4.7.2.
 
-Designed and developed by Akshaya Simha (© 2026). The first version was written in VB.NET and
-later versions were extended with Claude Code (Claude Pro).
+Designed and developed by Akshaya Simha (© 2026). The first version was written in VB.NET;
+from version 3.2 it continues in C#.
 
 > **Source recovery notice.** The original VB.NET source of version 3.2 was lost. The code in
 > `src/PneuSim/` was **recovered from the released program** (`release/PneuSim-Setup-3.2.0.exe`)

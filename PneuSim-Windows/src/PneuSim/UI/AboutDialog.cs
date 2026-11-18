@@ -24,20 +24,17 @@ public sealed class AboutDialog : Form
 		MinimizeBox = false;
 		ShowInTaskbar = false;
 		Font = new Font("Segoe UI", 9f);
-		ClientSize = new Size(520, 470);
+		ClientSize = new Size(520, 580);
 		RichTextBox richTextBox = new RichTextBox
 		{
 			ReadOnly = true,
 			BorderStyle = BorderStyle.FixedSingle,
-			Location = new Point(14, 14),
-			Size = new Size(492, 370),
+			Location = new Point(14, 150),
+			Size = new Size(492, 330),
 			BackColor = SystemColors.Window,
 			DetectUrls = false,
 			TabStop = false
 		};
-		AddTitle(richTextBox, AppInfo.Name, 20f);
-		AddLine(richTextBox, "Version " + AppInfo.Version + " \"" + AppInfo.CodeName + "\", built " + AppInfo.BuildDate.ToString("d MMMM yyyy", CultureInfo.InvariantCulture), bold: true);
-		AddLine(richTextBox, "");
 		AddLine(richTextBox, "Pneumatic, electro-pneumatic and hydraulic circuit design and simulation. Draw a circuit, run it, check it for mistakes and see how it works before you build it.");
 		AddLine(richTextBox, "");
 		AddLine(richTextBox, "Created by: " + AppInfo.Developer, bold: true);
@@ -45,29 +42,54 @@ public sealed class AboutDialog : Form
 		AddHeading(richTextBox, "DEVELOPMENT HISTORY");
 		AddLine(richTextBox, "PneuSim began as a Visual Basic .NET application. From version 3.2 its source was recovered from the released program and development continued in C# on .NET Framework 4.7.2, with the same simulation behaviour verified automatically against version 3.2.0.");
 		AddLine(richTextBox, "");
-		AddHeading(richTextBox, "DEVELOPMENT AND AI CONTRIBUTIONS");
-		AddLine(richTextBox, "PneuSim is designed and directed by " + AppInfo.Developer + ": the features, the engineering rules, the look and the decisions are the developer's. AI coding assistance (Claude, by Anthropic) was used to write and test program code under the developer's direction and review.");
+		AddHeading(richTextBox, "DEVELOPMENT");
+		AddLine(richTextBox, "PneuSim is designed, developed and tested by " + AppInfo.Developer + ". The features, the engineering rules, the look and every design decision are the developer's own.");
 		AddLine(richTextBox, "");
 		AddHeading(richTextBox, "SYMBOLS");
 		AddLine(richTextBox, "Circuit symbols are drawn by PneuSim and are based on ISO 1219 and IEC 60617 conventions. PneuSim is not endorsed by, or affiliated with, any standards body or component manufacturer.");
 		AddLine(richTextBox, "");
 		AddLine(richTextBox, "© 2026 " + AppInfo.Developer + ". All rights reserved.");
 		richTextBox.Select(0, 0);
-		_mail.Location = new Point(14, 394);
+		_mail.Location = new Point(14, 492);
 		Button button = new Button
 		{
 			Text = "Close",
 			DialogResult = DialogResult.OK,
-			Location = new Point(344, 428),
+			Location = new Point(344, 534),
 			Size = new Size(80, 28)
 		};
 		Button button2 = new Button
 		{
 			Text = "Cancel",
 			DialogResult = DialogResult.Cancel,
-			Location = new Point(430, 428),
+			Location = new Point(430, 534),
 			Size = new Size(76, 28)
 		};
+		PictureBox pictureBox = new PictureBox
+		{
+			Location = new Point(24, 16),
+			Size = new Size(120, 120),
+			SizeMode = PictureBoxSizeMode.Zoom,
+			Image = LoadLogo(120)
+		};
+		Label label = new Label
+		{
+			Text = AppInfo.Name,
+			Font = new Font("Segoe UI Semibold", 30f),
+			ForeColor = Color.FromArgb(0, 118, 132),
+			AutoSize = true,
+			Location = new Point(158, 22)
+		};
+		Label label2 = new Label
+		{
+			Text = "Version " + AppInfo.Version + " \"" + AppInfo.CodeName + "\"\r\nBuilt " + AppInfo.BuildDate.ToString("d MMMM yyyy", CultureInfo.InvariantCulture),
+			Font = new Font("Segoe UI", 10.5f),
+			AutoSize = true,
+			Location = new Point(162, 84)
+		};
+		base.Controls.Add(pictureBox);
+		base.Controls.Add(label);
+		base.Controls.Add(label2);
 		base.Controls.Add(richTextBox);
 		base.Controls.Add(_mail);
 		base.Controls.Add(button);
@@ -81,6 +103,28 @@ public sealed class AboutDialog : Form
 				OpenMail();
 			}
 		};
+	}
+
+	/// <summary>The program icon at high quality (the 256 pixel image inside app.ico), scaled smoothly.</summary>
+	private static Image LoadLogo(int size)
+	{
+		try
+		{
+			using System.IO.Stream stream = System.Reflection.Assembly.GetExecutingAssembly().GetManifestResourceStream("app.ico");
+			using Icon icon = new Icon(stream, 256, 256);
+			using Bitmap bitmap = icon.ToBitmap();
+			Bitmap bitmap2 = new Bitmap(size, size);
+			using Graphics graphics = Graphics.FromImage(bitmap2);
+			graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+			graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.HighQuality;
+			graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+			graphics.DrawImage(bitmap, 0, 0, size, size);
+			return bitmap2;
+		}
+		catch (Exception)
+		{
+			return null;
+		}
 	}
 
 	private static void AddTitle(RichTextBox box, string text, float size)

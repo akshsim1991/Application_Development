@@ -32,13 +32,13 @@ public class CutawayPalette
 		{
 			return new CutawayPalette
 			{
-				Back = Color.FromArgb(28, 30, 36),
+				Back = Theme.Dk(Color.FromArgb(28, 30, 36)),
 				Text = Color.FromArgb(225, 228, 235),
 				SubText = Color.FromArgb(160, 166, 178),
 				Metal = Color.FromArgb(112, 118, 130),
 				MetalDark = Color.FromArgb(70, 75, 86),
 				Edge = Color.FromArgb(175, 180, 190),
-				Cavity = Color.FromArgb(46, 49, 58),
+				Cavity = Theme.Dk(Color.FromArgb(46, 49, 58)),
 				Vent = Color.FromArgb(68, 75, 92),
 				Air = Color.FromArgb(70, 150, 255),
 				Oil = Color.FromArgb(240, 140, 40),

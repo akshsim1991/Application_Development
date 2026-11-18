@@ -19,7 +19,7 @@ public class ColorScheme
 			{
 				return Color.White;
 			}
-			return Color.FromArgb(30, 32, 38);
+			return Theme.Dk(Color.FromArgb(30, 32, 38));
 		}
 	}
 

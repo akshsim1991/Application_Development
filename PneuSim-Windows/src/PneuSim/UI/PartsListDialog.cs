@@ -59,8 +59,8 @@ public class PartsListDialog : Form
 		_grid.Columns.Add("qty", "Qty");
 		_grid.Columns.Add("desc", "Description");
 		_grid.Columns.Add("labels", "Labels");
-		_grid.Columns.Add("price", "Unit price (₹)");
-		_grid.Columns.Add("total", "Total (₹)");
+		_grid.Columns.Add("price", "Unit price (" + AppSettings.CurrencySymbol + ")");
+		_grid.Columns.Add("total", "Total (" + AppSettings.CurrencySymbol + ")");
 		_grid.Columns[0].FillWeight = 12f;
 		_grid.Columns[1].FillWeight = 120f;
 		_grid.Columns[2].FillWeight = 60f;
@@ -115,7 +115,7 @@ public class PartsListDialog : Form
 		{
 			_grid.Rows.Add(line.Quantity, line.Description, line.Labels, line.UnitPrice.ToString("0.00"), line.Total.ToString("#,##0.00"));
 		}
-		_total.Text = $"Total: ₹{_lines.Sum([SpecialName] (PartLine l) => l.Total):#,##0.00}";
+		_total.Text = $"Total: {AppSettings.CurrencySymbol}{_lines.Sum([SpecialName] (PartLine l) => l.Total):#,##0.00}";
 	}
 
 	private void OnPriceEdited(object sender, DataGridViewCellEventArgs e)

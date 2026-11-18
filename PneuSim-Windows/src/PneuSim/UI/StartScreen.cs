@@ -26,7 +26,7 @@ public sealed class StartScreen : Panel
 	{
 		Dock = DockStyle.Fill;
 		AllowDrop = true;
-		Color color = (dark ? Color.FromArgb(34, 37, 43) : Color.FromArgb(246, 248, 250));
+		Color color = (dark ? Theme.Dk(Color.FromArgb(34, 37, 43)) : Color.FromArgb(246, 248, 250));
 		Color color2 = (dark ? Color.FromArgb(226, 229, 236) : Color.FromArgb(30, 38, 46));
 		Color color3 = (dark ? Color.FromArgb(150, 158, 172) : Color.FromArgb(100, 110, 122));
 		Color color4 = (dark ? Color.FromArgb(70, 200, 210) : Color.FromArgb(0, 118, 132));
@@ -66,7 +66,7 @@ public sealed class StartScreen : Panel
 		{
 			this.OpenRequested?.Invoke();
 		}));
-		_drop.BackColor = (dark ? Color.FromArgb(44, 48, 57) : Color.White);
+		_drop.BackColor = (dark ? Theme.Dk(Color.FromArgb(44, 48, 57)) : Color.White);
 		_drop.Margin = new Padding(0, 18, 0, 0);
 		_drop.Paint += delegate(object s, PaintEventArgs e)
 		{

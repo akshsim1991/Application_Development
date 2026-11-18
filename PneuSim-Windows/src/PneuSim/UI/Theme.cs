@@ -8,13 +8,36 @@ namespace PneuSim;
 [StandardModule]
 public sealed class Theme
 {
-	public static readonly Color DarkBack = Color.FromArgb(37, 39, 46);
+	/// <summary>Maps a dark-theme colour to the AMOLED (pure black) version when that theme is on.</summary>
+	public static Color Dk(Color c)
+	{
+		if (!AppSettings.Amoled)
+		{
+			return c;
+		}
+		int num = (c.R + c.G + c.B) / 3;
+		if (num <= 34)
+		{
+			return Color.FromArgb(c.A, 6, 6, 8);
+		}
+		if (num <= 42)
+		{
+			return Color.FromArgb(c.A, 0, 0, 0);
+		}
+		if (num <= 60)
+		{
+			return Color.FromArgb(c.A, 18, 19, 22);
+		}
+		return c;
+	}
+
+	public static Color DarkBack => Dk(Color.FromArgb(37, 39, 46));
 
 	public static readonly Color DarkFore = Color.FromArgb(225, 228, 235);
 
-	public static readonly Color DarkField = Color.FromArgb(28, 30, 36);
+	public static Color DarkField => Dk(Color.FromArgb(28, 30, 36));
 
-	public static readonly Color DarkHeader = Color.FromArgb(52, 56, 66);
+	public static Color DarkHeader => Dk(Color.FromArgb(52, 56, 66));
 
 	public static void Apply(Control root)
 	{

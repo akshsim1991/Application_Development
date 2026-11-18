@@ -34,7 +34,10 @@ internal sealed class Program
 		else
 		{
 			_mainForm.OfferRecovery();
-			_mainForm.ShowStartScreen();
+			if (AppSettings.ShowStartScreen)
+			{
+				_mainForm.ShowStartScreen();
+			}
 		}
 		_mainForm.Shown += delegate
 		{

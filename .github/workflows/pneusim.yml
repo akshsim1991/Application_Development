@@ -47,7 +47,7 @@ jobs:
           New-Item -ItemType Directory -Force shots | Out-Null
           $bad = 0
           $runs = @(@{n="original-empty"; exe="ref/PneuSim.exe"; f=""}, @{n="rebuilt-empty"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=""})
-          foreach ($e in (Get-ChildItem examples/bundled -Filter "[01]*.pneu" | Sort-Object Name)) {
+          foreach ($e in (Get-ChildItem examples/bundled -Filter *.pneu | Where-Object { $_.Name -match '^\d\d_' } | Sort-Object Name)) {
             $runs += @{n="rebuilt-$($e.BaseName)"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=$e.FullName}
           }
           $runs += @{n="rebuilt-user-counterbalance"; exe="src/PneuSim/bin/Release/net472/PneuSim.exe"; f=(Resolve-Path examples/user/Pneumatic_Counterbalance.pneu).Path}

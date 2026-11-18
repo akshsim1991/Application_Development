@@ -146,6 +146,7 @@ public partial class MainForm
 			{ "Labels", "Live value labels" },
 			{ "Grid", "Show grid" },
 			{ "Dark", "Dark mode" },
+			{ "BottomPanel", "Bottom panel" },
 			{ "Start", "Start" },
 			{ "Pause", "Pause" },
 			{ "Stop", "Stop and Reset" },

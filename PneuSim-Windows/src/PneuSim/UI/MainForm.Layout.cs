@@ -204,6 +204,12 @@ public partial class MainForm
 			CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit.Panel1Collapsed = true;
 			base.Controls.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_mainSplit);
 			_toolbar = BuildToolbar();
+			if (!AppSettings.ClassicMenu)
+			{
+				_toolbar.Items.Remove(_timelineHost);
+				_status.Items.Insert(1, new ToolStripStatusLabel("Replay"));
+				_status.Items.Insert(2, _timelineHost);
+			}
 			_menu = BuildMenu();
 			BuildCommands();
 			BuildRibbon();

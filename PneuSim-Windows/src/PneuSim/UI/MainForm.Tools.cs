@@ -185,7 +185,7 @@ public partial class MainForm
 			OnCircuitModified();
 			_explainText.Text = generatorDialog.Result.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
 			ShowBottomTab("Explain");
-			_statusMessage.Text = "Circuit built around the components in the workspace (you can undo this). Press Start (F9), then press the start button.";
+			_statusMessage.Text = "Circuit completed from the components in the workspace (you can undo this). Press Start (F9).";
 		}
 		else if (generatorDialog.DialogResult == DialogResult.OK && generatorDialog.Result != null && ConfirmDiscard())
 		{

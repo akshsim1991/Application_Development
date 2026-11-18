@@ -267,6 +267,46 @@ class SelfTest
             }
             Check(max > 0.97, $"automatic operation moves the cylinder without clicking: {name} (max position {max:0.00}, end {last:0.00})");
         }
+        // "Complete my circuit": connect the components placed in the workspace
+        {
+            object NewEl(object c, string n, float x, float y) { var e = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n }); c.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement")).Invoke(c, new object[] { e, x, y, null }); return e; }
+            (double max, double last) Run(object circ)
+            {
+                var sim = Activator.CreateInstance(T("Simulator"), circ); sim.GetType().GetMethod("Reset").Invoke(sim, null);
+                var auto = Activator.CreateInstance(T("AutoOperator"), circ, "Once");
+                var cs = ((IList)P(circ, "Elements")).Cast<object>().Where(e => e.GetType().BaseType?.Name == "CylinderBase" || e.GetType().BaseType?.BaseType?.Name == "CylinderBase").ToList();
+                double mx = 0, ls = 1;
+                for (int k = 0; k < 1500; k++)
+                {
+                    for (int j = 0; j < 4; j++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+                    if ((bool)auto.GetType().GetMethod("Update").Invoke(auto, new object[] { (double)P(sim, "Time") })) sim.GetType().GetMethod("RunLogic").Invoke(sim, null);
+                    foreach (var c2 in cs) { var pos = (double)P(c2, "Position"); mx = Math.Max(mx, pos); ls = pos; }
+                }
+                return (mx, ls);
+            }
+            // 1) supply + push-button valve + single-acting cylinder, nothing connected (the owner's example)
+            var ws = Activator.CreateInstance(T("Circuit"));
+            NewEl(ws, "SingleActingCylinder", 110f, 240f); NewEl(ws, "Valve32", 60f, 420f); NewEl(ws, "AirSupply", 120f, 570f);
+            var v = ((IList)P(ws, "Elements")).Cast<object>().First(e => e.GetType().Name == "Valve32"); v.GetType().GetProperty("Actuator").SetValue(v, Enum.Parse(T("ValveActuator"), "PushButton"));
+            var comp = T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { ws });
+            var cc = P(comp, "Circuit");
+            Check(((IList)P(cc, "Tubes")).Count == 2, $"complete: supply, valve and cylinder get connected ({((IList)P(cc, "Tubes")).Count} tubes)");
+            var r1 = Run(cc);
+            Check(r1.max > 0.97, $"complete: the completed circuit works by itself (max position {r1.max:0.00}, end {r1.last:0.00})");
+            Check(((IList)P(ws, "Tubes")).Count == 0, "complete: the original workspace is untouched until the user accepts");
+            // 2) only a double-acting cylinder: valve and supply are added
+            var ws2 = Activator.CreateInstance(T("Circuit")); NewEl(ws2, "DoubleActingCylinder", 300f, 100f);
+            var comp2 = T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { ws2 }); var c2c = P(comp2, "Circuit");
+            var names = ((IList)P(c2c, "Elements")).Cast<object>().Select(e => e.GetType().Name).ToList();
+            Check(names.Contains("Valve52") && names.Contains("AirSupply") && ((IList)P(c2c, "Tubes")).Count == 3, $"complete: a lone cylinder gets a 5/2 valve and a supply ({string.Join(", ", names)})");
+            var r2 = Run(c2c); Check(r2.max > 0.97, $"complete: the added valve circuit moves the cylinder (max {r2.max:0.00})");
+            // 3) electro-pneumatic: solenoid valve placed, nothing else
+            var ws3 = Activator.CreateInstance(T("Circuit")); NewEl(ws3, "SingleActingCylinder", 300f, 100f);
+            var sv = NewEl(ws3, "Valve32", 250f, 300f); sv.GetType().GetProperty("Actuator").SetValue(sv, Enum.Parse(T("ValveActuator"), "Solenoid"));
+            NewEl(ws3, "PowerTerminal", 700f, 100f);
+            var comp3 = T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { ws3 }); var c3c = P(comp3, "Circuit");
+            var r3 = Run(c3c); Check(r3.max > 0.97, $"complete: electro-pneumatic circuit gets coil, push button and 24 V and works (max {r3.max:0.00})");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

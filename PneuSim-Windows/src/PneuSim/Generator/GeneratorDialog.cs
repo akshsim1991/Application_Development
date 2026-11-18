@@ -22,6 +22,10 @@ public class GeneratorDialog : Form
 
 	private readonly CheckBox _useWorkspace;
 
+	private readonly RadioButton _modeComplete;
+
+	private readonly RadioButton _modeSequence;
+
 	private readonly Circuit _workspace;
 
 	public GeneratedCircuit Result { get; set; }
@@ -41,6 +45,19 @@ public class GeneratorDialog : Form
 	public GeneratorDialog(Circuit workspace = null)
 	{
 		_workspace = workspace;
+		_modeComplete = new RadioButton
+		{
+			Text = "Complete my circuit from the components already in the workspace: PneuSim adds the missing valves, supply and wiring and connects everything",
+			AutoSize = true,
+			Checked = CircuitCompleter.CanComplete(workspace),
+			Enabled = CircuitCompleter.CanComplete(workspace)
+		};
+		_modeSequence = new RadioButton
+		{
+			Text = "Generate a new circuit from a movement sequence (for example A+ B+ B- A-)",
+			AutoSize = true,
+			Checked = !CircuitCompleter.CanComplete(workspace)
+		};
 		int num = ((workspace == null) ? 0 : WorkspaceMerge.FindCylinders(workspace).Count);
 		_useWorkspace = new CheckBox
 		{
@@ -104,7 +121,7 @@ public class GeneratorDialog : Form
 		FlowLayoutPanel flowLayoutPanel = new FlowLayoutPanel
 		{
 			Dock = DockStyle.Top,
-			Height = 158,
+			Height = 222,
 			FlowDirection = FlowDirection.TopDown,
 			Padding = new Padding(10, 0, 10, 0),
 			WrapContents = false
@@ -121,7 +138,7 @@ public class GeneratorDialog : Form
 			Padding = new Padding(0, 7, 0, 0)
 		});
 		flowLayoutPanel2.Controls.Add(_sequence);
-		flowLayoutPanel.Controls.AddRange(new Control[5] { flowLayoutPanel2, _electro, _cascade, _continuous, _useWorkspace });
+		flowLayoutPanel.Controls.AddRange(new Control[7] { _modeComplete, _modeSequence, flowLayoutPanel2, _electro, _cascade, _continuous, _useWorkspace });
 		FlowLayoutPanel flowLayoutPanel3 = new FlowLayoutPanel
 		{
 			Dock = DockStyle.Bottom,
@@ -173,12 +190,20 @@ public class GeneratorDialog : Form
 		{
 			Preview();
 		};
+		_modeComplete.CheckedChanged += [SpecialName] (object a0, EventArgs a1) =>
+		{
+			SetMode();
+		};
 		_generate.Click += OnGenerate;
-		Preview();
+		SetMode();
 	}
 
 	private GeneratedCircuit TryGenerate()
 	{
+		if (_modeComplete.Checked && _workspace != null)
+		{
+			return CircuitCompleter.Complete(_workspace);
+		}
 		GeneratedCircuit generatedCircuit = SequenceGenerator.Generate(MotionSequence.Parse(_sequence.Text), Method, _continuous.Checked);
 		if (_useWorkspace.Checked && _workspace != null)
 		{
@@ -187,12 +212,24 @@ public class GeneratorDialog : Form
 		return generatedCircuit;
 	}
 
+	private void SetMode()
+	{
+		bool flag = !_modeComplete.Checked;
+		_sequence.Enabled = flag;
+		_electro.Enabled = flag;
+		_cascade.Enabled = flag;
+		_continuous.Enabled = flag;
+		_useWorkspace.Enabled = flag && _useWorkspace.Text.IndexOf("none found", StringComparison.Ordinal) < 0;
+		_generate.Text = (flag ? "Generate circuit" : "Complete circuit");
+		Preview();
+	}
+
 	private void Preview()
 	{
 		try
 		{
 			GeneratedCircuit generatedCircuit = TryGenerate();
-			_explanation.Text = ((_useWorkspace.Checked && _workspace != null) ? WorkspaceMerge.Describe(_workspace, MotionSequence.Parse(_sequence.Text)).Replace("\n", "\r\n") : "") + generatedCircuit.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
+			_explanation.Text = ((!_modeComplete.Checked && _useWorkspace.Checked && _workspace != null) ? WorkspaceMerge.Describe(_workspace, MotionSequence.Parse(_sequence.Text)).Replace("\n", "\r\n") : "") + generatedCircuit.Explanation.Replace("\n", "\r\n").Replace("\r\r\n", "\r\n");
 			_explanation.ForeColor = Color.Black;
 			_generate.Enabled = true;
 		}

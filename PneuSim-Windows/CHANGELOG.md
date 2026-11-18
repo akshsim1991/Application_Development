@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.5 "Mistral" (18 Nov 2026)
+- Circuit generator: new main mode "Complete my circuit from the components already in the workspace". PneuSim reads what you placed (cylinders, motors, valves, supply, push buttons, coils, 24 V terminals), adds what is missing (a valve for each actuator, a compressed-air supply, and for solenoid valves a coil, push button, +24 V and 0 V) and connects everything, leaving existing parts and connections alone. Works for single- and double-acting cylinders and air motors; hydraulic circuits are not completed yet. The sequence generator is still available.
+
 ## 3.3.4 "Mistral" (18 Nov 2026)
 - Automatic operation (Settings > Simulation): PneuSim presses the start button for you when you press Start. One cycle, or repeat continuously; direct-control circuits hold the button until the cylinders have moved, memory circuits get a short pulse. Manual mode is still available.
 - Settings window rebuilt with tabs (General, Simulation, Workspace, Sounds), always showing OK and Cancel. New: AMOLED (pure black) theme, currency symbol, start screen on/off, recovery-copy interval, default simulation speed, realistic physics default, live value labels, hover values, grid and snap options.

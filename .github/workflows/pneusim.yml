@@ -45,6 +45,8 @@ jobs:
       - name: Self-test (sounds, rated pressure, units)
         run: |
           dotnet build tools/selftest/SelfTest.csproj -c Release -nologo
+          New-Item -ItemType Directory -Force guide | Out-Null
+          $env:PNEUSIM_GUIDE_OUT = (Resolve-Path guide).Path + "\PneuSim-Guide.pdf"
           dotnet tools/selftest/bin/Release/net8.0-windows/SelfTest.dll src/PneuSim/bin/Release/net472/PneuSim.exe
           if ($LASTEXITCODE -ne 0) { throw "Self-test failed" }
 
@@ -95,3 +97,9 @@ jobs:
           path: |
             PneuSim-Windows/reports/
             PneuSim-Windows/shots/
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: PneuSim-Guide
+          path: PneuSim-Windows/guide/PneuSim-Guide.pdf

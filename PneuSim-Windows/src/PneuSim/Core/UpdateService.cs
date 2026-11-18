@@ -91,6 +91,7 @@ public static class UpdateService
 	public static UpdateManifest CheckForNewer()
 	{
 		Exception ex = null;
+		int num404 = 0;
 		string[] manifestUrls = ManifestUrls;
 		foreach (string text in manifestUrls)
 		{
@@ -104,7 +105,15 @@ public static class UpdateService
 			catch (Exception ex2)
 			{
 				ex = ex2;
+				if (ex2 is WebException ex3 && ex3.Response is HttpWebResponse httpWebResponse && httpWebResponse.StatusCode == HttpStatusCode.NotFound)
+				{
+					num404++;
+				}
 			}
+		}
+		if (num404 == ManifestUrls.Length)
+		{
+			return null;
 		}
 		throw new WebException("Could not reach the update server. " + ex?.Message, ex);
 	}

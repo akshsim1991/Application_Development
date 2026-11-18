@@ -50,7 +50,7 @@ public sealed class RibbonBar : Control
 
 	private const int TabHeight = 30;
 
-	private const int ContentHeight = 94;
+	private const int ContentHeight = 112;
 
 	private const int ButtonWidth = 76;
 
@@ -63,6 +63,8 @@ public sealed class RibbonBar : Control
 	private readonly List<Rectangle> _tabRects = new List<Rectangle>();
 
 	private readonly TextBox _search = new TextBox();
+
+	private readonly ToolTip _tip = new ToolTip { InitialDelay = 500 };
 
 	private readonly ListBox _results = new ListBox { IntegralHeight = true, BorderStyle = BorderStyle.FixedSingle, Visible = false };
 
@@ -239,7 +241,7 @@ public sealed class RibbonBar : Control
 					using SolidBrush brush2 = new SolidBrush(Accent);
 					graphics.FillRectangle(brush2, rectangle.X, rectangle.Y, rectangle.Width, 3);
 				}
-				TextRenderer.DrawText(graphics, _tabs[i].Name, font, rectangle, (i == _active) ? Text_ : Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+				TextRenderer.DrawText(graphics, _tabs[i].Name, font, rectangle, (i == _active) ? Text_ : Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
 				num += rectangle.Width + 2;
 			}
 		}
@@ -289,7 +291,7 @@ public sealed class RibbonBar : Control
 				num += ButtonWidth;
 			}
 			Rectangle layoutRectangle = new Rectangle(num5, num2 + num3 + 1, Math.Max(10, num4 * ButtonWidth), 16);
-			TextRenderer.DrawText(g, group.Title, font2, layoutRectangle, Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis);
+			TextRenderer.DrawText(g, group.Title, font2, layoutRectangle, Faint, TextFormatFlags.HorizontalCenter | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 			num += 6;
 			using (Pen pen = new Pen(Border_))
 			{
@@ -303,10 +305,10 @@ public sealed class RibbonBar : Control
 	private void DrawButton(Graphics g, Hit hit, string label, Bitmap icon, Font font)
 	{
 		Rectangle bounds = hit.Bounds;
-		if (hit == _hover || hit == _down)
+		if (Same(hit, _hover) || Same(hit, _down))
 		{
 			using GraphicsPath path = RoundRect(Rectangle.Inflate(bounds, -2, -1), 5);
-			using SolidBrush brush = new SolidBrush((hit == _down) ? Color.FromArgb(60, Accent) : HoverBack);
+			using SolidBrush brush = new SolidBrush(Same(hit, _down) ? Color.FromArgb(60, Accent) : HoverBack);
 			g.FillPath(brush, path);
 			using Pen pen = new Pen(Accent);
 			g.DrawPath(pen, path);
@@ -316,7 +318,7 @@ public sealed class RibbonBar : Control
 			g.DrawImage(icon, bounds.X + (bounds.Width - icon.Width) / 2, bounds.Y + 3, icon.Width, icon.Height);
 		}
 		Rectangle rectangle = new Rectangle(bounds.X + 2, bounds.Y + 46, bounds.Width - 4, bounds.Height - 46);
-		TextRenderer.DrawText(g, label, font, rectangle, Text_, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis);
+		TextRenderer.DrawText(g, label, font, rectangle, Text_, TextFormatFlags.HorizontalCenter | TextFormatFlags.Top | TextFormatFlags.WordBreak | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
 	}
 
 	private static GraphicsPath RoundRect(Rectangle r, int radius)
@@ -336,6 +338,12 @@ public sealed class RibbonBar : Control
 		return _hits.FirstOrDefault((Hit h) => h.Bounds.Contains(p));
 	}
 
+	/// <summary>Hits are rebuilt on every repaint, so compare what they stand for, not the objects.</summary>
+	private static bool Same(Hit a, Hit b)
+	{
+		return a != null && b != null && a.Item == b.Item && a.MoreOf == b.MoreOf;
+	}
+
 	protected override void OnMouseMove(MouseEventArgs e)
 	{
 		base.OnMouseMove(e);
@@ -348,10 +356,11 @@ public sealed class RibbonBar : Control
 			return;
 		}
 		Hit hit = HitAt(e.Location);
-		if (hit != _hover)
+		if (!Same(hit, _hover) && !(hit == null && _hover == null))
 		{
 			_hover = hit;
 			Cursor = ((hit != null) ? Cursors.Hand : Cursors.Default);
+			_tip.SetToolTip(this, (hit == null) ? "" : ((hit.Item != null) ? hit.Item.Label : "Show the other items in this group"));
 			Invalidate();
 		}
 	}
@@ -389,7 +398,7 @@ public sealed class RibbonBar : Control
 		Hit down = _down;
 		_down = null;
 		Invalidate();
-		if (down == null || e.Button != MouseButtons.Left || HitAt(e.Location) != down)
+		if (down == null || e.Button != MouseButtons.Left || !Same(HitAt(e.Location), down))
 		{
 			return;
 		}

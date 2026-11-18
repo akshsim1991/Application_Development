@@ -225,7 +225,19 @@ public partial class MainForm
 
 	private void OnQuickGuide(object sender, EventArgs e)
 	{
-		MessageBox.Show("BUILDING A CIRCUIT\r\n• Click a component in the library, then click on the drawing (or drag it there). Hover over a symbol for an explanation.\r\n• Drag from one port to another to connect them. Red circles are electrical terminals.\r\n• Drag a box to select several; R rotates, Del deletes, arrow keys nudge, Ctrl+Z / Ctrl+Y undo / redo.\r\n• Ctrl+C, Ctrl+X, Ctrl+V and Ctrl+D copy, cut, paste and duplicate. Drag a tube's middle segment to move it.\r\n• Use several pages (Page menu) and join lines across pages with page connectors of the same name.\r\n\r\nSIMULATING\r\n• Start (F9). Pressurized tubes turn blue, live wires red, hydraulic pressure lines orange.\r\n• Click push buttons, switches and pumps; clicking a solenoid valve operates its manual override.\r\n• Realistic physics: pressures build up, cylinders move by bore, load and friction; air consumption and cost are shown.\r\n• Right-click any component or tube to see its live values in the Inspector tab and change settings with sliders.\r\n• Replay: the step and event buttons (or drag the time slider) go back and forward in time; Start continues from there.\r\n• Plotter tab: tick any quantity, click for cursor A, right-click for cursor B (min / max / average between them);\r\n  set a trigger, zoom with the mouse wheel, and export CSV or PNG.\r\n• Record GIF saves an animation of the running circuit.\r\n\r\nFAULT FINDING\r\n• Tools > Fault finding > New fault-finding task hides a fault; find it with as few checks and hints as possible.\r\n• 'Add fault…' puts a chosen fault into the selected part or tube (tick Hidden to make a fault-finding file for a colleague).\r\n\r\nTOOLS\r\n• Check my circuit (F6) finds mistakes and signal overlap; Explain (F8) describes the circuit step by step.\r\n• Circuit Generator (Ctrl+G) designs a circuit from a sequence such as A+ B+ B- A-.\r\n• Calculators, parts list with costs, PDF report with title block, SVG and DXF export.\r\n• Parameter sweep: run the circuit with a setting changed step by step and compare cycle time, air use and speed.\r\n• Learn menu: getting-started tutorials with automatic checking, cutaway view of any component (F7).", "PneuSim Quick Guide", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+		try
+		{
+			string fileName = UserGuide.EnsureGuide();
+			System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(fileName)
+			{
+				UseShellExecute = true
+			});
+		}
+		catch (Exception ex)
+		{
+			ErrorLog.Write(ex, "Quick Guide");
+			MessageBox.Show(this, "The user guide could not be opened: " + ex.Message, AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+		}
 	}
 
 	private void OnAbout(object sender, EventArgs e)

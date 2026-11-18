@@ -129,6 +129,16 @@ class SelfTest
         sw.Stop();
         Console.WriteLine($"INFO {steps} simulation steps in {sw.ElapsedMilliseconds} ms ({(double)sw.ElapsedMilliseconds / Math.Max(1, steps):0.000} ms/step)");
         Check((double)sw.ElapsedMilliseconds / Math.Max(1, steps) < 5.0, "simulation speed under 5 ms per step");
+        // User guide PDF
+        var guidePath = Environment.GetEnvironmentVariable("PNEUSIM_GUIDE_OUT") ?? Path.Combine(Path.GetTempPath(), "pneusim-guide-selftest.pdf");
+        try
+        {
+            T("UserGuide").GetMethod("Create").Invoke(null, new object[] { guidePath, true });
+            var gb = File.ReadAllBytes(guidePath);
+            Console.WriteLine("INFO symbol error: " + T("UserGuide").GetField("LastSymbolError").GetValue(null));
+            Check(gb.Length > 20000 && System.Text.Encoding.ASCII.GetString(gb, 0, 5) == "%PDF-", $"user guide PDF created ({gb.Length} bytes)");
+        }
+        catch (Exception e) { Check(false, "user guide PDF created: " + (e.InnerException ?? e).Message); }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

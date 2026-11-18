@@ -32,6 +32,7 @@ public partial class MainForm
 		try
 		{
 			List<CheckIssue> list = CircuitAnalysis.StaticChecks(_project.SimulationCircuit());
+			list.AddRange(CircuitAnalysis.OverlapChecks(CurrentCircuit));
 			if (list.Count == 0 && _project.AllElements().Any())
 			{
 				list.Add(new CheckIssue
@@ -66,6 +67,7 @@ public partial class MainForm
 		{
 			Circuit c = _project.SimulationCircuit();
 			List<CheckIssue> list = CircuitAnalysis.StaticChecks(c);
+			list.AddRange(CircuitAnalysis.OverlapChecks(CurrentCircuit));
 			if (!list.Any([SpecialName] (CheckIssue i) => i.Severity == IssueSeverity.Error && i.Message.Contains("is empty")))
 			{
 				list.AddRange(CircuitAnalysis.DynamicCheck(c, _realPhysics));

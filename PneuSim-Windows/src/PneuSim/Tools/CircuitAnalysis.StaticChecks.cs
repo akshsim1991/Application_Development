@@ -136,10 +136,6 @@ public sealed partial class CircuitAnalysis
 		{
 			vB_0024AnonymousDelegate_(IssueSeverity.Error, "The electrical circuit has no 0 V connection.", null);
 		}
-		foreach (CheckIssue overlap in OverlapChecks(c))
-		{
-			CS_0024_003C_003E8__locals0._0024VB_0024Local_issues.Add(overlap);
-		}
 		foreach (CircuitElement item in elements)
 		{
 			if (item is Junction || item is TextNote)

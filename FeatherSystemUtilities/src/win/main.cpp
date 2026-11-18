@@ -36,12 +36,12 @@ static Pal P = PalFor(0);
 #define cRail (P.rail)
 #define cRailSel (P.railSel)
 
-enum Page { P_DASH, P_STARTUP, P_SERVICES, P_DRIVERS, P_HISTORY, P_SETTINGS, P_COUNT };
-static const wchar_t* kPageNames[P_COUNT] = {L"Dashboard", L"Startup", L"Services", L"Drivers", L"History", L"Settings"};
+enum Page { P_DASH, P_STARTUP, P_SERVICES, P_DRIVERS, P_CLEAN, P_HISTORY, P_SETTINGS, P_COUNT };
+static const wchar_t* kPageNames[P_COUNT] = {L"Dashboard", L"Startup", L"Services", L"Drivers", L"Cleaner", L"History", L"Settings"};
 enum Cmd { C_REFRESH = 1000, C_ENABLE, C_DISABLE, C_DELETE, C_STARTLATER, C_ADD, C_RESTORE, C_UNDO, C_FILTER, C_MORE, C_SVC_START, C_SVC_STOP, C_SVC_RESTART, C_SVC_PAUSE, C_SVC_RESUME, C_SVC_KILL,
     C_STARTTYPE, C_PROFILES, C_DETAILS, C_COPYNAME, C_COPYDETAILS, C_OPENLOC, C_REGEDIT, C_VT, C_SEARCHONLINE, C_SELALL, C_ADMIN, C_SETTINGS, C_ABOUT, C_EXIT, C_OPENBACKUPS, C_OPENDATA, C_EXPORT,
-    C_ST_AUTO, C_ST_AUTODELAY, C_ST_MANUAL, C_ST_DISABLED, C_PROF_SAVESEL, C_PROF_SNAPSHOT, C_PROF_OPENDIR, C_REMOVE_DELAY,
-    C_FILTER_BASE = 1100, C_PROF_BASE = 1150, C_RESTORE_BASE = 1200, C_DELAY_BASE = 1300 };
+    C_ST_AUTO, C_ST_AUTODELAY, C_ST_MANUAL, C_ST_DISABLED, C_PROF_SAVESEL, C_PROF_SNAPSHOT, C_PROF_OPENDIR, C_REMOVE_DELAY, C_CLEAN, C_CLEAN_SELALL, C_CLEAN_RESTORE,
+    C_FILTER_BASE = 1100, C_PROF_BASE = 1150, C_RESTORE_BASE = 1200, C_DELAY_BASE = 1300, C_REGRESTORE_BASE = 1400 };
 enum { ID_NAV = 100, ID_SEARCH = 102, ID_LIST, ID_STATUS, ID_PANEL };
 enum { WM_SCAN_DONE = WM_APP + 1, WM_ACTIVATE_PAGE, WM_JOB_DONE };
 static const int kDelays[] = {15, 30, 60, 120, 300};
@@ -51,18 +51,18 @@ static HINSTANCE g_inst; static HWND g_main, g_nav, g_search, g_list, g_hdr, g_s
 static HFONT g_font, g_fontBig, g_fontTitle; static UINT g_dpi = 96; static HANDLE g_mtx;
 static HBRUSH g_brBg, g_brBar, g_brRail;
 static Page g_page = P_DASH; static bool g_elevated = false; static wstring g_user;
-static StartupScan g_su; static ServiceScan g_sv, g_dv;
+static StartupScan g_su; static ServiceScan g_sv, g_dv; static CleanScan g_cl;
 static std::vector<std::vector<wstring>> g_cells[P_COUNT];
 static std::vector<int> g_view;
 static int g_filter[P_COUNT]; static wstring g_query[P_COUNT];
-static int g_sortCol[P_COUNT] = {0, 1, 0, 0, 0, 0}; static bool g_sortAsc[P_COUNT] = {true, true, true, true, false, true};
+static int g_sortCol[P_COUNT] = {0, 1, 0, 0, 2, 0, 0}; static bool g_sortAsc[P_COUNT] = {true, true, true, true, false, false, true};
 static std::atomic<int> g_gen{0}; static bool g_scanning = false;
 static wstring g_stMsg; static std::set<wstring> g_keepSel;
 static int S(int v) { return MulDiv(v, g_dpi, 96); }
 
 struct UndoItem { int kind; StartupEntry se; bool wasEnabled; wstring name; DWORD type; bool delayed; int group; };
 static std::vector<UndoItem> g_undo; static int g_groupSeq = 0;
-struct ScanMsg { int gen; StartupScan su; ServiceScan sv, dv; int which; };
+struct ScanMsg { int gen; StartupScan su; ServiceScan sv, dv; CleanScan cl; int which; };
 struct JobDone { wstring summary; };
 
 // ---- columns ----
@@ -73,16 +73,19 @@ static const Col kServiceCols[] = {{L"Name", 250, false}, {L"Service name", 170,
     {L"Log on as", 130, false}, {L"Description", 520, false}, {L"Warnings", 200, false}};
 static const Col kDriverCols[] = {{L"Name", 250, false}, {L"Driver name", 170, false}, {L"Status", 80, false}, {L"Start type", 110, false}, {L"Class", 100, false}, {L"Type", 130, false},
     {L"Description", 360, false}, {L"Path", 460, false}, {L"Warnings", 160, false}};
+static const Col kCleanCols[] = {{L"Item", 300, false}, {L"Type", 230, false}, {L"Size", 90, true}, {L"Detail", 140, false}, {L"Location", 420, false}, {L"Why / note", 480, false}};
 static const Col kHistCols[] = {{L"Time (UTC)", 160, false}, {L"Item", 260, false}, {L"Before", 160, false}, {L"After", 240, false}, {L"Result", 520, false}};
 static const Col* ColsFor(Page p, int& n) {
-    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } n = 5; return kHistCols;
+    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } if (p == P_CLEAN) { n = 6; return kCleanCols; } n = 5; return kHistCols;
 }
 static const wchar_t* kStartupFilters[] = {L"Everything", L"Enabled", L"Disabled", L"Needs attention (warnings)", L"New in the last 7 days", L"Not from Microsoft", L"Registry (Run keys)", L"Startup folders", L"Scheduled tasks", L"Explorer add-ons", L"Delayed by Feather", L"Windows system items only"};
 static const wchar_t* kServiceFilters[] = {L"All services", L"Running", L"Stopped", L"Automatic but not running", L"Disabled", L"Third-party only", L"Critical to Windows", L"Needs attention (warnings)"};
 static const wchar_t* kDriverFilters[] = {L"All drivers", L"Running", L"Stopped", L"Boot/System start", L"Third-party only", L"Needs attention (warnings)"};
-static int FilterCount(Page p) { return p == P_STARTUP ? 12 : p == P_SERVICES ? 8 : p == P_DRIVERS ? 6 : 0; }
-static const wchar_t* FilterName(Page p) { return p == P_STARTUP ? kStartupFilters[g_filter[p]] : p == P_SERVICES ? kServiceFilters[g_filter[p]] : p == P_DRIVERS ? kDriverFilters[g_filter[p]] : L""; }
+static const wchar_t* kCleanFilters[] = {L"Everything", L"Temporary files", L"Registry entries"};
+static int FilterCount(Page p) { return p == P_STARTUP ? 12 : p == P_SERVICES ? 8 : p == P_DRIVERS ? 6 : p == P_CLEAN ? 3 : 0; }
+static const wchar_t* FilterName(Page p) { return p == P_STARTUP ? kStartupFilters[g_filter[p]] : p == P_SERVICES ? kServiceFilters[g_filter[p]] : p == P_DRIVERS ? kDriverFilters[g_filter[p]] : p == P_CLEAN ? kCleanFilters[g_filter[p]] : L""; }
 static bool IsSvcPage(Page p) { return p == P_SERVICES || p == P_DRIVERS; }
+static bool IsActionList(Page p) { return p == P_STARTUP || p == P_SERVICES || p == P_DRIVERS || p == P_CLEAN; }
 static std::vector<ServiceEntry>& SvcVec(Page p) { return p == P_DRIVERS ? g_dv.entries : g_sv.entries; }
 
 // ================= toolbar: native owner-drawn buttons (keyboard + screen-reader accessible) =================
@@ -141,7 +144,7 @@ static LRESULT CALLBACK StProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetTextColor(dc, g_elevated ? cDim : cAccent); DrawTextW(dc, link.c_str(), -1, &linkR, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOCLIP);
         SetTextColor(dc, cText); RECT lr{S(8), 0, cr.right / 2, cr.bottom}; DrawTextW(dc, left, -1, &lr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         SetTextColor(dc, g_stMsg.empty() ? cDim : cText); RECT mr{cr.right / 2 - S(40), 0, linkR.left - S(12), cr.bottom};
-        wstring msg = g_stMsg.empty() ? (g_page == P_STARTUP ? L"Tip: right-click an entry. Every change is journaled; Ctrl+Z undoes it." : g_page == P_SERVICES ? L"Tip: select several services (Ctrl/Shift) to act on them together." : g_page == P_DRIVERS ? L"Drivers are shown read-only." : L"") : g_stMsg;
+        wstring msg = g_stMsg.empty() ? (g_page == P_STARTUP ? L"Tip: right-click an entry. Every change is journaled; Ctrl+Z undoes it." : g_page == P_SERVICES ? L"Tip: select several services (Ctrl/Shift) to act on them together." : g_page == P_DRIVERS ? L"Drivers are shown read-only." : g_page == P_CLEAN ? L"Select items, then Clean selected. Temp files are deleted permanently; registry entries are backed up first." : L"") : g_stMsg;
         DrawTextW(dc, msg.c_str(), -1, &mr, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         EndPaint(h, &ps); return 0; }
     case WM_SETCURSOR: { POINT p; GetCursorPos(&p); ScreenToClient(h, &p); if (!g_elevated && PtInRect(&linkR, p)) { SetCursor(LoadCursorW(nullptr, IDC_HAND)); return TRUE; } break; }
@@ -158,7 +161,7 @@ static void SetClip(const wstring& s) {
     HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, (s.size() + 1) * 2); if (g) { memcpy(GlobalLock(g), s.c_str(), (s.size() + 1) * 2); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT, g); } CloseClipboard();
 }
 static std::vector<int> Selected() {
-    std::vector<int> r; if (g_page != P_STARTUP && !IsSvcPage(g_page)) return r;
+    std::vector<int> r; if (!IsActionList(g_page)) return r;
     int i = -1; while ((i = ListView_GetNextItem(g_list, i, LVNI_SELECTED)) != -1) if (i < (int)g_view.size()) r.push_back(g_view[i]); return r;
 }
 static wstring Plural(size_t n, const wchar_t* one, const wchar_t* many) { return std::to_wstring(n) + L" " + (n == 1 ? one : many); }
@@ -171,16 +174,18 @@ static int Rank(Page p, const wstring& v) {
     if (p == P_STARTUP) return v == L"Enabled" ? 0 : v == L"One-time" ? 1 : v == L"Disabled" ? 2 : 3;
     return v == L"Running" ? 0 : v == L"Paused" ? 1 : v == L"Stopped" ? 3 : 2;
 }
-static wstring EntryName(Page p, int i) { return p == P_STARTUP ? g_su.entries[i].name : SvcVec(p)[i].display; }
+static wstring EntryName(Page p, int i) { return p == P_STARTUP ? g_su.entries[i].name : p == P_CLEAN ? g_cl.items[i].name : SvcVec(p)[i].display; }
 
 // ================= data -> rows =================
 static void BuildCells() {
     g_cells[P_STARTUP].clear(); for (auto& e : g_su.entries) g_cells[P_STARTUP].push_back({e.name, e.state, L"Not measured", e.warnings, e.publisher, e.type, e.starts, e.scope, e.command, e.location});
     g_cells[P_SERVICES].clear(); for (auto& e : g_sv.entries) g_cells[P_SERVICES].push_back({e.display, e.name, e.state, e.start, e.safety, e.pid ? std::to_wstring(e.pid) : L"", e.account, e.description, e.warnings});
+    g_cells[P_CLEAN].clear(); for (auto& e : g_cl.items) g_cells[P_CLEAN].push_back({e.name, e.type, FormatBytes(e.bytes), e.detail, e.location, e.why});
     g_cells[P_DRIVERS].clear(); for (auto& e : g_dv.entries) g_cells[P_DRIVERS].push_back({e.display, e.name, e.state, e.start, e.safety, e.ptype, e.description, e.path, e.warnings});
 }
 static bool PassFilter(Page p, int idx) {
     int f = g_filter[p];
+    if (p == P_CLEAN) { auto& e = g_cl.items[idx]; return f == 0 || (f == 1 && e.kind <= 1) || (f == 2 && e.kind >= 2); }
     if (p == P_STARTUP) { auto& e = g_su.entries[idx];
         if (Cfg().hideSystem && e.isSystem && f != 11) return false;
         switch (f) { case 0: return true; case 1: return e.state == L"Enabled"; case 2: return e.state == L"Disabled"; case 3: return e.hasWarning; case 4: return e.recent; case 5: return !e.microsoft;
@@ -192,13 +197,13 @@ static bool PassFilter(Page p, int idx) {
         switch (f) { case 1: return e.stateCode == SERVICE_RUNNING; case 2: return e.stateCode == SERVICE_STOPPED; case 3: return e.startType == SERVICE_BOOT_START || e.startType == SERVICE_SYSTEM_START; case 4: return e.safety == L"Third-party"; case 5: return !e.warnings.empty(); } }
     return true;
 }
-static wstring KeyOf(Page p, int idx) { return p == P_STARTUP ? g_su.entries[idx].key : p == P_HISTORY ? L"" : SvcVec(p)[idx].name; }
+static wstring KeyOf(Page p, int idx) { return p == P_STARTUP ? g_su.entries[idx].key : p == P_HISTORY ? L"" : p == P_CLEAN ? g_cl.items[idx].id : SvcVec(p)[idx].name; }
 static void UpdateStatus(); static void UpdateToolbar();
 static void ApplyView() {
-    Page p = g_page; if (p != P_STARTUP && !IsSvcPage(p) && p != P_HISTORY) return;
+    Page p = g_page; if (!IsActionList(p) && p != P_HISTORY) return;
     g_view.clear(); auto& cells = g_cells[p];
     for (size_t i = 0; i < cells.size(); ++i) if (PassFilter(p, (int)i) && MatchesQuery(cells[i], g_query[p])) g_view.push_back((int)i);
-    int col = g_sortCol[p]; bool asc = g_sortAsc[p]; bool statusCol = ((p == P_STARTUP && col == 1) || (IsSvcPage(p) && col == 2)); bool numCol = p == P_SERVICES && col == 5;
+    int col = g_sortCol[p]; bool asc = g_sortAsc[p]; bool statusCol = ((p == P_STARTUP && col == 1) || (IsSvcPage(p) && col == 2)); bool numCol = p == P_SERVICES && col == 5; bool sizeCol = p == P_CLEAN && col == 2;
     if (p == P_HISTORY && col == 0) { if (!asc) {} }   // journal is stored oldest->newest; cells are newest-first already
     std::stable_sort(g_view.begin(), g_view.end(), [&](int a, int b) {
         const wstring &x = cells[a][col], &y = cells[b][col];
@@ -206,6 +211,7 @@ static void ApplyView() {
         int c;
         if (statusCol) c = Rank(p, x) - Rank(p, y);
         else if (numCol) c = _wtoi(x.c_str()) - _wtoi(y.c_str());
+        else if (sizeCol) { ULONGLONG bx = g_cl.items[a].bytes, by = g_cl.items[b].bytes; c = bx < by ? -1 : bx > by ? 1 : 0; }
         else { wstring lx = Lower(x), ly = Lower(y); c = lx < ly ? -1 : lx > ly ? 1 : 0; }
         if (!c && col != 0) { wstring lx = Lower(cells[a][0]), ly = Lower(cells[b][0]); return lx < ly; }
         return asc ? c < 0 : c > 0; });
@@ -215,7 +221,7 @@ static void ApplyView() {
     InvalidateRect(g_list, nullptr, TRUE); InvalidateRect(g_hdr, nullptr, TRUE); UpdateStatus(); UpdateToolbar();
 }
 static void SaveColumnWidths() {
-    if (g_page != P_STARTUP && !IsSvcPage(g_page) && g_page != P_HISTORY) return;
+    if (!IsActionList(g_page) && g_page != P_HISTORY) return;
     int n = Header_GetItemCount(g_hdr); std::vector<int> w; for (int i = 0; i < n; ++i) w.push_back(MulDiv(ListView_GetColumnWidth(g_list, i), 96, g_dpi)); Cfg().colw[kPageNames[g_page]] = w;
 }
 static void BuildColumns() {
@@ -237,10 +243,11 @@ static void UpdateStatus() {
     } else if (IsSvcPage(p)) {
         auto& v = SvcVec(p); size_t run = 0; for (auto& e : v) if (e.stateCode == SERVICE_RUNNING) ++run;
         s = std::to_wstring(v.size()) + (p == P_DRIVERS ? L" drivers · " : L" services · ") + std::to_wstring(run) + L" running"; if (g_view.size() != v.size()) s += L" · " + std::to_wstring(g_view.size()) + L" shown";
+    } else if (p == P_CLEAN) { s = std::to_wstring(g_cl.items.size()) + L" items \u00B7 " + FormatBytes(g_cl.totalBytes) + L" reclaimable \u00B7 " + std::to_wstring(g_cl.registryCount) + L" invalid registry entries"; if (g_view.size() != g_cl.items.size()) s += L" \u00B7 " + std::to_wstring(g_view.size()) + L" shown";
     } else if (p == P_HISTORY) s = std::to_wstring(g_cells[P_HISTORY].size()) + L" journal entries" + (g_view.size() != g_cells[P_HISTORY].size() ? L" · " + std::to_wstring(g_view.size()) + L" shown" : L"");
     else s = g_scanning ? L"Scanning…" : L"Ready";
-    UINT sel = (p == P_STARTUP || IsSvcPage(p)) ? ListView_GetSelectedCount(g_list) : 0; if (sel > 1) s += L" · " + std::to_wstring(sel) + L" selected";
-    if (g_scanning && (p == P_STARTUP || IsSvcPage(p))) s += L" · scanning…";
+    UINT sel = IsActionList(p) ? ListView_GetSelectedCount(g_list) : 0; if (sel > 1) s += L" · " + std::to_wstring(sel) + L" selected";
+    if (g_scanning && IsActionList(p)) s += L" · scanning…";
     SetWindowTextW(g_status, s.c_str());
 }
 
@@ -252,6 +259,7 @@ static void BuildToolbar() {
     if (g_page == P_STARTUP) { add(C_REFRESH, L"Refresh"); sep(); add(C_ENABLE, L"Enable"); add(C_DISABLE, L"Disable"); add(C_DELETE, L"Delete"); add(C_STARTLATER, L"Start later", true); sep(); add(C_ADD, L"Add…"); add(C_RESTORE, L"Restore…"); add(C_UNDO, L"Undo"); }
     else if (g_page == P_SERVICES) { add(C_REFRESH, L"Refresh"); sep(); add(C_SVC_START, L"Start"); add(C_SVC_STOP, L"Stop"); add(C_SVC_RESTART, L"Restart"); add(C_SVC_PAUSE, L"Pause"); add(C_SVC_RESUME, L"Resume"); add(C_SVC_KILL, L"Kill"); sep(); add(C_STARTTYPE, L"Start type", true); add(C_PROFILES, L"Profiles", true); add(C_UNDO, L"Undo"); }
     else if (g_page == P_DRIVERS) { add(C_REFRESH, L"Refresh"); add(C_DETAILS, L"Properties"); }
+    else if (g_page == P_CLEAN) { add(C_REFRESH, L"Scan again"); sep(); add(C_CLEAN, L"Clean selected"); add(C_CLEAN_SELALL, L"Select all"); sep(); add(C_CLEAN_RESTORE, L"Restore registry\u2026", true); }
     else if (g_page == P_HISTORY) { add(C_REFRESH, L"Refresh"); add(C_EXPORT, L"Export…"); }
     else add(C_REFRESH, L"Refresh");
     if (FilterCount(g_page)) add(C_FILTER, FilterName(g_page), true, true);
@@ -270,6 +278,7 @@ static void UpdateToolbar() {
         for (int i : sel) { auto& e = g_sv.entries[i]; if (e.stateCode == SERVICE_STOPPED) st = true; if (e.stateCode == SERVICE_RUNNING) { rs = true; if (e.controls & SERVICE_ACCEPT_STOP) sp = true; if (e.controls & SERVICE_ACCEPT_PAUSE_CONTINUE) pa = true; if (sel.size() == 1 && e.pid && (e.svcType & SERVICE_WIN32_OWN_PROCESS) && !e.critical) kl = true; } if (e.stateCode == SERVICE_PAUSED) re = true; }
         TbEnable(C_SVC_START, st); TbEnable(C_SVC_STOP, sp); TbEnable(C_SVC_RESTART, sp && rs); TbEnable(C_SVC_PAUSE, pa); TbEnable(C_SVC_RESUME, re); TbEnable(C_SVC_KILL, kl); TbEnable(C_STARTTYPE, any); TbEnable(C_PROFILES, true);
     } else if (g_page == P_DRIVERS) TbEnable(C_DETAILS, any);
+    else if (g_page == P_CLEAN) { TbEnable(C_CLEAN, any && !g_scanning); TbEnable(C_CLEAN_SELALL, !g_cl.items.empty()); TbEnable(C_CLEAN_RESTORE, true); }
     TbEnable(C_UNDO, !g_undo.empty());
 }
 
@@ -286,9 +295,10 @@ static void ReadHistory() {
 }
 static DWORD WINAPI ScanThread(LPVOID) {
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); int gen = g_gen.load();
-    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, ScanStartup(), {}, {}, 0});
-    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, {}, ScanServices(false), {}, 1});
-    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, {}, {}, ScanServices(true), 2});
+    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, ScanStartup(), {}, {}, {}, 0});
+    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, {}, ScanServices(false), {}, {}, 1});
+    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, {}, {}, ScanServices(true), {}, 2});
+    PostMessageW(g_main, WM_SCAN_DONE, 0, (LPARAM) new ScanMsg{gen, {}, {}, {}, ScanCleaner(Cfg().keepRecent), 3});
     CoUninitialize(); return 0;
 }
 static void StartScan() {
@@ -301,7 +311,7 @@ static void StartScan() {
 // ================= panel: dashboard + settings (custom, mouse + keyboard) =================
 struct Tile { RECT r; wstring big, cap; Page page; int filter; COLORREF col; int action; };
 static std::vector<Tile> g_tiles; static int g_panelFocus = -1;
-enum { A_NONE, A_THEME, A_DENSITY, A_HIDESYS, A_CONFIRM, A_STARTPAGE, A_RESETCOLS, A_OPENDATA, A_CLEARHIST, A_ADMIN };
+enum { A_NONE, A_THEME, A_DENSITY, A_HIDESYS, A_CONFIRM, A_KEEPRECENT, A_STARTPAGE, A_RESETCOLS, A_OPENDATA, A_CLEARHIST, A_ADMIN };
 
 static size_t CountIf(const std::vector<ServiceEntry>& v, bool (*f)(const ServiceEntry&)) { size_t n = 0; for (auto& e : v) if (f(e)) ++n; return n; }
 static void RoundFill(HDC dc, RECT r, COLORREF fill, COLORREF line) { HBRUSH b = CreateSolidBrush(fill); HPEN p = CreatePen(PS_SOLID, 1, line); HGDIOBJ ob = SelectObject(dc, b), op = SelectObject(dc, p); RoundRect(dc, r.left, r.top, r.right, r.bottom, S(10), S(10)); SelectObject(dc, ob); SelectObject(dc, op); DeleteObject(b); DeleteObject(p); }
@@ -316,6 +326,7 @@ static void BuildTiles(int panelW) {
     row({{{}, std::to_wstring(g_sv.entries.size()), L"services", P_SERVICES, 0, cText, 0}, {{}, std::to_wstring(run), L"running", P_SERVICES, 1, cGreen, 0}, {{}, std::to_wstring(third), L"third-party", P_SERVICES, 5, cLav, 0},
          {{}, std::to_wstring(crit), L"critical to Windows", P_SERVICES, 6, cRed, 0}, {{}, std::to_wstring(sw), L"need attention", P_SERVICES, 7, sw ? cRed : cGreen, 0}});
     size_t drun = CountIf(g_dv.entries, [](const ServiceEntry& e) { return e.stateCode == SERVICE_RUNNING; }), dboot = CountIf(g_dv.entries, [](const ServiceEntry& e) { return e.startType == SERVICE_BOOT_START || e.startType == SERVICE_SYSTEM_START; });
+    row({{{}, FormatBytes(g_cl.totalBytes), L"reclaimable temp files", P_CLEAN, 1, g_cl.totalBytes ? cAmber : cDim, 0}, {{}, std::to_wstring(g_cl.registryCount), L"invalid registry entries", P_CLEAN, 2, g_cl.registryCount ? cAmber : cGreen, 0}});
     row({{{}, std::to_wstring(g_dv.entries.size()), L"drivers (read-only)", P_DRIVERS, 0, cText, 0}, {{}, std::to_wstring(drun), L"loaded", P_DRIVERS, 1, cGreen, 0}, {{}, std::to_wstring(dboot), L"boot/system start", P_DRIVERS, 3, cAmber, 0}});
 }
 static const wchar_t* DensityName() { return Cfg().density ? L"Comfortable" : L"Compact"; }
@@ -323,7 +334,7 @@ static void BuildSettingsRows(int panelW) {
     g_tiles.clear(); int y = S(86), x = S(24), w = panelW - S(48), h = S(40);
     struct R { const wchar_t* label; wstring value; int action; } rows[] = {
         {L"Theme", PalFor(Cfg().theme).name, A_THEME}, {L"Row density", DensityName(), A_DENSITY}, {L"Hide Windows system items on the Startup page", Cfg().hideSystem ? L"On" : L"Off", A_HIDESYS},
-        {L"Confirm before changing several items at once", Cfg().confirmBatch ? L"On" : L"Off", A_CONFIRM}, {L"Open on page", kPageNames[Cfg().startPage], A_STARTPAGE},
+        {L"Confirm before changing several items at once", Cfg().confirmBatch ? L"On" : L"Off", A_CONFIRM}, {L"Cleaner: keep temporary files from the last 24 hours", Cfg().keepRecent ? L"On" : L"Off", A_KEEPRECENT}, {L"Open on page", kPageNames[Cfg().startPage], A_STARTPAGE},
         {L"Column widths", L"Reset", A_RESETCOLS}, {L"Data folder (journal, backups, profiles)", L"Open", A_OPENDATA}, {L"App history and caches (journal, first-seen list)", L"Clear…", A_CLEARHIST}};
     for (auto& r : rows) { Tile t; t.r = {x, y, x + w, y + h}; t.big = r.value; t.cap = r.label; t.page = P_SETTINGS; t.filter = 0; t.col = cAccent; t.action = r.action; g_tiles.push_back(t); y += h + S(6); }
 }
@@ -335,6 +346,7 @@ static void PanelAction(int a) {
     case A_DENSITY: c.density = !c.density; ApplyDensity(); SaveSettings(); repaint(); break;
     case A_HIDESYS: c.hideSystem = !c.hideSystem; SaveSettings(); repaint(); break;
     case A_CONFIRM: c.confirmBatch = !c.confirmBatch; SaveSettings(); repaint(); break;
+    case A_KEEPRECENT: c.keepRecent = !c.keepRecent; SaveSettings(); repaint(); break;
     case A_STARTPAGE: { HMENU m = CreatePopupMenu(); for (int i = 0; i < P_COUNT; ++i) AppendMenuW(m, MF_STRING | (i == c.startPage ? MF_CHECKED : 0), 1 + i, kPageNames[i]);
         POINT pt; GetCursorPos(&pt); int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) { c.startPage = id - 1; SaveSettings(); repaint(); } break; }
     case A_RESETCOLS: c.colw.clear(); SaveSettings(); SetMsg(L"Column widths reset. They apply the next time you open each page."); break;
@@ -361,7 +373,7 @@ static LRESULT CALLBACK PanelProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (g_page == P_SETTINGS) {
                 RoundFill(dc, t.r, cBar, foc ? cAccent : cGrid); RECT lr = t.r; lr.left += S(14); SetTextColor(dc, cText); DrawTextW(dc, t.cap.c_str(), -1, &lr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
                 SIZE sz; GetTextExtentPoint32W(dc, t.big.c_str(), (int)t.big.size(), &sz); RECT pill{t.r.right - sz.cx - S(46), t.r.top + S(7), t.r.right - S(12), t.r.bottom - S(7)};
-                bool toggle = t.action == A_HIDESYS || t.action == A_CONFIRM; bool on = t.big == L"On"; RoundFill(dc, pill, toggle && on ? cSel : cHot, toggle && on ? cAccent : cGrid);
+                bool toggle = t.action == A_HIDESYS || t.action == A_CONFIRM || t.action == A_KEEPRECENT; bool on = t.big == L"On"; RoundFill(dc, pill, toggle && on ? cSel : cHot, toggle && on ? cAccent : cGrid);
                 SetTextColor(dc, toggle ? (on ? cGreen : cDim) : cAccent); DrawTextW(dc, (t.big + ((t.action == A_THEME || t.action == A_STARTPAGE) ? L" ▾" : L"")).c_str(), -1, &pill, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
             } else {
                 RoundFill(dc, t.r, cBar, foc ? cAccent : cGrid); SelectObject(dc, g_fontBig); SetTextColor(dc, t.col); RECT br = t.r; br.top += S(8); br.bottom = br.top + S(40); DrawTextW(dc, t.big.c_str(), -1, &br, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
@@ -371,8 +383,8 @@ static LRESULT CALLBACK PanelProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SelectObject(dc, g_font);
         if (g_page == P_DASH) {
             // section headings aligned to tile rows
-            const wchar_t* heads[] = {L"STARTUP", L"SERVICES", L"DRIVERS"}; int hi = 0, lastY = -1; SetTextColor(dc, cAccent);
-            for (auto& t : g_tiles) if (t.r.top != lastY) { lastY = t.r.top; if (hi < 3) TextOutW(dc, S(26), t.r.top - S(22), heads[hi], (int)wcslen(heads[hi])); ++hi; }
+            const wchar_t* heads[] = {L"STARTUP", L"SERVICES", L"CLEANER", L"DRIVERS"}; int hi = 0, lastY = -1; SetTextColor(dc, cAccent);
+            for (auto& t : g_tiles) if (t.r.top != lastY) { lastY = t.r.top; if (hi < 4) TextOutW(dc, S(26), t.r.top - S(22), heads[hi], (int)wcslen(heads[hi])); ++hi; }
             int y = g_tiles.empty() ? S(100) : g_tiles.back().r.bottom + S(20); RECT tr{S(26), y, cr.right - S(26), cr.bottom - S(8)}; SetTextColor(dc, cDim);
             wstring note = (g_elevated ? L"Running as administrator.\r\n" : L"Running with standard rights: reading works everywhere; all-users and service changes need \"Restart as administrator\" (bottom right).\r\n");
             note += L"Every change is journaled first, verified by reading it back, and can be undone where Windows allows (Ctrl+Z - configuration only).\r\n";
@@ -381,7 +393,7 @@ static LRESULT CALLBACK PanelProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         } else {
             int y = g_tiles.empty() ? S(100) : g_tiles.back().r.bottom + S(16); RECT tr{S(26), y, cr.right - S(26), cr.bottom - S(8)}; SetTextColor(dc, cDim);
             wstring note = L"Privacy: nothing leaves this PC. No telemetry, no automatic updates, no online advice. \"Check on VirusTotal\" and \"Search online\" only open your browser after you confirm.\r\n" + MigrationNote() +
-                           L"\r\nShortcuts: Ctrl+F search · F5 refresh · Enter details · Del delete · Ctrl+A select all · Ctrl+C copy name · Ctrl+Shift+C copy details · Ctrl+E export · Ctrl+Z undo · Ctrl+1..6 pages";
+                           L"\r\nShortcuts: Ctrl+F search · F5 refresh · Enter details · Del delete · Ctrl+A select all · Ctrl+C copy name · Ctrl+Shift+C copy details · Ctrl+E export · Ctrl+Z undo · Ctrl+1..7 pages";
             DrawTextW(dc, note.c_str(), -1, &tr, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
         }
         EndPaint(h, &ps); return 0; }
@@ -405,13 +417,13 @@ static void RebuildPanel() {
 static void Layout(int w, int h);
 static void ShowPage(Page p) {
     SaveColumnWidths(); g_page = p; SendMessageW(g_nav, LB_SETCURSEL, p, 0); InvalidateRect(g_nav, nullptr, TRUE);
-    bool listy = p == P_STARTUP || IsSvcPage(p) || p == P_HISTORY;
+    bool listy = IsActionList(p) || p == P_HISTORY;
     ShowWindow(g_list, listy ? SW_SHOW : SW_HIDE); ShowWindow(g_panel, listy ? SW_HIDE : SW_SHOW); ShowWindow(g_search, listy ? SW_SHOW : SW_HIDE);
     wstring title = wstring(kApp) + L"  —  " + kPageNames[p] + (g_elevated ? L" (Administrator)" : L""); SetWindowTextW(g_main, title.c_str());
     BuildToolbar();
     if (listy) {
         SetWindowTextW(g_search, g_query[p].c_str());
-        SendMessageW(g_search, EM_SETCUEBANNER, TRUE, (LPARAM)(p == P_SERVICES ? L"Search services (Ctrl+F)" : p == P_DRIVERS ? L"Search drivers (Ctrl+F)" : p == P_HISTORY ? L"Search history (Ctrl+F)" : L"Search (Ctrl+F)"));
+        SendMessageW(g_search, EM_SETCUEBANNER, TRUE, (LPARAM)(p == P_SERVICES ? L"Search services (Ctrl+F)" : p == P_DRIVERS ? L"Search drivers (Ctrl+F)" : p == P_CLEAN ? L"Search items (Ctrl+F)" : p == P_HISTORY ? L"Search history (Ctrl+F)" : L"Search (Ctrl+F)"));
         BuildColumns(); if (p == P_HISTORY) ReadHistory(); ApplyView(); InvalidateRect(g_search, nullptr, TRUE);
     } else { RebuildPanel(); UpdateStatus(); UpdateToolbar(); }
     RECT r; GetClientRect(g_main, &r); Layout(r.right, r.bottom);
@@ -442,6 +454,10 @@ static void ServiceEditors(std::vector<ReportBtn>& b, const ServiceEntry& c) {
         wstring err; if (SetServiceAccount(c, _wtoi(f[0].value.c_str()), err)) { SetMsg(L"Account changed for " + c.display + L" (applies at next start)."); StartScan(); } else DarkMsg(ow, kApp, err, 1); }});
 }
 static void ShowDetails() {
+    if (g_page == P_CLEAN) { auto s = Selected(); if (s.empty()) return; auto& e = g_cl.items[s[0]];
+        wstring t = e.name + L"\r\n\r\nTYPE\r\n" + e.type + L"\r\n\r\nSIZE\r\n" + FormatBytes(e.bytes) + (e.files ? L" in " + std::to_wstring(e.files) + L" files/items" : L"") + L"\r\n\r\nWHERE\r\n" + e.location + L"\r\n\r\nWHY IT IS LISTED\r\n" + e.why + L"\r\n\r\n" +
+            (e.kind >= 2 ? L"WHAT HAPPENS\r\nThe entry is exported to a backup file, then removed. Use Restore registry... to put it back. Only entries whose file is missing on a fixed local drive are ever listed.\r\n" : L"WHAT HAPPENS\r\nFiles are deleted permanently (not moved to the Recycle Bin). Files in use are skipped.\r\n") + (e.needsAdmin ? L"\r\nNeeds administrator rights.\r\n" : L"");
+        ShowReport(g_main, e.name + L" \u2014 Details", {{L"Details", t}}, {{L"Copy", [](const wstring& x) { SetClip(x); }}, {L"Close", nullptr}}); return; }
     if (g_page == P_STARTUP) {
         auto* e = OneStartup(); if (!e) return; StartupEntry c = *e; HWND owner = g_main;
         ShowReport(owner, c.name + L" — Details", {{L"Details", StartupDetailsText(c)}}, {
@@ -459,10 +475,10 @@ static void ShowDetails() {
     }
 }
 static void CopyNames() { wstring o; for (int i : Selected()) o += EntryName(g_page, i) + L"\r\n"; SetClip(o); }
-static void CopyDetails() { wstring o; for (int i : Selected()) o += (g_page == P_STARTUP ? StartupDetailsText(g_su.entries[i]) : ServiceTabText(SvcVec(g_page)[i], 0)) + L"\r\n"; SetClip(o); }
+static void CopyDetails() { wstring o; for (int i : Selected()) o += (g_page == P_STARTUP ? StartupDetailsText(g_su.entries[i]) : g_page == P_CLEAN ? g_cl.items[i].name + L"\r\n" + g_cl.items[i].location + L"\r\n" + g_cl.items[i].why : ServiceTabText(SvcVec(g_page)[i], 0)) + L"\r\n"; SetClip(o); }
 static void SelectAll() { ListView_SetItemState(g_list, -1, LVIS_SELECTED, LVIS_SELECTED); UpdateStatus(); UpdateToolbar(); }
 static void ExportList() {
-    if (g_page != P_STARTUP && !IsSvcPage(g_page) && g_page != P_HISTORY) return;
+    if (!IsActionList(g_page) && g_page != P_HISTORY) return;
     int n; const Col* cs = ColsFor(g_page, n); std::vector<wstring> cols; for (int i = 0; i < n; ++i) cols.push_back(cs[i].name);
     std::vector<std::vector<wstring>> rows; for (int v : g_view) rows.push_back(g_cells[g_page][v]);
     wstring prov = wstring(kApp) + L" " FSU_VERSION L" | machine: local | user: " + g_user + L" | page: " + kPageNames[g_page] + (FilterCount(g_page) ? L" | filter: " + wstring(FilterName(g_page)) : L"") +
@@ -589,6 +605,34 @@ static void SaveProfileFlow(bool snapshot) {
     if (!FormDialog(g_main, snapshot ? L"Save a snapshot of all start types" : L"Save selected services as a profile", L"Save", f, L"Saves service names and start types only. No passwords or other settings are stored. Applying it later always shows a review first.")) return;
     wstring path, err; if (SaveProfile(f[0].value, items, path, err)) SetMsg(L"Saved " + Plural(items.size(), L"service", L"services") + L" to \"" + f[0].value + L"\"."); else Warn(err);
 }
+static void CleanSelectAll() { ListView_SetItemState(g_list, -1, LVIS_SELECTED, LVIS_SELECTED); UpdateStatus(); UpdateToolbar(); }
+struct CleanJob { std::vector<CleanItem> items; bool keep; };
+static DWORD WINAPI CleanThread(LPVOID p) {
+    std::unique_ptr<CleanJob> j((CleanJob*)p); CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); CleanResult r; RunClean(j->items, j->keep, r);
+    wstring msg = L"Cleaned: " + FormatBytes(r.bytes) + L" freed, " + std::to_wstring(r.ok) + L" item(s) done";
+    if (r.skipped || r.failed) msg += L", " + std::to_wstring(r.skipped + r.failed) + L" skipped/failed" + (r.firstErr.empty() ? L"" : L" (" + r.firstErr + L")");
+    if (!r.backupPath.empty()) msg += L". Registry backup saved - use Restore registry\u2026 to undo.";
+    PostMessageW(g_main, WM_JOB_DONE, 0, (LPARAM) new JobDone{msg}); CoUninitialize(); return 0;
+}
+static void CleanSelected() {
+    auto sel = Selected(); if (sel.empty() || g_page != P_CLEAN) return; auto* job = new CleanJob{{}, Cfg().keepRecent}; std::vector<wstring> names; ULONGLONG total = 0; int regs = 0; bool recycle = false;
+    for (int i : sel) { auto& e = g_cl.items[i]; job->items.push_back(e); total += e.bytes; if (e.kind >= 2) ++regs; if (e.kind == 1) recycle = true; names.push_back(e.name + L"  (" + (e.kind >= 2 ? e.detail : FormatBytes(e.bytes)) + L")"); }
+    wstring q = L"Clean " + Plural(sel.size(), L"item", L"items") + L"?";
+    if (total) q += L" About " + FormatBytes(total) + L" of temporary data will be deleted permanently (files in use are skipped).";
+    if (recycle) q += L" The Recycle Bin will be emptied for good.";
+    if (regs) q += L" " + Plural(regs, L"registry entry", L"registry entries") + L" will be removed after saving a backup you can restore.";
+    if (!Confirm(q, names)) { delete job; return; }
+    SetMsg(L"Cleaning\u2026"); HANDLE h = CreateThread(nullptr, 0, CleanThread, job, 0, nullptr); if (h) CloseHandle(h); else delete job;
+}
+static void RestoreRegMenu(POINT pt) {
+    auto b = ListRegBackups(); HMENU m = CreatePopupMenu();
+    if (b.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 1, L"No registry backups yet"); else for (size_t i = 0; i < b.size(); ++i) AppendMenuW(m, MF_STRING, C_REGRESTORE_BASE + i, b[i].label.c_str());
+    int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m);
+    if (id >= C_REGRESTORE_BASE && id < C_REGRESTORE_BASE + (int)b.size()) {
+        if (DarkMsg(g_main, kApp, L"Restore these registry entries?\r\n\r\n" + b[id - C_REGRESTORE_BASE].label + L"\r\n\r\nExisting values are never overwritten.", 2) != IDYES) return;
+        wstring err, sum; if (RestoreRegBackup(b[id - C_REGRESTORE_BASE].path, err, sum)) { SetMsg(sum + L"."); StartScan(); } else Warn(err.empty() ? L"Nothing was restored." : err);
+    }
+}
 static void Undo() {
     if (g_undo.empty()) return; int grp = g_undo.back().group; int ok = 0, bad = 0; wstring firstErr;
     while (!g_undo.empty() && g_undo.back().group == grp) { auto u = g_undo.back(); g_undo.pop_back(); wstring err, before; bool r = u.kind == 1 ? SetStartupEnabled(u.se, u.wasEnabled, err) : SetServiceStartType(u.name, u.type, u.delayed, err, before);
@@ -629,6 +673,8 @@ static void ContextMenu(POINT pt) {
         AppendMenuW(m, MF_POPUP, (UINT_PTR)StartTypeMenu(), L"Start type"); Sep(m);
         AddItem(m, C_COPYNAME, L"Copy name\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C"); AddItem(m, C_OPENLOC, L"Open file location", one); AddItem(m, C_VT, L"Check on VirusTotal…", one); AddItem(m, C_SEARCHONLINE, L"Search online…", one); Sep(m);
         AddItem(m, C_PROF_SAVESEL, L"Save as a profile…"); 
+    } else if (g_page == P_CLEAN) {
+        AddItem(m, C_DETAILS, L"Details\tEnter", true, true); Sep(m); AddItem(m, C_CLEAN, L"Clean selected\u2026"); Sep(m); AddItem(m, C_COPYNAME, L"Copy name\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C");
     } else {
         AddItem(m, C_DETAILS, L"Properties\tEnter", true, true); Sep(m); AddItem(m, C_COPYNAME, L"Copy name\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C"); AddItem(m, C_OPENLOC, L"Open file location", one);
         AddItem(m, C_VT, L"Check on VirusTotal…", one); AddItem(m, C_SEARCHONLINE, L"Search online…", one);
@@ -638,15 +684,16 @@ static void ContextMenu(POINT pt) {
 static void DropMenu(int cmd) {
     auto* it = TbFind(cmd); if (!it) return; RECT wr; GetWindowRect(it->h, &wr); POINT pt{wr.left, wr.bottom};
     if (cmd == C_FILTER) {
-        HMENU m = CreatePopupMenu(); int n = FilterCount(g_page); const wchar_t** names = g_page == P_STARTUP ? kStartupFilters : g_page == P_SERVICES ? kServiceFilters : kDriverFilters;
+        HMENU m = CreatePopupMenu(); int n = FilterCount(g_page); const wchar_t** names = g_page == P_STARTUP ? kStartupFilters : g_page == P_SERVICES ? kServiceFilters : g_page == P_CLEAN ? kCleanFilters : kDriverFilters;
         for (int i = 0; i < n; ++i) { if ((g_page == P_STARTUP && (i == 3 || i == 6 || i == 10)) || (g_page == P_SERVICES && (i == 3 || i == 5 || i == 7)) || (g_page == P_DRIVERS && (i == 3 || i == 5))) Sep(m);
             AppendMenuW(m, MF_STRING | (i == g_filter[g_page] ? MF_CHECKED : 0), C_FILTER_BASE + i, names[i]); }
         int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN | TPM_TOPALIGN, wr.right, wr.bottom, 0, g_main, nullptr); DestroyMenu(m);
         if (id >= C_FILTER_BASE && id < C_FILTER_BASE + n) { g_filter[g_page] = id - C_FILTER_BASE; TbText(C_FILTER, FilterName(g_page)); ApplyView(); }
     } else if (cmd == C_MORE) {
-        HMENU m = CreatePopupMenu(); auto sel = Selected(); bool listy = g_page == P_STARTUP || IsSvcPage(g_page);
+        HMENU m = CreatePopupMenu(); auto sel = Selected(); bool listy = IsActionList(g_page);
         if (listy) { AddItem(m, C_DETAILS, IsSvcPage(g_page) ? L"Properties\tEnter" : L"Details\tEnter", !sel.empty()); } AddItem(m, C_UNDO, L"Undo\tCtrl+Z", !g_undo.empty()); Sep(m);
         if (g_page == P_STARTUP) { AddItem(m, C_ADD, L"Add an entry…\tCtrl+N"); AddItem(m, C_RESTORE, L"Restore deleted entries…"); AddItem(m, C_OPENBACKUPS, L"Open the backup folder"); Sep(m); }
+        if (g_page == P_CLEAN) { AddItem(m, C_CLEAN, L"Clean selected\u2026", !sel.empty()); AddItem(m, C_CLEAN_RESTORE, L"Restore registry entries\u2026"); AddItem(m, C_OPENBACKUPS, L"Open the backup folders"); Sep(m); }
         AddItem(m, C_REFRESH, L"Refresh\tF5"); if (listy) AddItem(m, C_SELALL, L"Select all\tCtrl+A"); if (listy) AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C", !sel.empty());
         if (listy || g_page == P_HISTORY) AddItem(m, C_EXPORT, L"Export the list…\tCtrl+E"); Sep(m); AddItem(m, C_OPENDATA, L"Open the data folder");
         if (!g_elevated) AddItem(m, C_ADMIN, L"Restart as administrator"); AddItem(m, C_SETTINGS, L"Settings…\tCtrl+,"); AddItem(m, C_ABOUT, L"About Feather System Utilities\tF1"); Sep(m); AddItem(m, C_EXIT, L"Exit");
@@ -654,6 +701,7 @@ static void DropMenu(int cmd) {
     } else if (cmd == C_STARTTYPE) { HMENU m = StartTypeMenu(); int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0); }
     else if (cmd == C_STARTLATER) { HMENU m = DelayMenu(); int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0); }
     else if (cmd == C_RESTORE) RestoreMenu(pt);
+    else if (cmd == C_CLEAN_RESTORE) RestoreRegMenu(pt);
     else if (cmd == C_PROFILES) {
         g_profs = ListProfiles(); HMENU m = CreatePopupMenu(); AddItem(m, 0, L"Built-in profiles (you review every change first):", false);
         size_t nb = 0; for (auto& p : g_profs) if (p.builtin) ++nb;
@@ -670,7 +718,8 @@ static void DoCommand(int id) {
     switch (id) {
     case C_REFRESH: g_stMsg.clear(); StartScan(); if (g_page == P_HISTORY) { ReadHistory(); ApplyView(); } break;
     case C_ENABLE: ToggleStartup(true); break; case C_DISABLE: ToggleStartup(false); break; case C_DELETE: DeleteStartup(); break; case C_ADD: AddEntry(); break;
-    case C_RESTORE: case C_FILTER: case C_MORE: case C_STARTTYPE: case C_STARTLATER: case C_PROFILES: DropMenu(id); break;
+    case C_RESTORE: case C_FILTER: case C_MORE: case C_STARTTYPE: case C_STARTLATER: case C_PROFILES: case C_CLEAN_RESTORE: DropMenu(id); break;
+    case C_CLEAN: CleanSelected(); break; case C_CLEAN_SELALL: CleanSelectAll(); break;
     case C_UNDO: Undo(); break; case C_REMOVE_DELAY: RemoveDelays(); break;
     case C_SVC_START: RunSvcOp(SvcOp::Start); break; case C_SVC_STOP: RunSvcOp(SvcOp::Stop); break; case C_SVC_RESTART: RunSvcOp(SvcOp::Restart); break;
     case C_SVC_PAUSE: RunSvcOp(SvcOp::Pause); break; case C_SVC_RESUME: RunSvcOp(SvcOp::Resume); break; case C_SVC_KILL: KillService(); break;
@@ -683,7 +732,7 @@ static void DoCommand(int id) {
     case C_VT: case C_SEARCHONLINE: { wstring prog, name; if (g_page == P_STARTUP) { if (auto* e = OneStartup()) { prog = e->program; name = e->name; } } else if (auto* s = OneService()) { prog = s->program; name = s->display; }
         if (!prog.empty() || !name.empty()) OnlineLookup(g_main, id == C_VT, prog, name); break; }
     case C_ADMIN: RestartAsAdmin(); break; case C_SETTINGS: ShowPage(P_SETTINGS); break; case C_ABOUT: About(); break;
-    case C_OPENBACKUPS: ShellExecuteW(nullptr, L"open", SubDir(L"backups").c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
+    case C_OPENBACKUPS: ShellExecuteW(nullptr, L"open", SubDir(g_page == P_CLEAN ? L"regbackups" : L"backups").c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case C_OPENDATA: ShellExecuteW(nullptr, L"open", DataDir().c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case C_EXIT: DestroyWindow(g_main); break;
     case 0xE001: ApplyTheme(Cfg().theme); break;
@@ -699,6 +748,7 @@ static COLORREF CellColor(Page p, int row, int col, bool& dim) {
     if (p == P_STARTUP) { auto& e = g_su.entries[row]; if (e.state == L"Disabled") dim = true;
         switch (col) { case 1: return e.state == L"Enabled" ? cGreen : e.state == L"Disabled" ? cDim : cAmber; case 2: return cDim; case 3: return cRed; case 4: return e.microsoft ? cText : cLav; }
         return dim ? cDim : cText; }
+    if (p == P_CLEAN) { auto& e = g_cl.items[row]; if (col == 1) return e.kind >= 2 ? cAmber : cText; if (col == 2) return e.bytes ? cGreen : cDim; if (col == 3) return e.needsAdmin && !g_elevated ? cAmber : cDim; return col == 5 ? cDim : cText; }
     if (p == P_SERVICES || p == P_DRIVERS) { auto& e = SvcVec(p)[row]; int wcol = p == P_SERVICES ? 8 : 8;
         if (col == 2) return e.stateCode == SERVICE_RUNNING ? cGreen : e.stateCode == SERVICE_STOPPED ? cDim : cAmber;
         if (col == 4) return e.safety == L"Critical" ? cRed : e.safety == L"Boot/System" ? cAmber : e.safety == L"Third-party" ? cLav : cDim;
@@ -804,7 +854,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HPEN p = CreatePen(PS_SOLID, 1, cGrid); HGDIOBJ op = SelectObject(dc, p);
         for (auto& it : g_items) if (it.sep) { int x = (it.r.left + it.r.right) / 2; MoveToEx(dc, x, S(10), nullptr); LineTo(dc, x, st.bottom - S(10)); }
         MoveToEx(dc, st.left, st.bottom - 1, nullptr); LineTo(dc, st.right, st.bottom - 1); SelectObject(dc, op); DeleteObject(p);
-        if (g_page == P_STARTUP || IsSvcPage(g_page) || g_page == P_HISTORY) { HPEN p2 = CreatePen(PS_SOLID, 1, cGrid); HBRUSH b2 = CreateSolidBrush(cBg); HGDIOBJ o1 = SelectObject(dc, p2), o2 = SelectObject(dc, b2);
+        if (IsActionList(g_page) || g_page == P_HISTORY) { HPEN p2 = CreatePen(PS_SOLID, 1, cGrid); HBRUSH b2 = CreateSolidBrush(cBg); HGDIOBJ o1 = SelectObject(dc, p2), o2 = SelectObject(dc, b2);
             RoundRect(dc, g_searchBox.left, g_searchBox.top, g_searchBox.right, g_searchBox.bottom, S(6), S(6)); SelectObject(dc, o1); SelectObject(dc, o2); DeleteObject(p2); DeleteObject(b2); }
         EndPaint(h, &ps); return 0; }
     case WM_SETFOCUS: SetFocus(g_nav); return 0;
@@ -818,9 +868,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DrawTextW(di->hDC, kPageNames[di->itemID], -1, &tr, DT_LEFT | DT_VCENTER | DT_SINGLELINE); if (di->itemState & ODS_FOCUS) { RECT f = di->rcItem; InflateRect(&f, -2, -2); DrawFocusRect(di->hDC, &f); } return TRUE; }
     case WM_SCAN_DONE: {
         std::unique_ptr<ScanMsg> r((ScanMsg*)l); if (r->gen != g_gen.load()) return 0;
-        if (r->which == 0) g_su = std::move(r->su); else if (r->which == 1) g_sv = std::move(r->sv); else { g_dv = std::move(r->dv); g_scanning = false; }
+        if (r->which == 0) g_su = std::move(r->su); else if (r->which == 1) g_sv = std::move(r->sv); else if (r->which == 2) g_dv = std::move(r->dv); else { g_cl = std::move(r->cl); g_scanning = false; }
         BuildCells();
-        if (g_page == P_STARTUP || IsSvcPage(g_page)) ApplyView(); else if (g_page == P_DASH) { RebuildPanel(); UpdateStatus(); } else UpdateStatus();
+        if (IsActionList(g_page)) ApplyView(); else if (g_page == P_DASH) { RebuildPanel(); UpdateStatus(); } else UpdateStatus();
         return 0; }
     case WM_JOB_DONE: { std::unique_ptr<JobDone> j((JobDone*)l); SetMsg(j->summary); g_scanning = false; StartScan(); return 0; }
     case WM_ACTIVATE_PAGE: { if (IsIconic(h)) ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); if (w < P_COUNT) ShowPage((Page)w); return 0; }
@@ -843,7 +893,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             }
         }
         return 0; }
-    case WM_CONTEXTMENU: if ((HWND)w == g_list && (g_page == P_STARTUP || IsSvcPage(g_page))) {
+    case WM_CONTEXTMENU: if ((HWND)w == g_list && IsActionList(g_page)) {
             POINT pt{(short)LOWORD(l), (short)HIWORD(l)};
             if (l == -1) { int f = ListView_GetNextItem(g_list, -1, LVNI_FOCUSED | LVNI_SELECTED); RECT r{}; if (f >= 0) ListView_GetItemRect(g_list, f, &r, LVIR_BOUNDS); pt = {r.left + S(20), r.bottom}; ClientToScreen(g_list, &pt); }
             ContextMenu(pt); return 0; } break;
@@ -864,7 +914,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     if (c.find(L"--cleanup") != wstring::npos) {   // used by the uninstaller: restore delayed entries, remove our tasks
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); wstring rep; CleanupManagedTasks(rep); return 0; }
     g_mtx = CreateMutexW(nullptr, TRUE, L"Local\\FeatherSystemUtilities.Instance");
-    Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else haveReq = false;
+    Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else if (c.find(L"--cleaner") != wstring::npos) req = P_CLEAN; else haveReq = false;
     if (GetLastError() == ERROR_ALREADY_EXISTS) { if (HWND e = FindWindowW(L"FeatherSystemUtilitiesWnd", nullptr)) PostMessageW(e, WM_ACTIVATE_PAGE, req, 0); return 0; }   // F004
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     LoadSettings(); MigrateLegacyData(); P = PalFor(Cfg().theme);
@@ -882,13 +932,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     MSG m;
     while (GetMessageW(&m, nullptr, 0, 0)) {
         if (m.message == WM_KEYDOWN && GetForegroundWindow() == w) {
-            bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0; HWND f = GetFocus(); bool onList = f == g_list; bool listy = g_page == P_STARTUP || IsSvcPage(g_page) || g_page == P_HISTORY; bool inEdit = f == g_search;
+            bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0; HWND f = GetFocus(); bool onList = f == g_list; bool listy = IsActionList(g_page) || g_page == P_HISTORY; bool inEdit = f == g_search;
             if (ctrl && m.wParam == 'F' && listy) { SetFocus(g_search); SendMessageW(g_search, EM_SETSEL, 0, -1); continue; }
-            if (ctrl && m.wParam >= '1' && m.wParam <= '6') { ShowPage((Page)(m.wParam - '1')); continue; }
+            if (ctrl && m.wParam >= '1' && m.wParam <= '7') { ShowPage((Page)(m.wParam - '1')); continue; }
             if (m.wParam == VK_F5) { DoCommand(C_REFRESH); continue; } if (m.wParam == VK_F1) { About(); continue; } if (ctrl && m.wParam == VK_OEM_COMMA) { ShowPage(P_SETTINGS); continue; }
             if (ctrl && !shift && m.wParam == 'Z' && !inEdit) { Undo(); continue; }
             if (ctrl && m.wParam == 'E' && listy) { ExportList(); continue; }
-            if (!inEdit && (g_page == P_STARTUP || IsSvcPage(g_page))) {
+            if (!inEdit && IsActionList(g_page)) {
                 if (ctrl && m.wParam == 'A') { SelectAll(); continue; }
                 if (ctrl && shift && m.wParam == 'C') { CopyDetails(); continue; } if (ctrl && !shift && m.wParam == 'C' && onList) { CopyNames(); continue; }
                 if (ctrl && m.wParam == 'N' && g_page == P_STARTUP) { AddEntry(); continue; }

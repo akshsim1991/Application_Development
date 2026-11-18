@@ -12,7 +12,7 @@
 #include <map>
 #include <functional>
 
-#define FSU_VERSION L"1.5.0"
+#define FSU_VERSION L"1.6.0"
 
 namespace fsu {
 
@@ -30,7 +30,7 @@ const Pal& PalFor(int theme);   // 0 Dark 1 Midnight 2 Warm 3 Light
 int ThemeCount();
 struct Settings {
     int theme = 0, density = 1, startPage = 0;
-    bool hideSystem = true, confirmBatch = true, maximized = false;
+    bool hideSystem = true, confirmBatch = true, maximized = false, keepRecent = true;
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
     std::map<std::wstring, std::vector<int>> colw;   // per page column widths (96-dpi units)
 };
@@ -105,6 +105,20 @@ std::vector<ProfileInfo> ListProfiles();
 bool SaveProfile(const std::wstring& label, const std::vector<ServiceEntry>& items, std::wstring& path, std::wstring& err);
 bool BuildPlan(const ProfileInfo& p, const std::vector<ServiceEntry>& current, std::vector<PlanItem>& plan, std::wstring& note, std::wstring& err);
 std::wstring PlanText(const std::vector<PlanItem>& plan);
+
+// ---- cleaner: temporary files + invalid registry entries ----
+struct CleanItem {
+    std::wstring id, name, type, detail, location, why;
+    ULONGLONG bytes = 0, files = 0; int kind = 0;               // 0 temp folders, 1 recycle bin, 2 registry key, 3 registry value
+    bool needsAdmin = false; HKEY root = nullptr; REGSAM view = 0; std::wstring subKey, valueName;
+    std::vector<std::wstring> paths;
+};
+struct CleanScan { std::vector<CleanItem> items; std::wstring coverage; ULONGLONG totalBytes = 0; int registryCount = 0; };
+CleanScan ScanCleaner(bool keepRecent);
+struct CleanResult { ULONGLONG bytes = 0, files = 0; int ok = 0, skipped = 0, failed = 0; std::wstring firstErr, backupPath; };
+void RunClean(const std::vector<CleanItem>& items, bool keepRecent, CleanResult& r);   // temp files are permanently deleted; registry items are backed up first
+std::vector<BackupInfo> ListRegBackups();
+bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring& summary);
 
 // ---- dialogs and shell actions (dialogs.cpp) ----
 struct ReportTab { std::wstring name, text; };

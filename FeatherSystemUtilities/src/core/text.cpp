@@ -13,6 +13,17 @@ std::wstring Lower(const std::wstring& s) {
     return r;
 }
 
+std::wstring FormatBytes(unsigned long long b) {
+    const wchar_t* u[] = {L"B", L"KB", L"MB", L"GB", L"TB"}; double v = (double)b; int i = 0; while (v >= 1024.0 && i < 4) { v /= 1024.0; ++i; }
+    wchar_t buf[48]; if (i == 0) swprintf(buf, 48, L"%llu B", b); else swprintf(buf, 48, v >= 100 ? L"%.0f %ls" : L"%.1f %ls", v, u[i]); return buf;
+}
+bool IsDriveAbsolute(const std::wstring& p) { return p.size() >= 3 && ((p[0] >= L'A' && p[0] <= L'Z') || (p[0] >= L'a' && p[0] <= L'z')) && p[1] == L':' && (p[2] == L'\\' || p[2] == L'/') && p.find(L'%') == std::wstring::npos; }
+bool MuiCachePath(const std::wstring& n, std::wstring& path) {
+    std::wstring l = Lower(n); size_t best = std::wstring::npos;
+    for (const wchar_t* ext : {L".exe.", L".dll.", L".msc.", L".cpl."}) { size_t p = l.rfind(ext); if (p != std::wstring::npos && (best == std::wstring::npos || p > best)) best = p + 4; }
+    if (best == std::wstring::npos) return false; path = n.substr(0, best); return IsDriveAbsolute(path);
+}
+
 std::string ToUtf8(const std::wstring& w) {
     std::string o;
     for (size_t i = 0; i < w.size(); ++i) {

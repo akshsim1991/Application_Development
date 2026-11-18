@@ -43,6 +43,13 @@ std::string JournalLine(const JournalEntry& e);
 // F203: atomic write (temp file + rename). Returns false on failure; original untouched.
 bool AtomicWrite(const std::wstring& path, const std::string& bytes);
 
+// Cleaner helpers (portable, unit-tested).
+std::wstring FormatBytes(unsigned long long b);                       // "12.3 MB"
+// MuiCache value names look like  C:\Path\app.exe.FriendlyAppName ; returns the file path part.
+bool MuiCachePath(const std::wstring& valueName, std::wstring& path);
+// True for "X:\..." paths (a drive-letter absolute path with no unresolved %vars%).
+bool IsDriveAbsolute(const std::wstring& p);
+
 std::string ToUtf8(const std::wstring& w);
 std::wstring FromUtf8(const std::string& s);
 std::wstring Lower(const std::wstring& s);

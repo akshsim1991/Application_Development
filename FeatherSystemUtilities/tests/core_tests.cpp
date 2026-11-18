@@ -60,6 +60,13 @@ int main() {
     std::filesystem::remove(p);
     // UTF-8 round trip
     CHECK(FromUtf8(ToUtf8(L"ü€ x")) == L"ü€ x");
+    // Cleaner helpers
+    CHECK(FormatBytes(512) == L"512 B" && FormatBytes(1536) == L"1.5 KB" && FormatBytes(5ull * 1024 * 1024 * 1024) == L"5.0 GB");
+    std::wstring mp; CHECK(MuiCachePath(L"C:\\Program Files\\App\\app.exe.FriendlyAppName", mp) && mp == L"C:\\Program Files\\App\\app.exe");
+    CHECK(MuiCachePath(L"D:\\x\\lib.DLL.ApplicationCompany", mp) && mp == L"D:\\x\\lib.DLL");
+    CHECK(!MuiCachePath(L"@%SystemRoot%\\system32\\foo.dll,-100", mp));
+    CHECK(!MuiCachePath(L"LangID", mp));
+    CHECK(IsDriveAbsolute(L"c:\\a\\b") && !IsDriveAbsolute(L"%windir%\\x") && !IsDriveAbsolute(L"\\\\srv\\share\\x"));
     std::printf("%d/%d passed\n", total - fails, total);
     return fails ? 1 : 0;
 }

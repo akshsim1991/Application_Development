@@ -1,0 +1,2 @@
+575d197dfdfc8834e2ac5e6143a99b6a47dc6ea65c65411435fc19e4af1bc7a6  FeatherSystemUtilities-Setup-1.6.0.exe
+06b941557c0d4eadb3f0536f15ef9e9b47eac5fbe8ee4ad49ca8a3951fc7536f  FeatherSystemUtilities.exe

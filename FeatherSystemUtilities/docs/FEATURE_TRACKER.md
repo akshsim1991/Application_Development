@@ -7,3 +7,4 @@ Profiles F157-F168: F157/F158 W, F161/F162 C, F163 C(OS build note), F165 -
 Reports F193-F197 C - F198-F199 CLI - - F200 -
 Monitoring F169-F180 - (not in 1.5) - Metrics F181-F184 - - Remote F210-F213 -
 Install F229-F236 C (untested) - F239 notices/checksums done, signing -
+Cleaner (new, not in original spec; spec 3.3 warns against indiscriminate registry cleaners): temp categories W, invalid registry (4 areas) W, backup+restore W, journal W

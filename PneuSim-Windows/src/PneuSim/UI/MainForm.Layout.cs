@@ -388,6 +388,16 @@ public partial class MainForm
 		};
 		toolStripMenuItem12.DropDownItems.Add(CS_0024_003C_003E8__locals0._0024VB_0024Local_tools);
 		toolStripMenuItem12.DropDownItems.Add(Item("&Cutaway view (animated)", OnCutaway, Keys.F7));
+		ToolStripMenuItem valueLabelsItem = Item("Live &value labels", null);
+		valueLabelsItem.CheckOnClick = true;
+		valueLabelsItem.Checked = AppSettings.ShowValueLabels;
+		valueLabelsItem.Click += delegate
+		{
+			AppSettings.ShowValueLabels = valueLabelsItem.Checked;
+			AppSettings.Save();
+			_canvas.Invalidate();
+		};
+		toolStripMenuItem12.DropDownItems.Add(valueLabelsItem);
 		_menuDark = Item("&Dark mode", [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__172_002D20();

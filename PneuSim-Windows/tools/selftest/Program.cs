@@ -139,6 +139,20 @@ class SelfTest
             Check(gb.Length > 20000 && System.Text.Encoding.ASCII.GetString(gb, 0, 5) == "%PDF-", $"user guide PDF created ({gb.Length} bytes)");
         }
         catch (Exception e) { Check(false, "user guide PDF created: " + (e.InnerException ?? e).Message); }
+        // Live value labels
+        {
+            var circuit = ((Delegate)build).DynamicInvoke();
+            var els = (IList)P(circuit, "Elements");
+            var cyl = els.Cast<object>().First(e => e.GetType().Name.EndsWith("Cylinder"));
+            Check(cyl.GetType().GetMethod("LiveValueText").Invoke(cyl, null) == null, "no live label by default");
+            var xmlBefore = (string)circuit.GetType().GetMethod("ToXml").Invoke(circuit, null);
+            Check(!xmlBefore.Contains("ValueLabel"), "empty live label is not saved (old files unchanged)");
+            cyl.GetType().GetProperty("ValueLabel").SetValue(cyl, "Speed; Piston force");
+            var txt = (string)cyl.GetType().GetMethod("LiveValueText").Invoke(cyl, null);
+            Check(txt != null && txt.Contains("Speed:") && txt.Contains("Piston force:"), "live label shows chosen values -> " + txt?.Replace("\n", " | "));
+            var xmlAfter = (string)circuit.GetType().GetMethod("ToXml").Invoke(circuit, null);
+            Check(xmlAfter.Contains("ValueLabel"), "chosen live label is saved");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

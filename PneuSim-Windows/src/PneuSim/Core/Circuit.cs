@@ -370,7 +370,7 @@ public class Circuit
 			foreach (PropertyInfo item2 in PersistentProperties(item))
 			{
 				object objectValue = RuntimeHelpers.GetObjectValue(item2.GetValue(item));
-				if (item2.Name == "RatedPressureBar" && Convert.ToDouble(objectValue, invariantCulture) == 0.0)
+				if ((item2.Name == "RatedPressureBar" && Convert.ToDouble(objectValue, invariantCulture) == 0.0) || (item2.Name == "ValueLabel" && string.IsNullOrEmpty(Convert.ToString(objectValue, invariantCulture))))
 				{
 					continue;
 				}

@@ -73,6 +73,38 @@ public abstract class CircuitElement
 		CrossReference = "";
 	}
 
+	/// <summary>Which live values to write next to this component while simulating, e.g. "Speed; Piston force". Empty = none.</summary>
+	[Category("Display")]
+	[DisplayName("Live value label")]
+	[Description("While the simulation runs, write these live values next to the component (for example Speed, Piston force, Position, pressure). Pick one from the list or type several separated by semicolons. Empty = none. All labels can be switched off under View.")]
+	[TypeConverter(typeof(ValueLabelConverter))]
+	public string ValueLabel { get; set; } = "";
+
+	/// <summary>The text to draw for the live value label, or null if none is chosen or available.</summary>
+	public string LiveValueText()
+	{
+		if (string.IsNullOrWhiteSpace(ValueLabel))
+		{
+			return null;
+		}
+		List<(string Name, string Value)> list = InspectValues();
+		List<string> list2 = new List<string>();
+		string[] array = ValueLabel.Split(';');
+		foreach (string text in array)
+		{
+			string want = text.Trim();
+			if (want.Length != 0)
+			{
+				(string Name, string Value) tuple = list.FirstOrDefault(((string Name, string Value) v) => v.Name.StartsWith(want, StringComparison.OrdinalIgnoreCase));
+				if (tuple.Name != null)
+				{
+					list2.Add(tuple.Name + ": " + tuple.Value);
+				}
+			}
+		}
+		return (list2.Count == 0) ? null : string.Join("\n", list2);
+	}
+
 	/// <summary>Rated maximum pressure in bar. 0 means the default for the medium (10 bar air, 160 bar oil).</summary>
 	[Category("Safety")]
 	[DisplayName("Rated maximum pressure (bar)")]

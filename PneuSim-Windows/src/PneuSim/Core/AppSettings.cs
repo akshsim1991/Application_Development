@@ -24,6 +24,9 @@ public sealed class AppSettings
 
 	public static bool AdvancedMode { get; set; }
 
+	/// <summary>Show live value labels next to components while simulating (View menu).</summary>
+	public static bool ShowValueLabels { get; set; } = true;
+
 	/// <summary>Most recently used files, newest first (at most 8).</summary>
 	public static List<string> RecentFiles { get; } = new List<string>();
 
@@ -130,6 +133,9 @@ public sealed class AppSettings
 						RecentFiles.Add(text3);
 					}
 					break;
+				case "ValueLabels":
+					ShowValueLabels = text3 != "0";
+					break;
 				case "Advanced":
 					AdvancedMode = text3 == "1";
 					break;
@@ -186,6 +192,7 @@ public sealed class AppSettings
 				"ThemeMode=" + ThemeMode,
 				"PressureUnit=" + PressureUnit,
 				$"Advanced={(AdvancedMode ? 1 : 0)}",
+				$"ValueLabels={(ShowValueLabels ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",
 				"LastUpdateCheck=" + LastUpdateCheckUtcTicks.ToString(CultureInfo.InvariantCulture),
 				$"Sounds={(SoundsOn ? 1 : 0)}",

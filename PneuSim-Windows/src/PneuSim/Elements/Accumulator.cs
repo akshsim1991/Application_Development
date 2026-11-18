@@ -47,6 +47,14 @@ public class Accumulator : CircuitElement
 	[Browsable(false)]
 	public double StoredLitres => _stored;
 
+	public override System.Collections.Generic.List<(string Name, string Value)> InspectValues()
+	{
+		System.Collections.Generic.List<(string Name, string Value)> list = base.InspectValues();
+		list.Add(("Stored oil", $"{_stored:0.00} l"));
+		list.Add(("Gas pressure", Units.Pressure(GasPressure, "0")));
+		return list;
+	}
+
 	public double GasPressure
 	{
 		get

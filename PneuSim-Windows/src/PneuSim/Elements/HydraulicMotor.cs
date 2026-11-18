@@ -49,6 +49,13 @@ public class HydraulicMotor : CircuitElement, IHydraulicConsumer
 
 	public double Rpm => _rpm;
 
+	public override System.Collections.Generic.List<(string Name, string Value)> InspectValues()
+	{
+		System.Collections.Generic.List<(string Name, string Value)> list = base.InspectValues();
+		list.Add(("Speed", $"{_rpm:0} rpm"));
+		return list;
+	}
+
 	public override RectangleF LocalBounds => new RectangleF(0f, 0f, 60f, 60f);
 
 	public override PointF LabelAnchor => new PointF(62f, 18f);

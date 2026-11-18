@@ -560,6 +560,10 @@ public class CircuitCanvas : ScrollableControl
 				{
 					DrawElementFault(g, element);
 				}
+				if (Simulating && interactive && AppSettings.ShowValueLabels)
+				{
+					DrawValueLabel(g, element, font);
+				}
 			}
 		}
 		DrawPorts(g, interactive);
@@ -633,6 +637,34 @@ public class CircuitCanvas : ScrollableControl
 
 	/// <summary>Elements above their rated pressure; drawn with a red frame while simulating.</summary>
 	public List<CircuitElement> AlarmElements { get; set; }
+
+	private void DrawValueLabel(DrawSurface g, CircuitElement element, Font font)
+	{
+		string text = element.LiveValueText();
+		if (text == null)
+		{
+			return;
+		}
+		string[] array = text.Split('\n');
+		float num = 0f;
+		string[] array2 = array;
+		foreach (string text2 in array2)
+		{
+			num = Math.Max(num, g.MeasureString(text2, font).Width);
+		}
+		float num2 = (float)array.Length * (font.GetHeight() + 1f) + 4f;
+		RectangleF rectangleF = element.WorldBounds();
+		float num3 = rectangleF.Right + 6f;
+		float num4 = rectangleF.Top + (rectangleF.Height - num2) / 2f;
+		using SolidBrush brush = new SolidBrush(Color.FromArgb(235, 255, 250, 205));
+		using Pen pen = new Pen(Color.FromArgb(150, 130, 90), 1f);
+		g.FillRectangle(brush, num3, num4, num + 8f, num2);
+		g.DrawRectangle(pen, num3, num4, num + 8f, num2);
+		for (int j = 0; j < array.Length; j++)
+		{
+			g.DrawString(array[j], font, Brushes.Black, num3 + 4f, num4 + 2f + (float)j * (font.GetHeight() + 1f));
+		}
+	}
 
 	private void DrawAlarm(DrawSurface g)
 	{

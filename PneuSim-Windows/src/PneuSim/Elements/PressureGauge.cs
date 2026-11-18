@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Drawing;
 
@@ -9,6 +10,13 @@ public class PressureGauge : CircuitElement
 	public override string TypeName { get; }
 
 	public override string DisplayName { get; }
+
+	public override List<(string Name, string Value)> InspectValues()
+	{
+		List<(string Name, string Value)> list = base.InspectValues();
+		list.Add(("Pressure", Units.Pressure(base.Ports[0].Pressure, "0.0#")));
+		return list;
+	}
 
 	[Category("Gauge")]
 	[DisplayName("Hydraulic")]

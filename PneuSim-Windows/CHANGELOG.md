@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.14 "Mistral" (18 Nov 2026)
+- Rotate with several components selected (or Select all) now turns the whole group as one piece around its centre, so the layout and the connections stay as they were.
+
 ## 3.3.13 "Mistral" (18 Nov 2026)
 - Connections now route themselves around components: when the normal neat line would run through a component, PneuSim finds a path of horizontal and vertical lines that goes around, with few bends. Works after rotating, moving or connecting. Lines you drag by hand are kept until they would cross a component.
 - Scroll bars follow the dark theme (Windows 10 and later).

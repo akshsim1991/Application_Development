@@ -322,13 +322,24 @@ public class CircuitCanvas : ScrollableControl
 		{
 			return;
 		}
+		RectangleF groupBox = _selection[0].WorldBounds();
+		foreach (CircuitElement item in _selection)
+		{
+			groupBox = RectangleF.Union(groupBox, item.WorldBounds());
+		}
+		float gcx = groupBox.X + groupBox.Width / 2f;
+		float gcy = groupBox.Y + groupBox.Height / 2f;
 		foreach (CircuitElement item in _selection)
 		{
 			RectangleF rectangleF = item.WorldBounds();
+			float ocx = rectangleF.X + rectangleF.Width / 2f;
+			float ocy = rectangleF.Y + rectangleF.Height / 2f;
+			float tcx = gcx - (ocy - gcy);
+			float tcy = gcy + (ocx - gcx);
 			item.Rotation = checked(item.Rotation + 1) % 4;
 			RectangleF rectangleF2 = item.WorldBounds();
-			item.X = Snap(item.X + (rectangleF.X + rectangleF.Width / 2f) - (rectangleF2.X + rectangleF2.Width / 2f));
-			item.Y = Snap(item.Y + (rectangleF.Y + rectangleF.Height / 2f) - (rectangleF2.Y + rectangleF2.Height / 2f));
+			item.X = Snap(item.X + tcx - (rectangleF2.X + rectangleF2.Width / 2f));
+			item.Y = Snap(item.Y + tcy - (rectangleF2.Y + rectangleF2.Height / 2f));
 		}
 		TidyTubes(_selection, force: true);
 		Invalidate();

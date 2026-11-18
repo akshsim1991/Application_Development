@@ -303,6 +303,76 @@ public class CircuitCanvas : ScrollableControl
 		CircuitModified?.Invoke(this, EventArgs.Empty);
 	}
 
+	/// <summary>If the given components lie on top of other components, moves them (together, in steps of one grid square) to the nearest free place.</summary>
+	public void ResolveOverlaps(IEnumerable<CircuitElement> moved)
+	{
+		List<CircuitElement> mine = moved.Where((CircuitElement e) => !(e is TextNote) && !(e is Junction)).ToList();
+		HashSet<CircuitElement> set = new HashSet<CircuitElement>(moved);
+		List<CircuitElement> others = _circuit.Elements.Where((CircuitElement e) => !set.Contains(e) && !(e is TextNote) && !(e is Junction)).ToList();
+		if (mine.Count == 0 || others.Count == 0)
+		{
+			return;
+		}
+		Func<float, float, int> overlaps = (float dx, float dy) =>
+		{
+			int n = 0;
+			foreach (CircuitElement m in mine)
+			{
+				RectangleF a = m.WorldBounds();
+				a.Offset(dx, dy);
+				a.Inflate(-3f, -3f);
+				foreach (CircuitElement o in others)
+				{
+					RectangleF b = o.WorldBounds();
+					b.Inflate(-3f, -3f);
+					if (a.Width > 0f && b.Width > 0f && a.IntersectsWith(b))
+					{
+						n++;
+					}
+				}
+			}
+			return n;
+		};
+		if (overlaps(0f, 0f) == 0)
+		{
+			return;
+		}
+		float bestDx = 0f;
+		float bestDy = 0f;
+		bool found = false;
+		for (int ring = 1; ring <= 60 && !found; ring++)
+		{
+			float bestDist = float.MaxValue;
+			for (int i = -ring; i <= ring; i++)
+			{
+				for (int j = -ring; j <= ring; j++)
+				{
+					if (Math.Max(Math.Abs(i), Math.Abs(j)) != ring)
+					{
+						continue;
+					}
+					float dx = i * 10f;
+					float dy = j * 10f;
+					if (overlaps(dx, dy) == 0 && dx * dx + dy * dy < bestDist)
+					{
+						bestDist = dx * dx + dy * dy;
+						bestDx = dx;
+						bestDy = dy;
+						found = true;
+					}
+				}
+			}
+		}
+		if (found)
+		{
+			foreach (CircuitElement m in moved)
+			{
+				m.X += bestDx;
+				m.Y += bestDy;
+			}
+		}
+	}
+
 	/// <summary>Re-routes the lines of the given components so they do not overlap other components.</summary>
 	public void TidyTubes(IEnumerable<CircuitElement> moved, bool force)
 	{
@@ -322,25 +392,34 @@ public class CircuitCanvas : ScrollableControl
 		{
 			return;
 		}
-		RectangleF groupBox = _selection[0].WorldBounds();
-		foreach (CircuitElement item in _selection)
+		if (_selection.Count == 1)
 		{
-			groupBox = RectangleF.Union(groupBox, item.WorldBounds());
+			CircuitElement single = _selection[0];
+			RectangleF before = single.WorldBounds();
+			single.Rotation = checked(single.Rotation + 1) % 4;
+			RectangleF after = single.WorldBounds();
+			single.X = Snap(single.X + (before.X + before.Width / 2f) - (after.X + after.Width / 2f));
+			single.Y = Snap(single.Y + (before.Y + before.Height / 2f) - (after.Y + after.Height / 2f));
 		}
-		float gcx = groupBox.X + groupBox.Width / 2f;
-		float gcy = groupBox.Y + groupBox.Height / 2f;
-		foreach (CircuitElement item in _selection)
+		else
 		{
-			RectangleF rectangleF = item.WorldBounds();
-			float ocx = rectangleF.X + rectangleF.Width / 2f;
-			float ocy = rectangleF.Y + rectangleF.Height / 2f;
-			float tcx = gcx - (ocy - gcy);
-			float tcy = gcy + (ocx - gcx);
-			item.Rotation = checked(item.Rotation + 1) % 4;
-			RectangleF rectangleF2 = item.WorldBounds();
-			item.X = Snap(item.X + tcx - (rectangleF2.X + rectangleF2.Width / 2f));
-			item.Y = Snap(item.Y + tcy - (rectangleF2.Y + rectangleF2.Height / 2f));
+			RectangleF groupBox = _selection[0].WorldBounds();
+			foreach (CircuitElement item in _selection)
+			{
+				groupBox = RectangleF.Union(groupBox, item.WorldBounds());
+			}
+			float gcx = (float)Math.Round((groupBox.X + groupBox.Width / 2f) / 10f) * 10f;
+			float gcy = (float)Math.Round((groupBox.Y + groupBox.Height / 2f) / 10f) * 10f;
+			foreach (CircuitElement item in _selection)
+			{
+				float nx = gcx - (item.Y - gcy);
+				float ny = gcy + (item.X - gcx);
+				item.X = nx;
+				item.Y = ny;
+				item.Rotation = checked(item.Rotation + 1) % 4;
+			}
 		}
+		ResolveOverlaps(_selection);
 		TidyTubes(_selection, force: true);
 		Invalidate();
 		CircuitModified?.Invoke(this, EventArgs.Empty);
@@ -401,6 +480,7 @@ public class CircuitCanvas : ScrollableControl
 				List<CircuitElement> list = _circuit.Merge(text, 40f, 40f);
 				_internalClipboard = _circuit.ExtractXml(list);
 				Naming.RenamePasted(list, ScopeElements());
+				ResolveOverlaps(list);
 				UpdateScrollSize();
 				SetSelection(list);
 				CircuitModified?.Invoke(this, EventArgs.Empty);
@@ -432,6 +512,7 @@ public class CircuitCanvas : ScrollableControl
 		RectangleF localBounds = circuitElement.LocalBounds;
 		_circuit.Add(circuitElement, Snap(Math.Max(0f - localBounds.Left, world.X - localBounds.Width / 2f - localBounds.Left)), Snap(Math.Max(0f - localBounds.Top, world.Y - localBounds.Height / 2f - localBounds.Top)));
 		Naming.NameNewElement(circuitElement, ScopeElements());
+		ResolveOverlaps(new CircuitElement[1] { circuitElement });
 		UpdateScrollSize();
 		SetSelection(new CircuitElement[1] { circuitElement });
 		CircuitModified?.Invoke(this, EventArgs.Empty);
@@ -1305,6 +1386,7 @@ public class CircuitCanvas : ScrollableControl
 			_dragging = false;
 			if (_dragMoved)
 			{
+				ResolveOverlaps(_selection);
 				TidyTubes(_selection, force: false);
 				UpdateScrollSize();
 				CircuitModified?.Invoke(this, EventArgs.Empty);

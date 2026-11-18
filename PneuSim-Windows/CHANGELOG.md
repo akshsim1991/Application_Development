@@ -3,6 +3,11 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.16 "Mistral" (18 Nov 2026)
+- Routing rewritten: all lines are now routed together, one after the other, so each line keeps clear of the components and of the lines already placed (before, lines avoided each other independently and could still land on the same track).
+- Rotating a group of components now rotates it exactly as one rigid piece (no drift, no overlap).
+- Components that end up on top of other components (after rotating, moving, pasting or placing) are moved automatically to the nearest free place.
+
 ## 3.3.15 "Mistral" (18 Nov 2026)
 - Crossing lines no longer look joined: where a horizontal line crosses another, unconnected line it hops over it with a small arch, as in electrical drawings.
 - The automatic router also keeps lines from running on top of each other: a line that would lie along another line is moved over to its own track.

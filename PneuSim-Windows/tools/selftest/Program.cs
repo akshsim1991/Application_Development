@@ -107,6 +107,30 @@ class SelfTest
             Check(raised != hold, "RAISE button moves the cylinder");
             Check(lowered != raised, "LOWER button moves the cylinder back");
         }
+        // Routing: two lines from a 5/2 valve to a cylinder must not lie on top of each other or run through components (needs Windows drawing code)
+        if (!OperatingSystem.IsWindows()) Console.WriteLine("SKIP routing test (needs Windows)");
+        else
+        {
+            var rc = Activator.CreateInstance(T("Circuit"));
+            var rv = Activator.CreateInstance(T("Valve52"));
+            var rcyl = Activator.CreateInstance(T("DoubleActingCylinder"));
+            var radd = rc.GetType().GetMethods().First(m => m.Name == "Add");
+            radd.MakeGenericMethod(rv.GetType()).Invoke(rc, new object[] { rv, 100f, 200f, null });
+            radd.MakeGenericMethod(rcyl.GetType()).Invoke(rc, new object[] { rcyl, 420f, 200f, null });
+            var rconn = rc.GetType().GetMethod("Connect", new[] { T("Port"), T("Port") });
+            Func<object, string, object> rport = (e, n) => ((IList)P(e, "Ports")).Cast<object>().First(p => (string)P(p, "Name") == n);
+            rconn.Invoke(rc, new object[] { rport(rv, "4"), rport(rcyl, "1") });
+            rconn.Invoke(rc, new object[] { rport(rv, "2"), rport(rcyl, "2") });
+            var issues = (IList)T("CircuitAnalysis").GetMethod("OverlapChecks").Invoke(null, new object[] { rc });
+            foreach (var i in issues) Console.WriteLine("INFO routing issue: " + P(i, "Message"));
+            Check(issues.Count == 0, "valve-to-cylinder lines do not overlap each other or components");
+            foreach (var rot in new[] { 1, 2, 3, 0 })
+            {
+                rv.GetType().GetProperty("Rotation").SetValue(rv, rot);
+                var iss = (IList)T("CircuitAnalysis").GetMethod("OverlapChecks").Invoke(null, new object[] { rc });
+                foreach (var i in iss) Console.WriteLine("INFO routing issue (valve rotation " + rot + "): " + P(i, "Message"));
+            }
+        }
         // Hidden-fault encryption
         var faults = T("Faults"); var kindT = T("FaultKind");
         var leak = Enum.Parse(kindT, Enum.GetNames(kindT).First(n => n != "None"));

@@ -55,11 +55,9 @@ public class Tube
 		};
 	}
 
-	internal Func<IEnumerable<CircuitElement>> Obstacles { get; set; }
+	internal Circuit Circuit { get; set; }
 
-	internal Func<IEnumerable<Tube>> Siblings { get; set; }
-
-	private PointF[] DefaultRoute()
+	internal PointF[] DefaultRoute()
 	{
 		return RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
 	}
@@ -110,81 +108,22 @@ public class Tube
 		return total;
 	}
 
-	private List<PointF[]> SiblingRoutes()
-	{
-		List<PointF[]> list = new List<PointF[]>();
-		if (Siblings == null)
-		{
-			return list;
-		}
-		foreach (Tube t in Siblings())
-		{
-			if (t == this || t.A == A || t.A == B || t.B == A || t.B == B || t.A.Owner is Junction || t.B.Owner is Junction || A.Owner is Junction || B.Owner is Junction)
-			{
-				continue;
-			}
-			list.Add(t.DefaultRoute());
-		}
-		return list;
-	}
-
-	private PointF[] _cache;
-
-	private int _cacheKey;
-
-	/// <summary>The line of this tube. The normal neat route is used unless it would run through a component; then an automatic route around the components is found (a line the user dragged by hand is kept as it is).</summary>
+	/// <summary>The line of this tube: the neat standard route, or, when that would run through a component or lie on another line, an automatic route around them (computed for all tubes together by the circuit). A line dragged by hand is kept.</summary>
 	public PointF[] Route()
 	{
-		PointF[] def = RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
-		if (Mid.HasValue || Obstacles == null || def.Length < 4)
+		return (Circuit != null) ? Circuit.RouteOf(this) : DefaultRoute();
+	}
+
+	internal PointF[] Compute(List<RectangleF> obs, List<PointF[]> sibs)
+	{
+		PointF[] def = DefaultRoute();
+		if (Mid.HasValue || def.Length < 4)
 		{
 			return def;
 		}
-		List<RectangleF> obs = new List<RectangleF>();
-		foreach (CircuitElement e in Obstacles())
-		{
-			if (e is Junction || e is TextNote)
-			{
-				continue;
-			}
-			RectangleF r = e.WorldBounds();
-			r.Inflate(4f, 4f);
-			obs.Add(r);
-		}
-		List<PointF[]> sibs = SiblingRoutes();
 		if (CountHits(def, obs) == 0 && OverlapTotal(def, sibs) < 6f)
 		{
 			return def;
-		}
-		int key = 17;
-		unchecked
-		{
-			foreach (float v in new float[8] { def[0].X, def[0].Y, def[def.Length - 1].X, def[def.Length - 1].Y, A.WorldDir().X, A.WorldDir().Y, B.WorldDir().X, B.WorldDir().Y })
-			{
-				key = key * 31 + v.GetHashCode();
-			}
-			foreach (RectangleF r in obs)
-			{
-				key = key * 31 + r.X.GetHashCode();
-				key = key * 31 + r.Y.GetHashCode();
-				key = key * 31 + r.Width.GetHashCode();
-				key = key * 31 + r.Height.GetHashCode();
-			}
-		}
-		unchecked
-		{
-			foreach (PointF[] r in sibs)
-			{
-				foreach (PointF p in r)
-				{
-					key = key * 31 + p.X.GetHashCode();
-					key = key * 31 + p.Y.GetHashCode();
-				}
-			}
-		}
-		if (_cache != null && key == _cacheKey)
-		{
-			return _cache;
 		}
 		PointF[] found = null;
 		try
@@ -195,10 +134,7 @@ public class Tube
 		{
 			found = null;
 		}
-		found = found ?? def;
-		_cache = found;
-		_cacheKey = key;
-		return found;
+		return found ?? def;
 	}
 
 	private static int CountHits(PointF[] r, List<RectangleF> obs)

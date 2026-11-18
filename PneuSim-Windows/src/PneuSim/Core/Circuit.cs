@@ -113,6 +113,96 @@ public class Circuit
 
 	public List<Tube> Tubes { get; }
 
+	private readonly Dictionary<Tube, PointF[]> _routes = new Dictionary<Tube, PointF[]>();
+
+	private int _routesKey;
+
+	private bool _routesValid;
+
+	private bool _routesBusy;
+
+	private int RoutesKey()
+	{
+		int key = 17;
+		unchecked
+		{
+			foreach (CircuitElement e in Elements)
+			{
+				key = key * 31 + e.X.GetHashCode();
+				key = key * 31 + e.Y.GetHashCode();
+				key = key * 31 + e.Rotation;
+				if (!(e is Junction) && !(e is TextNote))
+				{
+					RectangleF r = e.WorldBounds();
+					key = key * 31 + r.Width.GetHashCode();
+					key = key * 31 + r.Height.GetHashCode();
+				}
+			}
+			foreach (Tube t in Tubes)
+			{
+				key = key * 31 + System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(t);
+				key = key * 31 + (t.Mid.HasValue ? t.Mid.Value.GetHashCode() : 7);
+			}
+		}
+		return key;
+	}
+
+	/// <summary>The route of a tube. All tubes are routed one after the other, each one keeping clear of the components and of the lines already routed before it.</summary>
+	internal PointF[] RouteOf(Tube t)
+	{
+		if (_routesBusy)
+		{
+			return t.DefaultRoute();
+		}
+		int key = RoutesKey();
+		if (!_routesValid || key != _routesKey || !_routes.ContainsKey(t))
+		{
+			_routesBusy = true;
+			try
+			{
+				_routes.Clear();
+				List<RectangleF> obs = new List<RectangleF>();
+				foreach (CircuitElement e in Elements)
+				{
+					if (e is Junction || e is TextNote)
+					{
+						continue;
+					}
+					RectangleF r = e.WorldBounds();
+					r.Inflate(4f, 4f);
+					obs.Add(r);
+				}
+				List<Tube> done = new List<Tube>();
+				foreach (Tube tube in Tubes)
+				{
+					List<PointF[]> sibs = new List<PointF[]>();
+					foreach (Tube o in done)
+					{
+						if (o.A == tube.A || o.A == tube.B || o.B == tube.A || o.B == tube.B || o.A.Owner is Junction || o.B.Owner is Junction || tube.A.Owner is Junction || tube.B.Owner is Junction)
+						{
+							continue;
+						}
+						sibs.Add(_routes[o]);
+					}
+					_routes[tube] = tube.Compute(obs, sibs);
+					done.Add(tube);
+				}
+			}
+			catch (Exception)
+			{
+				_routes.Clear();
+			}
+			finally
+			{
+				_routesBusy = false;
+				_routesKey = key;
+				_routesValid = true;
+			}
+		}
+		PointF[] route;
+		return _routes.TryGetValue(t, out route) ? route : t.DefaultRoute();
+	}
+
 	public Circuit()
 	{
 		Elements = new List<CircuitElement>();
@@ -176,8 +266,7 @@ public class Circuit
 			return null;
 		}
 		Tube tube = new Tube(a, b);
-		tube.Obstacles = () => Elements;
-		tube.Siblings = () => Tubes;
+		tube.Circuit = this;
 		Tubes.Add(tube);
 		checked
 		{

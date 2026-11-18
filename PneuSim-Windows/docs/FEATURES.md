@@ -12,9 +12,9 @@ Taken from the recovered code and the README that shipped with 3.2.0.
 | View | Zoom In, Zoom Out, Actual Size, Zoom to Fit, Bottom panel (diagram, plotter, check, explain, lessons, inspector, troubleshoot), Cutaway view (animated), Dark mode |
 | Simulation | Start (F9), Pause (F10), Stop and Reset (F11), Realistic physics, Record animated GIF, Step back / forward (Shift+F12 / F12), previous / next event (Ctrl+Shift+F12 / Ctrl+F12) |
 | Tools | Circuit Generator (from a sequence)… (Ctrl+G), Check my circuit, Explain my circuit, Calculators…, Parts list and costs…, Parameter sweep (compare settings)… |
-| Learn | Lessons, Practice quiz…, Timed exam…, Cutaway view (inside the components) (F7) |
+| Learn | Getting started tutorials, Cutaway view (inside the components) (F7) |
 | Examples | 12 built-in examples (below) |
-| Troubleshooting | New exercise (hidden fault), Hint, I found the fault…, Show the fault, Put a fault into the selection… (teacher mode, with *Hidden*), Repair all faults |
+| Fault finding | New fault-finding task (hidden fault), Hint, I found the fault…, Show the fault, Put a fault into the selection… (with *Hidden*, for preparing a task for a colleague), Repair all faults |
 | Help | Quick Guide, About PneuSim |
 
 ## Editor
@@ -69,16 +69,14 @@ Taken from the recovered code and the README that shipped with 3.2.0.
 - PDF report with title block (author, company, drawing number, revision, date, description).
 - SVG, DXF (for CAD) and PNG export of a page.
 
-## Learning
+## Getting started and fault finding
 
-- 10 lessons with automatic checking of the task and saved progress.
-- Practice quiz and timed exam: 39 written questions plus symbol-recognition questions, answers
-  in random order, a Back button, and a clock that stops when the exam is closed.
+- 10 short getting-started tutorials with automatic checking of the task and saved progress.
 - Hover help for every component. Animated cutaway view of every component (F7).
-- Troubleshooting exercises: 10 fault kinds (leak, blocked, stuck normal or operated, burnt
+- Fault finding: 10 fault kinds (leak, blocked, stuck normal or operated, burnt
   coil, open or welded contact, sticking, jammed, low output) on parts and tubes. Measure, ask
-  for hints, name the faulty part, get a score and a diagnosis log that can be saved. Teachers
-  can plant faults and hide them in the file.
+  for hints, name the faulty part, get a result and a diagnosis log that can be saved. Faults can be planted and hidden in a file
+  to prepare a task for a colleague.
 
 ## Components (45 types)
 

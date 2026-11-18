@@ -202,7 +202,7 @@ public class TroubleshootExercise
 		FaultKind[] array = PossibleFaultsOf(RuntimeHelpers.GetObjectValue(objectValue));
 		SetFault(RuntimeHelpers.GetObjectValue(objectValue), array[rnd.Next(array.Length)], hidden: true);
 		TroubleshootExercise troubleshootExercise = new TroubleshootExercise();
-		troubleshootExercise.Note("Exercise started: one component or tube has a hidden fault.");
+		troubleshootExercise.Note("Fault-finding task started: one component or tube has a hidden fault.");
 		return troubleshootExercise;
 	}
 
@@ -397,7 +397,7 @@ public class TroubleshootExercise
 		DateTime? finished;
 		DateTime? dateTime = (finished = Finished);
 		TimeSpan timeSpan = (dateTime.HasValue ? finished.GetValueOrDefault() : DateTime.Now) - Started;
-		string text = (Solved ? $"Solved in {timeSpan.TotalMinutes:0}:{timeSpan.Seconds:00} min — score {Score()} / 100" : ((!GaveUp) ? $"Find the fault!  Time {timeSpan.TotalMinutes:0}:{timeSpan.Seconds:00}" : "Exercise ended (fault shown)"));
+		string text = (Solved ? $"Solved in {timeSpan.TotalMinutes:0}:{timeSpan.Seconds:00} min — result {Score()} / 100" : ((!GaveUp) ? $"Find the fault!  Time {timeSpan.TotalMinutes:0}:{timeSpan.Seconds:00}" : "Task ended (fault shown)"));
 		return $"{text}    Checks: {Checks.Count}   Hints: {HintsUsed}   Wrong guesses: {WrongGuesses}";
 	}
 

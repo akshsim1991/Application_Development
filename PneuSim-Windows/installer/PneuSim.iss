@@ -48,7 +48,7 @@ Name: "associate"; Description: "{cm:AssocTask}"; GroupDescription: "File types:
 [Files]
 Source: "{#BinDir}\PneuSim.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#BinDir}\PneuSim.exe.config"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\original\README-3.2.0-bundled.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
+Source: "README-user.md"; DestDir: "{app}"; DestName: "README.md"; Flags: ignoreversion
 Source: "{#Ex}\01_direct_single_acting.pneu"; DestDir: "{app}\Examples"; DestName: "ex1.pneu"; Flags: ignoreversion
 Source: "{#Ex}\02_indirect_double_acting_speed_control.pneu"; DestDir: "{app}\Examples"; DestName: "ex2.pneu"; Flags: ignoreversion
 Source: "{#Ex}\03_or_shuttle_valve.pneu"; DestDir: "{app}\Examples"; DestName: "ex3.pneu"; Flags: ignoreversion

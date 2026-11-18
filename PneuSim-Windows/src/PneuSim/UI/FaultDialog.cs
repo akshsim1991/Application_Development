@@ -37,7 +37,7 @@ public class FaultDialog : Form
 		};
 		_hidden = new CheckBox
 		{
-			Text = "Hidden: a troubleshooting exercise (students must find it; the file does not show it)",
+			Text = "Hidden: a fault-finding task (the file does not show it)",
 			AutoSize = true
 		};
 		_kinds = new List<FaultKind>();

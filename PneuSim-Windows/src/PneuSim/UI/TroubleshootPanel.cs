@@ -69,11 +69,11 @@ public class TroubleshootPanel : UserControl
 			Height = 32,
 			WrapContents = false
 		};
-		AddButton(flowLayoutPanel, "start", "New exercise", "Hides one random fault in the circuit. Start the simulation, operate and measure (right-click) to find it.");
+		AddButton(flowLayoutPanel, "start", "New fault-finding task", "Hides one random fault in the circuit. Start the simulation, operate and measure (right-click) to find it.");
 		AddButton(flowLayoutPanel, "hint", "Hint", "Each hint tells you more: first the area, then the neighbours, then the cause. Hints cost points.");
 		AddButton(flowLayoutPanel, "found", "I found it…", "Then click the component or tube you think is faulty.");
-		AddButton(flowLayoutPanel, "giveup", "Show fault", "Ends the exercise and shows where the fault was.");
-		AddButton(flowLayoutPanel, "report", "Report…", "Saves the diagnosis log and score as a text file.");
+		AddButton(flowLayoutPanel, "giveup", "Show fault", "Ends the task and shows where the fault was.");
+		AddButton(flowLayoutPanel, "report", "Report…", "Saves the diagnosis log and result as a text file.");
 		flowLayoutPanel.Controls.Add(new Label
 		{
 			Text = "  |  ",
@@ -87,7 +87,7 @@ public class TroubleshootPanel : UserControl
 		base.Controls.Add(_status);
 		base.Controls.Add(flowLayoutPanel);
 		ShowExercise(null);
-		_messages.Text = "Troubleshooting practice:\r\n• 'New exercise' hides a fault in the circuit. Run it, operate it, right-click parts to measure them, then say where the fault is.\r\n• Teachers: select a part, 'Add fault…', tick 'Hidden' and save the file for the students.\r\n• Right-clicking a part during the simulation counts as one check; few checks and no hints give the best score.";
+		_messages.Text = "Fault finding:\r\n• 'New fault-finding task' hides a fault in the circuit. Run it, operate it, right-click parts to measure them, then say where the fault is.\r\n• To prepare a task for a colleague: select a part, 'Add fault…', tick 'Hidden' and save the file.\r\n• Right-clicking a part during the simulation counts as one check; few checks and no hints give the best result.";
 	}
 
 	private void AddButton(FlowLayoutPanel bar, string key, string text, string tip)
@@ -112,7 +112,7 @@ public class TroubleshootPanel : UserControl
 
 	public void ShowExercise(TroubleshootExercise ex)
 	{
-		_status.Text = ((ex == null) ? "No exercise running." : ex.StatusText());
+		_status.Text = ((ex == null) ? "No fault-finding task running." : ex.StatusText());
 		bool enabled = ex != null && !ex.IsOver;
 		_buttons["hint"].Enabled = enabled;
 		_buttons["found"].Enabled = enabled;

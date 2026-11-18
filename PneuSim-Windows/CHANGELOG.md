@@ -3,7 +3,13 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
-## Unreleased — source recovery (18 Nov 2026)
+## 3.3.0 "Mistral" (in progress)
+- Removed the practice quiz and timed exam. Lessons became Getting started tutorials;
+  Troubleshooting became Fault finding (wording only; engine unchanged, harness identical).
+- New user README and About text; the installer ships `installer/README-user.md`.
+- Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
+
+## Source recovery (18 Nov 2026)
 - Source of 3.2.0 recovered from the installer as a buildable C# project. Behaviour matches the
   original (see docs/RECOVERY.md). No functional changes.
 

@@ -878,7 +878,7 @@ public class MainForm : Form
 		{
 			NewProject(new Project(c, "Lesson"));
 			FitView();
-			_statusMessage.Text = "Lesson parts loaded. Connect them, then press 'Check my solution'.";
+			_statusMessage.Text = "Tutorial parts loaded. Connect them, then press 'Check my solution'.";
 		}
 	}
 
@@ -1546,13 +1546,6 @@ public class MainForm : Form
 		}
 	}
 
-	private void ShowQuiz(bool exam)
-	{
-		using QuizDialog quizDialog = new QuizDialog(exam);
-		Theme.Apply(quizDialog);
-		quizDialog.ShowDialog(this);
-	}
-
 	private void OnCutaway(object sender, EventArgs e)
 	{
 		if (_cutaway == null || _cutaway.IsDisposed)
@@ -1571,12 +1564,12 @@ public class MainForm : Form
 
 	private void OnQuickGuide(object sender, EventArgs e)
 	{
-		MessageBox.Show("BUILDING A CIRCUIT\r\n• Click a component in the library, then click on the drawing (or drag it there). Hover over a symbol for an explanation.\r\n• Drag from one port to another to connect them. Red circles are electrical terminals.\r\n• Drag a box to select several; R rotates, Del deletes, arrow keys nudge, Ctrl+Z / Ctrl+Y undo / redo.\r\n• Ctrl+C, Ctrl+X, Ctrl+V and Ctrl+D copy, cut, paste and duplicate. Drag a tube's middle segment to move it.\r\n• Use several pages (Page menu) and join lines across pages with page connectors of the same name.\r\n\r\nSIMULATING\r\n• Start (F9). Pressurized tubes turn blue, live wires red, hydraulic pressure lines orange.\r\n• Click push buttons, switches and pumps; clicking a solenoid valve operates its manual override.\r\n• Realistic physics: pressures build up, cylinders move by bore, load and friction; air consumption and cost are shown.\r\n• Right-click any component or tube to see its live values in the Inspector tab and change settings with sliders.\r\n• Replay: the step and event buttons (or drag the time slider) go back and forward in time; Start continues from there.\r\n• Plotter tab: tick any quantity, click for cursor A, right-click for cursor B (min / max / average between them);\r\n  set a trigger, zoom with the mouse wheel, and export CSV or PNG.\r\n• Record GIF saves an animation of the running circuit.\r\n\r\nTROUBLESHOOTING\r\n• Tools > Troubleshooting > New exercise hides a fault; find it with as few checks and hints as possible.\r\n• 'Add fault…' puts a chosen fault into the selected part or tube (tick Hidden to make an exercise file for students).\r\n\r\nTOOLS\r\n• Check my circuit (F6) finds mistakes and signal overlap; Explain (F8) describes the circuit step by step.\r\n• Circuit Generator (Ctrl+G) designs a circuit from a sequence such as A+ B+ B- A-.\r\n• Calculators, parts list with costs, PDF report with title block, SVG and DXF export.\r\n• Parameter sweep: run the circuit with a setting changed step by step and compare cycle time, air use and speed.\r\n• Learn menu: lessons with automatic checking, practice quiz, timed exam, cutaway view of any component (F7).", "PneuSim Quick Guide", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+		MessageBox.Show("BUILDING A CIRCUIT\r\n• Click a component in the library, then click on the drawing (or drag it there). Hover over a symbol for an explanation.\r\n• Drag from one port to another to connect them. Red circles are electrical terminals.\r\n• Drag a box to select several; R rotates, Del deletes, arrow keys nudge, Ctrl+Z / Ctrl+Y undo / redo.\r\n• Ctrl+C, Ctrl+X, Ctrl+V and Ctrl+D copy, cut, paste and duplicate. Drag a tube's middle segment to move it.\r\n• Use several pages (Page menu) and join lines across pages with page connectors of the same name.\r\n\r\nSIMULATING\r\n• Start (F9). Pressurized tubes turn blue, live wires red, hydraulic pressure lines orange.\r\n• Click push buttons, switches and pumps; clicking a solenoid valve operates its manual override.\r\n• Realistic physics: pressures build up, cylinders move by bore, load and friction; air consumption and cost are shown.\r\n• Right-click any component or tube to see its live values in the Inspector tab and change settings with sliders.\r\n• Replay: the step and event buttons (or drag the time slider) go back and forward in time; Start continues from there.\r\n• Plotter tab: tick any quantity, click for cursor A, right-click for cursor B (min / max / average between them);\r\n  set a trigger, zoom with the mouse wheel, and export CSV or PNG.\r\n• Record GIF saves an animation of the running circuit.\r\n\r\nFAULT FINDING\r\n• Tools > Fault finding > New fault-finding task hides a fault; find it with as few checks and hints as possible.\r\n• 'Add fault…' puts a chosen fault into the selected part or tube (tick Hidden to make a fault-finding file for a colleague).\r\n\r\nTOOLS\r\n• Check my circuit (F6) finds mistakes and signal overlap; Explain (F8) describes the circuit step by step.\r\n• Circuit Generator (Ctrl+G) designs a circuit from a sequence such as A+ B+ B- A-.\r\n• Calculators, parts list with costs, PDF report with title block, SVG and DXF export.\r\n• Parameter sweep: run the circuit with a setting changed step by step and compare cycle time, air use and speed.\r\n• Learn menu: getting-started tutorials with automatic checking, cutaway view of any component (F7).", "PneuSim Quick Guide", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 	}
 
 	private void OnAbout(object sender, EventArgs e)
 	{
-		MessageBox.Show(string.Format("{0} {1}{2}Pneumatic, electro-pneumatic and hydraulic circuit design and simulation{3}{4}", "PneuSim", "3.2", "\r\n", "\r\n", "\r\n") + "(c) 2026 Akshaya Simha.\r\n\r\nDeveloped in VB.NET initially, and improved it with vibe coding using Claude Pro.\r\n\r\nSoftware is used to study pneumatic and hydraulic systems, so that it can be simulated to understand different types of circuits.\r\n\r\nSymbols follow ISO 1219.", "About PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
+		MessageBox.Show(string.Format("{0} {1}{2}Pneumatic, electro-pneumatic and hydraulic circuit design and simulation{3}{4}", "PneuSim", "3.2", "\r\n", "\r\n", "\r\n") + "(c) 2026 Akshaya Simha.\r\n\r\nDeveloped in VB.NET initially, and improved it with vibe coding using Claude Pro.\r\n\r\nDesign, simulate and check pneumatic and hydraulic circuits before you build them.\r\n\r\nSymbols based on ISO 1219 / IEC 60617.", "About PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Asterisk);
 	}
 
 	private void InitTroubleshooting()
@@ -1596,11 +1589,11 @@ public class MainForm : Form
 
 	private ToolStripMenuItem BuildTroubleshootMenu()
 	{
-		return new ToolStripMenuItem("&Troubleshooting")
+		return new ToolStripMenuItem("&Fault finding")
 		{
 			DropDownItems = 
 			{
-				(ToolStripItem)Item("&New exercise (hidden fault)", [SpecialName] (object a0, EventArgs a1) =>
+				(ToolStripItem)Item("&New fault-finding task (hidden fault)", [SpecialName] (object a0, EventArgs a1) =>
 				{
 					_Lambda_0024__118_002D0();
 				}),
@@ -1637,7 +1630,7 @@ public class MainForm : Form
 			_trouble.ShowExercise(_exercise);
 			_statusMessage.Text = $"Check {_exercise.Checks.Count}: {TroubleshootExercise.NameOf_(RuntimeHelpers.GetObjectValue(target))} (see the Inspector tab).";
 		}
-		_inspector.Note = ((_exercise != null && !_exercise.IsOver) ? $"Troubleshooting: check {_exercise.Checks.Count}, {_exercise.HintsUsed} hints" : "");
+		_inspector.Note = ((_exercise != null && !_exercise.IsOver) ? $"Fault finding: check {_exercise.Checks.Count}, {_exercise.HintsUsed} hints" : "");
 		ShowBottomTab("Inspector");
 	}
 
@@ -1667,7 +1660,7 @@ public class MainForm : Form
 				_canvas.PickingTarget = true;
 				_canvas.Cursor = Cursors.Hand;
 				_statusMessage.Text = "Click the component or tube you think is faulty (Esc to cancel).";
-				ShowBottomTab("Troubleshoot");
+				ShowBottomTab("Fault finding");
 				goto default;
 			}
 			break;
@@ -1718,7 +1711,7 @@ public class MainForm : Form
 		_exercise = troubleshootExercise;
 		AfterFaultChange();
 		_trouble.AddMessage("A fault is now hidden somewhere in the circuit. Start the simulation, operate the circuit and right-click components or tubes to measure them. When you know where the fault is, click 'I found it…'.");
-		ShowBottomTab("Troubleshoot");
+		ShowBottomTab("Fault finding");
 		_trouble.ShowExercise(_exercise);
 	}
 
@@ -1732,7 +1725,7 @@ public class MainForm : Form
 		{
 			_exercise = new TroubleshootExercise();
 			_trouble.AddMessage("This circuit contains a hidden fault. Find it! Run the simulation, measure with right-clicks, then click 'I found it…'.");
-			ShowBottomTab("Troubleshoot");
+			ShowBottomTab("Fault finding");
 		}
 		_trouble.ShowExercise(_exercise);
 	}
@@ -1754,7 +1747,7 @@ public class MainForm : Form
 			_trouble.AddMessage(tuple.Item2);
 			if (tuple.Item1)
 			{
-				_trouble.AddMessage($"Score: {_exercise.Score()} / 100 ({_exercise.Checks.Count} checks, {_exercise.HintsUsed} hints, {_exercise.WrongGuesses} wrong guesses). " + "Use 'Repair all' to fix the circuit, or start a new exercise.");
+				_trouble.AddMessage($"Result: {_exercise.Score()} / 100 ({_exercise.Checks.Count} checks, {_exercise.HintsUsed} hints, {_exercise.WrongGuesses} wrong guesses). " + "Use 'Repair all' to fix the circuit, or start a new task.");
 				MarkDirty();
 			}
 			_statusMessage.Text = tuple.Item2;
@@ -1776,7 +1769,7 @@ public class MainForm : Form
 		if (CS_0024_003C_003E8__locals0._0024VB_0024Local_target == null)
 		{
 			_statusMessage.Text = "Select a component or a tube first, then click 'Add fault…'.";
-			ShowBottomTab("Troubleshoot");
+			ShowBottomTab("Fault finding");
 			return;
 		}
 		if (TroubleshootExercise.PossibleFaultsOf(RuntimeHelpers.GetObjectValue(CS_0024_003C_003E8__locals0._0024VB_0024Local_target)).Length == 0)
@@ -1804,7 +1797,7 @@ public class MainForm : Form
 						item2.FaultHidden = false;
 					}
 				}
-				_trouble.AddMessage($"Hidden fault put into {TroubleshootExercise.NameOf_(RuntimeHelpers.GetObjectValue(CS_0024_003C_003E8__locals0._0024VB_0024Local_target))}. Save the file and give it to your students: it opens as an exercise.");
+				_trouble.AddMessage($"Hidden fault put into {TroubleshootExercise.NameOf_(RuntimeHelpers.GetObjectValue(CS_0024_003C_003E8__locals0._0024VB_0024Local_target))}. Save the file and give it to a colleague: it opens as a fault-finding task.");
 			}
 			else if (faultDialog.SelectedKind != 0)
 			{
@@ -2239,9 +2232,9 @@ public class MainForm : Form
 			AddBottomTab("Plotter", _plotter);
 			AddBottomTab("Check circuit", BuildCheckPanel());
 			AddBottomTab("Explain", BuildExplainPanel());
-			AddBottomTab("Lessons", _lessons);
+			AddBottomTab("Getting started", _lessons);
 			AddBottomTab("Inspector", _inspector);
-			AddBottomTab("Troubleshoot", _trouble);
+			AddBottomTab("Fault finding", _trouble);
 			_diagramSplit = new SplitContainer
 			{
 				Dock = DockStyle.Fill,
@@ -2445,7 +2438,7 @@ public class MainForm : Form
 			FitView();
 		}, Keys.D9 | Keys.Control));
 		toolStripMenuItem12.DropDownItems.Add(new ToolStripSeparator());
-		CS_0024_003C_003E8__locals0._0024VB_0024Local_tools = Item("&Bottom panel (diagram, plotter, check, explain, lessons, inspector, troubleshoot)", null);
+		CS_0024_003C_003E8__locals0._0024VB_0024Local_tools = Item("&Bottom panel (diagram, plotter, check, explain, getting started, inspector, fault finding)", null);
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_tools.Checked = true;
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_tools.CheckOnClick = true;
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_tools.CheckedChanged += [SpecialName] (object a0, EventArgs a1) =>
@@ -2502,17 +2495,9 @@ public class MainForm : Form
 		toolStripMenuItem14.DropDownItems.Add(new ToolStripSeparator());
 		toolStripMenuItem14.DropDownItems.Add(BuildTroubleshootMenu());
 		ToolStripMenuItem toolStripMenuItem15 = new ToolStripMenuItem("&Learn");
-		toolStripMenuItem15.DropDownItems.Add(Item("&Lessons", [SpecialName] (object a0, EventArgs a1) =>
+		toolStripMenuItem15.DropDownItems.Add(Item("&Getting started tutorials", [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__172_002D25();
-		}));
-		toolStripMenuItem15.DropDownItems.Add(Item("Practice &quiz...", [SpecialName] (object a0, EventArgs a1) =>
-		{
-			_Lambda_0024__172_002D26();
-		}));
-		toolStripMenuItem15.DropDownItems.Add(Item("Timed &exam...", [SpecialName] (object a0, EventArgs a1) =>
-		{
-			_Lambda_0024__172_002D27();
 		}));
 		toolStripMenuItem15.DropDownItems.Add(Item("&Cutaway view (inside the components)", OnCutaway));
 		ToolStripMenuItem toolStripMenuItem16 = new ToolStripMenuItem("E&xamples");
@@ -3187,21 +3172,7 @@ public class MainForm : Form
 	[CompilerGenerated]
 	private void _Lambda_0024__172_002D25()
 	{
-		ShowBottomTab("Lessons");
-	}
-
-	[SpecialName]
-	[CompilerGenerated]
-	private void _Lambda_0024__172_002D26()
-	{
-		ShowQuiz(exam: false);
-	}
-
-	[SpecialName]
-	[CompilerGenerated]
-	private void _Lambda_0024__172_002D27()
-	{
-		ShowQuiz(exam: true);
+		ShowBottomTab("Getting started");
 	}
 
 	[SpecialName]

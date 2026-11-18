@@ -1,7 +1,7 @@
 # PneuSim (Windows) – Pneumatic, Electro-pneumatic & Hydraulic Circuit Simulator
 
-PneuSim is a free, FluidSIM-style desktop program for designing, simulating, checking and
-learning pneumatic, electro-pneumatic and hydraulic circuits. It is written for Windows Forms on
+PneuSim is a desktop program for designing, simulating, checking and documenting
+pneumatic, electro-pneumatic and hydraulic circuits. It is written for Windows Forms on
 .NET Framework 4.7.2.
 
 Designed and developed by Akshaya Simha (© 2026). The first version was written in VB.NET and

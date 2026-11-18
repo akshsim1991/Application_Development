@@ -13,7 +13,7 @@ icons, symbols, cutaways and the examples are all drawn or built in code.
 │ MainForm ─ menus, toolbar, library, Properties grid, page tabs, bottom panel tabs │
 │ CircuitCanvas (editor + live simulation)   DiagramPanel   PlotterPanel            │
 │ InspectorPanel   LessonsPanel   TroubleshootPanel   Cutaway{View,Window}          │
-│ Dialogs: Generator, Calculators, PartsList, Quiz/Exam, Sweep, Fault, ProjectInfo   │
+│ Dialogs: Generator, Calculators, PartsList, Sweep, Fault, ProjectInfo   │
 ├───────────────────────────── Tools / Generator / Learning ────────────────────────┤
 │ CircuitAnalysis (checker + explainer + overlap fix)   TroubleshootExercise       │
 │ ParameterSweep   PartsList   Reports (PDF)   GifRecorder                         │
@@ -151,9 +151,8 @@ explanation using one of two methods (`GeneratorMethod`):
 
 ## 7. Learning
 
-`Lessons` has 10 lessons whose tasks are checked automatically (direct control → sequence
-A+ B+ B- A-), with progress saved in settings. `QuestionBank` has 39 written questions plus
-symbol-recognition questions, used by the practice quiz and the timed exam. `ComponentHelp`
+`Lessons` has 10 getting-started tutorials whose tasks are checked automatically (direct control → sequence
+A+ B+ B- A-), with progress saved in settings. (The quiz and exam were removed in 3.3.) `ComponentHelp`
 supplies hover help, and `Cutaways` draws an animated cutaway of every component (F7).
 
 ## 8. UI (`UI/`)

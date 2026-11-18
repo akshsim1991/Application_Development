@@ -1,7 +1,7 @@
 # PneuSim — handoff notes (18 Nov 2026)
 
-Owner and designer: Akshaya Simha. A free teaching tool for Fluid Power, Automation and
-Control lab work. FluidSIM-style, Windows only.
+Owner and designer: Akshaya Simha (akshsimha@gmail.com). A **paid commercial** pneumatic,
+electro-pneumatic and hydraulic circuit simulator for Windows. See `CLAUDE.md` for the hard rules.
 
 ## Where things are
 
@@ -49,3 +49,58 @@ Control lab work. FluidSIM-style, Windows only.
 - The source is decompiler output. It is correct but hard to read in places (VB closures,
   `_0024` names, `goto` in a few state-machine-like methods).
 - Copyright text in About and the PDF reports: "(c) 2026 Akshaya Simha".
+
+## Plan agreed on 18 Nov 2026 (waiting for "START")
+
+### 3.3.0 "Mistral" (code names: winds — Mistral, Sirocco, Chinook, Zephyr, Bora …)
+1. **Commercial, non-academic product.** Remove the practice quiz and timed exam; turn lessons
+   into short "Getting started" tutorials; reframe Troubleshooting as **Fault finding** for
+   maintenance/technical teams (no teacher/student wording); rewrite README, About, help and
+   installer text without academic references.
+2. **Lay-person simplicity.** Plain-English component names (ISO name in brackets), sensible
+   defaults, **Simple / Advanced** switch for engineering properties, tooltips, friendly messages.
+3. **Start screen** like Feather PDF: title, tagline, drag-and-drop area, New circuit,
+   Open circuit…, Examples, Recent files.
+4. **Ribbon only** (custom-built, no third-party library): tabs Home, Supply & Air, Actuators,
+   Valves, Logic & Flow, Electrical, Hydraulics, Drawing, Tools; large symbol buttons,
+   galleries for valve variants, drag to canvas, **search box**. The left library panel goes.
+5. **About box exactly like Feather PDF** (see the owner's screenshot of Feather PDF 2.22.0
+   "Kuga"): scrolling text box with name, "Version 3.3.0 "Mistral", built <date>",
+   description, "Created by: Akshaya Simha", DEVELOPMENT HISTORY (began in VB.NET, recovered
+   and continued in C# from 3.2), DEVELOPMENT AND AI CONTRIBUTIONS (same wording style as
+   Feather PDF); checkbox "Write to the developer now (opens your e-mail program)" →
+   akshsimha@gmail.com; Close / Cancel. Status bar right: "PneuSim 3.3.0 Mistral".
+6. **Automatic updates like Feather PDF**: `latest.json` + installer in the public repo
+   `akshsim1991/PneuSim-releases` (the owner creates it), raw.githubusercontent.com with a
+   jsDelivr mirror fallback, SHA-256 check, Help ▸ Update to new version, daily check,
+   "Update now / Later", silent in-place upgrade (same AppId), save work first, restart.
+7. **Sounds, ON by default** (synthesised in code, no files): valve click, end-stop thud,
+   exhaust hiss, compressor/pump hum, relief-valve chatter, alarm for **rated pressure
+   exceeded** and E-stop; every warning also shown visually (red flash + status message).
+   Settings: master on/off, volume, per-sound toggles.
+8. **Settings dialog**: theme Light / Dark / **Follow Windows (default)**; units **bar / MPa /
+   kPa**; sounds; Simple/Advanced; update checks.
+9. **Rated maximum pressure per component** (defaults: pneumatic 10 bar, vacuum −0.95 bar,
+   hydraulic 160 bar), used by the warning.
+10. **Robustness**: clean up decompiler artefacts (no behaviour change, harness-verified),
+    safe atomic saves with backup, file-version checks and friendly handling of damaged
+    files, local error log in `%LOCALAPPDATA%\PneuSim\logs` + "Copy error report", high-DPI
+    awareness (G4), large-circuit performance, automatic physics tests, validation document,
+    proper encryption for hidden faults.
+11. UI fixes G1, G2, G3 from `docs/GUI.md`.
+12. Installer: check for .NET Framework 4.7.2 on Windows 7 SP1 / 8.1 and offer to install it.
+13. Licensing: **owner still deciding**. Build 3.3 so licence-key activation can be added later
+    without restructuring.
+
+### 3.4.0 (after 3.3)
+Tandem cylinder; double-end double cylinder in both forms (multi-position, through-rod);
+telescopic cylinder (pneumatic and hydraulic, single- and double-acting); DC motor (12 V or
+24 V, polarity reversing, ω = (V − IR)/k_E, T = k_T·I); servo motor (stored positions via 24 V
+inputs Enable / Select P1–P3 / "In position", plus optional 0–10 V setpoint in Advanced
+mode; trapezoidal profile; position marks); electric cylinder (lead screw, position marks);
+**live value labels** on the canvas (force, velocity, position, pressure, flow, rpm, torque,
+current; choose per component, global on/off). Optional later: stepper motor, rodless cylinder.
+
+### Before selling (owner's decisions)
+Code-signing certificate; licensing model; EULA; trademark search for "PneuSim"; check the
+employer's IP policy; obfuscation (limits: .NET can always be decompiled).

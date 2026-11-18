@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.7 "Mistral" (18 Nov 2026)
+- Circuit generator "Complete my circuit" is smarter: one valve drives several actuators in parallel (a valve is added only if no suitable one exists); shuttle (OR) and two-pressure (AND) valves are fed by the nearest push-button / selector / roller valves and drive the cylinder or a pilot valve; air-preparation chain (shut-off valve, service unit / regulator); gauges and switches on the air line; silencers on valve exhausts; flow control valves spliced into cylinder lines; hydraulic circuits (pump, tank, relief valve, 4/3 valve, cylinder or motor).
+
 ## 3.3.6 "Mistral" (18 Nov 2026)
 - Settings > Simulation > Solenoid-operated valves: Automatic (PneuSim operates the solenoid override of valves that have no coil in the circuit, and brings a double-solenoid valve back) or Manual (you click the solenoid yourself).
 

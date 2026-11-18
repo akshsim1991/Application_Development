@@ -6,7 +6,7 @@
 ; Build:  ISCC.exe /DAppVersion=3.2.0 /DBinDir=<folder with PneuSim.exe> installer\PneuSim.iss
 
 #ifndef AppVersion
-  #define AppVersion "3.3.6"
+  #define AppVersion "3.3.7"
 #endif
 #ifndef BinDir
   #define BinDir "..\src\PneuSim\bin\Release\net472"

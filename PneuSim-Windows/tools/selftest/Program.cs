@@ -337,6 +337,50 @@ class SelfTest
             }
             asProp.SetValue(null, true);
         }
+        if (Environment.GetEnvironmentVariable("PORTNAMES") != null) foreach (var n in new[] { "HydraulicValve43", "HydraulicValve42", "HydraulicCylinder", "HydraulicSingleActingCylinder", "HydraulicPump", "HydraulicTank", "ReliefValve", "Valve52", "Valve32", "Valve42", "Valve22", "FlowControlValve", "AirReceiver", "ShuttleValve", "TwoPressureValve", "ShutOffValve", "PressureRegulator", "PressureGauge", "Silencer", "SemiRotaryActuator", "Gripper" })
+        {
+            var e = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n });
+            Console.WriteLine($"PORTS {n}: " + string.Join(" ", ((IList)P(e, "Ports")).Cast<object>().Select(p => P(p, "Name") + "/" + P(p, "Kind") + (P(p, "VentsWhenOpen").Equals(true) ? "(vent)" : ""))) + "  working: " + (e.GetType().GetMethod("WorkingPortNames") != null ? string.Join(",", (string[])e.GetType().GetMethod("WorkingPortNames").Invoke(e, null)) : "-"));
+        }
+        // Complete: one valve drives two cylinders; OR logic with a shuttle valve; hydraulics
+        {
+            object NE(object c, string n, float x, float y) { var e = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n }); c.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement")).Invoke(c, new object[] { e, x, y, null }); return e; }
+            (double max, double last) Run2(object circ, int cyls)
+            {
+                var sim = Activator.CreateInstance(T("Simulator"), circ); sim.GetType().GetMethod("Reset").Invoke(sim, null);
+                var auto = Activator.CreateInstance(T("AutoOperator"), circ, "Once");
+                var cs = ((IList)P(circ, "Elements")).Cast<object>().Where(e => e.GetType().Name.EndsWith("Cylinder")).ToList();
+                double mx = 1, ls = 0;
+                for (int k = 0; k < 1500; k++)
+                {
+                    for (int j = 0; j < 4; j++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+                    if ((bool)auto.GetType().GetMethod("Update").Invoke(auto, new object[] { (double)P(sim, "Time") })) sim.GetType().GetMethod("RunLogic").Invoke(sim, null);
+                    var mn = cs.Min(c => (double)P(c, "Position")); if (k == 0) mx = 0; mx = Math.Max(mx, mn); ls = mn;
+                }
+                return (mx, ls);
+            }
+            // A) two single-acting cylinders, one push-button valve, one supply -> no extra valve
+            var wa = Activator.CreateInstance(T("Circuit"));
+            NE(wa, "SingleActingCylinder", 110f, 100f); NE(wa, "SingleActingCylinder", 460f, 100f);
+            var va = NE(wa, "Valve32", 60f, 300f); va.GetType().GetProperty("Actuator").SetValue(va, Enum.Parse(T("ValveActuator"), "PushButton")); NE(wa, "AirSupply", 120f, 450f);
+            var ca = P(T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { wa }), "Circuit");
+            var valvesA = ((IList)P(ca, "Elements")).Cast<object>().Count(e => e.GetType().Name == "Valve32");
+            Check(valvesA == 1 && ((IList)P(ca, "Tubes")).Count == 3, $"complete: one valve drives both cylinders, no extra valve ({valvesA} valve, {((IList)P(ca, "Tubes")).Count} tubes)");
+            var rA = Run2(ca, 2); Check(rA.max > 0.97, $"complete: both cylinders move together (min position max {rA.max:0.00})");
+            // B) OR control: cylinder, shuttle valve, two push-button valves, supply
+            var wb = Activator.CreateInstance(T("Circuit"));
+            NE(wb, "SingleActingCylinder", 230f, 60f); NE(wb, "ShuttleValve", 200f, 200f);
+            foreach (var x in new[] { 60f, 400f }) { var vb = NE(wb, "Valve32", x, 300f); vb.GetType().GetProperty("Actuator").SetValue(vb, Enum.Parse(T("ValveActuator"), "PushButton")); }
+            NE(wb, "AirSupply", 250f, 450f);
+            var cb = P(T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { wb }), "Circuit");
+            Check(((IList)P(cb, "Tubes")).Count == 5, $"complete: shuttle valve gets both inputs and drives the cylinder ({((IList)P(cb, "Tubes")).Count} tubes)");
+            var rB = Run2(cb, 1); Check(rB.max > 0.97, $"complete: the OR circuit works (max {rB.max:0.00})");
+            // C) hydraulic cylinder alone
+            var wc = Activator.CreateInstance(T("Circuit")); NE(wc, "HydraulicCylinder", 300f, 100f);
+            var cc = P(T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { wc }), "Circuit");
+            var namesC = ((IList)P(cc, "Elements")).Cast<object>().Select(e => e.GetType().Name).ToList();
+            Check(namesC.Contains("HydraulicValve43") && namesC.Contains("HydraulicPump") && namesC.Contains("HydraulicTank") && namesC.Contains("ReliefValve"), $"complete: hydraulic cylinder gets valve, pump, tank, relief valve ({((IList)P(cc, "Tubes")).Count} tubes)");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

@@ -1007,7 +1007,8 @@ public class CircuitCanvas : ScrollableControl
 				SizeF sz = g.MeasureString(pt, pf);
 				float lx = pointF.X + d.X * 5f + ((d.X < 0f) ? (-sz.Width - 1f) : ((d.X > 0f) ? 1f : 4f));
 				float ly = pointF.Y + d.Y * 5f + ((d.Y < 0f) ? (-sz.Height) : ((d.Y > 0f) ? 0f : (-sz.Height / 2f)));
-				g.DrawString(pt, pf, Brushes.DarkBlue, lx, ly);
+				using SolidBrush portBrush = new SolidBrush(Scheme.IsDark ? Color.FromArgb(120, 200, 255) : Color.DarkBlue);
+				g.DrawString(pt, pf, portBrush, lx, ly);
 			}
 			if (item.ConnectionCount == 0 && !Simulating && interactive)
 			{

@@ -90,6 +90,9 @@ public sealed class AppSettings
 
 	public static bool CheckForUpdates { get; set; } = true;
 
+	/// <summary>Download new versions in the background and install them silently when PneuSim is closed.</summary>
+	public static bool AutoUpdate { get; set; }
+
 	/// <summary>When the last automatic update check ran (UTC ticks).</summary>
 	public static long LastUpdateCheckUtcTicks { get; set; }
 
@@ -251,6 +254,9 @@ public sealed class AppSettings
 				case "Advanced":
 					AdvancedMode = text3 == "1";
 					break;
+				case "AutoUpdate":
+					AutoUpdate = text3 == "1";
+					break;
 				case "CheckForUpdates":
 					CheckForUpdates = text3 != "0";
 					break;
@@ -321,6 +327,7 @@ public sealed class AppSettings
 				"Currency=" + CurrencySymbol,
 				$"ValueLabels={(ShowValueLabels ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",
+				$"AutoUpdate={(AutoUpdate ? 1 : 0)}",
 				"LastUpdateCheck=" + LastUpdateCheckUtcTicks.ToString(CultureInfo.InvariantCulture),
 				$"Sounds={(SoundsOn ? 1 : 0)}",
 				"Volume=" + SoundVolume.ToString(CultureInfo.InvariantCulture)

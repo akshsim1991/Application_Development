@@ -115,6 +115,12 @@ public partial class MainForm
 		base.OnFormClosing(e);
 	}
 
+	protected override void OnFormClosed(FormClosedEventArgs e)
+	{
+		base.OnFormClosed(e);
+		RunPendingUpdate();
+	}
+
 	public void OfferRecovery()
 	{
 		if (!File.Exists(AutosavePath))

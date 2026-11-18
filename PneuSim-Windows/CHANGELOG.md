@@ -3,6 +3,11 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.4.0 "Mistral" (18 Nov 2026)
+Stabilisation release: audit of the whole application (see docs/AUDIT-3.4.md), no new circuit features.
+- Updates: PneuSim checks for a new version every time it starts (when a network is connected, silently otherwise) and offers it right away; an update link stays in the status bar. New Settings option "Install new versions automatically": the installer is downloaded in the background, checked (SHA-256) and installed silently when PneuSim is closed, with no questions.
+- Fixed in this audit: ribbon search names, ribbon groups cut off, start screen showing old panels, port names in dark mode, units in Properties and Inspector, routing and rotation of lines and components (see 3.3.9 to 3.3.18 below for details).
+
 ## 3.3.18 "Mistral" (18 Nov 2026)
 - Ribbon search fixed: results now show the names of the commands and components (they showed an internal text), match words in the name or the tooltip, and list the best matches first.
 

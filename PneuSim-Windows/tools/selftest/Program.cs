@@ -131,6 +131,16 @@ class SelfTest
                 foreach (var i in iss) Console.WriteLine("INFO routing issue (valve rotation " + rot + "): " + P(i, "Message"));
             }
         }
+        // Update logic
+        {
+            var updSvc = T("UpdateService");
+            var newer = updSvc.GetMethod("IsNewer");
+            Check((bool)newer.Invoke(null, new object[] { "3.4.0", "3.3.18" }), "update: 3.4.0 is newer than 3.3.18");
+            Check(!(bool)newer.Invoke(null, new object[] { "3.3.18", "3.3.18" }), "update: same version is not newer");
+            Check((bool)newer.Invoke(null, new object[] { "3.3.10", "3.3.9" }), "update: 3.3.10 is newer than 3.3.9");
+            Check(!(bool)newer.Invoke(null, new object[] { "3.3.9", "3.3.10" }), "update: 3.3.9 is not newer than 3.3.10");
+            Check(T("AppSettings").GetProperty("AutoUpdate") != null, "settings: automatic updates option exists");
+        }
         // Hidden-fault encryption
         var faults = T("Faults"); var kindT = T("FaultKind");
         var leak = Enum.Parse(kindT, Enum.GetNames(kindT).First(n => n != "None"));

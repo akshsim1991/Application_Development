@@ -67,7 +67,9 @@ public sealed class SettingsDialog : Form
 
 	private readonly CheckBox[] _soundBoxes = new CheckBox[SoundList.Length];
 
-	private readonly CheckBox _updates = new CheckBox { Text = "Check for updates once a day", AutoSize = true };
+	private readonly CheckBox _autoUpdate = new CheckBox { Text = "Install new versions automatically (downloaded in the background, installed without questions when you close PneuSim)", AutoSize = true };
+
+	private readonly CheckBox _updates = new CheckBox { Text = "Check for updates every time PneuSim starts", AutoSize = true };
 
 	public SettingsDialog()
 	{
@@ -101,6 +103,7 @@ public sealed class SettingsDialog : Form
 		flowLayoutPanel.Controls.Add(Labelled("Save a recovery copy every (minutes, 0 = never)", _autosave));
 		flowLayoutPanel.Controls.Add(Heading("Updates"));
 		flowLayoutPanel.Controls.Add(_updates);
+		flowLayoutPanel.Controls.Add(_autoUpdate);
 		FlowLayoutPanel flowLayoutPanel3 = NewTab(tabs, "Simulation");
 		flowLayoutPanel3.Controls.Add(Heading("Automatic operation"));
 		Label value = new Label
@@ -274,6 +277,7 @@ public sealed class SettingsDialog : Form
 		_startScreen.Checked = AppSettings.ShowStartScreen;
 		_autosave.Value = Math.Max(0, Math.Min(60, AppSettings.AutosaveMinutes));
 		_updates.Checked = AppSettings.CheckForUpdates;
+		_autoUpdate.Checked = AppSettings.AutoUpdate;
 		_autoMode.SelectedIndex = ((AppSettings.AutoMode == "Off") ? 2 : ((AppSettings.AutoMode == "Continuous") ? 1 : 0));
 		_autoDelay.Value = (decimal)Math.Max(0.0, Math.Min(30.0, AppSettings.AutoStartDelay));
 		_autoPause.Value = (decimal)Math.Max(0.0, Math.Min(120.0, AppSettings.AutoCyclePause));
@@ -312,6 +316,7 @@ public sealed class SettingsDialog : Form
 		AppSettings.ShowStartScreen = _startScreen.Checked;
 		AppSettings.AutosaveMinutes = (int)_autosave.Value;
 		AppSettings.CheckForUpdates = _updates.Checked;
+		AppSettings.AutoUpdate = _autoUpdate.Checked;
 		AppSettings.AutoMode = ((_autoMode.SelectedIndex == 2) ? "Off" : ((_autoMode.SelectedIndex == 1) ? "Continuous" : "Once"));
 		AppSettings.AutoStartDelay = (double)_autoDelay.Value;
 		AppSettings.AutoCyclePause = (double)_autoPause.Value;

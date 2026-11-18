@@ -27,6 +27,7 @@ reference only.
 - Say **Workspace** (not "drawing" or "canvas") for the area where components are placed and simulated, in all user-visible text.
 - Double-clicking a component must never open a properties window; properties stay in the side
   Properties panel.
+- **Releases (standing instruction from the owner):** the installer of every new version is committed into `PneuSim-Windows/release/` by CI automatically; after CI is green, pull it, copy it to the public repo `akshsim1991/PneuSim-releases` (`releases/` folder + `.sha256`), update its `latest.json`, and tell the owner in one plain sentence. Do not ask which option to use.
 - Work on branch `claude/vigilant-sagan-opwt41`; commit small and push after every milestone
   (the session may end at any time). No PR unless the owner asks.
 

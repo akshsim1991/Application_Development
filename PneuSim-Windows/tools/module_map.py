@@ -12,7 +12,7 @@ MODULES = [
  ("M-ANALYSIS", "Checker, explainer, sequence finder", ["Tools/CircuitAnalysis*.cs", "Tools/CheckIssue.cs", "Tools/IssueSeverity.cs", "Tools/CircuitMove.cs", "Tools/MoveTrigger.cs"]),
  ("M-TOOLS", "Parts list, reports, sweep, GIF, fault finding", ["Tools/PartLine.cs", "Tools/PartsList.cs", "Tools/Reports.cs", "Tools/UserGuide.cs", "Tools/Sweep*.cs", "Tools/ParameterSweep.cs", "Tools/GifRecorder.cs", "Tools/TroubleshootExercise.cs", "UI/PartsListDialog.cs", "UI/SweepDialog.cs", "UI/FaultDialog.cs", "UI/TroubleshootPanel.cs", "UI/CalculatorsDialog.cs"]),
  ("M-LEARNING", "Getting-started tutorials and component help", ["Learning/*.cs", "UI/LessonsPanel.cs"]),
- ("M-CANVAS", "Drawing canvas and live views", ["UI/CircuitCanvas.cs", "UI/DiagramPanel.cs", "UI/PlotterPanel.cs", "UI/InspectorPanel.cs", "UI/Cutaway*.cs", "UI/Library*.cs", "UI/Examples.cs"]),
+ ("M-CANVAS", "Drawing canvas and live views", ["UI/CircuitCanvas.cs", "UI/DiagramPanel.cs", "UI/PlotterPanel.cs", "UI/InspectorPanel.cs", "UI/Cutaway*.cs", "UI/SystemCutawayView.cs", "UI/Library*.cs", "UI/Examples.cs"]),
  ("M-UPDATE", "Automatic updates", ["Core/UpdateService.cs", "UI/UpdateDialog.cs", "UI/MainForm.Update.cs"]),
  ("M-RIBBON", "Ribbon", ["UI/Ribbon*.cs"]),
  ("M-SHELL", "Main window (partial class, split by concern)", ["UI/MainForm*.cs", "UI/Program.cs"]),

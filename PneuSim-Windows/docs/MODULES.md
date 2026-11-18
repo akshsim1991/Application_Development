@@ -219,7 +219,7 @@ concept; talk to other modules through their public classes only.
 | `Learning/Lessons.cs` | 480 |
 | `UI/LessonsPanel.cs` | 210 |
 
-### M-CANVAS - Drawing canvas and live views  (11 files, 5180 lines)
+### M-CANVAS - Drawing canvas and live views  (12 files, 5510 lines)
 
 | File | Lines |
 |---|---|
@@ -231,6 +231,7 @@ concept; talk to other modules through their public classes only.
 | `UI/CutawayView.cs` | 325 |
 | `UI/CutawayWindow.cs` | 123 |
 | `UI/Cutaways.cs` | 1302 |
+| `UI/SystemCutawayView.cs` | 330 |
 | `UI/Library.cs` | 278 |
 | `UI/LibraryPreset.cs` | 19 |
 | `UI/Examples.cs` | 414 |
@@ -298,7 +299,4 @@ concept; talk to other modules through their public classes only.
 | `VBCompat/VB-AnonymousDelegate_9.cs` | 6 |
 | `VBCompat/VB-AnonymousType_0.cs` | 13 |
 
-### Unassigned
-
-- `UI/SystemCutawayView.cs`
 <!-- AUTO-END -->

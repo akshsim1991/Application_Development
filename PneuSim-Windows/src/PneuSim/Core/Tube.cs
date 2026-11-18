@@ -60,6 +60,78 @@ public class Tube
 		return RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
 	}
 
+	private int Collisions(PointF[] r, IEnumerable<CircuitElement> obstacles)
+	{
+		int n = 0;
+		for (int i = 1; i < r.Length - 2; i++)
+		{
+			RectangleF seg = RectangleF.FromLTRB(Math.Min(r[i].X, r[i + 1].X) - 0.5f, Math.Min(r[i].Y, r[i + 1].Y) - 0.5f, Math.Max(r[i].X, r[i + 1].X) + 0.5f, Math.Max(r[i].Y, r[i + 1].Y) + 0.5f);
+			foreach (CircuitElement e in obstacles)
+			{
+				RectangleF b = e.WorldBounds();
+				b.Inflate(-2f, -2f);
+				if (b.Width > 0f && b.Height > 0f && b.IntersectsWith(seg))
+				{
+					n++;
+				}
+			}
+		}
+		return n;
+	}
+
+	/// <summary>Picks the middle-segment position so the line does not run through components and is short. With force the manual position is discarded first; otherwise it is only changed when the current line crosses a component.</summary>
+	public void AutoRoute(IEnumerable<CircuitElement> obstacles, bool force)
+	{
+		List<CircuitElement> list = new List<CircuitElement>(obstacles);
+		if (!force && Mid.HasValue && Collisions(Route(), list) == 0)
+		{
+			return;
+		}
+		string axis = MidAxis();
+		if (axis == null)
+		{
+			Mid = null;
+			return;
+		}
+		Mid = null;
+		PointF a = A.WorldPos();
+		PointF b = B.WorldPos();
+		float centre = (axis == "X") ? (a.X + b.X) / 2f : (a.Y + b.Y) / 2f;
+		float? best = null;
+		int bestHits = Collisions(Route(), list);
+		float bestLen = Length(Route());
+		for (int k = 1; k <= 40 && bestHits > 0; k++)
+		{
+			foreach (int sign in new int[2] { 1, -1 })
+			{
+				float c = centre + sign * k * 10f;
+				float? saved = Mid;
+				Mid = c;
+				PointF[] r = Route();
+				int h = Collisions(r, list);
+				float len = Length(r);
+				if (h < bestHits || (h == bestHits && len < bestLen))
+				{
+					bestHits = h;
+					bestLen = len;
+					best = c;
+				}
+				Mid = saved;
+			}
+		}
+		Mid = best;
+	}
+
+	private static float Length(PointF[] r)
+	{
+		float t = 0f;
+		for (int i = 0; i < r.Length - 1; i++)
+		{
+			t += Math.Abs(r[i + 1].X - r[i].X) + Math.Abs(r[i + 1].Y - r[i].Y);
+		}
+		return t;
+	}
+
 	public string MidAxis()
 	{
 		PointF pointF = EffectiveDir(A.WorldPos(), A.WorldDir(), B.WorldPos());

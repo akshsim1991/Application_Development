@@ -7,6 +7,7 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - New full ribbon replaces the menu bar and toolbar, giving the Workspace more room: File, Home, Supply & Air, Actuators, Valves, Logic & Flow, Electrical, Hydraulics, Annotate, Simulate, Tools, View, Learn, Help tabs; quick-access buttons (New, Open, Save, Undo, Redo); double-click a tab or press Ctrl+F1 to collapse the ribbon. The classic menu and toolbar can be switched back on in Settings.
 - File opens a full-page view (New, Open, Recent, Save, Save As, Close, Export, Information, Options, Exit).
 - Page tabs at the bottom of the Workspace now look like sheet tabs with arrows and a + button.
+- Rotating (or moving) a component now re-routes its connecting lines automatically so they do not run through components or overlap; lines you drag by hand are kept unless they would cross a component.
 - PDF report shows a print preview first (Save as PDF or Print).
 
 ## 3.3.8 "Mistral" (18 Nov 2026)

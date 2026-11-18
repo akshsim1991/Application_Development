@@ -303,6 +303,19 @@ public class CircuitCanvas : ScrollableControl
 		CircuitModified?.Invoke(this, EventArgs.Empty);
 	}
 
+	/// <summary>Re-routes the lines of the given components so they do not overlap other components.</summary>
+	public void TidyTubes(IEnumerable<CircuitElement> moved, bool force)
+	{
+		HashSet<CircuitElement> set = new HashSet<CircuitElement>(moved);
+		foreach (Tube tube in _circuit.Tubes.ToList())
+		{
+			if (set.Contains(tube.A.Owner) || set.Contains(tube.B.Owner))
+			{
+				tube.AutoRoute(_circuit.Elements, force);
+			}
+		}
+	}
+
 	public void RotateSelection()
 	{
 		if (Simulating || _selection.Count == 0)
@@ -317,6 +330,7 @@ public class CircuitCanvas : ScrollableControl
 			item.X = Snap(item.X + (rectangleF.X + rectangleF.Width / 2f) - (rectangleF2.X + rectangleF2.Width / 2f));
 			item.Y = Snap(item.Y + (rectangleF.Y + rectangleF.Height / 2f) - (rectangleF2.Y + rectangleF2.Height / 2f));
 		}
+		TidyTubes(_selection, force: true);
 		Invalidate();
 		CircuitModified?.Invoke(this, EventArgs.Empty);
 	}
@@ -1219,6 +1233,7 @@ public class CircuitCanvas : ScrollableControl
 			_dragging = false;
 			if (_dragMoved)
 			{
+				TidyTubes(_selection, force: false);
 				UpdateScrollSize();
 				CircuitModified?.Invoke(this, EventArgs.Empty);
 			}

@@ -56,6 +56,9 @@ public sealed class AppSettings
 
 	public static bool ShowGrid { get; set; } = true;
 
+	/// <summary>Off, Numbers, Letters or Both: port names drawn at every port in the Workspace.</summary>
+	public static string PortLabelMode { get; set; } = "Off";
+
 	/// <summary>Also show the classic menu bar and toolbar above the ribbon (applies after restart).</summary>
 	public static bool ClassicMenu { get; set; }
 
@@ -230,6 +233,12 @@ public sealed class AppSettings
 				case "RibbonCollapsed":
 					RibbonCollapsed = text3 == "1";
 					break;
+				case "PortLabels":
+					if (text3 == "Off" || text3 == "Numbers" || text3 == "Letters" || text3 == "Both")
+					{
+						PortLabelMode = text3;
+					}
+					break;
 				case "Grid":
 					ShowGrid = text3 != "0";
 					break;
@@ -306,6 +315,7 @@ public sealed class AppSettings
 				$"StartScreen={(ShowStartScreen ? 1 : 0)}",
 				$"Snap={(SnapToGrid ? 1 : 0)}",
 				$"Grid={(ShowGrid ? 1 : 0)}",
+				"PortLabels=" + PortLabelMode,
 				$"ClassicMenu={(ClassicMenu ? 1 : 0)}",
 				$"RibbonCollapsed={(RibbonCollapsed ? 1 : 0)}",
 				"Currency=" + CurrencySymbol,

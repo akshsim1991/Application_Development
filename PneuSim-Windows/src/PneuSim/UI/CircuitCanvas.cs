@@ -856,6 +856,16 @@ public class CircuitCanvas : ScrollableControl
 				continue;
 			}
 			PointF pointF = item.WorldPos();
+			if (interactive && AppSettings.PortLabelMode != "Off" && item.Kind != PortKind.Electric)
+			{
+				PointF d = item.WorldDir();
+				string pt = PortLabels.Text(item);
+				using Font pf = new Font("Segoe UI", 7f, FontStyle.Bold);
+				SizeF sz = g.MeasureString(pt, pf);
+				float lx = pointF.X + d.X * 5f + ((d.X < 0f) ? (-sz.Width - 1f) : ((d.X > 0f) ? 1f : 4f));
+				float ly = pointF.Y + d.Y * 5f + ((d.Y < 0f) ? (-sz.Height) : ((d.Y > 0f) ? 0f : (-sz.Height / 2f)));
+				g.DrawString(pt, pf, Brushes.DarkBlue, lx, ly);
+			}
 			if (item.ConnectionCount == 0 && !Simulating && interactive)
 			{
 				g.FillEllipse(Brushes.White, pointF.X - 3f, pointF.Y - 3f, 6f, 6f);
@@ -881,7 +891,7 @@ public class CircuitCanvas : ScrollableControl
 				g.DrawEllipse(pen, pointF2.X - 6f, pointF2.Y - 6f, 12f, 12f);
 			}
 			using Font font = new Font("Segoe UI", 7.5f);
-			g.DrawString(_hoverPort.Name, font, flag ? Brushes.DarkGreen : Brushes.Red, pointF2.X + 6f, pointF2.Y - 16f);
+			g.DrawString(PortLabels.Letter(_hoverPort) + (PortLabels.Letter(_hoverPort) == _hoverPort.Name ? "" : " (" + _hoverPort.Name + ")"), font, flag ? Brushes.DarkGreen : Brushes.Red, pointF2.X + 6f, pointF2.Y - 16f);
 		}
 	}
 

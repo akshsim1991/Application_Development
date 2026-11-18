@@ -22,6 +22,17 @@ public static class Units
 		}
 	}
 
+	/// <summary>"Caption (unit): value" with a caption ending in (bar) shown in the unit chosen in Settings.</summary>
+	public static string Shown(string caption, double value)
+	{
+		if (caption.Contains("(bar)") && AppSettings.PressureUnit != "bar")
+		{
+			double f = (AppSettings.PressureUnit == "MPa") ? 0.1 : 100.0;
+			return caption.Replace("(bar)", "(" + AppSettings.PressureUnit + ")") + ": " + (value * f).ToString("0.##", CultureInfo.CurrentCulture);
+		}
+		return caption + ": " + value.ToString("0.##", CultureInfo.CurrentCulture);
+	}
+
 	/// <summary>Range text like "5.5–6.5 bar".</summary>
 	public static string PressureRange(double lowBar, double highBar, string barFormat)
 	{

@@ -9,7 +9,9 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - Page tabs at the bottom of the Workspace now look like sheet tabs with arrows and a + button.
 - Rotating (or moving) a component now re-routes its connecting lines automatically so they do not run through components or overlap; lines you drag by hand are kept unless they would cross a component.
 - Check circuit now warns about components lying on top of each other, lines running through components, and lines lying on top of each other.
-- PDF report shows a print preview first (Save as PDF or Print).
+- Pressure properties in the Properties panel and the Inspector now follow the pressure unit chosen in Settings (bar, MPa, kPa), values converted.
+- Settings > Workspace: port names on components as Numbers (1 2 3), Letters (P, A, B, E for exhaust, C compressor, T tank) or Both.
+& (Save as PDF or Print).
 
 ## 3.3.8 "Mistral" (18 Nov 2026)
 - Several circuits can be open at once: file tabs along the top (click to switch, x or middle-click to close, + for a new circuit). New, Open, examples and generated circuits open in a new tab; a file that is already open is switched to. File > Close (Ctrl+W) and Close all (Ctrl+Shift+W). Closing PneuSim asks about every tab with unsaved changes.

@@ -36,7 +36,7 @@ public class InspectorPanel : UserControl
 		[SpecialName]
 		internal void _Lambda_0024__0()
 		{
-			_0024VB_0024Local_caption.Text = $"{_0024VB_0024Local_knob.Caption}: {LiveTuning.GetValue(_0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_el, _0024VB_0024Local_knob):0.##}";
+			_0024VB_0024Local_caption.Text = Units.Shown(_0024VB_0024Local_knob.Caption, LiveTuning.GetValue(_0024VB_0024NonLocal__0024VB_0024Closure_2._0024VB_0024Local_el, _0024VB_0024Local_knob));
 		}
 
 		[SpecialName]

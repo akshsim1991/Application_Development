@@ -53,6 +53,8 @@ public sealed class SettingsDialog : Form
 
 	private readonly CheckBox _snap = new CheckBox { Text = "Snap components to the grid", AutoSize = true };
 
+	private readonly ComboBox _ports = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 200 };
+
 	private readonly CheckBox _classic = new CheckBox { Text = "Show the classic menu bar and toolbar above the ribbon (takes effect after restart)", AutoSize = true };
 
 	private readonly CheckBox _grid = new CheckBox { Text = "Show the grid dots in the workspace", AutoSize = true };
@@ -133,6 +135,8 @@ public sealed class SettingsDialog : Form
 		flowLayoutPanel4.Controls.Add(_valueLabels);
 		flowLayoutPanel4.Controls.Add(_hoverValues);
 		flowLayoutPanel4.Controls.Add(_grid);
+		_ports.Items.AddRange(new object[4] { "Off", "Numbers", "Letters", "Both" });
+		flowLayoutPanel4.Controls.Add(Labelled("Port names on components (Numbers: 1 2 3 · Letters: P A B E C T · Both)", _ports));
 		flowLayoutPanel4.Controls.Add(_classic);
 		flowLayoutPanel4.Controls.Add(Heading("Editing"));
 		flowLayoutPanel4.Controls.Add(_snap);
@@ -281,6 +285,11 @@ public sealed class SettingsDialog : Form
 		_hoverValues.Checked = AppSettings.ShowHoverValues;
 		_grid.Checked = AppSettings.ShowGrid;
 		_classic.Checked = AppSettings.ClassicMenu;
+		_ports.SelectedItem = AppSettings.PortLabelMode;
+		if (_ports.SelectedIndex < 0)
+		{
+			_ports.SelectedIndex = 0;
+		}
 		_snap.Checked = AppSettings.SnapToGrid;
 		_sounds.Checked = AppSettings.SoundsOn;
 		_volume.Value = Math.Max(0, Math.Min(100, AppSettings.SoundVolume));
@@ -314,6 +323,7 @@ public sealed class SettingsDialog : Form
 		AppSettings.ShowHoverValues = _hoverValues.Checked;
 		AppSettings.ShowGrid = _grid.Checked;
 		AppSettings.ClassicMenu = _classic.Checked;
+		AppSettings.PortLabelMode = (string)_ports.SelectedItem;
 		AppSettings.SnapToGrid = _snap.Checked;
 		AppSettings.SoundsOn = _sounds.Checked;
 		AppSettings.SoundVolume = _volume.Value;

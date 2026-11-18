@@ -86,7 +86,7 @@ public class CounterbalanceValve : CircuitElement
 		});
 		g.FillEllipse(r.BodyBrush, 33f, 60f, 8f, 8f);
 		g.DrawEllipse(r.Line, 33f, 60f, 8f, 8f);
-		g.DrawString($"{Setting:0} bar", r.SmallFont, r.TextBrush, 52f, 14f);
+		g.DrawString(Units.Pressure(Setting, "0"), r.SmallFont, r.TextBrush, 52f, 14f);
 	}
 
 	public override void ResetSim()

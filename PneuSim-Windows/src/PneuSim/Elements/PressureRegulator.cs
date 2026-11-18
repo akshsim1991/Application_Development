@@ -139,7 +139,7 @@ public class PressureRegulator : CircuitElement
 			g.DrawLine(pen2, 66f, 30f, 100f, 30f);
 			DrawRegulatorBox(g, r, 34f, 14f, 32f);
 		}
-		string text = (r.Simulating ? $"{base.Ports[1].Pressure:0.0} bar" : $"{_setting:0.#} bar");
+		string text = (r.Simulating ? Units.Pressure(base.Ports[1].Pressure, "0.0") : Units.Pressure(_setting, "0.#"));
 		g.DrawString(text, r.SmallFont, r.TextBrush, 36f, 44f);
 	}
 

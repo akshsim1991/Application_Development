@@ -103,6 +103,6 @@ public class ReliefValve : CircuitElement
 		}
 		Symbols.Spring(g, r.Thin, 34f, 46f, 35f, 4f);
 		g.DrawLine(r.Thin, 36f, 44f, 46f, 26f);
-		g.DrawString($"{_setting:0} bar", r.SmallFont, r.TextBrush, 22f, 54f);
+		g.DrawString(Units.Pressure(_setting, "0"), r.SmallFont, r.TextBrush, 22f, 54f);
 	}
 }

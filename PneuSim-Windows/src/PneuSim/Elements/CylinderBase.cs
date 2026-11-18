@@ -358,10 +358,10 @@ public abstract class CylinderBase : CircuitElement, ISignalSource
 		list.Add(("Speed", $"{_velocity:0.000} m/s"));
 		if (base.Ports[0].Kind == PortKind.Pneumatic)
 		{
-			list.Add(("Cap-side chamber", $"{(_physicsReady ? CapPressure : base.Ports[0].Pressure):0.00} bar"));
+			list.Add(("Cap-side chamber", Units.Pressure((_physicsReady ? CapPressure : base.Ports[0].Pressure), "0.00")));
 			if (HasRodPort)
 			{
-				list.Add(("Rod-side chamber", $"{(_physicsReady ? RodPressure : base.Ports[1].Pressure):0.00} bar"));
+				list.Add(("Rod-side chamber", Units.Pressure((_physicsReady ? RodPressure : base.Ports[1].Pressure), "0.00")));
 			}
 		}
 		list.Add(("Piston force", $"{PistonForce():0} N"));

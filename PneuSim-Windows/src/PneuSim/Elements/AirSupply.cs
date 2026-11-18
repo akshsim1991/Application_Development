@@ -51,7 +51,7 @@ public class AirSupply : CircuitElement
 			new PointF(14f, 32f),
 			new PointF(26f, 32f)
 		}, hydraulic: false, r.Simulating);
-		g.DrawString($"{Pressure:0.#} bar", r.SmallFont, r.TextBrush, 34f, 30f);
+		g.DrawString(Units.Pressure(Pressure, "0.#"), r.SmallFont, r.TextBrush, 34f, 30f);
 	}
 
 	public override FaultKind[] PossibleFaults()

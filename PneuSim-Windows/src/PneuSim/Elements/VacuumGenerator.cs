@@ -130,7 +130,7 @@ public class VacuumGenerator : CircuitElement
 		while (num2 <= 50);
 		if (r.Simulating)
 		{
-			g.DrawString(Working ? $"{base.Ports[1].Pressure:0.00} bar" : "off", r.SmallFont, r.TextBrush, 24f, 46f);
+			g.DrawString(Working ? Units.Pressure(base.Ports[1].Pressure, "0.00") : "off", r.SmallFont, r.TextBrush, 24f, 46f);
 		}
 	}
 

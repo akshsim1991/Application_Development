@@ -156,7 +156,7 @@ public class Compressor : CircuitElement
 		g.DrawLine(r.Line, 16f, 28f, 6f, 28f);
 		g.DrawEllipse(r.Line, -10f, 20f, 16f, 16f);
 		g.DrawString("M", r.SmallFont, r.TextBrush, -6f, 22f);
-		string text = $"{_cutIn:0.#}–{_cutOut:0.#} bar";
+		string text = Units.PressureRange(_cutIn, _cutOut, "0.#");
 		if (r.Simulating)
 		{
 			text = ((!_switchedOn) ? "switched off" : (_running ? "running" : "stopped (full)"));

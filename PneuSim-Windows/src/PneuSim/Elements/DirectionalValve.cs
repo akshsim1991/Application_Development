@@ -628,7 +628,7 @@ public abstract class DirectionalValve : CircuitElement
 			if (Math.Abs(_switchPressure - 1.5) > 0.01)
 			{
 				Symbols.Spring(g, r.Thin, vB_0024AnonymousDelegate_(18f), vB_0024AnonymousDelegate_(6f), num - 9f, 3f);
-				g.DrawString($"{_switchPressure:0.#} bar", r.SmallFont, r.TextBrush, Math.Min(vB_0024AnonymousDelegate_(22f), vB_0024AnonymousDelegate_(0f)), num - 26f);
+				g.DrawString(Units.Pressure(_switchPressure, "0.#"), r.SmallFont, r.TextBrush, Math.Min(vB_0024AnonymousDelegate_(22f), vB_0024AnonymousDelegate_(0f)), num - 26f);
 			}
 			g.DrawLine(r.DashedFor(port), vB_0024AnonymousDelegate_(20f), num, vB_0024AnonymousDelegate_(6f), num);
 			Symbols.EnergyTriangle(g, r, new PointF[3]

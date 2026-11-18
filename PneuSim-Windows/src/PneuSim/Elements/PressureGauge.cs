@@ -47,7 +47,7 @@ public class PressureGauge : CircuitElement
 		Symbols.Arrow(p2: new PointF((float)(20.0 + 14.0 * Math.Sin(num2)), (float)(20.0 - 14.0 * Math.Cos(num2))), g: g, pen: (r.Simulating && port.IsPressurized) ? r.Pressure : r.Line, p1: new PointF(20f, 20f), head: 5f);
 		if (r.Simulating)
 		{
-			g.DrawString(Hydraulic ? $"{port.Pressure:0} bar" : ((port.Pressure < -0.005) ? $"{port.Pressure:0.00} bar" : $"{port.Pressure:0.0} bar"), r.SmallFont, r.TextBrush, 40f, 26f);
+			g.DrawString(Hydraulic ? Units.Pressure(port.Pressure, "0") : ((port.Pressure < -0.005) ? Units.Pressure(port.Pressure, "0.00") : Units.Pressure(port.Pressure, "0.0")), r.SmallFont, r.TextBrush, 40f, 26f);
 		}
 	}
 }

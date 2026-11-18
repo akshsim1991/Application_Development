@@ -85,7 +85,7 @@ public class AirReceiver : CircuitElement
 	public override List<(string Name, string Value)> InspectValues()
 	{
 		List<(string Name, string Value)> list = base.InspectValues();
-		list.Add(("Receiver pressure", $"{_pressure:0.00} bar"));
+		list.Add(("Receiver pressure", Units.Pressure(_pressure, "0.00")));
 		list.Add(("Stored free air", $"{(_pressure + 1.013) / 1.013 * _volume:0} NL"));
 		return list;
 	}
@@ -101,7 +101,7 @@ public class AirReceiver : CircuitElement
 		g.DrawArc(r.Line, 64f, 18f, 16f, 24f, 270f, 180f);
 		g.DrawLine(r.Line, 28f, 18f, 72f, 18f);
 		g.DrawLine(r.Line, 28f, 42f, 72f, 42f);
-		string text = (r.Simulating ? $"{_pressure:0.0} bar" : $"{_volume:0.#} l");
+		string text = (r.Simulating ? Units.Pressure(_pressure, "0.0") : $"{_volume:0.#} l");
 		g.DrawString(text, r.SmallFont, r.TextBrush, 38f, 23f);
 	}
 

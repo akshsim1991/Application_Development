@@ -2157,7 +2157,8 @@ public class MainForm : Form
 		InitTroubleshooting();
 		NewProject(new Project(new Circuit()));
 		_realPhysics = AppSettings.RealPhysics;
-		ApplyTheme(AppSettings.DarkMode);
+		ApplyTheme(AppSettings.ResolveDark());
+		Microsoft.Win32.SystemEvents.UserPreferenceChanged += OnWindowsPreferenceChanged;
 		UpdateUiState();
 		StartAutosave();
 	}
@@ -2494,6 +2495,8 @@ public class MainForm : Form
 		toolStripMenuItem14.DropDownItems.Add(Item("Parameter &sweep (compare settings)...", OnSweep));
 		toolStripMenuItem14.DropDownItems.Add(new ToolStripSeparator());
 		toolStripMenuItem14.DropDownItems.Add(BuildTroubleshootMenu());
+		toolStripMenuItem14.DropDownItems.Add(new ToolStripSeparator());
+		toolStripMenuItem14.DropDownItems.Add(Item("&Settings...", OnSettings, Keys.Control | Keys.Oemcomma));
 		ToolStripMenuItem toolStripMenuItem15 = new ToolStripMenuItem("&Learn");
 		toolStripMenuItem15.DropDownItems.Add(Item("&Getting started tutorials", [SpecialName] (object a0, EventArgs a1) =>
 		{
@@ -2767,6 +2770,30 @@ public class MainForm : Form
 		_statusZoom.Text = $"Zoom {_canvas.Zoom * 100f:0}%";
 		UpdateUndoButtons();
 		UpdateReplayUi();
+	}
+
+	private void OnSettings(object sender, EventArgs e)
+	{
+		using SettingsDialog settingsDialog = new SettingsDialog();
+		Theme.Apply(settingsDialog);
+		if (settingsDialog.ShowDialog(this) == DialogResult.OK)
+		{
+			settingsDialog.ApplyTo();
+			ApplyTheme(AppSettings.ResolveDark());
+			UpdateUiState();
+			_statusMessage.Text = "Settings saved.";
+		}
+	}
+
+	private void OnWindowsPreferenceChanged(object sender, Microsoft.Win32.UserPreferenceChangedEventArgs e)
+	{
+		if (AppSettings.ThemeMode == "System" && AppSettings.ResolveDark() != AppSettings.DarkMode)
+		{
+			BeginInvoke(new Action(delegate
+			{
+				ApplyTheme(AppSettings.ResolveDark());
+			}));
+		}
 	}
 
 	private void ApplyTheme(bool dark)
@@ -3137,6 +3164,7 @@ public class MainForm : Form
 	[CompilerGenerated]
 	private void _Lambda_0024__172_002D20()
 	{
+		AppSettings.ThemeMode = (AppSettings.DarkMode ? "Light" : "Dark");
 		ApplyTheme(!AppSettings.DarkMode);
 	}
 

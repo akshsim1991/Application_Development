@@ -7,6 +7,7 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - Removed the practice quiz and timed exam. Lessons became Getting started tutorials;
   Troubleshooting became Fault finding (wording only; engine unchanged, harness identical).
 - New user README and About text; the installer ships `installer/README-user.md`.
+- New Settings dialog (Tools > Settings, Ctrl+,): theme Light / Dark / Follow Windows (default), pressure unit bar / MPa / kPa for canvas labels, Simple/Advanced flag, sound and update options.
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

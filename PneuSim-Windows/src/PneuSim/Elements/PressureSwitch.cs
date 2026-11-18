@@ -124,7 +124,7 @@ public class PressureSwitch : CircuitElement, ISignalSource
 	public override List<(string Name, string Value)> InspectValues()
 	{
 		List<(string Name, string Value)> list = base.InspectValues();
-		list.Add(("Switching pressure", $"{_setting:0.0#} bar"));
+		list.Add(("Switching pressure", Units.Pressure(_setting, "0.0#")));
 		list.Add(("Switch", _on ? "operated" : "at rest"));
 		return list;
 	}
@@ -152,7 +152,7 @@ public class PressureSwitch : CircuitElement, ISignalSource
 		g.DrawLine(r.Thin, 10f, 24f, 16f, 24f);
 		g.DrawLine(flag ? r.Energized : r.Line, 16f, 24f, 28f, flag ? 24 : 16);
 		g.DrawLine(r.Thin, 28f, 24f, 32f, 24f);
-		string text = ((!r.Simulating) ? $"{_setting:0.0#} bar" : (Hydraulic ? $"{port.Pressure:0} bar" : $"{port.Pressure:0.0} bar"));
+		string text = ((!r.Simulating) ? Units.Pressure(_setting, "0.0#") : (Hydraulic ? Units.Pressure(port.Pressure, "0") : Units.Pressure(port.Pressure, "0.0")));
 		g.DrawString(text, r.SmallFont, r.TextBrush, 26f, 42f);
 	}
 

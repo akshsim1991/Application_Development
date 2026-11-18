@@ -49,6 +49,29 @@ class SelfTest
             if (pass == 0) Check(text == null, "6 bar supply: no rated-pressure warning");
             else Check(text != null && text.Contains("Rated pressure exceeded"), "12 bar supply: warning raised -> " + text);
         }
+        // Hidden-fault encryption
+        var faults = T("Faults"); var kindT = T("FaultKind");
+        var leak = Enum.Parse(kindT, Enum.GetNames(kindT).First(n => n != "None"));
+        var prot = (string)faults.GetMethod("Protect").Invoke(null, new object[] { leak });
+        Check(!prot.Contains(leak.ToString()) && Convert.FromBase64String(prot).Length > 48, "hidden fault is encrypted (not readable text)");
+        Check(faults.GetMethod("Unprotect").Invoke(null, new object[] { prot }).Equals(leak), "hidden fault decrypts to the original");
+        var bytes = Convert.FromBase64String(prot); bytes[20] ^= 1;
+        Check(faults.GetMethod("Unprotect").Invoke(null, new object[] { Convert.ToBase64String(bytes) }).ToString() == "None", "tampered hidden fault is rejected");
+        // Safe save / load
+        var dir = Path.Combine(Path.GetTempPath(), "pneusim-selftest-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, "t.pneu");
+        object NewProject() => Activator.CreateInstance(T("Project"), Activator.CreateInstance(T("Circuit")), null);
+        var proj = NewProject();
+        proj.GetType().GetMethod("Save").Invoke(proj, new object[] { file });
+        proj.GetType().GetMethod("Save").Invoke(proj, new object[] { file });
+        Check(File.Exists(file) && File.Exists(file + ".bak") && !File.Exists(file + ".tmp"), "save keeps a .bak copy and leaves no temp file");
+        File.WriteAllText(file, "<PneuSimProject version=\"3\"><oops");
+        try { T("Project").GetMethod("Load").Invoke(null, new object[] { file }); Check(false, "damaged file rejected"); }
+        catch (System.Reflection.TargetInvocationException e) { Check(e.InnerException.Message.Contains("damaged") && e.InnerException.Message.Contains(".bak"), "damaged file gives a friendly message mentioning the backup"); }
+        File.WriteAllText(file, "<PneuSimProject version=\"99\"></PneuSimProject>");
+        try { T("Project").GetMethod("Load").Invoke(null, new object[] { file }); Check(false, "newer file rejected"); }
+        catch (System.Reflection.TargetInvocationException e) { Check(e.InnerException.Message.Contains("newer version"), "file from a newer version gives a friendly message"); }
+        Directory.Delete(dir, true);
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

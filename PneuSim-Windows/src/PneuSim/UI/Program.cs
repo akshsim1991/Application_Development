@@ -50,6 +50,8 @@ internal sealed class Program
 			ProjectData.SetProjectError(projectError);
 			ProjectData.ClearProjectError();
 		}
-		MessageBox.Show("Something went wrong inside PneuSim, but your work is safe: it has been saved to the recovery file and the simulation was stopped.\r\n\r\nDetails: " + (ex?.Message ?? "unknown error"), "PneuSim", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+		string report = ErrorLog.Write(ex, "Unhandled error");
+		using ErrorDialog errorDialog = new ErrorDialog(report, "Something went wrong inside PneuSim, but your work is safe: it has been saved to the recovery file and the simulation was stopped.\r\n\r\nThe details below were saved to a log on this computer (" + ErrorLog.Folder + "). Nothing is sent anywhere. Use \"Copy error report\" if you want to send it to the developer.");
+		errorDialog.ShowDialog();
 	}
 }

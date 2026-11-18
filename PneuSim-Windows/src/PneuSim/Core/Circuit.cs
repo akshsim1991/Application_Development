@@ -467,7 +467,7 @@ public class Circuit
 		{
 			if (hidden)
 			{
-				x.Add(new XAttribute("hf", Faults.Scramble(kind)));
+				x.Add(new XAttribute("hf2", Faults.Protect(kind)));
 			}
 			else
 			{
@@ -480,9 +480,18 @@ public class Circuit
 	{
 		XAttribute xAttribute = x.Attribute("fault");
 		XAttribute xAttribute2 = x.Attribute("hf");
+		XAttribute xAttribute3 = x.Attribute("hf2");
 		if (xAttribute != null && Enum.TryParse<FaultKind>(xAttribute.Value, out var result))
 		{
 			apply(result, arg2: false);
+		}
+		else if (xAttribute3 != null)
+		{
+			result = Faults.Unprotect(xAttribute3.Value);
+			if (result != 0)
+			{
+				apply(result, arg2: true);
+			}
 		}
 		else if (xAttribute2 != null)
 		{

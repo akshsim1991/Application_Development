@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
@@ -303,14 +304,49 @@ public class Project
 		return FromXDocument(XDocument.Parse(xml));
 	}
 
+	/// <summary>Saves safely: writes a temporary file, checks it can be read back, keeps the previous version as a .bak copy, then swaps the files.</summary>
 	public void Save(string path)
 	{
-		ToXDocument().Save(path);
+		string text = path + ".tmp";
+		ToXDocument().Save(text);
+		try
+		{
+			FromXDocument(XDocument.Load(text));
+		}
+		catch (Exception ex)
+		{
+			File.Delete(text);
+			throw new IOException("Saving failed the safety check, so your existing file was left untouched. (" + ex.Message + ")");
+		}
+		if (File.Exists(path))
+		{
+			try
+			{
+				File.Replace(text, path, path + ".bak");
+				return;
+			}
+			catch (IOException)
+			{
+				File.Copy(path, path + ".bak", overwrite: true);
+				File.Copy(text, path, overwrite: true);
+				File.Delete(text);
+				return;
+			}
+		}
+		File.Move(text, path);
 	}
 
 	public static Project Load(string path)
 	{
-		return FromXDocument(XDocument.Load(path));
+		try
+		{
+			return FromXDocument(XDocument.Load(path));
+		}
+		catch (System.Xml.XmlException)
+		{
+			string text = path + ".bak";
+			throw new InvalidDataException("This file is damaged or is not a PneuSim file." + (File.Exists(text) ? (" A backup copy of the previous save exists: " + text + ". Rename it to end in .pneu and open that.") : ""));
+		}
 	}
 
 	private XDocument ToXDocument()
@@ -335,6 +371,11 @@ public class Project
 		if (doc.Root == null)
 		{
 			throw new InvalidOperationException("Empty file.");
+		}
+		XAttribute xAttribute = doc.Root.Attribute("version");
+		if (xAttribute != null && int.TryParse(xAttribute.Value, out var fileVersion) && fileVersion > ((doc.Root.Name.LocalName == "PneuSimProject") ? 3 : 2))
+		{
+			throw new InvalidDataException("This file was made by a newer version of PneuSim. Please update PneuSim to open it.");
 		}
 		if (Operators.CompareString(doc.Root.Name.LocalName, "PneuSimCircuit", TextCompare: false) == 0)
 		{

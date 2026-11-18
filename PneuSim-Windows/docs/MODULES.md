@@ -40,13 +40,13 @@ concept; talk to other modules through their public classes only.
 `python tools/module_map.py` rewrites the table below from the source tree.
 
 <!-- AUTO-START -->
-### M-ENGINE - Engine and data model  (20 files, 3943 lines)
+### M-ENGINE - Engine and data model  (20 files, 4066 lines)
 
 | File | Lines |
 |---|---|
 | `Core/Simulator.cs` | 1414 |
-| `Core/Circuit.cs` | 508 |
-| `Core/Project.cs` | 383 |
+| `Core/Circuit.cs` | 517 |
+| `Core/Project.cs` | 424 |
 | `Core/ProjectInfo.cs` | 112 |
 | `Core/ProjectPage.cs` | 13 |
 | `Core/Port.cs` | 70 |
@@ -54,7 +54,7 @@ concept; talk to other modules through their public classes only.
 | `Core/PortState.cs` | 8 |
 | `Core/Tube.cs` | 195 |
 | `Core/CircuitElement.cs` | 274 |
-| `Core/Faults.cs` | 79 |
+| `Core/Faults.cs` | 152 |
 | `Core/FaultKind.cs` | 30 |
 | `Core/Polarity.cs` | 12 |
 | `Core/LiveTuning.cs` | 163 |
@@ -232,7 +232,7 @@ concept; talk to other modules through their public classes only.
 | `UI/RibbonBuilder.cs` | 126 |
 | `UI/RibbonIcons.cs` | 116 |
 
-### M-SHELL - Main window (partial class, split by concern)  (12 files, 3603 lines)
+### M-SHELL - Main window (partial class, split by concern)  (12 files, 3605 lines)
 
 | File | Lines |
 |---|---|
@@ -247,7 +247,7 @@ concept; talk to other modules through their public classes only.
 | `UI/MainForm.Theme.cs` | 184 |
 | `UI/MainForm.Tools.cs` | 251 |
 | `UI/MainForm.cs` | 550 |
-| `UI/Program.cs` | 55 |
+| `UI/Program.cs` | 57 |
 
 ### M-COMPAT - Visual Basic compatibility shims  (26 files, 163 lines)
 
@@ -283,6 +283,8 @@ concept; talk to other modules through their public classes only.
 ### Unassigned
 
 - `Core/AppInfo.cs`
+- `Core/ErrorLog.cs`
 - `UI/AboutDialog.cs`
+- `UI/ErrorDialog.cs`
 - `UI/StartScreen.cs`
 <!-- AUTO-END -->

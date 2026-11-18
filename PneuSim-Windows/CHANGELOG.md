@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.11 "Mistral" (18 Nov 2026)
+- After closing the last circuit only the start screen is shown: the diagram, plotter and other bottom panels and the page tabs are hidden until a circuit is opened again.
+
 ## 3.3.10 "Mistral" (18 Nov 2026)
 - New Manifold (distribution block, 2 to 8 outlets, air or hydraulic): one inlet feeds many tubes or hoses without a pile of T-junctions.
 - Counterbalance valve now works with air as well as oil (property "Hydraulic"; new library entry "Counterbalance valve (air)", Logic & Flow tab). Circuits such as the pneumatic load-holding circuit now keep all their tubes and run: held, raised, lowered under control.

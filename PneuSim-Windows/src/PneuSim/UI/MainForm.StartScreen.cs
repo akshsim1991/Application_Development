@@ -8,6 +8,8 @@ public partial class MainForm
 {
 	private StartScreen _startScreen;
 
+	private bool _bottomWasShown;
+
 	/// <summary>Shows the start screen if nothing has been opened or drawn yet.</summary>
 	public void ShowStartScreen()
 	{
@@ -38,6 +40,9 @@ public partial class MainForm
 		};
 		_diagramSplit.Panel1.Controls.Add(_startScreen);
 		_startScreen.BringToFront();
+		_bottomWasShown = !_diagramSplit.Panel2Collapsed;
+		_diagramSplit.Panel2Collapsed = true;
+		_pageTabs.Visible = false;
 	}
 
 	private void HideStartScreen()
@@ -48,6 +53,8 @@ public partial class MainForm
 			_startScreen = null;
 			startScreen.Parent?.Controls.Remove(startScreen);
 			startScreen.Dispose();
+			_diagramSplit.Panel2Collapsed = !_bottomWasShown;
+			_pageTabs.Visible = true;
 		}
 	}
 }

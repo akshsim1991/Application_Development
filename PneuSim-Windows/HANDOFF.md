@@ -9,7 +9,7 @@ Control lab work. FluidSIM-style, Windows only.
   dependencies). Build with `dotnet build -c Release`.
 - Reference build: `release/PneuSim-Setup-3.2.0.exe`. It installs per user into
   `%LOCALAPPDATA%\Programs\PneuSim`.
-- Documentation: `docs/ARCHITECTURE.md`, `docs/FEATURES.md`, `docs/FILE_FORMAT.md`,
+- Documentation: `docs/GUI.md` (screenshots and UI backlog), `docs/ARCHITECTURE.md`, `docs/FEATURES.md`, `docs/FILE_FORMAT.md`,
   `docs/CLASS_INVENTORY.md`, `docs/RECOVERY.md`.
 - Test circuits: `examples/bundled/` (shipped with 3.2.0) and `examples/user/`.
 
@@ -25,7 +25,7 @@ Control lab work. FluidSIM-style, Windows only.
 
 1. **First Windows run.** Build, start `PneuSim.exe`, open every file in `examples/` and run
    through the menus. Compare against the installed 3.2.0, using the GUI screenshots being
-   collected by Akshaya. Note anything that looks different.
+   in `docs/GUI.md` (40 screenshots of 3.2.0). Note anything that looks different.
 2. **Re-create the build pipeline.** A GitHub Actions workflow (windows-latest:
    build → equivalence harness → Inno Setup) and a new `installer/PneuSim.iss` (per-user
    install, desktop icon, `.pneu` association, uninstaller). Workflows must sit in the
@@ -39,7 +39,7 @@ Control lab work. FluidSIM-style, Windows only.
    the clean-up pass, and re-verify with the harness.
 5. **Tests.** Turn the harness report into checked-in expected output (golden files), so that
    every future change is compared against the 3.2.0 behaviour.
-6. Then the revisions and patches (feature requests, bug fixes).
+6. Then the revisions and patches: start with the UI backlog G1–G6 in `docs/GUI.md`, then feature requests and bug fixes.
 
 ## Known caveats
 

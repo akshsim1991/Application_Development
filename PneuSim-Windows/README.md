@@ -20,6 +20,7 @@ later versions were extended with Claude Code (Claude Pro).
 | `src/PneuSim/` | Recovered source (135 files, about 29,000 lines) in the original folder layout: `Core`, `Elements`, `Generator`, `Learning`, `Tools`, `UI` |
 | `docs/ARCHITECTURE.md` | How the program is built: modules, element model, simulation engines, UI |
 | `docs/FEATURES.md` | Complete feature list for version 3.2 (menus, components, tools, learning) |
+| `docs/GUI.md`, `docs/screenshots/` | GUI reference: 40 screenshots of 3.2.0 (window layout, every menu, the library, properties, all 12 examples) and the UI issues found in them |
 | `docs/FILE_FORMAT.md` | The `.pneu` circuit and project file format |
 | `docs/CLASS_INVENTORY.md` | Every source file with its type, base class and size |
 | `docs/RECOVERY.md` | How the source was recovered, what was fixed by hand, how equivalence was checked |

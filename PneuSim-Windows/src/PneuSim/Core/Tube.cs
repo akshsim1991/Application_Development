@@ -57,6 +57,77 @@ public class Tube
 
 	internal Func<IEnumerable<CircuitElement>> Obstacles { get; set; }
 
+	internal Func<IEnumerable<Tube>> Siblings { get; set; }
+
+	private PointF[] DefaultRoute()
+	{
+		return RouteBetween(A.WorldPos(), A.WorldDir(), B.WorldPos(), B.WorldDir(), Mid);
+	}
+
+	private static float OverlapLength(PointF p, PointF q, List<PointF[]> sibs)
+	{
+		float total = 0f;
+		bool vertical = Math.Abs(p.X - q.X) < 0.01f;
+		bool horizontal = Math.Abs(p.Y - q.Y) < 0.01f;
+		if (!vertical && !horizontal)
+		{
+			return 0f;
+		}
+		foreach (PointF[] r in sibs)
+		{
+			for (int i = 0; i < r.Length - 1; i++)
+			{
+				PointF c = r[i];
+				PointF d = r[i + 1];
+				if (vertical && Math.Abs(c.X - d.X) < 0.01f && Math.Abs(c.X - p.X) < 1f)
+				{
+					float o = Math.Min(Math.Max(p.Y, q.Y), Math.Max(c.Y, d.Y)) - Math.Max(Math.Min(p.Y, q.Y), Math.Min(c.Y, d.Y));
+					if (o > 2f)
+					{
+						total += o;
+					}
+				}
+				else if (horizontal && Math.Abs(c.Y - d.Y) < 0.01f && Math.Abs(c.Y - p.Y) < 1f)
+				{
+					float o2 = Math.Min(Math.Max(p.X, q.X), Math.Max(c.X, d.X)) - Math.Max(Math.Min(p.X, q.X), Math.Min(c.X, d.X));
+					if (o2 > 2f)
+					{
+						total += o2;
+					}
+				}
+			}
+		}
+		return total;
+	}
+
+	private static float OverlapTotal(PointF[] r, List<PointF[]> sibs)
+	{
+		float total = 0f;
+		for (int i = 1; i < r.Length - 2; i++)
+		{
+			total += OverlapLength(r[i], r[i + 1], sibs);
+		}
+		return total;
+	}
+
+	private List<PointF[]> SiblingRoutes()
+	{
+		List<PointF[]> list = new List<PointF[]>();
+		if (Siblings == null)
+		{
+			return list;
+		}
+		foreach (Tube t in Siblings())
+		{
+			if (t == this || t.A == A || t.A == B || t.B == A || t.B == B || t.A.Owner is Junction || t.B.Owner is Junction || A.Owner is Junction || B.Owner is Junction)
+			{
+				continue;
+			}
+			list.Add(t.DefaultRoute());
+		}
+		return list;
+	}
+
 	private PointF[] _cache;
 
 	private int _cacheKey;
@@ -80,7 +151,8 @@ public class Tube
 			r.Inflate(4f, 4f);
 			obs.Add(r);
 		}
-		if (CountHits(def, obs) == 0)
+		List<PointF[]> sibs = SiblingRoutes();
+		if (CountHits(def, obs) == 0 && OverlapTotal(def, sibs) < 6f)
 		{
 			return def;
 		}
@@ -99,6 +171,17 @@ public class Tube
 				key = key * 31 + r.Height.GetHashCode();
 			}
 		}
+		unchecked
+		{
+			foreach (PointF[] r in sibs)
+			{
+				foreach (PointF p in r)
+				{
+					key = key * 31 + p.X.GetHashCode();
+					key = key * 31 + p.Y.GetHashCode();
+				}
+			}
+		}
 		if (_cache != null && key == _cacheKey)
 		{
 			return _cache;
@@ -106,7 +189,7 @@ public class Tube
 		PointF[] found = null;
 		try
 		{
-			found = FindRoute(obs);
+			found = FindRoute(obs, sibs);
 		}
 		catch (Exception)
 		{
@@ -151,7 +234,7 @@ public class Tube
 	}
 
 	/// <summary>Shortest neat (horizontal and vertical lines only) route between the two stub ends that avoids every obstacle, with few bends.</summary>
-	private PointF[] FindRoute(List<RectangleF> obs)
+	private PointF[] FindRoute(List<RectangleF> obs, List<PointF[]> sibs)
 	{
 		PointF a = A.WorldPos();
 		PointF b = B.WorldPos();
@@ -169,6 +252,22 @@ public class Tube
 			xset.Add(r.Right + 6f);
 			yset.Add(r.Top - 6f);
 			yset.Add(r.Bottom + 6f);
+		}
+		foreach (PointF[] r in sibs)
+		{
+			for (int i = 0; i < r.Length - 1; i++)
+			{
+				if (Math.Abs(r[i].X - r[i + 1].X) < 0.01f)
+				{
+					xset.Add(r[i].X + 12f);
+					xset.Add(r[i].X - 12f);
+				}
+				else if (Math.Abs(r[i].Y - r[i + 1].Y) < 0.01f)
+				{
+					yset.Add(r[i].Y + 12f);
+					yset.Add(r[i].Y - 12f);
+				}
+			}
 		}
 		List<float> xs = Dedup(xset);
 		List<float> ys = Dedup(yset);
@@ -269,7 +368,7 @@ public class Tube
 					continue;
 				}
 				float len = Math.Abs(xs[ni] - xs[ci]) + Math.Abs(ys[nj] - ys[cj]);
-				float cost = top.Item1 + len + ((nd != dir) ? 30f : 0f);
+				float cost = top.Item1 + len + ((nd != dir) ? 30f : 0f) + 3f * OverlapLength(new PointF(xs[ci], ys[cj]), new PointF(xs[ni], ys[nj]), sibs);
 				int ns = (ni * ny + nj) * 4 + nd;
 				if (cost < dist[ns])
 				{

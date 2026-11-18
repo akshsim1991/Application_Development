@@ -177,6 +177,7 @@ public class Circuit
 		}
 		Tube tube = new Tube(a, b);
 		tube.Obstacles = () => Elements;
+		tube.Siblings = () => Tubes;
 		Tubes.Add(tube);
 		checked
 		{

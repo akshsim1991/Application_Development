@@ -712,9 +712,11 @@ public class CircuitCanvas : ScrollableControl
 		using Pen pen2 = new Pen(Simulating ? Color.FromArgb(90, 90, 90) : Color.FromArgb(40, 40, 40), 1.2f);
 		using Pen pen = new Pen(Color.FromArgb(120, 255, 170, 0), 7f);
 		pen.LineJoin = LineJoin.Round;
-		foreach (Tube tube in _circuit.Tubes)
+		List<(Tube T, PointF[] R)> routes = _circuit.Tubes.Select((Tube t) => (t, t.Route())).ToList();
+		foreach (var routeItem in routes)
 		{
-			PointF[] array = tube.Route();
+			Tube tube = routeItem.T;
+			PointF[] array = WithHops(routeItem.R, routes.Where(((Tube T, PointF[] R) o) => o.T != tube && o.T.A != tube.A && o.T.A != tube.B && o.T.B != tube.A && o.T.B != tube.B).Select(((Tube T, PointF[] R) o) => o.R).ToList());
 			if (tube == _selectedTube)
 			{
 				g.DrawLines(pen, array);
@@ -726,6 +728,55 @@ public class CircuitCanvas : ScrollableControl
 				DrawTubeFault(g, tube, array);
 			}
 		}
+	}
+
+	/// <summary>Where a horizontal line crosses a vertical line of another tube (not connected to it), the horizontal line hops over it with a small arch, as in electrical drawings.</summary>
+	private static PointF[] WithHops(PointF[] r, List<PointF[]> others)
+	{
+		List<PointF> res = new List<PointF> { r[0] };
+		for (int i = 0; i < r.Length - 1; i++)
+		{
+			PointF a = r[i];
+			PointF b = r[i + 1];
+			if (Math.Abs(a.Y - b.Y) < 0.01f && Math.Abs(a.X - b.X) > 14f)
+			{
+				float dir = (b.X > a.X) ? 1f : -1f;
+				List<float> xs = new List<float>();
+				foreach (PointF[] o in others)
+				{
+					for (int j = 0; j < o.Length - 1; j++)
+					{
+						PointF c = o[j];
+						PointF d = o[j + 1];
+						if (Math.Abs(c.X - d.X) < 0.01f && Math.Abs(c.Y - d.Y) > 0.5f && c.X > Math.Min(a.X, b.X) + 7f && c.X < Math.Max(a.X, b.X) - 7f && a.Y > Math.Min(c.Y, d.Y) + 3f && a.Y < Math.Max(c.Y, d.Y) - 3f)
+						{
+							xs.Add(c.X);
+						}
+					}
+				}
+				xs.Sort();
+				if (dir < 0f)
+				{
+					xs.Reverse();
+				}
+				float last = float.NaN;
+				foreach (float x in xs)
+				{
+					if (!float.IsNaN(last) && Math.Abs(x - last) < 12f)
+					{
+						continue;
+					}
+					last = x;
+					for (int k = 0; k <= 6; k++)
+					{
+						double t = Math.PI * (double)k / 6.0;
+						res.Add(new PointF(x - dir * 5f * (float)Math.Cos(t), a.Y - 5f * (float)Math.Sin(t)));
+					}
+				}
+			}
+			res.Add(b);
+		}
+		return res.ToArray();
 	}
 
 	/// <summary>Elements above their rated pressure; drawn with a red frame while simulating.</summary>

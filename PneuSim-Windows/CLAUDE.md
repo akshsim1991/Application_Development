@@ -2,7 +2,9 @@
 
 Owner: Akshaya Simha (akshsimha@gmail.com). Windows pneumatic, electro-pneumatic and hydraulic
 circuit simulator. C# / Windows Forms / .NET Framework 4.7.2. Read `HANDOFF.md` first, then
-`docs/ARCHITECTURE.md` and `docs/GUI.md`.
+`docs/MODULES.md`. **Work module by module: open only the files of the module the task needs
+(saves tokens); do not read the whole tree.** `docs/ARCHITECTURE.md` and `docs/GUI.md` are
+reference only.
 
 ## Hard rules
 - **START was given on 18 Nov 2026.** Development of 3.3.0 "Mistral" is under way; follow the
@@ -22,6 +24,8 @@ circuit simulator. C# / Windows Forms / .NET Framework 4.7.2. Read `HANDOFF.md` 
   this on every push (`.github/workflows/pneusim.yml`). Intended behaviour changes must be
   listed in `CHANGELOG.md`.
 - Keep the installer AppId `{6F1E9A52-3C1B-4B7E-9D0A-5A2C3E7B8D41}` (in-place upgrades).
+- Double-clicking a component must never open a properties window; properties stay in the side
+  Properties panel.
 - Work on branch `claude/vigilant-sagan-opwt41`; commit small and push after every milestone
   (the session may end at any time). No PR unless the owner asks.
 

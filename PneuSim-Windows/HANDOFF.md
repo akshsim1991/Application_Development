@@ -115,6 +115,7 @@ of ISO 1219-1 and -2 as reference. Produce `docs/SYMBOLS.md` (conformity table) 
 Owner may hit usage limits at any time, so work is cut into small milestones; each ends with
 build + harness, a commit and a push, and a tick below. Resume at the first unticked item.
 - [x] M1a docs: DESIGN.md, SYMBOLS.md draft (18 Nov). [ ] M1b palette/icon grid; version bump to 3.3.0 "Mistral" is deferred to M9 (title is checked by CI smoke test)
+- [x] MOD Modularity (18 Nov): `docs/MODULES.md` (module map, dependency rules, task->module table, auto file tables via tools/module_map.py); MainForm split into 10 partial-class files by concern; CircuitAnalysis split into 5 parts; harness identical. Remaining decompiler closure types live in MainForm.cs / CircuitAnalysis.cs (clean up in M7/M9).
 - NOTE: .NET 8 SDK installed in the cloud container via apt (apt-get update; apt-get install dotnet-sdk-8.0). Build: `dotnet build ... -p:EnableWindowsTargeting=true`. Harness runs on Linux too (partial: 'static checks' threw in both builds; compare reports/original.txt vs rebuilt.txt). CI now also runs on claude/** branches.
 - [x] M2 De-academic pass (item 1) + README/About/installer text (18 Nov; builds, harness identical locally)
 - [x] M3 Settings dialog (Tools > Settings, Ctrl+,), theme Light/Dark/Follow Windows (default), units bar/MPa/kPa on canvas labels, sound+update flags stored. Still open: unit-aware property inputs/Cutaways text; Advanced-mode filtering of properties (do in M5/M9); rated pressure is M4

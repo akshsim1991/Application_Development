@@ -30,6 +30,7 @@ reference only.
   (the session may end at any time). No PR unless the owner asks.
 
 ## Build and test
+Cloud (Linux): `apt-get update && apt-get install -y dotnet-sdk-8.0`, then `bash PneuSim-Windows/tools/check_golden.sh` (builds, runs harness vs golden, runs self-tests).
 ```
 dotnet build PneuSim-Windows/src/PneuSim/PneuSim.csproj -c Release
 python PneuSim-Windows/tools/extract_installer.py PneuSim-Windows/release/PneuSim-Setup-3.2.0.exe ref

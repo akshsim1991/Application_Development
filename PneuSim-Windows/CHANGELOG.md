@@ -14,6 +14,8 @@ Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 - Internal: MainForm and CircuitAnalysis split into partial-class files; docs/MODULES.md added.
 - Safer saving (checked temporary file, previous version kept as .bak), friendly messages for damaged files and files from a newer version, local error log with "Copy error report", stronger encryption of hidden faults (new files use hf2; 3.2 files still open).
 - Automatic updates (Help > Update to new version, daily check): checksum-verified download, silent in-place upgrade. Installer checks for .NET Framework 4.7.2.
+- Properties panel: name column wider; clicking a check result selects the part and scrolls to it.
+- Automatic tests: physics invariants and speed on all examples, golden file of the 3.2.0 behaviour (see docs/VALIDATION.md).
 - Build tip: the project builds on Linux with `-p:EnableWindowsTargeting=true`.
 
 ## Source recovery (18 Nov 2026)

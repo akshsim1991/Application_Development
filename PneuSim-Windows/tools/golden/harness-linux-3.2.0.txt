@@ -1,0 +1,810 @@
+== example: 1. Direct control of a single-acting cylinder
+  elements: 3
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1S1 (3/2-way valve (NC), push button, spring return).
+    It extends by operating valve 1S1 by hand.
+    It retracts by spring return of 1S1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,
+  xml length: 1325
+== example: 2. Indirect control of a double-acting cylinder with speed control
+  elements: 7
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 2 directional control valves, 2 flow control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by push button valve 1S1.
+    It retracts by spring return of 1V1.
+    Its speed is limited by flow control valve 1V2 (40 % opening, one-way).
+    Its speed is limited by flow control valve 1V3 (15 % opening, one-way).
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return) → valve 1V1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.41 s   cylinder 1A is fully retracted
+       One complete cycle took 0.41 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,
+  xml length: 2586
+== example: 3. OR: operation from two places (shuttle valve)
+  elements: 6
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 2 directional control valves, 1 logic valve.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,
+  xml length: 2196
+== example: 4. AND: two-hand safety control (two-pressure valve)
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 3 directional control valves, 1 logic valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by two-pressure valve 1V2 (AND), push button valve 1S1, push button valve 1S2.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+
+  10 s free run, state: -,0,0,0,
+  xml length: 2867
+== example: 5. Automatic reciprocation with limit valves
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 4 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 1S1 (operated at 1S1).
+    It retracts by roller valve 1S2 (operated at 1S2).
+
+MOTION SEQUENCE
+  1A+ 1A-   (as letters: A+ A-)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1S3 → valve 1S3 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  1.00 s   cylinder 1A is fully extended (operates 1S2) → valve 1V1 switches to position b
+ 4. t =  1.00 s   cylinder 1A starts to retract
+ 5. t =  1.98 s   cylinder 1A is fully retracted (operates 1S1) → valve 1V1 switches to position a
+       One complete cycle took 1.98 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,1,0,
+  xml length: 3232
+== example: 6. Delayed return with a time delay valve
+  elements: 9
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 4 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by push button valve 1S1.
+    It retracts by time delay valve 1V2 (2 s).
+
+MOTION SEQUENCE
+  1A+ 1A-   (as letters: A+ A-)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1S2)
+ 5. t =  2.99 s   valve 1V1 switches to position b → valve 1V2 switches to position a
+ 6. t =  3.00 s   cylinder 1A starts to retract
+ 7. t =  3.00 s   valve 1V2 switches to its normal position (spring return)
+ 8. t =  3.99 s   cylinder 1A is fully retracted
+       One complete cycle took 3.99 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,0,0,
+  xml length: 3423
+== example: 7. Electro-pneumatic: direct control with a solenoid valve
+  elements: 7
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, spring return).
+    It extends by solenoid 1M1, energized when S1.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1 → solenoid 1M1 is switched off → valve 1V1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,0,
+  xml length: 2174
+== example: 8. Electro-pneumatic: self-holding circuit with start / stop and lamp
+  elements: 18
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 1 directional control valve, 1 relay.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, spring return).
+    It extends by solenoid 1M1, energized when K1.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → relay K1 picks up → solenoid 1M1 is energized → lamp H1 lights up → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1
+ 4. t =  1.00 s   cylinder 1A is fully extended
+
+  10 s free run, state: -,0,1,0,0,0,0,0,0,0,
+  xml length: 4902
+== example: 9. Hydraulics: cylinder with 4/3 valve, relief valve and gauge
+  elements: 17
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 hydraulic cylinder, 1 directional control valve, 1 hydraulic pump.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Hydraulic cylinder 1A is controlled by valve 1V1 (4/3-way hydraulic valve (tandem centre), solenoid / solenoid, spring centred).
+    It extends by solenoid 1M1, energized when S1.
+    It retracts by solenoid 1M2, energized when S2.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1 → solenoid 1M1 is switched off → valve 1V1 switches to its centre position
+ 4. t =  0.31 s   cylinder 1A stops at 16 % of its stroke
+
+  10 s free run, state: -,0,0,0,0,0,
+  xml length: 4568
+== example: 10. Realistic mode: pressure sequence valve (clamp, then drill)
+  elements: 11
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 double-acting cylinder, 3 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1V1 (3/2-way valve (NC), selector switch, spring return).
+    It extends by operating valve 1V1 by hand.
+    It retracts by spring return of 1V1.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by valve 1V2.
+    It retracts by spring return of 2V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1V1 → valve 1V1 switches to position a → valve 1V2 switches to position a → valve 2V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend → cylinder 2A starts to extend
+ 3. t =  1.00 s   cylinder 1A is fully extended → cylinder 2A is fully extended
+
+  10 s free run, state: -,-,0,0,0,
+  xml length: 4129
+== example: 11. Vacuum handling: ejector, suction cup and vacuum switch
+  elements: 11
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 directional control valve.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1S1 → lamp H1 lights up → valve 1S1 switches to position a
+
+  10 s free run, state: 0,0,0,0,
+  xml length: 2871
+== example: 12. Air generation: compressor, receiver, service unit and flow meter
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+    Info: Test run: cylinder 1A did not move within 15 s, neither after operating 1S1 alone.
+  dynamic check (realistic=True):
+    Info: Test run: cylinder 1A did not move within 15 s, neither after operating 1S1 alone.
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1S1 (3/2-way valve (NC), push button, spring return).
+    It extends by operating valve 1S1 by hand.
+    It retracts by spring return of 1S1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+
+  10 s free run, state: 0,-,
+  xml length: 2716
+== generate A+ B+ B- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ B- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ B- A- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ B- A- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ A- B- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ A- B- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ A- B- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ A- B- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ C+ C- B- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ C+ C- B- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ C+ C- B- A- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ B+ C+ C- B- A- PneumaticCascade threw The type initializer for 'Gdip' threw an exception.
+== generate A+ (B+ C+) B- C- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ (B+ C+) B- C- A- ElectroRelayChain threw The type initializer for 'Gdip' threw an exception.
+== generate A+ (B+ C+) B- C- A- PneumaticCascade threw The cascade method needs one movement per step. Remove the brackets, or use the electro-pneumatic method.
+== generate A+ (B+ C+) B- C- A- PneumaticCascade threw The cascade method needs one movement per step. Remove the brackets, or use the electro-pneumatic method.
+== file: 01_direct_single_acting.pneu
+  elements: 3
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1S1 (3/2-way valve (NC), push button, spring return).
+    It extends by operating valve 1S1 by hand.
+    It retracts by spring return of 1S1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,
+  xml length: 1325
+== file: 02_indirect_double_acting_speed_control.pneu
+  elements: 7
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 2 directional control valves, 2 flow control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by push button valve 1S1.
+    It retracts by spring return of 1V1.
+    Its speed is limited by flow control valve 1V2 (40 % opening, one-way).
+    Its speed is limited by flow control valve 1V3 (15 % opening, one-way).
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return) → valve 1V1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.41 s   cylinder 1A is fully retracted
+       One complete cycle took 0.41 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,
+  xml length: 2586
+== file: 03_or_shuttle_valve.pneu
+  elements: 6
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 2 directional control valves, 1 logic valve.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,
+  xml length: 2196
+== file: 04_and_two_hand_control.pneu
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 3 directional control valves, 1 logic valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by two-pressure valve 1V2 (AND), push button valve 1S1, push button valve 1S2.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+
+  10 s free run, state: -,0,0,0,
+  xml length: 2867
+== file: 05_auto_reciprocation_limit_valves.pneu
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 4 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 1S1 (operated at 1S1).
+    It retracts by roller valve 1S2 (operated at 1S2).
+
+MOTION SEQUENCE
+  1A+ 1A-   (as letters: A+ A-)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1S3 → valve 1S3 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  1.00 s   cylinder 1A is fully extended (operates 1S2) → valve 1V1 switches to position b
+ 4. t =  1.00 s   cylinder 1A starts to retract
+ 5. t =  1.98 s   cylinder 1A is fully retracted (operates 1S1) → valve 1V1 switches to position a
+       One complete cycle took 1.98 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,1,0,
+  xml length: 3232
+== file: 06_delayed_return_time_delay.pneu
+  elements: 9
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 4 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by push button valve 1S1.
+    It retracts by time delay valve 1V2 (2 s).
+
+MOTION SEQUENCE
+  1A+ 1A-   (as letters: A+ A-)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1S2)
+ 5. t =  2.99 s   valve 1V1 switches to position b → valve 1V2 switches to position a
+ 6. t =  3.00 s   cylinder 1A starts to retract
+ 7. t =  3.00 s   valve 1V2 switches to its normal position (spring return)
+ 8. t =  3.99 s   cylinder 1A is fully retracted
+       One complete cycle took 3.99 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,0,0,
+  xml length: 3423
+== file: 07_electro_direct_solenoid.pneu
+  elements: 7
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, spring return).
+    It extends by solenoid 1M1, energized when S1.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1 → solenoid 1M1 is switched off → valve 1V1 switches to its normal position (spring return)
+ 4. t =  0.31 s   cylinder 1A starts to retract
+ 5. t =  0.60 s   cylinder 1A is fully retracted
+       One complete cycle took 0.60 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,0,0,
+  xml length: 2174
+== file: 08_electro_self_holding.pneu
+  elements: 18
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 double-acting cylinder, 1 directional control valve, 1 relay.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, spring return).
+    It extends by solenoid 1M1, energized when K1.
+    It retracts by spring return of 1V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → relay K1 picks up → solenoid 1M1 is energized → lamp H1 lights up → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1
+ 4. t =  1.00 s   cylinder 1A is fully extended
+
+  10 s free run, state: -,0,1,0,0,0,0,0,0,0,
+  xml length: 4902
+== file: 09_hydraulic_43_valve_relief.pneu
+  elements: 17
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 hydraulic cylinder, 1 directional control valve, 1 hydraulic pump.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Hydraulic cylinder 1A is controlled by valve 1V1 (4/3-way hydraulic valve (tandem centre), solenoid / solenoid, spring centred).
+    It extends by solenoid 1M1, energized when S1.
+    It retracts by solenoid 1M2, energized when S2.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1 → solenoid 1M1 is switched off → valve 1V1 switches to its centre position
+ 4. t =  0.31 s   cylinder 1A stops at 16 % of its stroke
+
+  10 s free run, state: -,0,0,0,0,0,
+  xml length: 4568
+== file: 10_realistic_pressure_sequence.pneu
+  elements: 11
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 double-acting cylinder, 3 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1V1 (3/2-way valve (NC), selector switch, spring return).
+    It extends by operating valve 1V1 by hand.
+    It retracts by spring return of 1V1.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, pneumatic pilot, spring return).
+    It extends by valve 1V2.
+    It retracts by spring return of 2V1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1V1 → valve 1V1 switches to position a → valve 1V2 switches to position a → valve 2V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend → cylinder 2A starts to extend
+ 3. t =  1.00 s   cylinder 1A is fully extended → cylinder 2A is fully extended
+
+  10 s free run, state: -,-,0,0,0,
+  xml length: 4129
+== file: 11_vacuum_handling.pneu
+  elements: 11
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 directional control valve.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You switch on 1S1 → lamp H1 lights up → valve 1S1 switches to position a
+
+  10 s free run, state: 0,0,0,0,
+  xml length: 2871
+== file: 12_air_generation_receiver.pneu
+  elements: 8
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+    Info: Test run: cylinder 1A did not move within 15 s, neither after operating 1S1 alone.
+  dynamic check (realistic=True):
+    Info: Test run: cylinder 1A did not move within 15 s, neither after operating 1S1 alone.
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 1 single-acting cylinder, 1 directional control valve.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Single-acting cylinder 1A is controlled by valve 1S1 (3/2-way valve (NC), push button, spring return).
+    It extends by operating valve 1S1 by hand.
+    It retracts by spring return of 1S1.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S1 → valve 1S1 switches to position a
+ 2. t =  0.30 s   You release 1S1 → valve 1S1 switches to its normal position (spring return)
+
+  10 s free run, state: 0,-,
+  xml length: 2716
+== file: gen_cascade_A+B+A-B-.pneu
+  elements: 29
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 2 double-acting cylinders, 8 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by valve 0V1.
+    It retracts by valve 0V1.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 1S2 (operated at 1S2).
+    It retracts by roller valve 1S1 (operated at 1S1).
+
+MOTION SEQUENCE
+  1A+ 2A+   (as letters: A+ B+)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S0 → valve 1S0 switches to position a → valve 1V1 switches to position a → valve 0V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S0 → valve 1S0 switches to its normal position (spring return)
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1S2) → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2S2) → valve 1V1 switches to position b → valve 0V1 switches to position b
+ 7. t =  1.99 s   cylinder 1A starts to retract
+ 8. t =  2.98 s   cylinder 1A is fully retracted (operates 1S1) → valve 2V1 switches to position b
+ 9. t =  2.99 s   cylinder 2A starts to retract
+10. t =  3.98 s   cylinder 2A is fully retracted (operates 2S1)
+       One complete cycle took 3.98 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,0,0,0,0,1,1,
+  xml length: 9358
+== file: gen_cascade_A+B+B-A-.pneu
+  elements: 29
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 2 double-acting cylinders, 8 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by valve 0V1.
+    It retracts by roller valve 2S1 (operated at 2S1).
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 1S2 (operated at 1S2).
+    It retracts by valve 0V1.
+
+MOTION SEQUENCE
+  1A+ 2A+   (as letters: A+ B+)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S0 → valve 1S0 switches to position a → valve 1V1 switches to position a → valve 0V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S0 → valve 1S0 switches to its normal position (spring return)
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1S2) → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2S2) → valve 2V1 switches to position b → valve 0V1 switches to position b
+ 7. t =  1.99 s   cylinder 2A starts to retract
+ 8. t =  2.98 s   cylinder 2A is fully retracted (operates 2S1) → valve 1V1 switches to position b
+ 9. t =  2.98 s   cylinder 1A starts to retract
+10. t =  3.97 s   cylinder 1A is fully retracted (operates 1S1)
+       One complete cycle took 3.97 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,0,0,0,0,1,1,
+  xml length: 9358
+== file: gen_cascade_A+B+C+C-B-A-.pneu
+  elements: 38
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 3 double-acting cylinders, 11 directional control valves.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by valve 0V1.
+    It retracts by roller valve 2S1 (operated at 2S1).
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 1S2 (operated at 1S2).
+    It retracts by roller valve 3S1 (operated at 3S1).
+• Double-acting cylinder 3A is controlled by valve 3V1 (5/2-way valve, pneumatic pilot, pilot return).
+    It extends by roller valve 2S2 (operated at 2S2).
+    It retracts by valve 0V1.
+
+MOTION SEQUENCE
+  1A+ 2A+ 3A+   (as letters: A+ B+ C+)
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press 1S0 → valve 1S0 switches to position a → valve 1V1 switches to position a → valve 0V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release 1S0 → valve 1S0 switches to its normal position (spring return)
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1S2) → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2S2) → valve 3V1 switches to position a
+ 7. t =  1.99 s   cylinder 3A starts to extend
+ 8. t =  2.98 s   cylinder 3A is fully extended (operates 3S2) → valve 3V1 switches to position b → valve 0V1 switches to position b
+ 9. t =  2.99 s   cylinder 3A starts to retract
+10. t =  3.97 s   cylinder 3A is fully retracted (operates 3S1) → valve 2V1 switches to position b
+11. t =  3.98 s   cylinder 2A starts to retract
+12. t =  4.97 s   cylinder 2A is fully retracted (operates 2S1) → valve 1V1 switches to position b
+13. t =  4.97 s   cylinder 1A starts to retract
+14. t =  5.96 s   cylinder 1A is fully retracted (operates 1S1)
+       One complete cycle took 5.96 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,-,0,0,0,0,0,0,1,1,1,
+  xml length: 12567
+== file: gen_relay_A+B+A-B-.pneu
+  elements: 57
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 2 double-acting cylinders, 2 directional control valves, 4 relays, 4 sensor contacts.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 1M1, energized when K1.
+    It retracts by solenoid 1M2, energized when K3.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 2M1, energized when K2.
+    It retracts by solenoid 2M2, energized when K4.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → relay K1 picks up → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1B2) → relay K1 drops out → relay K2 picks up → solenoid 1M1 is switched off → solenoid 2M1 is energized → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2B2) → relay K2 drops out → relay K3 picks up → solenoid 1M2 is energized → solenoid 2M1 is switched off → valve 1V1 switches to position b
+ 7. t =  1.99 s   cylinder 1A starts to retract
+ 8. t =  2.98 s   cylinder 1A is fully retracted (operates 1B1) → relay K3 drops out → relay K4 picks up → solenoid 1M2 is switched off → solenoid 2M2 is energized → valve 2V1 switches to position b
+ 9. t =  2.99 s   cylinder 2A starts to retract
+10. t =  3.98 s   cylinder 2A is fully retracted (operates 2B1)
+       One complete cycle took 3.98 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,0,1,1,0,1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,0,0,0,0,0,0,0,
+  xml length: 15252
+== file: gen_relay_A+B+B-A-.pneu
+  elements: 57
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 2 double-acting cylinders, 2 directional control valves, 4 relays, 4 sensor contacts.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 1M1, energized when K1.
+    It retracts by solenoid 1M2, energized when K4.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 2M1, energized when K2.
+    It retracts by solenoid 2M2, energized when K3.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → relay K1 picks up → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1B2) → relay K1 drops out → relay K2 picks up → solenoid 1M1 is switched off → solenoid 2M1 is energized → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2B2) → relay K2 drops out → relay K3 picks up → solenoid 2M1 is switched off → solenoid 2M2 is energized → valve 2V1 switches to position b
+ 7. t =  1.99 s   cylinder 2A starts to retract
+ 8. t =  2.98 s   cylinder 2A is fully retracted (operates 2B1) → relay K3 drops out → relay K4 picks up → solenoid 1M2 is energized → solenoid 2M2 is switched off → valve 1V1 switches to position b
+ 9. t =  2.98 s   cylinder 1A starts to retract
+10. t =  3.97 s   cylinder 1A is fully retracted (operates 1B1)
+       One complete cycle took 3.97 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,0,1,1,0,1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,0,0,0,0,0,0,0,
+  xml length: 15252
+== file: gen_relay_A+B+C+C-B-A-.pneu
+  elements: 86
+  static checks:
+  static checks threw TypeInitializationException
+  dynamic check (realistic=False):
+  dynamic check (realistic=True):
+  explain:
+WHAT IS IN THE CIRCUIT
+The circuit has 3 double-acting cylinders, 3 directional control valves, 6 relays, 6 sensor contacts.
+
+HOW EACH ACTUATOR IS CONTROLLED
+• Double-acting cylinder 1A is controlled by valve 1V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 1M1, energized when K1.
+    It retracts by solenoid 1M2, energized when K6.
+• Double-acting cylinder 2A is controlled by valve 2V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 2M1, energized when K2.
+    It retracts by solenoid 2M2, energized when K5.
+• Double-acting cylinder 3A is controlled by valve 3V1 (5/2-way valve, solenoid, solenoid return).
+    It extends by solenoid 3M1, energized when K3.
+    It retracts by solenoid 3M2, energized when K4.
+
+STEP BY STEP (test run)
+ 1. t =  0.00 s   You press S1 → relay K1 picks up → solenoid 1M1 is energized → valve 1V1 switches to position a
+ 2. t =  0.01 s   cylinder 1A starts to extend
+ 3. t =  0.30 s   You release S1
+ 4. t =  1.00 s   cylinder 1A is fully extended (operates 1B2) → relay K1 drops out → relay K2 picks up → solenoid 1M1 is switched off → solenoid 2M1 is energized → valve 2V1 switches to position a
+ 5. t =  1.00 s   cylinder 2A starts to extend
+ 6. t =  1.99 s   cylinder 2A is fully extended (operates 2B2) → relay K2 drops out → relay K3 picks up → solenoid 2M1 is switched off → solenoid 3M1 is energized → valve 3V1 switches to position a
+ 7. t =  1.99 s   cylinder 3A starts to extend
+ 8. t =  2.98 s   cylinder 3A is fully extended (operates 3B2) → relay K3 drops out → relay K4 picks up → solenoid 3M1 is switched off → solenoid 3M2 is energized → valve 3V1 switches to position b
+ 9. t =  2.99 s   cylinder 3A starts to retract
+10. t =  3.97 s   cylinder 3A is fully retracted (operates 3B1) → relay K4 drops out → relay K5 picks up → solenoid 2M2 is energized → solenoid 3M2 is switched off → valve 2V1 switches to position b
+11. t =  3.98 s   cylinder 2A starts to retract
+12. t =  4.97 s   cylinder 2A is fully retracted (operates 2B1) → relay K5 drops out → relay K6 picks up → solenoid 1M2 is energized → solenoid 2M2 is switched off → valve 1V1 switches to position b
+13. t =  4.97 s   cylinder 1A starts to retract
+14. t =  5.96 s   cylinder 1A is fully retracted (operates 1B1)
+       One complete cycle took 5.96 s; all cylinders are back in their start position. The circuit keeps repeating the cycle.
+
+  10 s free run, state: -,0,-,0,-,0,0,1,1,1,1,0,1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,1,0,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,
+  xml length: 23064
+== file Pneumatic_Counterbalance.pneu threw The type initializer for 'Gdip' threw an exception.

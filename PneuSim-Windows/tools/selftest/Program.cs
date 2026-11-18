@@ -91,6 +91,44 @@ class SelfTest
             try { um.GetMethod("Parse").Invoke(null, new object[] { bad }); Check(false, "bad manifest rejected"); }
             catch (System.Reflection.TargetInvocationException) { Check(true, "bad manifest rejected"); }
         }
+        // Physics invariants and speed on every bundled example (10 s of simulated time each)
+        var sw = System.Diagnostics.Stopwatch.StartNew(); int steps = 0;
+        foreach (var item in all)
+        {
+            var name = (string)item.GetType().GetField("Item1").GetValue(item);
+            var circuit = ((Delegate)item.GetType().GetField("Item2").GetValue(item)).DynamicInvoke();
+            var els = (IList)P(circuit, "Elements");
+            double supply = 0;
+            foreach (var e in els) if (e.GetType().Name == "AirSupply") supply = Math.Max(supply, (double)P(e, "Pressure"));
+            foreach (var e in els) if (e.GetType().Name == "Compressor") supply = Math.Max(supply, (double)P(e, "CutOutPressure"));
+            foreach (var e in els) if (e.GetType().Name == "HydraulicPump") supply = Math.Max(supply, (double)P(e, "MaxPressureBar"));
+            var sim = Activator.CreateInstance(T("Simulator"), circuit);
+            sim.GetType().GetMethod("Reset").Invoke(sim, null);
+            bool ok = true; string why = "";
+            for (int k = 0; k < 2000 && ok; k++)
+            {
+                sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 }); steps++;
+                if (k % 100 != 99) continue;
+                foreach (var e in els)
+                {
+                    foreach (var port in (IEnumerable)P(e, "Ports"))
+                    {
+                        if (P(port, "Kind").ToString() == "Electric") continue;
+                        var pr = (double)P(port, "Pressure");
+                        if (double.IsNaN(pr) || pr < -1.1 || pr > supply + 1.0) { ok = false; why = $"{e.GetType().Name} port pressure {pr}"; }
+                    }
+                    if (e.GetType().BaseType?.Name == "CylinderBase" || e.GetType().BaseType?.BaseType?.Name == "CylinderBase")
+                    {
+                        var pos = (double)P(e, "Position");
+                        if (double.IsNaN(pos) || pos < -0.001 || pos > 1.001) { ok = false; why = $"cylinder position {pos}"; }
+                    }
+                }
+            }
+            Check(ok, $"physics invariants hold: {name} {why}");
+        }
+        sw.Stop();
+        Console.WriteLine($"INFO {steps} simulation steps in {sw.ElapsedMilliseconds} ms ({(double)sw.ElapsedMilliseconds / Math.Max(1, steps):0.000} ms/step)");
+        Check((double)sw.ElapsedMilliseconds / Math.Max(1, steps) < 5.0, "simulation speed under 5 ms per step");
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

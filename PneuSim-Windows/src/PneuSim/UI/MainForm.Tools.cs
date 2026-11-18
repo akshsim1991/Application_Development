@@ -138,6 +138,7 @@ public partial class MainForm
 			{
 				ShowPage(num);
 				_canvas.SelectElements(new CircuitElement[1] { checkIssue.Element });
+				_canvas.ScrollToElement(checkIssue.Element);
 			}
 		}
 	}

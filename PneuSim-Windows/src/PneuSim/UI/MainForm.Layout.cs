@@ -43,6 +43,7 @@ public partial class MainForm
 		};
 		_checkList.SelectedIndexChanged += OnIssueSelected;
 		_checkList.DoubleClick += OnIssueActivated;
+		_checkList.SelectedIndexChanged += OnIssueActivated;
 		_fixCascade.Click += [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__86_002D1();
@@ -131,6 +132,14 @@ public partial class MainForm
 			_properties.Dock = DockStyle.Fill;
 			_properties.ToolbarVisible = false;
 			_properties.HelpVisible = true;
+			_properties.Resize += delegate
+			{
+				WidenPropertyNames();
+			};
+			_properties.SelectedObjectsChanged += delegate
+			{
+				WidenPropertyNames();
+			};
 			Panel value2 = TitledPanel("Properties", _properties);
 			Panel panel = new Panel
 			{

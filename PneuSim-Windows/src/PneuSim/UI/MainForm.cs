@@ -167,7 +167,7 @@ public partial class MainForm : Form
 			_0024VB_0024Local_mainSplit.SplitterDistance = 270;
 			checked
 			{
-				_0024VB_0024Local_rightSplit.SplitterDistance = Math.Max(200, _0024VB_0024Local_rightSplit.Width - 290);
+				_0024VB_0024Local_rightSplit.SplitterDistance = Math.Max(200, _0024VB_0024Local_rightSplit.Width - 340);
 				_0024VB_0024Me._diagramSplit.SplitterDistance = Math.Max(200, _0024VB_0024Me._diagramSplit.Height - 230);
 			}
 		}

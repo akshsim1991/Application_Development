@@ -196,6 +196,20 @@ public class CircuitCanvas : ScrollableControl
 		SetSelection(items.Where([SpecialName] (CircuitElement e) => _circuit.Elements.Contains(e)));
 	}
 
+	/// <summary>Scrolls the drawing so that the element is in the middle of the view (used when a check result is clicked).</summary>
+	public void ScrollToElement(CircuitElement element)
+	{
+		if (element == null || !_circuit.Elements.Contains(element))
+		{
+			return;
+		}
+		RectangleF rectangleF = element.WorldBounds();
+		int x = (int)Math.Round((rectangleF.X + rectangleF.Width / 2f) * _zoom) - base.ClientSize.Width / 2;
+		int y = (int)Math.Round((rectangleF.Y + rectangleF.Height / 2f) * _zoom) - base.ClientSize.Height / 2;
+		base.AutoScrollPosition = new Point(Math.Max(0, x), Math.Max(0, y));
+		Invalidate();
+	}
+
 	public CircuitCanvas()
 	{
 		_circuit = new Circuit();

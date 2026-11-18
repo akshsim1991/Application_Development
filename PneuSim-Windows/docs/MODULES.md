@@ -214,11 +214,11 @@ concept; talk to other modules through their public classes only.
 | `Learning/Lessons.cs` | 480 |
 | `UI/LessonsPanel.cs` | 210 |
 
-### M-CANVAS - Drawing canvas and live views  (11 files, 5000 lines)
+### M-CANVAS - Drawing canvas and live views  (11 files, 5014 lines)
 
 | File | Lines |
 |---|---|
-| `UI/CircuitCanvas.cs` | 1208 |
+| `UI/CircuitCanvas.cs` | 1222 |
 | `UI/DiagramPanel.cs` | 131 |
 | `UI/PlotterPanel.cs` | 964 |
 | `UI/InspectorPanel.cs` | 266 |
@@ -246,7 +246,7 @@ concept; talk to other modules through their public classes only.
 | `UI/RibbonBuilder.cs` | 126 |
 | `UI/RibbonIcons.cs` | 116 |
 
-### M-SHELL - Main window (partial class, split by concern)  (11 files, 3557 lines)
+### M-SHELL - Main window (partial class, split by concern)  (11 files, 3585 lines)
 
 | File | Lines |
 |---|---|
@@ -254,11 +254,11 @@ concept; talk to other modules through their public classes only.
 | `UI/MainForm.FaultFinding.cs` | 185 |
 | `UI/MainForm.Files.cs` | 376 |
 | `UI/MainForm.Lambdas.cs` | 324 |
-| `UI/MainForm.Layout.cs` | 612 |
+| `UI/MainForm.Layout.cs` | 621 |
 | `UI/MainForm.Other.cs` | 446 |
 | `UI/MainForm.Simulation.cs` | 373 |
-| `UI/MainForm.Theme.cs` | 184 |
-| `UI/MainForm.Tools.cs` | 251 |
+| `UI/MainForm.Theme.cs` | 202 |
+| `UI/MainForm.Tools.cs` | 252 |
 | `UI/MainForm.cs` | 550 |
 | `UI/Program.cs` | 61 |
 

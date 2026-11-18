@@ -110,6 +110,24 @@ public partial class MainForm
 	}
 
 	[MethodImpl(MethodImplOptions.NoInlining)]
+	/// <summary>Gives the Properties grid's name column about 55% of its width so that names are not cut off (the grid has no public setting for this).</summary>
+	private void WidenPropertyNames()
+	{
+		try
+		{
+			System.Reflection.FieldInfo field = typeof(PropertyGrid).GetField("gridView", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			object obj = field?.GetValue(_properties);
+			System.Reflection.MethodInfo methodInfo = obj?.GetType().GetMethod("MoveSplitterTo", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+			if (methodInfo != null && _properties.Width > 120)
+			{
+				methodInfo.Invoke(obj, new object[1] { (int)((double)_properties.Width * 0.55) });
+			}
+		}
+		catch (Exception)
+		{
+		}
+	}
+
 	private void SetSplitterColor(Color c)
 	{
 		_properties.CategorySplitterColor = c;

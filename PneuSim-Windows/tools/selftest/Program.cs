@@ -391,6 +391,24 @@ class SelfTest
             Check(Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4) > 3.0 && Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4) < 12.0, $"sizing: accumulator for 1 l between 100 and 200 bar ({Call("AccumulatorLitres", 1.0, 80.0, 100.0, 200.0, 1.4):0.0} l)");
             Check(Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0) > 12.0 && Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0) < 16.0, $"sizing: tube for 1000 NL/min ({Call("RequiredAirTubeIdMm", 1000.0, 6.0, 15.0):0.0} mm inner)");
         }
+        // GRAFCET generated from the circuit, and the step tracker
+        {
+            var gb = T("GrafcetBuilder"); int built = 0; string firstText = null;
+            foreach (var item in all)
+            {
+                var name = (string)item.GetType().GetField("Item1").GetValue(item);
+                var circuit = ((Delegate)item.GetType().GetField("Item2").GetValue(item)).DynamicInvoke();
+                try
+                {
+                    var model = gb.GetMethod("Build").Invoke(null, new object[] { circuit });
+                    var gSteps = (IList)model.GetType().GetField("Steps").GetValue(model);
+                    if (gSteps.Count >= 2) { built++; firstText ??= (string)model.GetType().GetMethod("ToText").Invoke(model, null); }
+                    Console.WriteLine($"INFO GRAFCET {name}: {gSteps.Count} steps");
+                }
+                catch (Exception e) { Console.WriteLine("INFO GRAFCET " + name + " threw " + (e.InnerException ?? e).GetType().Name + " " + ((e.InnerException ?? e).StackTrace ?? "").Split((char)10)[0]); }
+            }
+            Check(built >= 3, $"GRAFCET: a chart is generated for {built} bundled examples");
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

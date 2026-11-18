@@ -112,6 +112,10 @@ public class CircuitCanvas : ScrollableControl
 		}
 		set
 		{
+			if (!_fitting)
+			{
+				KeepFitted = false;
+			}
 			_zoom = Math.Max(0.1f, Math.Min(3f, value));
 			UpdateScrollSize();
 			Invalidate();
@@ -246,7 +250,7 @@ public class CircuitCanvas : ScrollableControl
 				num2 = Math.Max(num2, rectangleF.Bottom + 400f);
 			}
 		}
-		base.AutoScrollMinSize = checked(new Size((int)Math.Round(num * _zoom), (int)Math.Round(num2 * _zoom)));
+		base.AutoScrollMinSize = checked(new Size((int)Math.Round(num * _zoom), (int)Math.Round(num2 * _zoom) + 16));
 	}
 
 	public void ClearSelection()
@@ -408,6 +412,20 @@ public class CircuitCanvas : ScrollableControl
 		CircuitModified?.Invoke(this, EventArgs.Empty);
 	}
 
+	private bool _fitting;
+
+	/// <summary>While true the view is re-fitted whenever the workspace changes size (for example when the bottom panel opens). Any zoom, scroll or pan by the user switches it off.</summary>
+	public bool KeepFitted { get; set; }
+
+	protected override void OnResize(EventArgs eventargs)
+	{
+		base.OnResize(eventargs);
+		if (KeepFitted && !_fitting && base.ClientSize.Width >= 50 && base.ClientSize.Height >= 50)
+		{
+			ZoomToFit();
+		}
+	}
+
 	/// <summary>Everything that is drawn: components, their labels, and every tube bend.</summary>
 	private RectangleF DrawnBounds()
 	{
@@ -449,16 +467,19 @@ public class CircuitCanvas : ScrollableControl
 		{
 			return;
 		}
+		_fitting = true;
 		float num = 14f;
-		float num2 = 24f;
+		float num2 = 16f;
 		rectangleF.Inflate(num, num);
 		float num3 = (float)(base.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
 		float num4 = (float)(base.ClientSize.Height - SystemInformation.HorizontalScrollBarHeight - 4) - num2;
 		Zoom = Math.Max(0.1f, Math.Min(3f, Math.Min(num3 / rectangleF.Width, num4 / rectangleF.Height)));
 		PerformLayout();
 		float num5 = (rectangleF.Left + rectangleF.Width / 2f) * _zoom - num3 / 2f;
-		float num6 = (rectangleF.Top + rectangleF.Height / 2f) * _zoom - (num4 / 2f + num2);
+		float num6 = (rectangleF.Top + rectangleF.Height / 2f) * _zoom - num4 / 2f;
 		base.AutoScrollPosition = new Point((int)Math.Round(Math.Max(0f, num5)), (int)Math.Round(Math.Max(0f, num6)));
+		_fitting = false;
+		KeepFitted = true;
 		Invalidate();
 	}
 
@@ -482,7 +503,7 @@ public class CircuitCanvas : ScrollableControl
 
 	private PointF ToWorld(Point p)
 	{
-		return checked(new PointF((float)(p.X - base.AutoScrollPosition.X) / _zoom, (float)(p.Y - base.AutoScrollPosition.Y) / _zoom));
+		return checked(new PointF((float)(p.X - base.AutoScrollPosition.X) / _zoom, (float)(p.Y - base.AutoScrollPosition.Y - 16) / _zoom));
 	}
 
 	protected override void OnPaint(PaintEventArgs e)
@@ -492,7 +513,7 @@ public class CircuitCanvas : ScrollableControl
 		graphics.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
 		graphics.ResetClip();
 		graphics.Clear(Scheme.Background);
-		graphics.TranslateTransform(base.AutoScrollPosition.X, base.AutoScrollPosition.Y);
+		graphics.TranslateTransform(base.AutoScrollPosition.X, base.AutoScrollPosition.Y + 16);
 		graphics.ScaleTransform(_zoom, _zoom);
 		using (GdiSurface g = new GdiSurface(graphics, Scheme))
 		{
@@ -923,6 +944,7 @@ public class CircuitCanvas : ScrollableControl
 	{
 		if (WantsPan(e))
 		{
+			KeepFitted = false;
 			Focus();
 			_panning = true;
 			_panStartMouse = e.Location;
@@ -1246,7 +1268,7 @@ public class CircuitCanvas : ScrollableControl
 		{
 			PointF pointF = ToWorld(e.Location);
 			Zoom *= ((e.Delta > 0) ? 1.1f : 0.9090909f);
-			base.AutoScrollPosition = checked(new Point((int)Math.Round(Math.Max(0f, pointF.X * _zoom - (float)e.X)), (int)Math.Round(Math.Max(0f, pointF.Y * _zoom - (float)e.Y))));
+			base.AutoScrollPosition = checked(new Point((int)Math.Round(Math.Max(0f, pointF.X * _zoom - (float)e.X)), (int)Math.Round(Math.Max(0f, pointF.Y * _zoom - (float)(e.Y - 16)))));
 			Invalidate();
 		}
 		else if ((Control.ModifierKeys & Keys.Shift) != 0)
@@ -1262,6 +1284,10 @@ public class CircuitCanvas : ScrollableControl
 
 	protected override void OnScroll(ScrollEventArgs se)
 	{
+		if (!_fitting)
+		{
+			KeepFitted = false;
+		}
 		base.OnScroll(se);
 		Invalidate();
 	}

@@ -41,6 +41,9 @@ public partial class MainForm
 			_canvas.Simulator = _simulator;
 			_canvas.Simulating = true;
 			_simulator.Reset();
+			RefreshGrafcet();
+			_grafcetTracker = new GrafcetTracker(_grafcetModel);
+			_diagram.Markers = _grafcetTracker.Markers;
 			_auto = ((AppSettings.AutoMode == "Off") ? null : new AutoOperator(_simulator.Circuit, AppSettings.AutoMode));
 			_autoStatusShown = null;
 			_recorder = new SimulationRecorder(_simulator);
@@ -94,6 +97,8 @@ public partial class MainForm
 		_sounds.Stop();
 		_auto?.Stop();
 		_auto = null;
+		_grafcetTracker = null;
+		_grafcet.Active = -1;
 		_canvas.AlarmElements = null;
 		foreach (CircuitElement item in _project.AllElements())
 		{
@@ -109,6 +114,14 @@ public partial class MainForm
 		_statusMessage.Text = "";
 		_statusMessage.ForeColor = SystemColors.ControlText;
 		UpdateUiState();
+	}
+
+	/// <summary>Builds the GRAFCET of the circuit (the running one while simulating) and shows it.</summary>
+	private void RefreshGrafcet()
+	{
+		Circuit circuit = ((_running && _simulator != null) ? _simulator.Circuit : _project.SimulationCircuit());
+		_grafcetModel = GrafcetBuilder.Build(circuit);
+		_grafcet.Model = _grafcetModel;
 	}
 
 	private AutoOperator _auto;
@@ -129,6 +142,10 @@ public partial class MainForm
 			}
 			while (num2 <= 4);
 			_recorder?.Record();
+			if (_grafcetTracker != null && _grafcetTracker.Update(_simulator.Time))
+			{
+				_grafcet.Active = _grafcetTracker.Active;
+			}
 			if (_auto != null)
 			{
 				if (_auto.Update(_simulator.Time))

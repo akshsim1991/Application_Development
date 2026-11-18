@@ -163,6 +163,8 @@ public partial class MainForm
 			});
 			_pageTabs.ContextMenuStrip = contextMenuStrip;
 			AddBottomTab("Displacement-step diagram", _diagram);
+			AddBottomTab("GRAFCET", _grafcet);
+			_grafcet.GenerateRequested += RefreshGrafcet;
 			AddBottomTab("Plotter", _plotter);
 			AddBottomTab("Check circuit", BuildCheckPanel());
 			AddBottomTab("Explain", BuildExplainPanel());
@@ -401,6 +403,17 @@ public partial class MainForm
 			_canvas.Invalidate();
 		};
 		toolStripMenuItem12.DropDownItems.Add(valueLabelsItem);
+		ToolStripMenuItem gridItem = Item("Show &grid", null, Keys.Control | Keys.OemQuotes);
+		gridItem.CheckOnClick = true;
+		gridItem.Checked = AppSettings.ShowGrid;
+		gridItem.Click += delegate
+		{
+			AppSettings.ShowGrid = gridItem.Checked;
+			AppSettings.Save();
+			_canvas.Invalidate();
+		};
+		toolStripMenuItem12.DropDownItems.Add(gridItem);
+		_menuGrid = gridItem;
 		_menuDark = Item("&Dark mode", [SpecialName] (object a0, EventArgs a1) =>
 		{
 			_Lambda_0024__172_002D20();
@@ -444,6 +457,7 @@ public partial class MainForm
 		toolStripMenuItem14.DropDownItems.Add(Item("&Explain my circuit", OnExplain, Keys.F8));
 		toolStripMenuItem14.DropDownItems.Add(new ToolStripSeparator());
 		toolStripMenuItem14.DropDownItems.Add(Item("Ca&lculators...", OnCalculators));
+		toolStripMenuItem14.DropDownItems.Add(Item("Sizing &sheets (bore, tube, valve, pump, motor, accumulator)...", OnSizing));
 		toolStripMenuItem14.DropDownItems.Add(Item("&Parts list and costs...", OnPartsList));
 		toolStripMenuItem14.DropDownItems.Add(Item("Parameter &sweep (compare settings)...", OnSweep));
 		toolStripMenuItem14.DropDownItems.Add(new ToolStripSeparator());
@@ -634,6 +648,7 @@ public partial class MainForm
 			["Check"] = delegate { OnFullCheck(null, EventArgs.Empty); },
 			["Explain"] = delegate { OnExplain(null, EventArgs.Empty); },
 			["Calculators"] = delegate { OnCalculators(null, EventArgs.Empty); },
+			["Sizing"] = delegate { OnSizing(null, EventArgs.Empty); },
 			["Parts"] = delegate { OnPartsList(null, EventArgs.Empty); },
 			["Sweep"] = delegate { OnSweep(null, EventArgs.Empty); },
 			["Cutaway"] = delegate { OnCutaway(null, EventArgs.Empty); },

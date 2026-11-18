@@ -331,6 +331,14 @@ public partial class MainForm : Form
 
 	private readonly TabControl _pageTabs;
 
+	private readonly GrafcetPanel _grafcet = new GrafcetPanel();
+
+	private ToolStripMenuItem _menuGrid;
+
+	private GrafcetModel _grafcetModel;
+
+	private GrafcetTracker _grafcetTracker;
+
 	private readonly DiagramPanel _diagram;
 
 	private readonly PlotterPanel _plotter;

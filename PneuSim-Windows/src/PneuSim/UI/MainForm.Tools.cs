@@ -199,6 +199,13 @@ public partial class MainForm
 		}
 	}
 
+	private void OnSizing(object sender, EventArgs e)
+	{
+		using SizingDialog sizingDialog = new SizingDialog();
+		Theme.Apply(sizingDialog);
+		sizingDialog.ShowDialog(this);
+	}
+
 	private void OnCalculators(object sender, EventArgs e)
 	{
 		using CalculatorsDialog calculatorsDialog = new CalculatorsDialog();

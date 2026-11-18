@@ -56,6 +56,7 @@ public static class RibbonIcons
 			graphics.DrawLine(pen, 18, 28, 36, 28);
 			break;
 		case "Calculators":
+		case "Sizing":
 			graphics.DrawRectangle(pen, 18, 5, 26, 32);
 			graphics.DrawRectangle(pen2, 22, 9, 18, 7);
 			for (int i = 0; i < 3; i++)

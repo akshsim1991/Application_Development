@@ -43,7 +43,7 @@ public static class RibbonBuilder
 		AddTab(bar, "Hydraulics", Library.CatHydraulic, scheme, all, R("Power and tank", Has("power unit", "Tank", "relief", "Accumulator")), R("Cylinders and motors", Has("cylinder", "motor")), R("Valves", Has("valve", "throttle", "Counterbalance")), R("Measuring and pipes", Has("gauge", "junction")));
 		AddTab(bar, "Annotate", Library.CatDrawing, scheme, all);
 		RibbonBar.Tab tab2 = bar.AddTab("Tools");
-		AddCommands(bar, tab2, "Design", commands, scheme, ("Circuit generator", "Generator"), ("Calculators", "Calculators"), ("Parts list and costs", "Parts"), ("Parameter sweep", "Sweep"));
+		AddCommands(bar, tab2, "Design", commands, scheme, ("Circuit generator", "Generator"), ("Calculators", "Calculators"), ("Sizing sheets", "Sizing"), ("Parts list and costs", "Parts"), ("Parameter sweep", "Sweep"));
 		AddCommands(bar, tab2, "Check", commands, scheme, ("Check circuit", "Check"), ("Explain circuit", "Explain"), ("Cutaway view", "Cutaway"), ("Cutaway: whole workspace", "CutawayAll"));
 		AddCommands(bar, tab2, "Fault finding", commands, scheme, ("New fault-finding task", "NewFault"));
 		AddCommands(bar, tab2, "PneuSim", commands, scheme, ("Settings", "Settings"));

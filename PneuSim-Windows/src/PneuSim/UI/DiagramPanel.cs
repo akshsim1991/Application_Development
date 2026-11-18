@@ -22,6 +22,9 @@ public class DiagramPanel : Control
 
 	public ColorScheme Scheme { get; set; }
 
+	/// <summary>GRAFCET step changes (simulation time, label) drawn as dashed lines with the step number.</summary>
+	public System.Collections.Generic.List<(double Time, string Label)> Markers { get; set; }
+
 	public DiagramPanel()
 	{
 		Scheme = ColorScheme.Light;
@@ -69,6 +72,23 @@ public class DiagramPanel : Control
 					float num10 = (float)((double)num2 + (num9 - num5) / 10.0 * (double)(num3 - num2));
 					g.DrawLine(pen, num10, 24f, num10, num6);
 					g.DrawString($"{num9:0} s", font2, Brushes.Gray, num10 - 8f, num6 + 2);
+				}
+			}
+			if (Markers != null)
+			{
+				using Pen pen3 = new Pen(Color.FromArgb(0, 118, 132), 1.4f)
+				{
+					DashStyle = DashStyle.Dash
+				};
+				using SolidBrush brush = new SolidBrush(Color.FromArgb(0, 118, 132));
+				foreach (var marker in Markers.ToArray())
+				{
+					if (marker.Time >= num5 && marker.Time <= num4)
+					{
+						float num15 = (float)((double)num2 + (marker.Time - num5) / 10.0 * (double)(num3 - num2));
+						g.DrawLine(pen3, num15, 24f, num15, num6);
+						g.DrawString(marker.Label, font, brush, num15 + 2f, 8f);
+					}
 				}
 			}
 			int num11 = 26;

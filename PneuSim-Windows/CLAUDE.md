@@ -5,8 +5,12 @@ circuit simulator. C# / Windows Forms / .NET Framework 4.7.2. Read `HANDOFF.md` 
 `docs/ARCHITECTURE.md` and `docs/GUI.md`.
 
 ## Hard rules
-- **Do not start development until the owner writes "START".** Planning, answering questions
-  and reading code are fine before that.
+- **START was given on 18 Nov 2026.** Development of 3.3.0 "Mistral" is under way; follow the
+  milestones in `HANDOFF.md`.
+- **Own identity, no copying.** The GUI, icons, wording and example circuits must be PneuSim's
+  own (see `docs/DESIGN.md`). Never copy or trace artwork, layouts, text, palettes or circuits
+  from other products or from standards documents. Symbols are drawn in code, based on
+  ISO 1219 / IEC 60617; never claim "certified/approved/compliant"; no brand or part numbers.
 - PneuSim is a **paid commercial product**. No student, teacher, exam, classroom or other
   academic/institutional wording anywhere (UI, help, About, README, installer).
 - It must be **simple enough for a lay person**: plain-English names (ISO name in brackets),
@@ -18,8 +22,8 @@ circuit simulator. C# / Windows Forms / .NET Framework 4.7.2. Read `HANDOFF.md` 
   this on every push (`.github/workflows/pneusim.yml`). Intended behaviour changes must be
   listed in `CHANGELOG.md`.
 - Keep the installer AppId `{6F1E9A52-3C1B-4B7E-9D0A-5A2C3E7B8D41}` (in-place upgrades).
-- Commit messages end with the owner's usual co-author line; push to `main` of
-  `akshsim1991/Application_Development`.
+- Work on branch `claude/vigilant-sagan-opwt41`; commit small and push after every milestone
+  (the session may end at any time). No PR unless the owner asks.
 
 ## Build and test
 ```

@@ -50,7 +50,7 @@ electro-pneumatic and hydraulic circuit simulator for Windows. See `CLAUDE.md` f
   `_0024` names, `goto` in a few state-machine-like methods).
 - Copyright text in About and the PDF reports: "(c) 2026 Akshaya Simha".
 
-## Plan agreed on 18 Nov 2026 (waiting for "START")
+## Plan agreed on 18 Nov 2026 (START given 18 Nov 2026)
 
 ### 3.3.0 "Mistral" (code names: winds — Mistral, Sirocco, Chinook, Zephyr, Bora …)
 1. **Commercial, non-academic product.** Remove the practice quiz and timed exam; turn lessons
@@ -59,16 +59,15 @@ electro-pneumatic and hydraulic circuit simulator for Windows. See `CLAUDE.md` f
    installer text without academic references.
 2. **Lay-person simplicity.** Plain-English component names (ISO name in brackets), sensible
    defaults, **Simple / Advanced** switch for engineering properties, tooltips, friendly messages.
-3. **Start screen** like Feather PDF: title, tagline, drag-and-drop area, New circuit,
+3. **Start screen** (own design; same functions as common apps): title, tagline, drag-and-drop area, New circuit,
    Open circuit…, Examples, Recent files.
-4. **Ribbon only** (custom-built, no third-party library): tabs Home, Supply & Air, Actuators,
+4. **Ribbon only** (custom-built, own look, no Office-style tab shapes/colours/names, no third-party library): tabs Home, Supply & Air, Actuators,
    Valves, Logic & Flow, Electrical, Hydraulics, Drawing, Tools; large symbol buttons,
    galleries for valve variants, drag to canvas, **search box**. The left library panel goes.
-5. **About box exactly like Feather PDF** (see the owner's screenshot of Feather PDF 2.22.0
-   "Kuga"): scrolling text box with name, "Version 3.3.0 "Mistral", built <date>",
+5. **About box with the same kind of content as Feather PDF, in PneuSim's own design and
+   wording** (not a copy): scrolling text box with name, "Version 3.3.0 "Mistral", built <date>",
    description, "Created by: Akshaya Simha", DEVELOPMENT HISTORY (began in VB.NET, recovered
-   and continued in C# from 3.2), DEVELOPMENT AND AI CONTRIBUTIONS (same wording style as
-   Feather PDF); checkbox "Write to the developer now (opens your e-mail program)" →
+   and continued in C# from 3.2), DEVELOPMENT AND AI CONTRIBUTIONS (own wording); checkbox "Write to the developer now (opens your e-mail program)" →
    akshsimha@gmail.com; Close / Cancel. Status bar right: "PneuSim 3.3.0 Mistral".
 6. **Automatic updates like Feather PDF**: `latest.json` + installer in the public repo
    `akshsim1991/PneuSim-releases` (the owner creates it), raw.githubusercontent.com with a
@@ -104,3 +103,23 @@ current; choose per component, global on/off). Optional later: stepper motor, ro
 ### Before selling (owner's decisions)
 Code-signing certificate; licensing model; EULA; trademark search for "PneuSim"; check the
 employer's IP policy; obfuscation (limits: .NET can always be decompiled).
+
+### IP and design rules (agreed 18 Nov 2026)
+Symbols drawn in code per ISO 1219-1/-2 and IEC 60617 (functional conventions; no fee for own
+drawings). Do not copy artwork/text from standards, vendor libraries or competitors. Say only
+"based on ISO 1219 / IEC 60617". Generic names only (no brands/part numbers). Buy one copy each
+of ISO 1219-1 and -2 as reference. Produce `docs/SYMBOLS.md` (conformity table) and keep
+`docs/DESIGN.md` (visual identity) current. Lawyer check before selling.
+
+## Work schedule (18 Nov 2026 -> Fri 20 Nov 2026 05:30)
+Owner may hit usage limits at any time, so work is cut into small milestones; each ends with
+build + harness, a commit and a push, and a tick below. Resume at the first unticked item.
+- [ ] M1 Design doc + symbol conformity audit (docs only); version bump to 3.3.0 "Mistral"
+- [ ] M2 De-academic pass (item 1) + README/About/installer text
+- [ ] M3 Settings dialog + theme/units/sounds model (items 8, 9)
+- [ ] M4 Rated-pressure warning + sounds engine (items 7, 9)
+- [ ] M5 Ribbon framework + tabs + search (item 4); remove left panel
+- [ ] M6 Start screen + About box (items 3, 5)
+- [ ] M7 Robustness: atomic save, error log, damaged-file handling, DPI (item 10)
+- [ ] M8 Updater (item 6) + installer .NET check (item 12)
+- [ ] M9 UI fixes G1-G3, golden tests, final harness, CHANGELOG, installer build

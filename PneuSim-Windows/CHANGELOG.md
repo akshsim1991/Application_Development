@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.17 "Mistral" (18 Nov 2026)
+- New example 13: Pneumatic counterbalance (vertical load held and lowered under control), in the Examples list and under File > New.
+
 ## 3.3.16 "Mistral" (18 Nov 2026)
 - Routing rewritten: all lines are now routed together, one after the other, so each line keeps clear of the components and of the lines already placed (before, lines avoided each other independently and could still land on the same track).
 - Rotating a group of components now rotates it exactly as one rigid piece (no drift, no overlap).

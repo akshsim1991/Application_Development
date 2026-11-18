@@ -6,7 +6,7 @@ namespace PneuSim;
 [StandardModule]
 public sealed class Examples
 {
-	public static readonly (string Name, Func<Circuit> Build)[] All = new(string, Func<Circuit>)[12]
+	public static readonly (string Name, Func<Circuit> Build)[] All = new(string, Func<Circuit>)[13]
 	{
 		("1. Direct control of a single-acting cylinder", DirectSingleActing),
 		("2. Indirect control of a double-acting cylinder with speed control", IndirectDoubleActing),
@@ -19,7 +19,8 @@ public sealed class Examples
 		("9. Hydraulics: cylinder with 4/3 valve, relief valve and gauge", HydraulicBasic),
 		("10. Realistic mode: pressure sequence valve (clamp, then drill)", SequenceValveDemo),
 		("11. Vacuum handling: ejector, suction cup and vacuum switch", VacuumHandling),
-		("12. Air generation: compressor, receiver, service unit and flow meter", AirGeneration)
+		("12. Air generation: compressor, receiver, service unit and flow meter", AirGeneration),
+		("13. Pneumatic counterbalance: vertical load held and lowered under control", ExampleCounterbalance.Build)
 	};
 
 	private static Circuit VacuumHandling()

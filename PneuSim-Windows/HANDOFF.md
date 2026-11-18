@@ -18,19 +18,20 @@ Control lab work. FluidSIM-style, Windows only.
 - Version 3.2.0 recovered from the installer. It compiles, and the engine (simulation, checker,
   explainer, generator, file load/save) gives the same results as the original. Details in
   docs/RECOVERY.md.
-- The GUI code compiled but was not run, because no Windows machine was available to the
-  recovery session.
+- CI (`.github/workflows/pneusim.yml`, GitHub's Windows runner) builds the source, confirms the
+  engine report matches the original 3.2.0 (1,571 lines, identical), starts the rebuilt GUI empty
+  and with all 12 examples plus the counterbalance circuit (correct window title, no error
+  dialog, screenshots in the *test-results* artifact), and builds `PneuSim-Setup-<version>.exe`
+  with the original installer's AppId, so it upgrades 3.2.0 in place. First green run: 18 Nov 2026.
+- Not yet done by hand: clicking through the rebuilt GUI (simulation, dialogs, export).
 
 ## Next steps (in order)
 
 1. **First Windows run.** Build, start `PneuSim.exe`, open every file in `examples/` and run
    through the menus. Compare against the installed 3.2.0, using the GUI screenshots being
    in `docs/GUI.md` (40 screenshots of 3.2.0). Note anything that looks different.
-2. **Re-create the build pipeline.** A GitHub Actions workflow (windows-latest:
-   build → equivalence harness → Inno Setup) and a new `installer/PneuSim.iss` (per-user
-   install, desktop icon, `.pneu` association, uninstaller). Workflows must sit in the
-   repository's root `.github/workflows/`. Optional code signing from the secrets
-   `SIGNING_CERT_BASE64` and `SIGNING_CERT_PASSWORD`, as before.
+2. (Done 18 Nov 2026) Build pipeline and installer rebuilt. Still to add: code signing from
+   the secrets `SIGNING_CERT_BASE64` / `SIGNING_CERT_PASSWORD` (needs a bought certificate).
 3. **Clean-up pass (no behaviour change).** Rename the compiler-generated closures and
    `num12`-style locals, and replace VB runtime helpers with plain C# where the meaning is the
    same. Re-run the equivalence harness after each batch.

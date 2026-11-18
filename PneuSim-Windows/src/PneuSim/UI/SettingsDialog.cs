@@ -41,6 +41,8 @@ public sealed class SettingsDialog : Form
 
 	private readonly NumericUpDown _autoHold = new NumericUpDown { DecimalPlaces = 1, Minimum = 0m, Maximum = 120m, Increment = 0.5m, Width = 80 };
 
+	private readonly ComboBox _solenoids = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 330 };
+
 	private readonly ComboBox _speed = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 100 };
 
 	private readonly CheckBox _realistic = new CheckBox { Text = "Realistic physics (pressure build-up, loads, air use) on by default", AutoSize = true };
@@ -110,6 +112,16 @@ public sealed class SettingsDialog : Form
 		flowLayoutPanel3.Controls.Add(Labelled("Wait after Start before pressing (seconds)", _autoDelay));
 		flowLayoutPanel3.Controls.Add(Labelled("Rest between repeated cycles (seconds)", _autoPause));
 		flowLayoutPanel3.Controls.Add(Labelled("Hold a start button for (seconds, 0 = work it out)", _autoHold));
+		_solenoids.Items.AddRange(new object[2] { "Automatic: PneuSim operates the solenoid for me", "Manual: I click the solenoid myself (manual override)" });
+		flowLayoutPanel3.Controls.Add(Heading("Solenoid-operated valves"));
+		flowLayoutPanel3.Controls.Add(new Label
+		{
+			Text = "For solenoid valves that have no coil in the circuit, PneuSim can operate the solenoid itself (and bring a double-solenoid valve back), or leave it to you.",
+			AutoSize = false,
+			Width = 460,
+			Height = 34
+		});
+		flowLayoutPanel3.Controls.Add(Labelled("Solenoid valves", _solenoids));
 		flowLayoutPanel3.Controls.Add(Heading("Speed and physics"));
 		_speed.Items.AddRange(new object[6] { "0.1x", "0.25x", "0.5x", "1x", "2x", "4x" });
 		flowLayoutPanel3.Controls.Add(Labelled("Simulation speed at start-up", _speed));
@@ -165,6 +177,7 @@ public sealed class SettingsDialog : Form
 			_autoDelay.Enabled = flag;
 			_autoHold.Enabled = flag;
 			_autoPause.Enabled = _autoMode.SelectedIndex == 1;
+			_solenoids.Enabled = flag;
 		};
 		LoadFrom();
 	}
@@ -258,6 +271,7 @@ public sealed class SettingsDialog : Form
 		_autoDelay.Value = (decimal)Math.Max(0.0, Math.Min(30.0, AppSettings.AutoStartDelay));
 		_autoPause.Value = (decimal)Math.Max(0.0, Math.Min(120.0, AppSettings.AutoCyclePause));
 		_autoHold.Value = (decimal)Math.Max(0.0, Math.Min(120.0, AppSettings.AutoHoldSeconds));
+		_solenoids.SelectedIndex = (AppSettings.AutoSolenoids ? 0 : 1);
 		_speed.SelectedIndex = Math.Max(0, Math.Min(5, AppSettings.DefaultSpeedIndex));
 		_realistic.Checked = AppSettings.RealPhysics;
 		_valueLabels.Checked = AppSettings.ShowValueLabels;
@@ -289,6 +303,7 @@ public sealed class SettingsDialog : Form
 		AppSettings.AutoStartDelay = (double)_autoDelay.Value;
 		AppSettings.AutoCyclePause = (double)_autoPause.Value;
 		AppSettings.AutoHoldSeconds = (double)_autoHold.Value;
+		AppSettings.AutoSolenoids = _solenoids.SelectedIndex == 0;
 		AppSettings.DefaultSpeedIndex = _speed.SelectedIndex;
 		AppSettings.RealPhysics = _realistic.Checked;
 		AppSettings.ShowValueLabels = _valueLabels.Checked;

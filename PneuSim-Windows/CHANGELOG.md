@@ -3,6 +3,9 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.3.6 "Mistral" (18 Nov 2026)
+- Settings > Simulation > Solenoid-operated valves: Automatic (PneuSim operates the solenoid override of valves that have no coil in the circuit, and brings a double-solenoid valve back) or Manual (you click the solenoid yourself).
+
 ## 3.3.5 "Mistral" (18 Nov 2026)
 - Circuit generator: new main mode "Complete my circuit from the components already in the workspace". PneuSim reads what you placed (cylinders, motors, valves, supply, push buttons, coils, 24 V terminals), adds what is missing (a valve for each actuator, a compressed-air supply, and for solenoid valves a coil, push button, +24 V and 0 V) and connects everything, leaving existing parts and connections alone. Works for single- and double-acting cylinders and air motors; hydraulic circuits are not completed yet. The sequence generator is still available.
 

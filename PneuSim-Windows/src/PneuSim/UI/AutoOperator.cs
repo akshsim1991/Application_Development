@@ -48,6 +48,14 @@ public sealed class AutoOperator
 
 	private bool _switchesDone;
 
+	/// <summary>Solenoid valves with no coil in the circuit: the left override starts the movement.</summary>
+	private readonly List<DirectionalValve> _solStarts = new List<DirectionalValve>();
+
+	/// <summary>Double-solenoid valves with no coil: the right override brings the movement back.</summary>
+	private readonly List<DirectionalValve> _solReturns = new List<DirectionalValve>();
+
+	private bool _returnDone;
+
 	/// <summary>Latching start switches (selector switches or selector valves), used when the circuit has no push button.</summary>
 	private readonly List<CircuitElement> _latch = new List<CircuitElement>();
 
@@ -55,7 +63,7 @@ public sealed class AutoOperator
 	public string Status { get; private set; }
 
 	/// <summary>True if the circuit has something that can be operated automatically.</summary>
-	public bool HasWork => _starts.Count > 0 || _latch.Count > 0;
+	public bool HasWork => _starts.Count > 0 || _latch.Count > 0 || _solStarts.Count > 0;
 
 	public AutoOperator(Circuit circuit, string mode)
 	{
@@ -85,6 +93,26 @@ public sealed class AutoOperator
 			else if (element is CylinderBase cylinderBase && !(element is Gripper) && !(element is SemiRotaryActuator))
 			{
 				_cylinders.Add(cylinderBase);
+			}
+		}
+		if (AppSettings.AutoSolenoids)
+		{
+			List<ElectricCoil> coils = circuit.Elements.OfType<ElectricCoil>().ToList();
+			foreach (DirectionalValve item in circuit.Elements.OfType<DirectionalValve>())
+			{
+				bool flag = item.Actuator == ValveActuator.Solenoid;
+				bool flag2 = item.ReturnType == ValveReturn.Solenoid;
+				if ((flag || flag2) && !coils.Any((ElectricCoil c) => item.UsesSolenoid(c.Label)))
+				{
+					if (flag)
+					{
+						_solStarts.Add(item);
+					}
+					if (flag2)
+					{
+						_solReturns.Add(item);
+					}
+				}
 			}
 		}
 		if (_starts.Count > 0)
@@ -130,11 +158,29 @@ public sealed class AutoOperator
 		e.OnSimMouseDown(new PointF(localBounds.Left + localBounds.Width / 2f, localBounds.Top + localBounds.Height / 2f));
 	}
 
+	private static void PressAt(CircuitElement e, float fraction)
+	{
+		RectangleF localBounds = e.LocalBounds;
+		e.OnSimMouseDown(new PointF(localBounds.Left + localBounds.Width * fraction, localBounds.Top + localBounds.Height / 2f));
+	}
+
 	private void PressAll()
 	{
 		foreach (CircuitElement start in _starts)
 		{
 			Press(start);
+		}
+		foreach (DirectionalValve solStart in _solStarts)
+		{
+			PressAt(solStart, 0.1f);
+		}
+	}
+
+	private void PressReturns()
+	{
+		foreach (DirectionalValve solReturn in _solReturns)
+		{
+			PressAt(solReturn, 0.9f);
 		}
 	}
 
@@ -143,6 +189,14 @@ public sealed class AutoOperator
 		foreach (CircuitElement start in _starts)
 		{
 			start.OnSimMouseUp();
+		}
+		foreach (DirectionalValve solStart in _solStarts)
+		{
+			solStart.OnSimMouseUp();
+		}
+		foreach (DirectionalValve solReturn in _solReturns)
+		{
+			solReturn.OnSimMouseUp();
 		}
 	}
 
@@ -173,7 +227,7 @@ public sealed class AutoOperator
 		case Phase.Waiting:
 			if (time - _phaseStart >= AppSettings.AutoStartDelay)
 			{
-				if (_starts.Count == 0)
+				if (_starts.Count == 0 && _solStarts.Count == 0)
 				{
 					foreach (CircuitElement item2 in _latch)
 					{
@@ -230,6 +284,16 @@ public sealed class AutoOperator
 		case Phase.Settling:
 			if (time - _lastMotion > 0.9 && time - _phaseStart > 0.6)
 			{
+				if (_solReturns.Count > 0 && !_returnDone)
+				{
+					_returnDone = true;
+					PressReturns();
+					_moved = false;
+					_phase = Phase.Pressing;
+					_phaseStart = time;
+					Status = "Automatic operation: solenoid override operated to return.";
+					return true;
+				}
 				if (_mode == "Continuous")
 				{
 					_phase = Phase.Resting;
@@ -250,6 +314,7 @@ public sealed class AutoOperator
 		case Phase.Resting:
 			if (time - _phaseStart >= AppSettings.AutoCyclePause)
 			{
+				_returnDone = false;
 				PressAll();
 				_moved = false;
 				_phase = Phase.Pressing;

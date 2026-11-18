@@ -307,6 +307,36 @@ class SelfTest
             var comp3 = T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { ws3 }); var c3c = P(comp3, "Circuit");
             var r3 = Run(c3c); Check(r3.max > 0.97, $"complete: electro-pneumatic circuit gets coil, push button and 24 V and works (max {r3.max:0.00})");
         }
+        // Solenoid valves with no coil: automatic operation works their override (single and double solenoid), manual leaves them alone
+        {
+            object NewEl2(object c, string n, float x, float y) { var e = T("ElementFactory").GetMethod("Create").Invoke(null, new object[] { n }); c.GetType().GetMethod("Add").MakeGenericMethod(T("CircuitElement")).Invoke(c, new object[] { e, x, y, null }); return e; }
+            var conn2 = T("Circuit").GetMethod("Connect", new[] { T("CircuitElement"), typeof(string), T("CircuitElement"), typeof(string) });
+            var asProp = T("AppSettings").GetProperty("AutoSolenoids");
+            foreach (var (valveType, act, ret, cylType, vPorts) in new[] { ("Valve32", "Solenoid", "Spring", "SingleActingCylinder", new[] { ("2", "1") }), ("Valve52", "Solenoid", "Solenoid", "DoubleActingCylinder", new[] { ("4", "1"), ("2", "2") }) })
+            {
+                foreach (bool auto in new[] { true, false })
+                {
+                    asProp.SetValue(null, auto);
+                    var c = Activator.CreateInstance(T("Circuit"));
+                    var cyl = NewEl2(c, cylType, 300f, 100f); var valve = NewEl2(c, valveType, 250f, 300f); var sup = NewEl2(c, "AirSupply", 260f, 450f);
+                    valve.GetType().GetProperty("Actuator").SetValue(valve, Enum.Parse(T("ValveActuator"), act)); valve.GetType().GetProperty("ReturnType").SetValue(valve, Enum.Parse(T("ValveReturn"), ret));
+                    conn2.Invoke(c, new object[] { sup, "1", valve, "1" });
+                    foreach (var (vp, cp) in vPorts) conn2.Invoke(c, new object[] { valve, vp, cyl, cp });
+                    var sim = Activator.CreateInstance(T("Simulator"), c); sim.GetType().GetMethod("Reset").Invoke(sim, null);
+                    var op = Activator.CreateInstance(T("AutoOperator"), c, "Once");
+                    double mx = 0, ls = 1;
+                    for (int k = 0; k < 1500; k++)
+                    {
+                        for (int j = 0; j < 4; j++) sim.GetType().GetMethod("Step").Invoke(sim, new object[] { 0.005 });
+                        if ((bool)op.GetType().GetMethod("Update").Invoke(op, new object[] { (double)P(sim, "Time") })) sim.GetType().GetMethod("RunLogic").Invoke(sim, null);
+                        var pos = (double)P(cyl, "Position"); mx = Math.Max(mx, pos); ls = pos;
+                    }
+                    if (auto) Check(mx > 0.97 && ls < 0.1, $"solenoid automatic ({valveType}, {ret}): cylinder extends and returns by itself (max {mx:0.00}, end {ls:0.00})");
+                    else Check(mx < 0.01, $"solenoid manual ({valveType}): nothing moves until the user clicks (max {mx:0.00})");
+                }
+            }
+            asProp.SetValue(null, true);
+        }
         Console.WriteLine(failed == 0 ? "ALL PASSED" : failed + " FAILED");
         return failed;
     }

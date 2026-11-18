@@ -42,6 +42,9 @@ public sealed class AppSettings
 	/// <summary>Simulation speed at start-up, index into 0.1x, 0.25x, 0.5x, 1x, 2x, 4x.</summary>
 	public static int DefaultSpeedIndex { get; set; } = 3;
 
+	/// <summary>True: automatic operation also operates solenoid valves that have no coil in the circuit (their manual override). False: the user clicks them.</summary>
+	public static bool AutoSolenoids { get; set; } = true;
+
 	public static bool ShowHoverValues { get; set; } = true;
 
 	/// <summary>Minutes between automatic recovery saves; 0 = off.</summary>
@@ -198,6 +201,9 @@ public sealed class AppSettings
 						DefaultSpeedIndex = Math.Max(0, Math.Min(5, speedIndex));
 					}
 					break;
+				case "AutoSolenoids":
+					AutoSolenoids = text3 != "0";
+					break;
 				case "HoverValues":
 					ShowHoverValues = text3 != "0";
 					break;
@@ -283,6 +289,7 @@ public sealed class AppSettings
 				"AutoCyclePause=" + AutoCyclePause.ToString(CultureInfo.InvariantCulture),
 				"AutoHold=" + AutoHoldSeconds.ToString(CultureInfo.InvariantCulture),
 				"DefaultSpeed=" + DefaultSpeedIndex.ToString(CultureInfo.InvariantCulture),
+				$"AutoSolenoids={(AutoSolenoids ? 1 : 0)}",
 				$"HoverValues={(ShowHoverValues ? 1 : 0)}",
 				"AutosaveMinutes=" + AutosaveMinutes.ToString(CultureInfo.InvariantCulture),
 				$"StartScreen={(ShowStartScreen ? 1 : 0)}",

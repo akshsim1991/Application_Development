@@ -30,7 +30,7 @@ jobs:
 
       - name: Equivalence test (original 3.2.0 vs rebuilt engine)
         run: |
-          dotnet build tools/equivalence-harness/Harness.csproj -c Release -nologo -p:TargetFramework=net8.0-windows -p:UseWindowsForms=true
+          dotnet build tools/equivalence-harness/Harness.csproj -c Release -nologo
           $h = "tools/equivalence-harness/bin/Release/net8.0-windows/Harness.dll"
           $files = (Get-ChildItem examples -Recurse -Filter *.pneu).FullName
           New-Item -ItemType Directory -Force reports | Out-Null

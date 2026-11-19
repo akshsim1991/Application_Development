@@ -174,6 +174,8 @@ public class CalculatorsDialog : Form
 			ColumnCount = 2
 		};
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_boxes = new List<NumericUpDown>();
+		double pf = Units.PressureFactor;
+		double[] factors = inputs.Select(((string Label, double Value) x) => x.Label.Contains("(bar)") ? pf : 1.0).ToArray();
 		CS_0024_003C_003E8__locals0._0024VB_0024Local_result = new TextBox
 		{
 			Multiline = true,
@@ -187,7 +189,7 @@ public class CalculatorsDialog : Form
 		{
 			try
 			{
-				CS_0024_003C_003E8__locals0._0024VB_0024Local_result.Text = CS_0024_003C_003E8__locals0._0024VB_0024Local_calc(CS_0024_003C_003E8__locals0._0024VB_0024Local_boxes.Select([SpecialName] (NumericUpDown b) => Convert.ToDouble(b.Value)).ToArray());
+				CS_0024_003C_003E8__locals0._0024VB_0024Local_result.Text = CS_0024_003C_003E8__locals0._0024VB_0024Local_calc(CS_0024_003C_003E8__locals0._0024VB_0024Local_boxes.Select([SpecialName] (NumericUpDown b, int idx) => Convert.ToDouble(b.Value) / factors[idx]).ToArray());
 			}
 			catch (Exception ex)
 			{
@@ -202,7 +204,7 @@ public class CalculatorsDialog : Form
 			(string, double) tuple = inputs[i];
 			tableLayoutPanel.Controls.Add(new Label
 			{
-				Text = tuple.Item1,
+				Text = Units.RelabelPressure(tuple.Item1),
 				AutoSize = true,
 				Padding = new Padding(0, 6, 10, 0)
 			});
@@ -212,8 +214,8 @@ public class CalculatorsDialog : Form
 				Maximum = 100000m,
 				Minimum = 0m,
 				Width = 110,
-				Value = new decimal(tuple.Item2),
-				Increment = ((tuple.Item2 >= 10.0) ? 1m : 0.1m)
+				Value = new decimal(tuple.Item2 * factors[i]),
+				Increment = ((tuple.Item2 * factors[i] >= 10.0) ? 1m : 0.1m)
 			};
 			numericUpDown.ValueChanged += [SpecialName] (object a0, EventArgs a1) =>
 			{

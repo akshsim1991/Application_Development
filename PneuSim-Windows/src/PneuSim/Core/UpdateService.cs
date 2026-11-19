@@ -146,4 +146,23 @@ public static class UpdateService
 
 	/// <summary>Command-line options for the silent in-place upgrade (same installer AppId).</summary>
 	public const string InstallerArguments = "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS";
+
+	/// <summary>Writes one line to the update log (%LOCALAPPDATA%\PneuSim\logs\update.log). Never throws.</summary>
+	public static void Log(string message)
+	{
+		try
+		{
+			string folder = ErrorLog.Folder;
+			Directory.CreateDirectory(folder);
+			string path = Path.Combine(folder, "update.log");
+			if (File.Exists(path) && new FileInfo(path).Length > 200000)
+			{
+				File.Delete(path);
+			}
+			File.AppendAllText(path, DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "  " + message + Environment.NewLine);
+		}
+		catch (Exception)
+		{
+		}
+	}
 }

@@ -456,6 +456,13 @@ class SelfTest
             NE(wa, "SingleActingCylinder", 110f, 100f); NE(wa, "SingleActingCylinder", 460f, 100f);
             var va = NE(wa, "Valve32", 60f, 300f); va.GetType().GetProperty("Actuator").SetValue(va, Enum.Parse(T("ValveActuator"), "PushButton")); NE(wa, "AirSupply", 120f, 450f);
             var ca = P(T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { wa }), "Circuit");
+            // A2) three valves fed by one supply -> a manifold is used instead of three tubes on one port
+            var wm = Activator.CreateInstance(T("Circuit"));
+            for (int q = 0; q < 3; q++) { NE(wm, "SingleActingCylinder", 110f + 300f * q, 100f); var vq = NE(wm, "Valve32", 60f + 300f * q, 300f); vq.GetType().GetProperty("Actuator").SetValue(vq, Enum.Parse(T("ValveActuator"), "PushButton")); }
+            NE(wm, "AirSupply", 420f, 520f);
+            var cm = P(T("CircuitCompleter").GetMethod("Complete").Invoke(null, new object[] { wm }), "Circuit");
+            var manifolds = ((IList)P(cm, "Elements")).Cast<object>().Count(e => e.GetType().Name == "Manifold");
+            Check(manifolds == 1, $"complete: one supply feeding three valves gets a manifold ({manifolds} manifold, {((IList)P(cm, "Tubes")).Count} tubes)");
             var valvesA = ((IList)P(ca, "Elements")).Cast<object>().Count(e => e.GetType().Name == "Valve32");
             Check(valvesA == 1 && ((IList)P(ca, "Tubes")).Count == 3, $"complete: one valve drives both cylinders, no extra valve ({valvesA} valve, {((IList)P(ca, "Tubes")).Count} tubes)");
             var rA = Run2(ca, 2); Check(rA.max > 0.97, $"complete: both cylinders move together (min position max {rA.max:0.00})");

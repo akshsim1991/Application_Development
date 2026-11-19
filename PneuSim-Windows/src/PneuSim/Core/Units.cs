@@ -22,6 +22,15 @@ public static class Units
 		}
 	}
 
+	/// <summary>Factor from bar to the unit chosen in Settings (1 for bar, 0.1 for MPa, 100 for kPa).</summary>
+	public static double PressureFactor => (AppSettings.PressureUnit == "MPa") ? 0.1 : ((AppSettings.PressureUnit == "kPa") ? 100.0 : 1.0);
+
+	/// <summary>Replaces "(bar)" in a caption with the unit chosen in Settings.</summary>
+	public static string RelabelPressure(string caption)
+	{
+		return caption.Replace("(bar)", "(" + AppSettings.PressureUnit + ")");
+	}
+
 	/// <summary>"Caption (unit): value" with a caption ending in (bar) shown in the unit chosen in Settings.</summary>
 	public static string Shown(string caption, double value)
 	{

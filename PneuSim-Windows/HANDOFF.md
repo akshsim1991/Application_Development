@@ -137,3 +137,7 @@ build + harness, a commit and a push, and a tick below. Resume at the first unti
 - 3.4.0 = audit and stabilisation (docs/AUDIT-3.4.md), automatic updates (Settings), update prompt at start.
 - Next: (1) unit setting in Calculators/Sizing dialogs, (2) manifold auto-insert in Complete my circuit, (3) machine view (levers, linkages, gravity, conveyors, workpieces), (4) fluid and thermal detail (oil viscosity/temperature, tube pressure drop, energy cost over time). Then ROADMAP 3.5.
 - Note: tools/check_golden.sh can print ALL PASSED from a stale self-test build when the self-test fails to compile; check `dotnet build tools/selftest` output when adding tests.
+
+## State at 3.5.0 (19 Nov 2026)
+- Done: units in Calculators/Sizing inputs, manifold auto-insert in Complete my circuit, update log + retry.
+- Next: (1) machine view (levers, linkages, gravity mount angle, conveyors, workpieces), (2) fluid and thermal detail (oil viscosity/temperature, tube pressure drop checks, energy cost over time; must keep the 3.2.0 equivalence harness identical by defaulting to current behaviour), (3) update rollback (keep previous installer) and code signing (owner decision), (4) ROADMAP 3.5 differentiators.

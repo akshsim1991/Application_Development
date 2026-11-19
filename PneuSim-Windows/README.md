@@ -251,6 +251,7 @@ Files saved by a newer PneuSim version are refused with a clear message instead 
 - If a newer version exists you see a window with what is new and **Update now** / **Later**; an **Update available** link also stays at the bottom right of the window. **Help > Update to new version** checks on demand.
 - **Update now** downloads the installer, **verifies its SHA-256 checksum** against the published one (a file that does not match is rejected and deleted), saves your work, closes PneuSim and upgrades it in place; your settings stay.
 - **Automatic updates** (Settings > General > *Install new versions automatically*, off by default): PneuSim downloads and verifies a new version quietly in the background and installs it silently **when you close PneuSim** — never while you work. 
+- Every update step is written to `%LOCALAPPDATA%\PneuSim\logs\update.log`. If an automatic installation does not finish, PneuSim notes it at the next start and offers the update again.
 - Updates come only from the PneuSim release site over HTTPS. Switch off *Check for updates* in Settings to stop all update traffic. Nothing about your circuits or your computer is sent.
 - If an update fails, the installed version stays as it is (the installer replaces files only when it can complete); run the installer manually from the release site if needed.
 
@@ -262,7 +263,7 @@ Files saved by a newer PneuSim version are refused with a clear message instead 
 **What does Realistic mean?** Pressures build up over time, cylinders move according to bore, load and friction, and air use is measured. With it off, pressures switch instantly and cylinders take their set stroke time.
 **What do the port letters mean?** P supply, A and B working ports, E exhaust (R/S in ISO 5599), C compressor, T tank. Numbers are the ISO 1219 numbers 1, 2, 3, 4, 5.
 **Can I change the unit of pressure?** Yes: bar, MPa or kPa in Settings.
-**How do I connect several tubes to one port?** Use a **junction** or the **manifold** (2 to 8 outlets).
+**How do I connect several tubes to one port?** Use a **junction** or the **manifold** (2 to 8 outlets). *Complete my circuit* adds a manifold by itself when a port would feed three or more tubes.
 **Where are my settings and autosave?** `%APPDATA%\PneuSim\`.
 **Is my data sent anywhere?** No. The only network use is the update check and download.
 **Which standards do the symbols follow?** They are drawn by PneuSim based on ISO 1219 / IEC 60617 conventions. PneuSim does not claim certification.
@@ -273,6 +274,7 @@ The full list is in [CHANGELOG.md](CHANGELOG.md). Highlights:
 
 | Version | Date | Highlights |
 |---|---|---|
+| 3.5.0 | 19 Nov 2026 | Units in Calculators and Sizing, automatic manifolds in Complete my circuit, update log and retry |
 | 3.4.x | 18 Nov 2026 | Audit and stabilisation: update check at every start, automatic updates, many fixes (see [docs/AUDIT-3.4.md](docs/AUDIT-3.4.md)) |
 | 3.3.9 – 3.3.18 | 18 Nov 2026 | Ribbon and File view, sheet tabs, auto-routing, crossover hops, manifold, air counterbalance valve, port names, print preview, search |
 | 3.3.0 – 3.3.8 | 18 Nov 2026 | New look and ribbon, start screen, sounds, rated pressure, fault finding, new actuators, automatic operation, AMOLED theme, whole-workspace cutaway, GRAFCET, Sizing sheets, multi-circuit tabs, update system |

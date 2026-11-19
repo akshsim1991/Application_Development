@@ -96,6 +96,9 @@ public sealed class AppSettings
 	/// <summary>When the last automatic update check ran (UTC ticks).</summary>
 	public static long LastUpdateCheckUtcTicks { get; set; }
 
+	/// <summary>Version of an automatic update that was downloaded and waits to be installed (empty = none).</summary>
+	public static string PendingUpdateVersion { get; set; } = "";
+
 	public static bool SoundsOn { get; set; } = true;
 
 	/// <summary>Master volume, 0 to 100.</summary>
@@ -254,6 +257,9 @@ public sealed class AppSettings
 				case "Advanced":
 					AdvancedMode = text3 == "1";
 					break;
+				case "PendingUpdate":
+					PendingUpdateVersion = text3.Length <= 20 ? text3 : "";
+					break;
 				case "AutoUpdate":
 					AutoUpdate = text3 == "1";
 					break;
@@ -328,6 +334,7 @@ public sealed class AppSettings
 				$"ValueLabels={(ShowValueLabels ? 1 : 0)}",
 				$"CheckForUpdates={(CheckForUpdates ? 1 : 0)}",
 				$"AutoUpdate={(AutoUpdate ? 1 : 0)}",
+				"PendingUpdate=" + PendingUpdateVersion,
 				"LastUpdateCheck=" + LastUpdateCheckUtcTicks.ToString(CultureInfo.InvariantCulture),
 				$"Sounds={(SoundsOn ? 1 : 0)}",
 				"Volume=" + SoundVolume.ToString(CultureInfo.InvariantCulture)

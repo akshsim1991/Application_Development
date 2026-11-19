@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
 using System.Linq;
 using System.Text;
 
@@ -298,6 +299,7 @@ public static class CircuitCompleter
 			}
 		}
 		CompleteHydraulics(c, log);
+		UseManifolds(c, log);
 		StringBuilder stringBuilder = new StringBuilder();
 		stringBuilder.AppendLine("COMPLETED FROM THE COMPONENTS IN THE WORKSPACE");
 		stringBuilder.AppendLine();
@@ -322,6 +324,67 @@ public static class CircuitCompleter
 			Explanation = stringBuilder.ToString(),
 			MergedIntoWorkspace = true
 		};
+	}
+
+	private static PointF Rot(PointF v, int quarterTurns)
+	{
+		for (int i = 0; i < quarterTurns % 4; i++)
+		{
+			v = new PointF(0f - v.Y, v.X);
+		}
+		return v;
+	}
+
+	/// <summary>A port that feeds three or more tubes gets a manifold (one inlet, several outlets) instead of a pile of tubes on one port.</summary>
+	private static void UseManifolds(Circuit c, List<string> log)
+	{
+		foreach (Port p in c.Elements.SelectMany((CircuitElement e) => e.Ports).ToList())
+		{
+			if (p.Kind == PortKind.Electric || p.Owner is Junction || p.Owner is Manifold)
+			{
+				continue;
+			}
+			List<Tube> tubes = c.Tubes.Where((Tube t) => t.A == p || t.B == p).ToList();
+			if (tubes.Count < 3 || tubes.Count > 8)
+			{
+				continue;
+			}
+			List<Port> others = tubes.Select((Tube t) => (t.A == p) ? t.B : t.A).OrderBy((Port o) => o.Owner.X).ThenBy((Port o) => o.Owner.Y).ToList();
+			Manifold m = new Manifold
+			{
+				Medium = p.Kind,
+				Outlets = tubes.Count
+			};
+			PointF dir = p.Direction;
+			PointF d = Rot(dir, p.Owner.Rotation);
+			int rot = 0;
+			for (int r = 0; r < 4; r++)
+			{
+				PointF v = Rot(new PointF(0f, -1f), r);
+				if (Math.Abs(v.X + d.X) < 0.5f && Math.Abs(v.Y + d.Y) < 0.5f)
+				{
+					rot = r;
+				}
+			}
+			m.Rotation = rot;
+			PointF portWorld = new PointF(p.Owner.X, p.Owner.Y);
+			PointF lp = Rot(p.Local, p.Owner.Rotation);
+			portWorld = new PointF(portWorld.X + lp.X, portWorld.Y + lp.Y);
+			PointF inletLocal = Rot(m.Ports[0].Local, rot);
+			PointF target = new PointF(portWorld.X + d.X * 60f, portWorld.Y + d.Y * 60f);
+			c.Add(m, (float)Math.Round((target.X - inletLocal.X) / 10.0) * 10f, (float)Math.Round((target.Y - inletLocal.Y) / 10.0) * 10f);
+			Naming.NameNewElement(m, c.Elements);
+			foreach (Tube t in tubes)
+			{
+				c.RemoveTube(t);
+			}
+			c.Connect(p, m.Ports[0]);
+			for (int i = 0; i < others.Count; i++)
+			{
+				c.Connect(m.Ports[i + 1], others[i]);
+			}
+			log.Add("Added " + Name(m) + " to feed the " + tubes.Count + " tubes at " + Name(p.Owner) + " port " + p.Name + " (a manifold instead of a pile of tubes on one port).");
+		}
 	}
 
 	/// <summary>Oil circuits: pump, tank, relief valve, 4/2 or 4/3 valve, cylinders and motors.</summary>

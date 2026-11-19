@@ -89,15 +89,15 @@ B1–B15 as above. No functionality was removed. Existing circuits behave as in 
 | Installation | **Implemented**: silent in-place upgrade (same installer AppId), work is saved first; automatic mode installs after PneuSim is closed |
 | Authenticity | **Gap**: the installer is not code-signed, and the checksum comes from the same site as the file, so someone who could change the release site could change both. Recommendation: buy a code-signing certificate and sign the installer; optionally sign the manifest |
 | Rollback | **Gap**: none. Recommendation: keep the previous installer in `%LOCALAPPDATA%\PneuSim\previous` and offer "Go back to the previous version" |
-| Failure recovery | **Partly**: a failed download leaves the installed version untouched; a failed silent install by the installer leaves the old version in place. Automatic installs are not logged and are not retried. Recommendation: write the result to the error log and retry at the next start |
+| Failure recovery | **Partly (3.5.0 adds logging and re-offering)**: a failed download leaves the installed version untouched; a failed silent install by the installer leaves the old version in place. Automatic installs are not logged and are not retried. Recommendation: write the result to the error log and retry at the next start |
 
 ## 9. Remaining known issues
-1. Calculators and Sizing dialogs still use bar (pressure unit setting not applied there). *Medium.*
+1. ~~Calculators and Sizing dialogs still use bar~~ - inputs fixed in 3.5.0 (results still print bar and say so).
 2. The router can still leave a line across a part in very crowded circuits; drag the line by hand. *Medium.*
 3. Not verified on screen by the auditor: B2, B4–B10, B12 (the fixes are in the CI-green build; please confirm on a Windows PC).
 4. 1366 × 768 screens, high-DPI scaling above 150 %, and long-run behaviour were not tested.
 5. Update authenticity and rollback gaps (section 8).
-6. The Complete my circuit tool does not insert manifolds. *Low (feature, not a bug).*
+6. ~~Complete my circuit does not insert manifolds~~ - done in 3.5.0.
 7. Windows 7/8: dark scroll bars unavailable (cosmetic).
 
 ## 10. Final stability assessment

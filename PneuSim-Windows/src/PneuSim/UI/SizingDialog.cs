@@ -53,8 +53,20 @@ public sealed class SizingDialog : Form
 			tabs.TabPages.Add(Page);
 		}
 
+		private readonly Dictionary<string, double> _factor = new Dictionary<string, double>();
+
 		public void Add(string key, string label, decimal value, decimal min, decimal max, int decimals)
 		{
+			double pf = label.Contains("(bar)") ? Units.PressureFactor : 1.0;
+			_factor[key] = pf;
+			if (pf != 1.0)
+			{
+				label = Units.RelabelPressure(label);
+				value *= (decimal)pf;
+				min *= (decimal)pf;
+				max *= (decimal)pf;
+				decimals = Math.Max(0, decimals - ((pf >= 100.0) ? 2 : 0));
+			}
 			NumericUpDown numericUpDown = new NumericUpDown
 			{
 				Minimum = min,
@@ -84,14 +96,14 @@ public sealed class SizingDialog : Form
 
 		public double V(string key)
 		{
-			return (double)Inputs[key].Value;
+			return (double)Inputs[key].Value / (_factor.ContainsKey(key) ? _factor[key] : 1.0);
 		}
 
 		public void Refresh_()
 		{
 			try
 			{
-				Result.Text = Compute(this).Replace("\n", "\r\n");
+				Result.Text = Compute(this).Replace("\n", "\r\n") + ((Units.PressureFactor != 1.0) ? "\r\n\r\n(Pressures in this result are in bar.)" : "");
 			}
 			catch (Exception ex)
 			{

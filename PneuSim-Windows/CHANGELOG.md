@@ -3,6 +3,11 @@
 Entries for 3.0–3.2 are summarised from the README shipped with 3.2.0
 (full text: `original/README-3.2.0-bundled.md`).
 
+## 3.5.0 "Mistral" (19 Nov 2026)
+- Calculators and Sizing sheets follow the pressure unit chosen in Settings (bar, MPa, kPa): inputs are entered and labelled in that unit; results still print pressures in bar and say so.
+- Complete my circuit now adds a manifold when one port would feed three or more tubes (up to eight), instead of piling tubes on one port.
+- Safer automatic updates: every step is written to `%LOCALAPPDATA%\PneuSim\logs\update.log`; if an automatic installation does not complete, PneuSim notes it at the next start and offers the update again.
+
 ## 3.4.1 "Mistral" (18 Nov 2026)
 Audit release (documentation and tooling, no new features). 3.4.0 was the first stabilisation build; the 3.4 feature work has not started.
 - README rewritten for first-time users; Quick Guide PDF updated to the ribbon, tabs, updates and shortcuts; installer readme updated.

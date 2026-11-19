@@ -24,6 +24,19 @@ public partial class MainForm
 	/// <summary>Called once after start-up: asks the update server every time PneuSim starts (when a network is connected). Failures are silent.</summary>
 	public void StartDailyUpdateCheck()
 	{
+		if (!string.IsNullOrEmpty(AppSettings.PendingUpdateVersion))
+		{
+			if (UpdateService.IsNewer(AppSettings.PendingUpdateVersion, AppInfo.Version))
+			{
+				UpdateService.Log("The automatic update to " + AppSettings.PendingUpdateVersion + " did not complete; still running " + AppInfo.Version + ". It will be offered again.");
+			}
+			else
+			{
+				UpdateService.Log("Automatic update to " + AppSettings.PendingUpdateVersion + " completed; running " + AppInfo.Version + ".");
+			}
+			AppSettings.PendingUpdateVersion = "";
+			AppSettings.Save();
+		}
 		if (AppSettings.CheckForUpdates || AppSettings.AutoUpdate)
 		{
 			RunUpdateCheck(manual: false);
@@ -78,10 +91,14 @@ public partial class MainForm
 					if (e.Error == null && !e.Cancelled && UpdateService.Verify(path, manifest))
 					{
 						_pendingInstaller = path;
+						UpdateService.Log("Downloaded and verified update " + manifest.Version + "; it will be installed when PneuSim is closed.");
+						AppSettings.PendingUpdateVersion = manifest.Version;
+						AppSettings.Save();
 						ShowUpdateLink("Update " + manifest.Version + " ready: installs when you close PneuSim");
 					}
 					else
 					{
+						UpdateService.Log("Download of update " + manifest.Version + " failed or did not match its checksum" + ((e.Error != null) ? (": " + e.Error.Message) : "") + ". The file was discarded.");
 						_statusUpdate.Visible = false;
 						try
 						{
@@ -112,6 +129,7 @@ public partial class MainForm
 		try
 		{
 			string args = "/c timeout /t 3 /nobreak >nul & \"" + _pendingInstaller + "\" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS /NORESTARTAPPLICATIONS";
+			UpdateService.Log("Starting the silent installer " + _pendingInstaller);
 			Process.Start(new ProcessStartInfo("cmd.exe", args)
 			{
 				CreateNoWindow = true,

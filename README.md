@@ -4,4 +4,6 @@
 - `FileGlade-iOS/` — FileGlade for iPhone (Xcode project).
 - `PneuSim-Windows/` — PneuSim 3.2, pneumatic, electro-pneumatic and hydraulic circuit simulator for Windows (WinForms, .NET Framework 4.7.2). Source recovered from the 3.2.0 installer; see `PneuSim-Windows/README.md`.
 
+- `FeatherViewer-Windows/` — Feather Image and Video Viewer (native Win32, runs in Safe Mode). Build with `./build.sh`; see its README.
+
 Designed and developed by Akshaya Simha.

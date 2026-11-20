@@ -15,3 +15,6 @@
 - KI14: Leftover detection is evidence-based but conservative; it cannot find leftovers whose names/paths do not match the program. Deleting leftover folders is permanent.
 - KI15: 3.0 WebView2 host + all bridge commands are compile-checked only; the page was tested against a mock bridge in Chromium (no console errors), never inside WebView2. WebView2 runtime on Windows 7/8 is Edge 109 (last supported) and must be installed separately; otherwise the classic UI starts. No scheduler, process manager, privacy cleaner or Store apps page in the new UI yet (classic UI has Services/Drivers/History only).
 - KI16: The new UI's Services page hides drivers by default and lacks profiles/properties editors of the classic UI (use `--classic`).
+- KI17: Driver updates (WUA COM) and WMI driver inventory are compile-checked only. MinGW's wuapi.h lacks IWindowsDriverUpdate, so update entries show Windows Update's title/description rather than model/class. Reboot-required is only known after install.
+- KI18: Open file location now verifies an Explorer window appears (title = folder name or full path). If Explorer is configured with an unusual title the check can time out and a second window may open.
+- KI19: Not yet in the new UI: scheduler, privacy/browser-data cleaner, file shredder, Store apps, context-menu manager, services profiles/properties editors (use --classic).

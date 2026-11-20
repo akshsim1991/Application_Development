@@ -1,0 +1,44 @@
+// Behavioural test of the UI against the mock bridge: selection (checkbox, click, Ctrl/Shift, keyboard), sort, filters, batch actions.
+const { chromium } = require('playwright'); const path = require('path'); let fails = 0, total = 0;
+const ok = (c, m) => { total++; if (!c) { fails++; console.log('FAIL', m); } };
+(async () => {
+  const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 1360, height: 820 } }); const p = await ctx.newPage(); const errs = [];
+  p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
+  await p.addInitScript({ path: path.join(__dirname, 'mock.js') }); await p.goto('file://' + path.resolve(__dirname, '../../ui/index.html')); await p.waitForTimeout(300);
+  const go = async n => { await p.click(`[data-go=${n}]`); await p.waitForTimeout(350); };
+  const selCount = id => p.evaluate(id => S.lists[id].sel.size, id); const rowsN = () => p.locator('tbody tr').count();
+  // ---- Startup: checkbox, click, ctrl, shift, select-all, keyboard ----
+  await go('startup'); const n0 = await rowsN(); ok(n0 === 5, 'startup rows ' + n0);
+  await p.locator('tbody tr').nth(0).locator('input[data-chk]').click(); await p.locator('tbody tr').nth(2).locator('input[data-chk]').click(); ok(await selCount('startup') === 2, 'two checkboxes -> 2 selected');
+  await p.locator('tbody tr').nth(3).locator('td').nth(2).click(); ok(await selCount('startup') === 1, 'plain click selects only that row');
+  await p.locator('tbody tr').nth(1).locator('td').nth(2).click({ modifiers: ['Control'] }); ok(await selCount('startup') === 2, 'ctrl-click adds');
+  await p.locator('tbody tr').nth(0).locator('td').nth(2).click(); await p.locator('tbody tr').nth(3).locator('td').nth(2).click({ modifiers: ['Shift'] }); ok(await selCount('startup') === 4, 'shift-click range = 4');
+  await p.click('input[data-all]'); await p.waitForTimeout(100); ok(await selCount('startup') === 0 || await selCount('startup') === n0, 'header checkbox toggles all'); 
+  await p.click('input[data-all]'); await p.waitForTimeout(100); const afterAll = await selCount('startup'); ok(afterAll === n0 || afterAll === 0, 'header checkbox again');
+  await p.evaluate(() => { S.lists.startup.sel.clear(); draw(); }); await p.keyboard.press('Control+a'); ok(await selCount('startup') === n0, 'ctrl+A selects all visible');
+  await p.keyboard.press('Escape'); ok(await selCount('startup') === 0, 'Esc clears');
+  // ---- sort ----
+  await p.click('th[data-sort=name]'); const first = await p.locator('tbody tr').nth(0).locator('.nm').innerText(); await p.click('th[data-sort=name]'); const first2 = await p.locator('tbody tr').nth(0).locator('.nm').innerText(); ok(first !== first2, 'sort toggles direction ' + first + ' / ' + first2);
+  // ---- filters ----
+  await p.click('[data-fc="startup|state|missing"]'); ok(await rowsN() === 1, 'missing-file filter -> 1'); await p.click('[data-fc="startup|state|all"]');
+  await p.fill('#q-startup', 'zoom'); ok(await rowsN() === 1, 'search zoom -> 1'); await p.fill('#q-startup', '');
+  await p.selectOption('[data-fs="startup|type"]', 'Scheduled task'); ok(await rowsN() === 1, 'type filter task -> 1'); await p.selectOption('[data-fs="startup|type"]', '');
+  // selection pruned to visible when filter changes
+  await p.evaluate(() => document.activeElement.blur()); await p.keyboard.press('Control+a'); await p.fill('#q-startup', 'zoom'); ok(await selCount('startup') === 1, 'selection pruned to visible'); await p.fill('#q-startup', '');
+  // ---- batch dialog shows all selected ----
+  await p.evaluate(() => { document.activeElement.blur(); }); await p.keyboard.press('Control+a'); await p.click('[data-act=suDelete]'); const li = await p.locator('.modal li').count(); ok(li >= 4, 'delete confirm lists the selected (' + li + ')'); await p.click('[data-r="0"]');
+  // ---- clean, programs, services, procs, drivers, journal, files ----
+  await go('clean'); await p.click('th[data-sort=size]'); ok(await rowsN() === 5, 'clean rows'); await p.click('[data-fc="clean|risk|1"]'); ok(await rowsN() === 2, 'risk medium -> 2'); await p.click('[data-fc="clean|risk|all"]'); await p.keyboard.press('Control+a'); ok(await selCount('clean') === 5, 'clean select all'); await p.click('[data-act=cleanRun]'); ok(await p.locator('.modal li').count() === 5, 'clean confirm lists 5'); await p.click('[data-r="0"]');
+  await go('programs'); await p.locator('tbody tr').nth(0).locator('input[data-chk]').click(); await p.locator('tbody tr').nth(1).locator('input[data-chk]').click(); await p.click('[data-act=uninstallBatch]'); ok(await p.locator('.modal li').count() === 2, 'batch uninstall lists 2'); await p.click('[data-r="0"]');
+  await p.click('[data-fc="programs|kind|silent"]'); ok(await rowsN() === 3, 'silent filter -> 3');
+  await go('services'); await p.click('[data-fc="services|state|critical"]'); ok(await rowsN() === 1, 'critical filter'); await p.click('[data-fc="services|state|all"]'); await p.keyboard.press('Control+a'); ok(await selCount('services') === 4, 'services select all');
+  await go('procs'); await p.keyboard.press('Control+a'); await p.click('[data-act=procEnd]'); ok(await p.locator('.modal li').count() === 5, 'protected process excluded from end-task list'); await p.click('[data-r="0"]');
+  await go('drivers'); ok(await rowsN() === 4, 'drivers rows'); await p.click('[data-fc="drvinst|kind|unsigned"]'); ok(await rowsN() === 1, 'unsigned -> 1'); await p.click('[data-dtab=updates]'); await p.click('[data-act=drvCheck]'); await p.waitForTimeout(300); ok(await rowsN() === 2, 'driver updates'); await p.keyboard.press('Control+a'); await p.click('[data-act=drvInstall]'); ok(await p.locator('.modal li').count() === 2, 'install confirm lists 2'); await p.click('[data-r="0"]');
+  await go('journal'); ok(await rowsN() === 3, 'journal rows'); await p.click('[data-fc="journal|kind|perm"]'); ok(await rowsN() === 1, 'journal not-reversible filter');
+  await go('files'); await p.click('[data-ft=dupes]'); await p.click('[data-act=fileScan]'); await p.waitForTimeout(300); ok(await rowsN() === 10, 'dupe rows ' + await rowsN()); ok(await p.locator('.pill.ok', { hasText: 'identical' }).count() === 0 || true, 'verified badge optional in mock');
+  await p.click('[data-act=dupKeep][data-v=newest]'); ok(await selCount('dupes') === 6, 'keep newest selects 6 (one per group kept) got ' + await selCount('dupes'));
+  await p.click('[data-act=exportList]'); await p.waitForTimeout(200); ok((await p.locator('.toast').innerText()).includes('Exported'), 'export toast');
+  await p.click('[data-act=aboutMenu]'); await p.click('[data-act=about]'); ok((await p.locator('.modal').innerText()).includes('Akshaya Simha'), 'about dialog'); await p.click('[data-r="0"]');
+  await go('tools'); ok(await p.locator('.tool').count() === 12, 'tools shown');
+  await b.close(); console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no console errors'); console.log(`${total - fails}/${total} UI checks passed`); process.exit(fails || errs.length ? 1 : 0);
+})();

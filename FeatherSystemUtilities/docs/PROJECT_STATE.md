@@ -13,3 +13,6 @@ Navy UI rewrite, deep scan, uninstaller, auto-update, delete options. Compile-ch
 
 ## 3.0 (WebView2 UI)
 New UI = `ui/index.html` (single file, vanilla JS, embedded via `tools/embed.py`) hosted by `src/win/webui.cpp` (WebView2, WebView2Loader.dll loaded at runtime, SDK in `third_party/webview2`, MinGW shim `third_party/shim/EventToken.h`). Bridge = JSON messages (`src/win/json.h`, tested): the page names scan items by key or generation+index, never raw paths. Fallback to classic Win32 UI (main.cpp) when the runtime is missing or `--classic`. Dev preview without Windows: `tools/ui-preview/shot.js` (Playwright + `mock.js`). NOT run on real Windows yet.
+
+## 3.1
+UI list framework (ui/index.html: `LS()`, `table()`, `pickRow()`, filters/sort helpers) gives every list checkbox + Ctrl/Shift multi-select, sorting, filters, CSV export. New host commands: drivers.list (WMI) / drivers.check / drivers.install (Windows Update Agent, admin), processes.list/end, sys.info, tools.run (whitelist), export.csv, scan.*, startup.removeDelay. Duplicate groups proven byte-for-byte at scan time; empty-folder tree delete re-verifies then removes deepest-first. UI behaviour tests: `cd tools/ui-preview && NODE_PATH=$(npm root -g) node test.js` (36 checks, mock bridge, Chromium). Still never run inside real WebView2/Windows.

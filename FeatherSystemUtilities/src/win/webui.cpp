@@ -8,6 +8,11 @@
 #include <shlwapi.h>
 #include <objbase.h>
 #include <WebView2.h>
+#include <tlhelp32.h>
+#include <psapi.h>
+#include <wbemidl.h>
+#include <wuapi.h>
+#include <commdlg.h>
 #include <mutex>
 #include <set>
 #include <fstream>
@@ -117,6 +122,45 @@ static ULONGLONG TreeSize(const wstring& dir, ULONGLONG& files, int gen, int dep
     } while (FindNextFileW(h, &fd)); FindClose(h); return total;
 }
 
+
+// ---------- drivers (read via WMI) and driver updates (via the Windows Update Agent) ----------
+static wstring VStr(VARIANT& v) { return v.vt == VT_BSTR && v.bstrVal ? wstring(v.bstrVal) : wstring(); }
+static string DriversListJson(wstring& err) {
+    IWbemLocator* loc = nullptr; IWbemServices* svc = nullptr; IEnumWbemClassObject* en = nullptr; js::Arr arr;
+    if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (void**)&loc)) || !loc) { err = L"WMI is not available."; return ""; }
+    BSTR ns = SysAllocString(L"ROOT\\CIMV2"); HRESULT hr = loc->ConnectServer(ns, nullptr, nullptr, nullptr, 0, nullptr, nullptr, &svc); SysFreeString(ns);
+    if (FAILED(hr) || !svc) { loc->Release(); err = L"Could not connect to WMI."; return ""; }
+    CoSetProxyBlanket(svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+    BSTR ql = SysAllocString(L"WQL"), q = SysAllocString(L"SELECT DeviceName,Manufacturer,DriverVersion,DriverDate,DriverProviderName,InfName,IsSigned,DeviceClass FROM Win32_PnPSignedDriver");
+    hr = svc->ExecQuery(ql, q, WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &en); SysFreeString(ql); SysFreeString(q);
+    if (SUCCEEDED(hr) && en) { IWbemClassObject* o = nullptr; ULONG n = 0; int i = 0;
+        while (en->Next(WBEM_INFINITE, 1, &o, &n) == S_OK && n) { VARIANT v[8]; const wchar_t* names[8] = {L"DeviceName", L"Manufacturer", L"DriverVersion", L"DriverDate", L"DriverProviderName", L"InfName", L"IsSigned", L"DeviceClass"}; for (int k = 0; k < 8; ++k) { VariantInit(&v[k]); o->Get(names[k], 0, &v[k], nullptr, nullptr); }
+            wstring name = VStr(v[0]); if (!name.empty()) { wstring d = VStr(v[3]); if (d.size() >= 8) d = d.substr(0, 4) + L"-" + d.substr(4, 2) + L"-" + d.substr(6, 2);
+                arr.add(js::Obj().num("i", i++).str("name", U(name)).str("maker", U(VStr(v[1]))).str("version", U(VStr(v[2]))).str("date", U(d)).str("provider", U(VStr(v[4]))).str("inf", U(VStr(v[5]))).boolean("signed", v[6].vt == VT_BOOL ? v[6].boolVal != 0 : true).str("class", U(VStr(v[7]))).done()); }
+            for (int k = 0; k < 8; ++k) VariantClear(&v[k]); o->Release(); } en->Release(); }
+    svc->Release(); loc->Release(); return arr.done();
+}
+static const GUID kClsidUpdateSession = {0x4cb43d7f, 0x7eee, 0x4906, {0x86, 0x98, 0x60, 0xda, 0x1c, 0x38, 0xf2, 0xfe}}, kIidUpdateSession = {0x816858a4, 0x260d, 0x4260, {0x93, 0x3a, 0x25, 0x85, 0xf1, 0xab, 0xc7, 0x6b}}, kIidUpdateCollection = {0x07f7438c, 0x7709, 0x4ca5, {0xb5, 0x18, 0x91, 0x27, 0x92, 0x88, 0x13, 0x4e}};
+static const GUID kClsidUpdateColl = {0x13639463, 0x00DB, 0x4646, {0x80, 0x3D, 0x52, 0x80, 0x26, 0x14, 0x0D, 0x88}};   // missing from MinGW wuapi.h
+static BSTR B(const wchar_t* s) { return SysAllocString(s); }
+static IUpdateSearcher* NewSearcher(IUpdateSession** ses) { if (FAILED(CoCreateInstance(kClsidUpdateSession, nullptr, CLSCTX_INPROC_SERVER, kIidUpdateSession, (void**)ses)) || !*ses) return nullptr; IUpdateSearcher* s = nullptr; (*ses)->CreateUpdateSearcher(&s); if (s) s->put_Online(VARIANT_TRUE); return s; }
+static wstring TakeBstr(BSTR b) { wstring w = b ? wstring(b) : wstring(); if (b) SysFreeString(b); return w; }
+static bool SearchDriverUpdates(IUpdateSession** ses, IUpdateSearcher** srch, IUpdateCollection** col, wstring& err) {
+    *srch = NewSearcher(ses); if (!*srch) { err = L"The Windows Update Agent is not available."; return false; }
+    BSTR crit = B(L"IsInstalled=0 and Type='Driver' and IsHidden=0"); ISearchResult* r = nullptr; HRESULT hr = (*srch)->Search(crit, &r); SysFreeString(crit);
+    if (FAILED(hr) || !r) { char b[40]; snprintf(b, sizeof b, " (0x%08lX)", (unsigned long)hr); err = L"Windows Update could not be searched. Check your internet connection and that the Windows Update service is not disabled" + FromUtf8(b) + L"."; return false; }
+    hr = r->get_Updates(col); r->Release(); if (FAILED(hr) || !*col) { err = L"No update list was returned."; return false; } return true;
+}
+static wstring UpdId(IUpdate* u) { IUpdateIdentity* id = nullptr; wstring r; if (SUCCEEDED(u->get_Identity(&id)) && id) { BSTR b = nullptr; id->get_UpdateID(&b); r = TakeBstr(b); id->Release(); } return r; }
+static wstring DateText(DATE d) { SYSTEMTIME st; if (d > 0 && VariantTimeToSystemTime(d, &st)) { wchar_t b[16]; swprintf(b, 16, L"%04d-%02d-%02d", st.wYear, st.wMonth, st.wDay); return b; } return L""; }
+
+// ---------- processes ----------
+struct ProcRec { DWORD pid; wstring name, path, publisher; ULONGLONG mem, start; DWORD threads; };
+static std::vector<ProcRec> g_procs;
+static ULONGLONG ProcStart(HANDLE h) { FILETIME c, e, k, u; return GetProcessTimes(h, &c, &e, &k, &u) ? (((ULONGLONG)c.dwHighDateTime << 32) | c.dwLowDateTime) : 0; }
+static bool ProtectedProcess(const wstring& n) { static const wchar_t* p[] = {L"system", L"registry", L"smss.exe", L"csrss.exe", L"wininit.exe", L"winlogon.exe", L"services.exe", L"lsass.exe", L"lsm.exe", L"fontdrvhost.exe", L"memory compression", L"secure system"}; for (auto* x : p) if (_wcsicmp(n.c_str(), x) == 0) return true; return false; }
+static std::vector<wstring> g_scanSeen;
+
 // ---------- request dispatch ----------
 using Fn = std::function<string(const js::V&)>;
 struct AsyncJob { long id; Fn fn; js::V a; };
@@ -138,7 +182,7 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).boolean("autoUpdate", c.autoUpdate).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
@@ -176,7 +220,7 @@ static std::map<string, Fn>& Handlers() {
         int sec = (int)std::clamp(a.num("seconds", 60), 5.0, 3600.0); int ok = 0, bad = 0; wstring first; for (auto& k : a.strs("keys")) { StartupEntry e; if (!findSu(k, e) || !CanDelay(e)) { ++bad; continue; } wstring err; if (DelayStartup(e, sec, err)) ++ok; else { ++bad; if (first.empty()) first = e.name + L": " + err; } }
         return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
     h["startup.add"] = [](const js::V& a) { wstring err; if (AddStartupEntry(W(a.str("name")), W(a.str("command")), a.boolean("allUsers"), err)) return Ok(); return Err(err); };
-    h["startup.openLocation"] = [findSu](const js::V& a) { StartupEntry e; if (!findSu(a.str("key"), e)) return Err(L"Entry not found."); OpenFileLocation(e.program); return Ok(); };
+    h["startup.openLocation"] = [findSu](const js::V& a) { StartupEntry e; if (!findSu(a.str("key"), e)) return Err(L"Entry not found."); wstring er; return OpenFileLocationEx(e.program, er) ? Ok() : Err(er); };
     h["startup.regedit"] = [findSu](const js::V& a) { StartupEntry e; if (!findSu(a.str("key"), e)) return Err(L"Entry not found."); ShowInRegistryEditor(e.location); return Ok(); };
     h["startup.lookup"] = [findSu](const js::V& a) { StartupEntry e; if (!findSu(a.str("key"), e)) return Err(L"Entry not found."); OnlineLookup(g_wnd, a.boolean("virustotal"), e.program, e.name); return Ok(); };
 
@@ -189,7 +233,7 @@ static std::map<string, Fn>& Handlers() {
         else { UninstallPlan pl = PlanUninstall(e, silent); if (!pl.available) return Err(pl.note.empty() ? L"This uninstall method is not available." : pl.note);
             Progress((silent ? L"Uninstalling silently: " : L"Uninstalling: ") + e.name + L"…"); UninstallResult r; RunUninstall(e, silent, r, nullptr); removed = r.removed; note = r.note;
             if (removed) { Progress(L"Looking for leftovers…"); left = FindLeftovers(e, false); } }
-        std::lock_guard<std::mutex> l(g_m); g_left = left; ++g_leftGen; js::Arr arr; for (size_t i = 0; i < g_left.size(); ++i) arr.add(CleanItemJson(g_left[i], i));
+        std::lock_guard<std::mutex> l(g_m); if (a.boolean("keep")) g_left.insert(g_left.end(), left.begin(), left.end()); else { g_left = left; ++g_leftGen; } js::Arr arr; for (size_t i = 0; i < g_left.size(); ++i) arr.add(CleanItemJson(g_left[i], i));
         return js::Obj().boolean("ok", true).boolean("removed", removed).str("note", U(note)).num("gen", g_leftGen).raw("leftovers", arr.done()).done(); };
     h["programs.removeLeftovers"] = [](const js::V& a) {
         std::vector<CleanItem> sel; { std::lock_guard<std::mutex> l(g_m); if ((int)a.num("gen", -1) != g_leftGen) return Err(L"The leftover list changed. Run the check again.");
@@ -215,11 +259,11 @@ static std::map<string, Fn>& Handlers() {
     h["files.scan"] = [](const js::V& a) {
         string m = a.str("mode"); int mode = m == "dupes" ? 1 : m == "empty" ? 2 : 0; g_cancel = false; auto& c = Cfg();
         FileScanOpts o; o.roots = c.scanRoots.empty() ? DefaultScanRoots() : c.scanRoots; o.dupes = mode == 1; o.empty = mode == 2; o.minSize = mode == 0 ? (ULONGLONG)c.largeMinMB << 20 : mode == 1 ? (ULONGLONG)c.dupMinKB << 10 : 0; o.maxResults = 2000; o.cancel = &g_cancel; o.progress = [](const wstring& p) { Progress(p); };
-        FileScan s; ScanFiles(o, s); js::Arr arr; for (size_t i = 0; i < s.files.size(); ++i) { auto& f = s.files[i]; arr.add(js::Obj().num("i", (double)i).str("name", U(f.name)).str("folder", U(f.folder)).str("ext", U(f.ext)).num("size", (double)f.size).str("date", U(FileDateText(f.mtime))).num("group", f.group).num("count", f.groupCount).str("hash", U(f.hash)).done()); }
+        FileScan s; ScanFiles(o, s); js::Arr arr; for (size_t i = 0; i < s.files.size(); ++i) { auto& f = s.files[i]; arr.add(js::Obj().num("i", (double)i).str("name", U(f.name)).str("folder", U(f.folder)).str("ext", U(f.ext)).num("size", (double)f.size).str("date", U(FileDateText(f.mtime))).num("group", f.group).num("count", f.groupCount).str("hash", U(f.hash)).boolean("verified", f.verified).done()); }
         js::Obj r; r.boolean("ok", true).raw("items", arr.done()).str("coverage", U(s.coverage)).num("scanned", (double)s.scanned).num("totalBytes", (double)s.totalBytes).num("reclaimable", (double)s.reclaimable).num("groups", s.groups).boolean("cancelled", s.cancelled);
         std::lock_guard<std::mutex> l(g_m); g_fs[mode] = std::move(s); r.num("gen", ++g_fsGen[mode]); return r.done(); };
     h["files.cancel"] = [](const js::V&) { g_cancel = true; ++g_stGen; return Ok(); };
-    h["files.openLocation"] = [](const js::V& a) { string m = a.str("mode"); int mode = m == "dupes" ? 1 : m == "empty" ? 2 : 0; wstring p; { std::lock_guard<std::mutex> l(g_m); size_t i = (size_t)a.num("i", -1); if ((int)a.num("gen", -1) != g_fsGen[mode] || i >= g_fs[mode].files.size()) return Err(L"The list changed."); p = g_fs[mode].files[i].path; } if (p.empty()) return Err(L"Already removed."); OpenFileLocation(p); return Ok(); };
+    h["files.openLocation"] = [](const js::V& a) { string m = a.str("mode"); int mode = m == "dupes" ? 1 : m == "empty" ? 2 : 0; wstring p; { std::lock_guard<std::mutex> l(g_m); size_t i = (size_t)a.num("i", -1); if ((int)a.num("gen", -1) != g_fsGen[mode] || i >= g_fs[mode].files.size()) return Err(L"The list changed."); p = g_fs[mode].files[i].path; } if (p.empty()) return Err(L"Already removed."); wstring e; return OpenFileLocationEx(p, e) ? Ok() : Err(e); };
     h["files.remove"] = [](const js::V& a) {
         string m = a.str("mode"); int mode = m == "dupes" ? 1 : m == "empty" ? 2 : 0; bool permanent = a.boolean("permanent"); std::vector<size_t> idx; std::vector<wstring> paths; ULONGLONG total = 0; wstring warn; std::vector<wstring> okPaths;
         { std::lock_guard<std::mutex> l(g_m); auto& sc = g_fs[mode]; if ((int)a.num("gen", -1) != g_fsGen[mode]) return Err(L"The list changed. Scan again.");
@@ -230,6 +274,7 @@ static std::map<string, Fn>& Handlers() {
             int mism = 0; for (size_t i : idx) { auto& f = sc.files[i];
                 if (mode == 1) { const FileEntry* keep = nullptr; for (size_t k = 0; k < sc.files.size(); ++k) if (sc.files[k].group == f.group && !sc.files[k].path.empty() && !chosen.count(k)) { keep = &sc.files[k]; break; }
                     if (keep && VerifyIdentical(f.path, keep->path)) { okPaths.push_back(f.path); total += f.size; } else ++mism; } else { okPaths.push_back(f.path); total += f.size; } }
+            if (mode == 2) { int notEmpty = 0; std::vector<wstring> keep; for (auto& pth : okPaths) if (IsFolderTreeEmpty(pth)) keep.push_back(pth); else ++notEmpty; okPaths = keep; total = 0; if (notEmpty) warn = std::to_wstring(notEmpty) + L" folder(s) were NOT removed: they now contain files."; }
             if (mism) warn = std::to_wstring(mism) + L" file(s) were NOT deleted: they are no longer identical to the copy you keep (changed since the scan, or unreadable)."; }
         if (okPaths.empty()) return Err(warn.empty() ? L"Nothing could be removed." : warn);
         wstring err; if (permanent) DeleteFilesPermanently(okPaths, err); else RecycleFiles(g_wnd, okPaths, err);
@@ -272,6 +317,77 @@ static std::map<string, Fn>& Handlers() {
         if (!DownloadUpdate(u, path, err, nullptr, [](ULONGLONG got, ULONGLONG all) { Emit("download", js::Obj().num("got", (double)got).num("all", (double)all).done()); })) return Err(err);
         if (!LaunchUpdateInstaller(path, err)) return Err(err); PostMessageW(g_wnd, WM_CLOSE, 0, 0); return Ok(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
+
+    // ---- driver inventory and updates ----
+    h["drivers.list"] = [](const js::V&) { wstring err; string j = DriversListJson(err); if (j.empty()) return Err(err); return js::Obj().boolean("ok", true).raw("items", j).done(); };
+    h["drivers.check"] = [](const js::V&) {
+        IUpdateSession* ses = nullptr; IUpdateSearcher* sr = nullptr; IUpdateCollection* col = nullptr; wstring err; if (!SearchDriverUpdates(&ses, &sr, &col, err)) { if (sr) sr->Release(); if (ses) ses->Release(); return Err(err); }
+        LONG n = 0; col->get_Count(&n); js::Arr arr; for (LONG i = 0; i < n; ++i) { IUpdate* u = nullptr; if (FAILED(col->get_Item(i, &u)) || !u) continue; BSTR t = nullptr; u->get_Title(&t); wstring title = TakeBstr(t); DECIMAL sz{}; double bytes = 0; if (SUCCEEDED(u->get_MaxDownloadSize(&sz))) { VarR8FromDec(&sz, &bytes); }
+            wstring maker, model, cls, ver; BSTR dsc = nullptr; u->get_Description(&dsc); wstring desc = TakeBstr(dsc); DATE ld = 0; u->get_LastDeploymentChangeTime(&ld); ver = DateText(ld); VARIANT_BOOL reboot = VARIANT_FALSE;
+            arr.add(js::Obj().str("id", U(UpdId(u))).str("title", U(title)).str("desc", U(desc)).str("date", U(ver)).num("size", bytes).done()); u->Release(); }
+        col->Release(); sr->Release(); ses->Release(); return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
+    h["drivers.install"] = [](const js::V& a) {
+        if (!IsElevated()) return Err(L"Installing drivers needs administrator rights. Restart as administrator from Settings."); std::set<string> want; for (auto& s : a.strs("ids")) want.insert(s); if (want.empty()) return Err(L"Nothing selected.");
+        IUpdateSession* ses = nullptr; IUpdateSearcher* sr = nullptr; IUpdateCollection* col = nullptr; wstring err; if (!SearchDriverUpdates(&ses, &sr, &col, err)) { if (sr) sr->Release(); if (ses) ses->Release(); return Err(err); }
+        IUpdateCollection* pick = nullptr; CoCreateInstance(kClsidUpdateColl, nullptr, CLSCTX_INPROC_SERVER, kIidUpdateCollection, (void**)&pick); LONG n = 0; col->get_Count(&n); std::vector<wstring> titles; if (pick) for (LONG i = 0; i < n; ++i) { IUpdate* u = nullptr; if (FAILED(col->get_Item(i, &u)) || !u) continue; if (want.count(U(UpdId(u)))) { u->AcceptEula(); LONG idx; pick->Add(u, &idx); BSTR t = nullptr; u->get_Title(&t); titles.push_back(TakeBstr(t)); } u->Release(); }
+        LONG pc = 0; if (pick) pick->get_Count(&pc); if (!pc) { if (pick) pick->Release(); col->Release(); sr->Release(); ses->Release(); return Err(L"The selected updates are no longer offered. Check again."); }
+        Progress(L"Downloading " + std::to_wstring(pc) + L" driver update(s)…"); IUpdateDownloader* dl = nullptr; ses->CreateUpdateDownloader(&dl); IDownloadResult* dr = nullptr; HRESULT hr = E_FAIL; if (dl) { dl->put_Updates(pick); hr = dl->Download(&dr); }
+        bool ok = SUCCEEDED(hr); OperationResultCode rc = orcNotStarted; if (dr) { dr->get_ResultCode(&rc); dr->Release(); } if (dl) dl->Release();
+        bool reboot = false; int installed = 0;
+        if (ok && rc == orcSucceeded) { Progress(L"Installing…"); IUpdateInstaller* in = nullptr; ses->CreateUpdateInstaller((IUpdateInstaller**)&in); IInstallationResult* ir = nullptr; if (in) { in->put_Updates(pick); in->put_AllowSourcePrompts(VARIANT_FALSE); hr = in->Install(&ir); if (SUCCEEDED(hr) && ir) { OperationResultCode irc = orcNotStarted; ir->get_ResultCode(&irc); VARIANT_BOOL rb = VARIANT_FALSE; ir->get_RebootRequired(&rb); reboot = rb != VARIANT_FALSE; ok = irc == orcSucceeded || irc == orcSucceededWithErrors; if (ok) installed = (int)pc; } else ok = false; if (ir) ir->Release(); in->Release(); } else ok = false; }
+        else ok = false;
+        wstring all; for (auto& t : titles) all += (all.empty() ? L"" : L"; ") + t; WriteJournal(L"Driver updates", L"Windows Update", L"" + std::to_wstring(pc) + L" update(s) selected", ok ? std::to_wstring(installed) + L" installed" : L"unchanged/unknown", ok ? (reboot ? L"ok (restart required)" : L"ok") : L"failed", false);
+        pick->Release(); col->Release(); sr->Release(); ses->Release();
+        if (!ok) return Err(L"Windows Update could not install the driver(s). Nothing was changed by Feather; check Windows Update for details."); return js::Obj().boolean("ok", true).num("installed", installed).boolean("reboot", reboot).done(); };
+
+    // ---- processes ----
+    h["processes.list"] = [](const js::V&) {
+        std::vector<ProcRec> v; HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); if (snap == INVALID_HANDLE_VALUE) return Err(L"Could not list processes."); PROCESSENTRY32W pe{sizeof pe};
+        if (Process32FirstW(snap, &pe)) do { ProcRec r{pe.th32ProcessID, pe.szExeFile, L"", L"", 0, 0, pe.cntThreads}; HANDLE h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, FALSE, r.pid); if (!h) h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, r.pid);
+            if (h) { PROCESS_MEMORY_COUNTERS pmc{sizeof pmc}; if (GetProcessMemoryInfo(h, &pmc, sizeof pmc)) r.mem = pmc.WorkingSetSize; wchar_t p[MAX_PATH * 2]; DWORD n = MAX_PATH * 2; if (QueryFullProcessImageNameW(h, 0, p, &n)) r.path = p; r.start = ProcStart(h); CloseHandle(h); }
+            if (!r.path.empty()) r.publisher = InspectFile(r.path, false).publisher; v.push_back(r); } while (Process32NextW(snap, &pe)); CloseHandle(snap);
+        js::Arr a; for (auto& r : v) a.add(js::Obj().num("pid", r.pid).str("name", U(r.name)).str("path", U(r.path)).str("publisher", U(r.publisher)).num("mem", (double)r.mem).num("threads", r.threads).boolean("protected", ProtectedProcess(r.name) || r.pid <= 4 || r.pid == GetCurrentProcessId()).done());
+        { std::lock_guard<std::mutex> l(g_m); g_procs = std::move(v); } return js::Obj().boolean("ok", true).raw("items", a.done()).done(); };
+    h["processes.end"] = [](const js::V& a) {
+        int ok = 0, bad = 0; wstring first; auto* pv = a.get("pids"); if (!pv) return Err(L"Nothing selected.");
+        for (auto& x : pv->a) { DWORD pid = (DWORD)x.n; ProcRec rec{}; bool f = false; { std::lock_guard<std::mutex> l(g_m); for (auto& r : g_procs) if (r.pid == pid) { rec = r; f = true; break; } }
+            if (!f || ProtectedProcess(rec.name) || pid <= 4 || pid == GetCurrentProcessId()) { ++bad; if (first.empty()) first = (f ? rec.name : L"process") + L" is protected or no longer listed."; continue; }
+            HANDLE h = OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid); if (!h) { ++bad; if (first.empty()) first = rec.name + L": " + Win32Err(GetLastError()); continue; }
+            bool same = rec.start && ProcStart(h) == rec.start; bool done = same && TerminateProcess(h, 1); DWORD e = GetLastError(); CloseHandle(h);
+            WriteJournal(rec.name, L"process " + std::to_wstring(pid), L"running", done ? L"terminated" : L"unchanged", done ? L"ok (end task)" : L"failed: " + (same ? Win32Err(e) : wstring(L"process changed")), false); if (done) ++ok; else { ++bad; if (first.empty()) first = rec.name + L": " + (same ? Win32Err(e) : wstring(L"the process changed since the list was made")); } }
+        return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
+
+    // ---- system info and maintenance tools ----
+    h["sys.info"] = [](const js::V&) {
+        auto reg = [](HKEY root, const wchar_t* key, const wchar_t* val) { wchar_t b[256]{}; DWORD n = sizeof b - 2; HKEY k; wstring r; if (RegOpenKeyExW(root, key, 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { if (RegQueryValueExW(k, val, nullptr, nullptr, (BYTE*)b, &n) == ERROR_SUCCESS) r = b; RegCloseKey(k); } return r; };
+        MEMORYSTATUSEX ms{sizeof ms}; GlobalMemoryStatusEx(&ms); wchar_t cn[MAX_COMPUTERNAME_LENGTH + 1]; DWORD cl = MAX_COMPUTERNAME_LENGTH + 1; if (!GetComputerNameW(cn, &cl)) cn[0] = 0; SYSTEM_INFO si; GetNativeSystemInfo(&si);
+        wstring cpu = reg(HKEY_LOCAL_MACHINE, L"HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0", L"ProcessorNameString"), os = reg(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"ProductName"), disp = reg(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", L"DisplayVersion");
+        return js::Obj().boolean("ok", true).str("computer", U(cn)).str("os", U(os + (disp.empty() ? L"" : L" " + disp))).num("build", WindowsBuild()).str("cpu", U(cpu)).num("cores", si.dwNumberOfProcessors).str("arch", si.wProcessorArchitecture == PROCESSOR_ARCHITECTURE_AMD64 ? "64-bit" : "32-bit").num("ramTotal", (double)ms.ullTotalPhys).num("ramFree", (double)ms.ullAvailPhys).num("uptimeSec", (double)(GetTickCount64() / 1000)).done(); };
+    h["tools.run"] = [](const js::V& a) {
+        struct T { const char* id; const wchar_t* file; const wchar_t* args; bool admin; const wchar_t* label; };
+        static const T tools[] = {
+            {"sfc", L"cmd.exe", L"/k sfc /scannow", true, L"System File Checker"}, {"dism", L"cmd.exe", L"/k DISM /Online /Cleanup-Image /RestoreHealth", true, L"DISM repair"}, {"chkdsk", L"cmd.exe", L"/k chkdsk C: /scan", true, L"Check disk (online scan)"},
+            {"dns", L"cmd.exe", L"/c ipconfig /flushdns & pause", false, L"Flush DNS cache"}, {"restorepoint", L"powershell.exe", L"-NoProfile -Command \"Checkpoint-Computer -Description 'Feather System Utilities' -RestorePointType MODIFY_SETTINGS; pause\"", true, L"Create restore point"},
+            {"memdiag", L"mdsched.exe", L"", true, L"Windows Memory Diagnostic"}, {"devmgmt", L"devmgmt.msc", L"", false, L"Device Manager"}, {"diskmgmt", L"diskmgmt.msc", L"", false, L"Disk Management"}, {"taskschd", L"taskschd.msc", L"", false, L"Task Scheduler"}, {"services", L"services.msc", L"", false, L"Services"}, {"appwiz", L"appwiz.cpl", L"", false, L"Programs and Features"}, {"wu", L"ms-settings:windowsupdate", L"", false, L"Windows Update"} };
+        string id = a.str("id"); for (auto& t : tools) if (id == t.id) { bool ok = (INT_PTR)ShellExecuteW(nullptr, t.admin ? L"runas" : L"open", t.file, t.args[0] ? t.args : nullptr, nullptr, SW_SHOWNORMAL) > 32; if (ok && (id == "sfc" || id == "dism" || id == "chkdsk" || id == "restorepoint")) WriteJournal(t.label, L"maintenance tool", L"", L"started", L"ok (runs in its own window)", false); return ok ? Ok() : Err(L"The tool could not be started (administrator permission may have been declined)."); }
+        return Err(L"Unknown tool."); };
+
+    // ---- export, scan folders, delay removal ----
+    h["export.csv"] = [](const js::V& a) {
+        wchar_t file[MAX_PATH] = {}; wstring base = W(a.str("title", "export")); for (auto& c : base) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_'; wcsncpy(file, (base + L".csv").c_str(), MAX_PATH - 1);
+        OPENFILENAMEW o{sizeof o}; o.hwndOwner = g_wnd; o.lpstrFilter = L"CSV (*.csv)\0*.csv\0All files\0*.*\0"; o.lpstrFile = file; o.nMaxFile = MAX_PATH; o.lpstrDefExt = L"csv"; o.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (!GetSaveFileNameW(&o)) return js::Obj().boolean("ok", true).boolean("cancelled", true).done();
+        string out = "\xEF\xBB\xBF"; std::vector<wstring> cols; for (auto& c : a.strs("cols")) cols.push_back(W(c)); out += U(CsvRow(cols)) + "\r\n";
+        if (auto* rv = a.get("rows")) for (auto& r : rv->a) { std::vector<wstring> f; for (auto& c : r.a) f.push_back(W(c.t == js::V::Str ? c.s : c.t == js::V::Num ? std::to_string((long long)c.n) : string())); out += U(CsvRow(f)) + "\r\n"; }
+        return AtomicWrite(file, out) ? js::Obj().boolean("ok", true).str("path", U(file)).done() : Err(L"The file could not be written."); };
+    h["scan.folders"] = [](const js::V&) { auto& c = Cfg(); auto v = c.scanRoots.empty() ? DefaultScanRoots() : c.scanRoots; js::Arr a; for (auto& x : v) a.add(Q(x)); return js::Obj().boolean("ok", true).boolean("custom", !c.scanRoots.empty()).raw("items", a.done()).done(); };
+    h["scan.add"] = [](const js::V&) {
+        IFileOpenDialog* d = nullptr; if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_IFileOpenDialog, (void**)&d)) || !d) return Err(L"The folder picker is not available."); DWORD o = 0; d->GetOptions(&o); d->SetOptions(o | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        wstring path; if (SUCCEEDED(d->Show(g_wnd))) { IShellItem* it = nullptr; if (SUCCEEDED(d->GetResult(&it)) && it) { PWSTR p = nullptr; if (SUCCEEDED(it->GetDisplayName(SIGDN_FILESYSPATH, &p)) && p) { path = p; CoTaskMemFree(p); } it->Release(); } } d->Release();
+        if (path.empty()) return js::Obj().boolean("ok", true).boolean("cancelled", true).done(); auto& c = Cfg(); if (c.scanRoots.empty()) c.scanRoots = DefaultScanRoots(); for (auto& x : c.scanRoots) if (_wcsicmp(x.c_str(), path.c_str()) == 0) return Ok(); c.scanRoots.push_back(path); SaveSettings(); return Ok(); };
+    h["scan.remove"] = [](const js::V& a) { auto& c = Cfg(); if (c.scanRoots.empty()) c.scanRoots = DefaultScanRoots(); size_t i = (size_t)a.num("i", -1); if (i < c.scanRoots.size()) c.scanRoots.erase(c.scanRoots.begin() + i); SaveSettings(); return Ok(); };
+    h["scan.reset"] = [](const js::V&) { Cfg().scanRoots.clear(); SaveSettings(); return Ok(); };
+    h["startup.removeDelay"] = [findSu](const js::V& a) { int ok = 0, bad = 0; wstring first; for (auto& k : a.strs("keys")) { StartupEntry e; if (!findSu(k, e) || !e.managedDelay) { ++bad; continue; } wstring err; if (RemoveDelay(e, err)) ++ok; else { ++bad; if (first.empty()) first = e.name + L": " + err; } } return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
     return h;
 }
 

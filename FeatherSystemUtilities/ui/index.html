@@ -9,9 +9,9 @@ body{margin:0;font:14px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--ink);ba
 button,input,select{font:inherit;color:inherit}
 :focus-visible{outline:2px solid var(--focus);outline-offset:2px;border-radius:8px}
 .app{display:grid;grid-template-columns:88px 1fr;height:100vh}
-.rail{background:var(--rail);color:#cfd6ea;display:flex;flex-direction:column;align-items:center;padding:16px 0;gap:4px;overflow:auto}
-.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#19c3a8,#3b4bd8);display:grid;place-items:center;margin-bottom:12px;flex:none}
-.nav{width:70px;padding:9px 0 7px;border-radius:14px;text-align:center;font-size:11px;color:#9fb0d4;cursor:pointer;border:0;background:none;flex:none}
+.rail{background:var(--rail);color:#cfd6ea;display:flex;flex-direction:column;align-items:center;padding:12px 0;gap:1px;overflow:auto}
+.logo{width:44px;height:44px;border-radius:14px;background:linear-gradient(135deg,#19c3a8,#3b4bd8);display:grid;place-items:center;margin-bottom:8px;flex:none}
+.nav{width:72px;padding:6px 0 4px;border-radius:14px;text-align:center;font-size:11px;color:#9fb0d4;cursor:pointer;border:0;background:none;flex:none}
 .nav svg{display:block;width:22px;height:22px;margin:0 auto 4px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav:hover{background:#1a2a52;color:#fff}.nav.on{background:#223a74;color:#fff}.nav.on svg{stroke:#38e0c5}
 .rail .sp{flex:1}
@@ -68,6 +68,13 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--teal);cursor:poin
 .setrow{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line2)}.setrow:first-of-type{border-top:0}
 input[type=number]{width:110px;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card)}
 .legend{display:flex;gap:14px;flex-wrap:wrap;color:var(--mute);font-size:12.5px}.dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px}
+th.sorted{color:var(--ink)}th .arr{font-size:9px;margin-left:3px}
+tr.r{user-select:none}tr.sel td{background:var(--infobg)}tr.fc td:first-child{box-shadow:inset 3px 0 0 var(--teal)}
+.selbar{display:flex;gap:10px;align-items:center;padding:8px 12px;background:var(--infobg);color:var(--infofg);border-radius:11px;margin-bottom:10px;font-weight:600;flex-wrap:wrap}.selbar a{cursor:pointer;text-decoration:underline;font-weight:500}
+select{border:1px solid var(--line);background:var(--card);border-radius:10px;padding:6px 10px;max-width:190px}
+.menu{position:fixed;left:84px;bottom:14px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:6px;z-index:40;min-width:230px}.menu button{display:block;width:100%;text-align:left;border:0;background:none;padding:9px 12px;border-radius:9px;cursor:pointer}.menu button:hover{background:var(--hover)}
+kbd{background:var(--soft);border:1px solid var(--line);border-radius:6px;padding:1px 7px;font-size:12px}
+.tools{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}.tool{border:1px solid var(--line2);border-radius:14px;padding:14px;background:var(--card)}.tool b{display:block}.tool .muted{margin:4px 0 10px}
 </style></head>
 <body>
 <div class="app">
@@ -96,35 +103,40 @@ const ICON = {
   programs: icon('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'),
   startup: icon('<path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/>'),
   services: icon('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
+  drivers: icon('<rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 18v3M16 18v3M8 3v3M16 3v3M9 12h6"/>'),
+  procs: icon('<path d="M3 12h4l3-8 4 16 3-8h4"/>'),
   files: icon('<path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>'),
   storage: icon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'),
+  tools: icon('<path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.6 2.6-2.4-.6-.6-2.4z"/>'),
   journal: icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
-  settings: icon('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>')
+  settings: icon('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'),
+  about: icon('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>')
 };
-const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['startup', 'Startup'], ['services', 'Services'], ['files', 'Files'], ['storage', 'Storage'], ['journal', 'Journal'], ['settings', 'Settings']];
+const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['startup', 'Startup'], ['services', 'Services'], ['drivers', 'Drivers'], ['procs', 'Processes'], ['files', 'Files'], ['storage', 'Storage'], ['tools', 'Tools'], ['journal', 'Journal']];
 const TITLES = {
   today: ['', 'Nothing is changed without your OK · everything is previewed and can be rolled back'],
   clean: ['Clean', 'Review what can be removed. Each item says why it is safe, and what happens.'],
   programs: ['Programs', 'Uninstall silently or step by step. Leftovers are previewed, never guessed.'],
   startup: ['Startup', 'What runs when you sign in, with the evidence behind every entry.'],
-  services: ['Services', 'Windows services and drivers. Critical ones are protected.'],
-  files: ['Files', 'Large files, duplicates (matched by content, never by size) and empty folders.'],
+  services: ['Services', 'Windows services. Critical ones are protected.'],
+  drivers: ['Drivers', 'See what is installed and check Windows Update for newer drivers.'],
+  procs: ['Processes', 'What is running right now. Critical Windows processes are protected.'],
+  files: ['Files', 'Large files, duplicates (proven identical byte-for-byte) and empty folders.'],
   storage: ['Storage', 'See where your space went. Click a block to drill down.'],
+  tools: ['Tools', 'System information and Windows’ own repair tools, one click away.'],
   journal: ['Journal & rollback', 'Everything Feather changed, and the backups you can restore.'],
   settings: ['Settings', 'Feather works offline. Updates are the only network feature, and optional.']
 };
 
 // ======================= state =======================
-const S = { page: 'today', info: {}, today: { ran: false, running: false }, clean: { items: null, gen: 0, sel: new Set(), focus: -1, deep: false },
-  startup: { items: null, sel: new Set(), filter: 'all', q: '', focus: null, hideMs: true, sort: ['name', 1] },
-  programs: { items: null, sel: new Set(), q: '', focus: null, sort: ['name', 1] },
-  services: { items: null, q: '', filter: 'all', focus: null, drivers: false },
-  files: { mode: 'large', data: {}, sel: new Set(), focus: -1, q: '' },
-  storage: { drives: null, path: null, data: null, stack: [] },
+const S = { page: 'today', info: {}, today: { ran: false, running: false }, lists: {},
+  clean: { items: null, gen: 0, coverage: '', deep: false }, startup: { items: null, coverage: '' }, programs: { items: null }, services: { items: null, drivers: false },
+  drivers: { tab: 'installed', items: null, upd: null, updErr: '' }, procs: { items: null }, files: { mode: 'large', data: {} }, storage: { drives: null, data: null }, sys: null, scan: null,
   journal: { items: null, backups: null }, update: null, busy: null };
+function LS(id) { if (!S.lists[id]) S.lists[id] = { id, sel: new Set(), anchor: -1, focus: null, order: [], sort: DEF_SORT[id.split(':')[0]] || null, q: '', f: {}, csv: null }; return S.lists[id]; }
+const DEF_SORT = { clean: ['size', -1], startup: ['name', 1], programs: ['name', 1], services: ['name', 1], drvinst: ['name', 1], drvupd: ['name', 1], procs: ['mem', -1], large: ['size', -1], dupes: ['group', 1], empty: ['path', 1], journal: ['time', -1] };
 
 // ======================= UI primitives =======================
-let busyEl = null;
 function setBusy(text) { S.busy = text; let b = $('#busyBar'); if (!text) { if (b) b.remove(); return; } if (!b) { b = document.createElement('div'); b.id = 'busyBar'; b.className = 'busy'; b.setAttribute('role', 'status'); b.innerHTML = '<i></i><span></span>'; document.body.appendChild(b); } $('span', b).textContent = text; }
 on('progress', d => { if (S.busy) setBusy(d.text); });
 let toastT; function toast(msg, err) { const old = $('.toast'); if (old) old.remove(); const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', 'alert'); t.textContent = msg; document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), err ? 9000 : 4500); }
@@ -141,25 +153,56 @@ function modal({ title, body, items, confirm, cancel = 'Cancel', danger, extra, 
 }
 const note = (title, body, items) => modal({ title, body, items, cancel: '', confirm: 'OK' });
 async function run(text, fn) { setBusy(text); try { return await fn(); } finally { setBusy(null); } }
+const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+
+// ======================= list framework: checkbox + click + Ctrl/Shift multi-select, sort, filter =======================
+function cmp(x, y) { return typeof x === 'number' && typeof y === 'number' ? x - y : String(x == null ? '' : x).localeCompare(String(y == null ? '' : y), undefined, { sensitivity: 'base', numeric: true }); }
+function sortItems(L, items, getters) { const s = L.sort; if (!s || !getters[s[0]]) return items; const g = getters[s[0]]; return items.slice().sort((a, b) => cmp(g(a), g(b)) * s[1]); }
+function matchQ(L, text) { return !L.q || text.toLowerCase().includes(L.q.toLowerCase()); }
+// rows: [{k, cells:[html...], csv:[...]}]; cols: [{h, s, n}]
+function table(L, cols, rows, empty) {
+  L.order = rows.map(r => r.k); const have = new Set(L.order); for (const k of [...L.sel]) if (!have.has(k)) L.sel.delete(k); if (L.focus != null && !have.has(L.focus)) L.focus = null;
+  L.csv = { cols: cols.map(c => c.h).filter(Boolean), rows: rows.map(r => ({ k: r.k, v: r.csv || [] })) };
+  if (!rows.length) return `<div class="card empty">${empty}</div>`;
+  const all = L.sel.size === rows.length, some = L.sel.size > 0 && !all;
+  return `<div class="tablewrap"><table><thead><tr><th style="width:34px"><input type="checkbox" data-all="${esc(L.id)}" ${all ? 'checked' : ''} ${some ? 'data-ind="1"' : ''} aria-label="Select all"></th>${cols.map(c => { const on = L.sort && c.s && L.sort[0] === c.s; return `<th class="${c.n ? 'num' : ''} ${on ? 'sorted' : ''}" ${c.s ? `data-sort="${c.s}" data-l="${esc(L.id)}" title="Sort by ${esc(c.h)}"` : ''}>${c.h}${on ? `<span class="arr">${L.sort[1] > 0 ? '▲' : '▼'}</span>` : ''}</th>`; }).join('')}</tr></thead><tbody>${rows.map((r, ix) => `<tr class="r ${L.sel.has(r.k) ? 'sel' : ''} ${L.focus === r.k ? 'fc' : ''}" data-l="${esc(L.id)}" data-ix="${ix}"><td><input type="checkbox" data-chk="1" ${L.sel.has(r.k) ? 'checked' : ''} aria-label="Select row"></td>${r.cells.map((c, i) => `<td class="${cols[i] && cols[i].n ? 'num' : ''}">${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function selBar(L, noun, extraBtns) {
+  const n = L.sel.size, tot = L.order.length;
+  return `<div class="toolbar"><span class="muted">${n ? `<b>${n}</b> of ${tot} ${noun} selected` : `${tot} ${noun} · tick boxes, or Ctrl/Shift-click rows to select several`}</span>${tot ? `<button class="btn ghost sm" data-act="selAll" data-l="${esc(L.id)}">Select all</button>` : ''}${n ? `<button class="btn ghost sm" data-act="selNone" data-l="${esc(L.id)}">Clear</button>` : ''}${extraBtns || ''}${L.csv && tot ? `<button class="btn ghost sm" data-act="exportList" data-l="${esc(L.id)}">Export…</button>` : ''}</div>`;
+}
+const searchBox = (L, ph) => `<label class="search">&#9906;<input id="q-${esc(L.id)}" data-q="${esc(L.id)}" value="${esc(L.q)}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></label>`;
+const chips = (L, field, opts, def = 'all') => `<div class="chips" role="group">${opts.map(([v, l, n]) => `<button class="chip ${(L.f[field] || def) === v ? 'on' : ''}" data-fc="${esc(L.id)}|${field}|${esc(v)}">${esc(l)}${n != null ? ' ' + n : ''}</button>`).join('')}</div>`;
+const selectBox = (L, field, label, opts) => `<select data-fs="${esc(L.id)}|${field}" aria-label="${esc(label)}"><option value="">${esc(label)}: all</option>${opts.map(o => `<option value="${esc(o)}" ${L.f[field] === o ? 'selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+const uniq = (arr, f) => [...new Set(arr.map(f).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+const selectedOf = (L, items, keyOf) => items.filter(i => L.sel.has(keyOf(i)));
+function pickRow(L, ix, e, isChk) {
+  const k = L.order[ix]; if (k === undefined) return;
+  if (e.shiftKey && L.anchor >= 0) { const [a, b] = [L.anchor, ix].sort((x, y) => x - y); if (!(e.ctrlKey || e.metaKey)) L.sel.clear(); for (let i = a; i <= b; i++) L.sel.add(L.order[i]); }
+  else if (isChk || e.ctrlKey || e.metaKey) { L.sel.has(k) ? L.sel.delete(k) : L.sel.add(k); L.anchor = ix; }
+  else { L.sel = new Set([k]); L.anchor = ix; }
+  L.focus = k; draw();
+}
+const Q = { text: s => (s || '').toString() };
+const panelMulti = (title, lines) => `<h3>${esc(title)}</h3><div class="evid"><b>Selection</b>${lines.map(esc).join('\n')}</div>`;
 
 // ======================= rendering core =======================
 function go(page) { S.page = page; draw(); loadPage(); }
 function drawRail() { $('#rail').innerHTML = `<div class="logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M20 4C10 4 5 9 5 16l-1 4M5 16c6 0 10-4 12-9M9 13c3 0 6-2 8-5"/></svg></div>` +
-  NAV.map(([k, l]) => k === 'settings' ? `<span class="sp"></span><button class="nav ${S.page === k ? 'on' : ''}" data-go="${k}" aria-label="${l}">${ICON[k]}${l}</button>` : `<button class="nav ${S.page === k ? 'on' : ''}" data-go="${k}" aria-label="${l}">${ICON[k]}${l}</button>`).join(''); }
+  NAV.map(([k, l]) => `<button class="nav ${S.page === k ? 'on' : ''}" data-go="${k}" aria-label="${l}">${ICON[k]}${l}</button>`).join('') + `<span class="sp"></span><button class="nav" data-act="aboutMenu" aria-label="About">${ICON.about}About</button><button class="nav ${S.page === 'settings' ? 'on' : ''}" data-go="settings" aria-label="Settings">${ICON.settings}Settings</button>`; }
+function greet() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 function draw() {
-  const keep = document.activeElement && document.activeElement.id ? [document.activeElement.id, document.activeElement.selectionStart] : null, scroll = $('.tablewrap') ? $('.tablewrap').scrollTop : 0;
+  const ae = document.activeElement, keep = ae && ae.id && /^q-/.test(ae.id) ? [ae.id, ae.selectionStart] : null, scroll = $('.tablewrap') ? $('.tablewrap').scrollTop : 0;
   drawRail(); const t = TITLES[S.page]; $('#ttl').textContent = S.page === 'today' ? greet() : t[0]; $('#sub').textContent = t[1];
   $('#ban').innerHTML = S.update && S.update.newer ? `<div class="banner" role="status">Version ${esc(S.update.version)} is available.<button class="btn pri sm" data-act="updInstall">Update now</button></div>` : '';
   const v = $('#view'); const top = v.scrollTop; v.innerHTML = PAGES[S.page](); $('#topact').innerHTML = TOPACT[S.page] ? TOPACT[S.page]() : ''; v.scrollTop = top; if ($('.tablewrap')) $('.tablewrap').scrollTop = scroll;
+  document.querySelectorAll('input[data-ind]').forEach(i => i.indeterminate = true);
   if (keep) { const e = document.getElementById(keep[0]); if (e) { e.focus(); try { e.setSelectionRange(keep[1], keep[1]); } catch (_) { } } }
+  const fr = $('tr.fc'); if (fr && S.scrollFocus) { fr.scrollIntoView({ block: 'nearest' }); S.scrollFocus = false; }
 }
-function greet() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
-const tbl = (cols, rows, empty) => rows.length ? `<div class="tablewrap"><table><thead><tr>${cols.map(c => `<th class="${c.n ? 'num' : ''}" ${c.s ? `data-sort="${c.s}"` : ''}>${c.h}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>` : `<div class="card empty">${empty}</div>`;
-const searchBox = (id, val, ph) => `<label class="search">&#9906;<input id="${id}" value="${esc(val)}" placeholder="${esc(ph)}" aria-label="${esc(ph)}"></label>`;
-function sorter(list, [key, dir], get) { return list.slice().sort((a, b) => { const x = get(a, key), y = get(b, key); return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { sensitivity: 'base' })) * dir; }); }
-
-// ======================= pages =======================
 const PAGES = {}, TOPACT = {};
+const sideCard = html => `<div class="card side">${html}</div>`;
+const splitView = (main, side) => `<div class="grid split"><div style="min-width:0">${main}</div>${sideCard(side)}</div>`;
 
 // ---------- Today ----------
 TOPACT.today = () => `<button class="btn pri" data-act="fullCheck" ${S.today.running ? 'disabled' : ''}>${S.today.running ? 'Checking…' : 'Run full check'}</button>`;
@@ -186,87 +229,127 @@ function journalList(n) { const j = S.journal.items; if (!j) return '<div class=
   return `<div class="tl">${j.slice(0, n).map(e => `<div class="ev ${/fail|block/i.test(e.result) ? 'c' : e.reversible ? '' : 'a'}"><b>${esc(e.target)}</b><div class="muted">${esc((e.time || '').replace('T', ' ').slice(0, 16))} · ${esc(e.after || e.source)} · ${esc(e.result)}</div></div>`).join('')}</div>`; }
 
 // ---------- Clean ----------
-TOPACT.clean = () => `<button class="btn ghost" data-act="cleanScan">Rescan</button> <button class="btn ghost" data-act="deepScan" title="Also search all drives for stray junk and developer caches">Deep scan</button> <button class="btn pri" data-act="cleanRun" ${S.clean.sel.size ? '' : 'disabled'}>Clean ${S.clean.sel.size ? fmt([...S.clean.sel].reduce((a, i) => a + (S.clean.items[i] ? S.clean.items[i].bytes : 0), 0)) : ''}</button>`;
+const cleanSelBytes = () => { const L = LS('clean'); return [...L.sel].reduce((a, i) => a + (S.clean.items[i] ? S.clean.items[i].bytes : 0), 0); };
+TOPACT.clean = () => { const L = LS('clean'); return `<button class="btn ghost" data-act="cleanScan">Rescan</button> <button class="btn ghost" data-act="deepScan" title="Also search all drives for stray junk and developer caches">Deep scan</button> <button class="btn pri" data-act="cleanRun" ${L.sel.size ? '' : 'disabled'}>Clean ${L.sel.size ? fmt(cleanSelBytes()) : ''}</button>`; };
 PAGES.clean = () => {
-  const c = S.clean; if (!c.items) return '<div class="card empty">Scanning…</div>';
-  const rows = c.items.map(i => `<tr class="r ${c.focus === i.i ? 'sel' : ''}" data-clean="${i.i}"><td style="width:34px"><input type="checkbox" data-cchk="${i.i}" ${c.sel.has(i.i) ? 'checked' : ''} aria-label="Select ${esc(i.name)}"></td><td><div class="nm">${esc(i.name)}</div><div class="muted cut">${esc(i.detail)}</div></td><td>${esc(i.type)}</td><td class="num">${i.bytes ? fmt(i.bytes) : (i.kind === 2 || i.kind === 3 ? '1 entry' : '')}</td><td>${risk(i.risk)}${i.admin ? ' <span class="pill neutral" title="Needs administrator rights">admin</span>' : ''}</td></tr>`);
-  const f = c.items.find(i => i.i === c.focus);
-  return `<div class="toolbar"><button class="btn ghost sm" data-act="cleanRec">Select recommended</button><button class="btn ghost sm" data-act="cleanNone">Select none</button><span class="muted" id="cleanSum">${c.items.length} items · ${fmt(c.items.reduce((a, i) => a + i.bytes, 0))} · ${c.sel.size} selected</span></div>
-  <div class="grid split"><div>${tbl([{ h: '' }, { h: 'Item' }, { h: 'Category' }, { h: 'Size', n: 1 }, { h: 'Risk' }], rows, 'Nothing to clean — your PC is tidy.')}</div>
-  <div class="card side">${f ? `<h3>Why is this listed?</h3><h4>${esc(f.name)}</h4><div class="evid"><b>What it is</b>${esc(f.detail || f.type)}</div><div class="evid"><b>Why it is safe, and what happens</b>${esc(f.why || 'No extra notes.')}</div>${f.loc ? `<div class="evid"><b>Where</b>${esc(f.loc)}</div>` : ''}${f.admin ? '<div class="evid"><b>Needs administrator rights</b>Restart as administrator from Settings to clean this item.</div>' : ''}` : `<h3>Why is this listed?</h3><div class="muted">Select a row to see the evidence, what will happen, and whether it can be undone.</div>`}<div class="evid"><b>${esc(c.coverageTitle || 'Coverage')}</b>${esc(c.coverage || '')}</div></div></div>`;
+  const c = S.clean, L = LS('clean'); if (!c.items) return '<div class="card empty">Scanning…</div>';
+  let list = c.items.filter(i => matchQ(L, i.name + ' ' + i.detail + ' ' + i.type) && (!L.f.risk || L.f.risk === 'all' || String(i.risk) === L.f.risk) && (!L.f.cat || i.type === L.f.cat) && (L.f.admin !== 'no' || !i.admin));
+  list = sortItems(L, list, { name: i => i.name, type: i => i.type, size: i => i.bytes, risk: i => i.risk });
+  const rows = list.map(i => ({ k: i.i, cells: [`<div class="nm">${esc(i.name)}</div><div class="muted cut">${esc(i.detail)}</div>`, esc(i.type), i.bytes ? fmt(i.bytes) : (i.kind === 2 || i.kind === 3 ? '1 entry' : ''), risk(i.risk) + (i.admin ? ' <span class="pill neutral" title="Needs administrator rights">admin</span>' : '')], csv: [i.name, i.type, i.bytes, ['Low', 'Medium', 'High'][i.risk]] }));
+  const side = (() => { const sel = selectedOf(L, c.items, i => i.i); if (sel.length > 1) { const tb = sel.reduce((a, i) => a + i.bytes, 0); return panelMulti(`${sel.length} items selected`, [`Total: ${fmt(tb)}`, `Low risk: ${sel.filter(i => i.risk === 0).length} · Medium: ${sel.filter(i => i.risk === 1).length} · High: ${sel.filter(i => i.risk === 2).length}`, sel.some(i => i.admin) ? `${sel.filter(i => i.admin).length} need administrator rights` : 'None need administrator rights']) + '<div class="muted">Press Clean to review the list before anything is removed.</div>'; }
+    const f = c.items.find(i => i.i === L.focus); return f ? `<h3>Why is this listed?</h3><h4>${esc(f.name)}</h4><div class="evid"><b>What it is</b>${esc(f.detail || f.type)}</div><div class="evid"><b>Why it is safe, and what happens</b>${esc(f.why || 'No extra notes.')}</div>${f.loc ? `<div class="evid"><b>Where</b>${esc(f.loc)}</div>` : ''}${f.admin ? '<div class="evid"><b>Needs administrator rights</b>Restart as administrator from Settings to clean this item.</div>' : ''}` : '<h3>Why is this listed?</h3><div class="muted">Select a row to see the evidence, what will happen, and whether it can be undone.</div>'; })() + `<div class="evid"><b>Coverage</b>${esc(c.coverage || '')}</div>`;
+  const rk = (v) => String(c.items.filter(i => v === 'all' || String(i.risk) === v).length);
+  return `<div class="toolbar">${searchBox(L, 'Search items')}${chips(L, 'risk', [['all', 'All', rk('all')], ['0', 'Low', rk('0')], ['1', 'Medium', rk('1')], ['2', 'High', rk('2')]])}${selectBox(L, 'cat', 'Category', uniq(c.items, i => i.type))}<label class="muted"><input type="checkbox" data-fchk="clean|admin" ${L.f.admin === 'no' ? 'checked' : ''}> Hide items needing admin</label></div>
+  ${selBar(L, 'items', '<button class="btn ghost sm" data-act="cleanRec">Select recommended</button>')}${splitView(table(L, [{ h: 'Item', s: 'name' }, { h: 'Category', s: 'type' }, { h: 'Size', s: 'size', n: 1 }, { h: 'Risk', s: 'risk' }], rows, 'Nothing matches — or your PC is tidy.'), side)}`;
 };
 
 // ---------- Programs ----------
 TOPACT.programs = () => `<button class="btn ghost" data-act="progsRefresh">Refresh</button>`;
 PAGES.programs = () => {
-  const p = S.programs; if (!p.items) return '<div class="card empty">Loading programs…</div>';
-  const q = p.q.toLowerCase(); let list = p.items.filter(e => !q || (e.name + ' ' + e.publisher).toLowerCase().includes(q)); list = sorter(list, p.sort, (e, k) => k === 'size' ? e.size : k === 'date' ? e.date : k === 'pub' ? e.publisher : e.name);
-  const rows = list.map(e => `<tr class="r ${p.focus === e.key ? 'sel' : ''}" data-prog="${esc(e.key)}"><td><div class="nm">${esc(e.name)}</div><div class="muted">${esc(e.version)}${e.silent ? ' · silent uninstall available' : ''}</div></td><td>${esc(e.publisher)}</td><td class="num">${e.size ? fmt(e.size) : '—'}</td><td>${esc(e.date)}</td><td class="num"><button class="btn ghost sm" data-act="uninstall" data-key="${esc(e.key)}" ${e.canUninstall ? '' : 'disabled'}>Uninstall</button></td></tr>`);
-  const f = p.items.find(e => e.key === p.focus);
-  return `<div class="toolbar">${searchBox('pq', p.q, 'Search programs')}<span class="muted">${list.length} of ${p.items.length}</span></div>
-  <div class="grid split">${tbl([{ h: 'Name', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Size', s: 'size', n: 1 }, { h: 'Installed', s: 'date' }, { h: '' }], rows, 'No programs match.')}
-  <div class="card side">${f ? `<h3>Details</h3><h4>${esc(f.name)}</h4><dl class="kv"><dt>Publisher</dt><dd>${esc(f.publisher || '—')}</dd><dt>Version</dt><dd>${esc(f.version || '—')}</dd><dt>Type</dt><dd>${esc(f.type)} · ${esc(f.scope)}</dd><dt>Location</dt><dd>${esc(f.location || 'not recorded')}</dd></dl>
-  <div class="evid"><b>Uninstall options</b>${f.canUninstall ? 'Standard: the program’s own uninstaller opens its window.\n' + (f.silent ? 'Silent: no windows. ' + esc(f.silentNote || '') : 'Silent: not available for this program.') : 'This entry has no uninstaller.'}</div>
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn pri sm" data-act="uninstall" data-key="${esc(f.key)}" ${f.canUninstall ? '' : 'disabled'}>Uninstall…</button><button class="btn ghost sm" data-act="forceRemove" data-key="${esc(f.key)}">Force remove…</button></div>
-  <div class="evid"><b>Leftovers</b>After uninstalling, Feather looks for the install folder, name-matched data folders, vendor registry keys and startup entries, services or tasks that still point at the removed program. You tick what to delete; registry keys are backed up first.</div>` : '<h3>Details</h3><div class="muted">Select a program to see how it can be removed.</div>'}</div></div>`;
+  const p = S.programs, L = LS('programs'); if (!p.items) return '<div class="card empty">Loading programs…</div>';
+  const kinds = { big: e => e.size >= 100 * 1048576, silent: e => e.silent, user: e => /current|user/i.test(e.scope) && !/all/i.test(e.scope), noun: e => !e.canUninstall };
+  let list = p.items.filter(e => matchQ(L, e.name + ' ' + e.publisher) && (!L.f.pub || e.publisher === L.f.pub) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)));
+  list = sortItems(L, list, { name: e => e.name, pub: e => e.publisher, size: e => e.size, date: e => e.date, ver: e => e.version });
+  const rows = list.map(e => ({ k: e.key, cells: [`<div class="nm">${esc(e.name)}</div><div class="muted">${e.silent ? 'silent uninstall available' : e.canUninstall ? 'standard uninstall' : 'no uninstaller'}</div>`, esc(e.publisher), esc(e.version), e.size ? fmt(e.size) : '—', esc(e.date)], csv: [e.name, e.publisher, e.version, e.size, e.date] }));
+  const sel = selectedOf(L, p.items, e => e.key), f = p.items.find(e => e.key === L.focus);
+  const batch = `<button class="btn pri sm" data-act="uninstallBatch" ${sel.length ? '' : 'disabled'}>Uninstall${sel.length > 1 ? ' ' + sel.length : ''}…</button><button class="btn ghost sm" data-act="forceBatch" ${sel.length ? '' : 'disabled'}>Force remove…</button>`;
+  const side = sel.length > 1 ? panelMulti(`${sel.length} programs selected`, [`Reported size: ${fmt(sel.reduce((a, e) => a + e.size, 0))}`, `Silent uninstall available for ${sel.filter(e => e.silent).length}`, `No uninstaller: ${sel.filter(e => !e.canUninstall).length}`]) + '<div class="evid"><b>How batch uninstall works</b>Programs are removed one after another with their own uninstallers. Afterwards Feather lists all leftovers in one review; nothing is deleted without your tick.</div>' :
+    f ? `<h3>Details</h3><h4>${esc(f.name)}</h4><dl class="kv"><dt>Publisher</dt><dd>${esc(f.publisher || '—')}</dd><dt>Version</dt><dd>${esc(f.version || '—')}</dd><dt>Type</dt><dd>${esc(f.type)} · ${esc(f.scope)}</dd><dt>Location</dt><dd>${esc(f.location || 'not recorded')}</dd></dl><div class="evid"><b>Uninstall options</b>${f.canUninstall ? 'Standard: the program’s own uninstaller opens its window.\n' + (f.silent ? 'Silent: no windows. ' + esc(f.silentNote || '') : 'Silent: not available for this program.') : 'This entry has no uninstaller.'}</div><div class="evid"><b>Leftovers</b>After uninstalling, Feather looks for the install folder, name-matched data folders, vendor registry keys and startup entries, services or tasks that still point at the removed program. You tick what to delete; registry keys are backed up first.</div>` : '<h3>Details</h3><div class="muted">Select a program to see how it can be removed.</div>';
+  return `<div class="toolbar">${searchBox(L, 'Search programs')}${chips(L, 'kind', [['all', 'All'], ['big', 'Large (100 MB+)'], ['silent', 'Silent uninstall'], ['user', 'Per-user'], ['noun', 'No uninstaller']])}${selectBox(L, 'pub', 'Publisher', uniq(p.items, e => e.publisher))}</div>
+  ${selBar(L, 'programs', batch)}${splitView(table(L, [{ h: 'Name', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Version', s: 'ver' }, { h: 'Size', s: 'size', n: 1 }, { h: 'Installed', s: 'date' }], rows, 'No programs match.'), side)}`;
 };
 
 // ---------- Startup ----------
 TOPACT.startup = () => `<button class="btn ghost" data-act="startupRefresh">Refresh</button> <button class="btn ghost" data-act="startupAdd">Add entry…</button>`;
-function startupFiltered() {
-  const s = S.startup, q = s.q.toLowerCase(); let l = s.items.filter(e => (!s.hideMs || !e.microsoft) && (!q || (e.name + ' ' + e.command + ' ' + e.publisher).toLowerCase().includes(q)));
-  const f = { enabled: e => e.state === 'Enabled', disabled: e => e.state === 'Disabled', recent: e => e.recent, missing: e => e.missing, warn: e => e.warnings }[s.filter]; if (f) l = l.filter(f);
-  return sorter(l, s.sort, (e, k) => k === 'type' ? e.type : k === 'pub' ? e.publisher : k === 'state' ? e.state : e.name);
-}
 PAGES.startup = () => {
-  const s = S.startup; if (!s.items) return '<div class="card empty">Reading startup entries…</div>';
-  const list = startupFiltered(), cnt = k => s.items.filter(e => (!s.hideMs || !e.microsoft) && ({ enabled: e => e.state === 'Enabled', disabled: e => e.state === 'Disabled', recent: e => e.recent, missing: e => e.missing, warn: e => e.warnings }[k] || (() => true))(e)).length;
-  const chip = (k, l) => `<button class="chip ${s.filter === k ? 'on' : ''}" data-sf="${k}">${l} ${cnt(k)}</button>`;
-  const rows = list.map(e => `<tr class="r ${s.focus === e.key ? 'sel' : ''}" data-su="${esc(e.key)}"><td style="width:34px"><input type="checkbox" data-schk="${esc(e.key)}" ${s.sel.has(e.key) ? 'checked' : ''} aria-label="Select ${esc(e.name)}"></td><td><button class="sw ${e.state === 'Enabled' ? 'on' : ''}" data-toggle="${esc(e.key)}" ${e.canToggle ? '' : 'disabled'} role="switch" aria-checked="${e.state === 'Enabled'}" aria-label="${esc(e.name)} runs at startup"></button></td><td><div class="nm">${esc(e.name)}</div><div class="muted cut">${esc(e.command)}</div></td><td>${esc(e.publisher || '—')}</td><td>${e.missing ? '<span class="pill bad">file missing</span> ' : ''}${e.recent ? '<span class="pill info">new</span> ' : ''}${e.warnings && !e.microsoft ? '<span class="pill warn">warning</span> ' : ''}${e.delayed ? '<span class="pill neutral">delayed</span>' : ''}</td><td>${esc(e.type)}</td></tr>`);
-  const f = s.items.find(e => e.key === s.focus), n = s.sel.size;
-  return `<div class="toolbar">${searchBox('sq', s.q, 'Search startup entries')}<div class="chips">${chip('all', 'All')}${chip('enabled', 'Enabled')}${chip('disabled', 'Disabled')}${chip('recent', 'New')}${chip('missing', 'Missing file')}${chip('warn', 'Warnings')}</div><label class="muted"><input type="checkbox" id="hideMs" ${s.hideMs ? 'checked' : ''}> Hide Microsoft</label></div>
-  <div class="toolbar"><span class="muted">${n} selected</span><button class="btn ghost sm" data-act="suBatch" data-v="1" ${n ? '' : 'disabled'}>Enable</button><button class="btn ghost sm" data-act="suBatch" data-v="0" ${n ? '' : 'disabled'}>Disable</button><button class="btn ghost sm" data-act="suDelay" ${n ? '' : 'disabled'}>Start later…</button><button class="btn danger sm" data-act="suDelete" ${n ? '' : 'disabled'}>Delete…</button></div>
-  <div class="grid split">${tbl([{ h: '' }, { h: '' }, { h: 'Name', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Notes' }, { h: 'Where', s: 'type' }], rows, 'No entries match.')}
-  <div class="card side">${f ? `<h3>Why is this listed?</h3><h4>${esc(f.name)}</h4><div class="muted">${esc(f.type)} · ${esc(f.scope)} · ${esc(f.state)}</div>
-  ${f.missing ? '<div class="evid"><b>File missing</b>The program this entry starts no longer exists, so the entry does nothing. It is safe to delete.</div>' : ''}
-  <div class="evid"><b>What it runs</b>${esc(f.command)}</div><div class="evid"><b>Publisher &amp; signature</b>${esc(f.publisher || 'Unknown')}\n${esc(f.signature)}</div>
-  <div class="evid"><b>Where it is set</b>${esc(f.location)}</div>${f.warnings ? `<div class="evid"><b>Warnings</b>${esc(f.warnings)}</div>` : ''}
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" data-act="suOpen" data-key="${esc(f.key)}">Open file location</button><button class="btn ghost sm" data-act="suReg" data-key="${esc(f.key)}">Show where set</button><button class="btn ghost sm" data-act="suVt" data-key="${esc(f.key)}">VirusTotal…</button></div>
-  <div class="evid"><b>Undo</b>Disabling is reversible. Deleting backs the entry up first (Journal → Restore); startup shortcuts go to the Recycle Bin.</div>` : '<h3>Why is this listed?</h3><div class="muted">Select an entry to see what it runs, who signed it, where it is set and how to undo a change.</div>'}<div class="evid"><b>Coverage</b>${esc(s.coverage || '')}</div></div></div>`;
+  const s = S.startup, L = LS('startup'); if (!s.items) return '<div class="card empty">Reading startup entries…</div>';
+  const hide = L.f.hideMs !== false, base = s.items.filter(e => (!hide || !e.microsoft) && matchQ(L, e.name + ' ' + e.command + ' ' + e.publisher) && (!L.f.type || e.type === L.f.type));
+  const st = { enabled: e => e.state === 'Enabled', disabled: e => e.state === 'Disabled', recent: e => e.recent, missing: e => e.missing, warn: e => e.warnings && !e.microsoft, delayed: e => e.delayed };
+  const cnt = k => base.filter(st[k] || (() => true)).length, fk = L.f.state || 'all'; let list = base.filter(st[fk] || (() => true));
+  list = sortItems(L, list, { name: e => e.name, pub: e => e.publisher, state: e => e.state, type: e => e.type, notes: e => (e.missing ? 3 : 0) + (e.warnings ? 2 : 0) + (e.recent ? 1 : 0) });
+  const rows = list.map(e => ({ k: e.key, cells: [`<button class="sw ${e.state === 'Enabled' ? 'on' : ''}" data-toggle="${esc(e.key)}" ${e.canToggle ? '' : 'disabled'} role="switch" aria-checked="${e.state === 'Enabled'}" aria-label="${esc(e.name)} runs at startup"></button>`, `<div class="nm">${esc(e.name)}</div><div class="muted cut">${esc(e.command)}</div>`, esc(e.publisher || '—'), (e.missing ? '<span class="pill bad">file missing</span> ' : '') + (e.recent ? '<span class="pill info">new</span> ' : '') + (e.warnings && !e.microsoft ? '<span class="pill warn">warning</span> ' : '') + (e.delayed ? '<span class="pill neutral">delayed</span>' : ''), esc(e.type)], csv: [e.name, e.state, e.publisher, e.type, e.command, e.warnings] }));
+  const sel = selectedOf(L, s.items, e => e.key), n = sel.length, f = s.items.find(e => e.key === L.focus);
+  const batch = `<button class="btn ghost sm" data-act="suBatch" data-v="1" ${n ? '' : 'disabled'}>Enable</button><button class="btn ghost sm" data-act="suBatch" data-v="0" ${n ? '' : 'disabled'}>Disable</button><button class="btn ghost sm" data-act="suDelay" ${n ? '' : 'disabled'}>Start later…</button><button class="btn ghost sm" data-act="suUndelay" ${sel.some(e => e.delayed) ? '' : 'disabled'}>Remove delay</button><button class="btn danger sm" data-act="suDelete" ${n ? '' : 'disabled'}>Delete…</button>`;
+  const side = n > 1 ? panelMulti(`${n} entries selected`, [`Enabled: ${sel.filter(e => e.state === 'Enabled').length} · Disabled: ${sel.filter(e => e.state === 'Disabled').length}`, `Missing file: ${sel.filter(e => e.missing).length} · Warnings: ${sel.filter(e => e.warnings).length}`, `Can be deleted: ${sel.filter(e => e.canDelete).length} · can start later: ${sel.filter(e => e.canDelay).length}`]) + '<div class="evid"><b>Undo</b>Disabling is reversible. Deleting backs entries up first (Journal → Restore); startup shortcuts go to the Recycle Bin.</div>' :
+    f ? `<h3>Why is this listed?</h3><h4>${esc(f.name)}</h4><div class="muted">${esc(f.type)} · ${esc(f.scope)} · ${esc(f.state)}</div>${f.missing ? '<div class="evid"><b>File missing</b>The program this entry starts no longer exists, so the entry does nothing. It is safe to delete.</div>' : ''}<div class="evid"><b>What it runs</b>${esc(f.command)}</div><div class="evid"><b>Publisher &amp; signature</b>${esc(f.publisher || 'Unknown')}\n${esc(f.signature)}</div><div class="evid"><b>Where it is set</b>${esc(f.location)}</div>${f.warnings ? `<div class="evid"><b>Warnings</b>${esc(f.warnings)}</div>` : ''}<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" data-act="suOpen" data-key="${esc(f.key)}">Open file location</button><button class="btn ghost sm" data-act="suReg" data-key="${esc(f.key)}">Show where set</button><button class="btn ghost sm" data-act="suVt" data-key="${esc(f.key)}">VirusTotal…</button></div>` : '<h3>Why is this listed?</h3><div class="muted">Select an entry to see what it runs, who signed it, where it is set and how to undo a change.</div>';
+  return `<div class="toolbar">${searchBox(L, 'Search startup entries')}${chips(L, 'state', [['all', 'All', cnt('all')], ['enabled', 'Enabled', cnt('enabled')], ['disabled', 'Disabled', cnt('disabled')], ['recent', 'New', cnt('recent')], ['missing', 'Missing file', cnt('missing')], ['warn', 'Warnings', cnt('warn')], ['delayed', 'Delayed', cnt('delayed')]])}${selectBox(L, 'type', 'Type', uniq(s.items, e => e.type))}<label class="muted"><input type="checkbox" data-fchk="startup|hideMs" ${hide ? 'checked' : ''}> Hide Microsoft</label></div>
+  ${selBar(L, 'entries', batch)}${splitView(table(L, [{ h: 'On' }, { h: 'Name', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Notes', s: 'notes' }, { h: 'Where', s: 'type' }], rows, 'No entries match.'), side + `<div class="evid"><b>Coverage</b>${esc(s.coverage || '')}</div>`)}`;
 };
 
 // ---------- Services ----------
 TOPACT.services = () => `<button class="btn ghost" data-act="svcRefresh">Refresh</button>`;
 PAGES.services = () => {
-  const v = S.services; if (!v.items) return '<div class="card empty">Reading services…</div>'; const q = v.q.toLowerCase();
-  const fl = { running: e => e.running, stopped: e => e.stopped, auto: e => /^Automatic/.test(e.start), disabled: e => e.start === 'Disabled', thirdparty: e => !/Microsoft/.test(e.publisher) }[v.filter];
-  const list = v.items.filter(e => (!q || (e.name + ' ' + e.display).toLowerCase().includes(q)) && (!fl || fl(e)));
-  const chip = (k, l) => `<button class="chip ${v.filter === k ? 'on' : ''}" data-vf="${k}">${l}</button>`;
-  const rows = list.slice(0, 700).map(e => `<tr class="r ${v.focus === e.name ? 'sel' : ''}" data-svc="${esc(e.name)}"><td><div class="nm">${esc(e.display)}</div><div class="muted">${esc(e.name)}</div></td><td><span class="pill ${e.running ? 'ok' : 'neutral'}">${esc(e.state)}</span></td><td>${esc(e.start)}</td><td>${esc(e.safety)}${e.critical ? ' <span class="pill bad">critical</span>' : ''}</td></tr>`);
-  const f = v.items.find(e => e.name === v.focus);
-  return `<div class="toolbar">${searchBox('vq', v.q, 'Search services')}<div class="chips">${chip('all', 'All')}${chip('running', 'Running')}${chip('stopped', 'Stopped')}${chip('auto', 'Automatic')}${chip('disabled', 'Disabled')}${chip('thirdparty', 'Not Microsoft')}</div><label class="muted"><input type="checkbox" id="drv" ${v.drivers ? 'checked' : ''}> Show drivers</label></div>
-  <div class="grid split">${tbl([{ h: 'Service' }, { h: 'State' }, { h: 'Start type' }, { h: 'Safety' }], rows, 'No services match.')}
-  <div class="card side">${f ? `<h3>Details</h3><h4>${esc(f.display)}</h4><div class="muted">${esc(f.name)} · runs as ${esc(f.account)}</div><div class="evid"><b>What it does</b>${esc(f.description || 'No description provided.')}</div><div class="evid"><b>Program</b>${esc(f.path)}\n${esc(f.publisher)} · ${esc(f.signature)}</div>${f.warnings ? `<div class="evid"><b>Warnings</b>${esc(f.warnings)}</div>` : ''}${f.deps.length ? `<div class="evid"><b>Needs</b>${esc(f.deps.join(', '))}</div>` : ''}
-  <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn ghost sm" data-act="svcOp" data-op="start" data-key="${esc(f.name)}" ${f.stopped ? '' : 'disabled'}>Start</button><button class="btn ghost sm" data-act="svcOp" data-op="stop" data-key="${esc(f.name)}" ${f.running && f.canStop && !f.critical ? '' : 'disabled'}>Stop</button><button class="btn ghost sm" data-act="svcOp" data-op="restart" data-key="${esc(f.name)}" ${f.running && f.canStop && !f.critical ? '' : 'disabled'}>Restart</button></div>
-  <div class="evid"><b>Start type: ${esc(f.start)}</b><select id="stype" aria-label="Start type"><option value="">Change to…</option><option value="auto">Automatic</option><option value="autodelay">Automatic (delayed)</option><option value="manual">Manual</option><option value="disabled">Disabled</option></select></div>${f.critical ? '<div class="evid"><b>Protected</b>This service is on the critical list. Stopping or disabling it is blocked.</div>' : ''}` : '<h3>Details</h3><div class="muted">Select a service to see what it does and what depends on it.</div>'}</div></div>`;
+  const v = S.services, L = LS('services'); if (!v.items) return '<div class="card empty">Reading services…</div>';
+  const fl = { running: e => e.running, stopped: e => e.stopped, auto: e => /^Automatic/.test(e.start), disabled: e => e.start === 'Disabled', thirdparty: e => !/Microsoft/.test(e.publisher), critical: e => e.critical };
+  const startKinds = uniq(v.items, e => e.start), safeKinds = uniq(v.items, e => e.safety);
+  let list = v.items.filter(e => matchQ(L, e.name + ' ' + e.display + ' ' + e.description) && (!fl[L.f.state] || fl[L.f.state](e)) && (!L.f.start || e.start === L.f.start) && (!L.f.safety || e.safety === L.f.safety));
+  list = sortItems(L, list, { name: e => e.display, state: e => e.state, start: e => e.start, safety: e => e.safety, pub: e => e.publisher });
+  const rows = list.map(e => ({ k: e.name, cells: [`<div class="nm">${esc(e.display)}</div><div class="muted">${esc(e.name)}</div>`, `<span class="pill ${e.running ? 'ok' : 'neutral'}">${esc(e.state)}</span>`, esc(e.start), esc(e.safety) + (e.critical ? ' <span class="pill bad">critical</span>' : ''), esc(e.publisher)], csv: [e.name, e.display, e.state, e.start, e.safety, e.publisher] }));
+  const sel = selectedOf(L, v.items, e => e.name), n = sel.length, f = v.items.find(e => e.name === L.focus);
+  const batch = `<button class="btn ghost sm" data-act="svcBatch" data-op="start" ${sel.some(e => e.stopped) ? '' : 'disabled'}>Start</button><button class="btn ghost sm" data-act="svcBatch" data-op="stop" ${sel.some(e => e.running && e.canStop && !e.critical) ? '' : 'disabled'}>Stop</button><button class="btn ghost sm" data-act="svcBatch" data-op="restart" ${sel.some(e => e.running && e.canStop && !e.critical) ? '' : 'disabled'}>Restart</button><select id="stypeBatch" aria-label="Set start type" ${n ? '' : 'disabled'}><option value="">Set start type…</option><option value="auto">Automatic</option><option value="autodelay">Automatic (delayed)</option><option value="manual">Manual</option><option value="disabled">Disabled</option></select>`;
+  const side = n > 1 ? panelMulti(`${n} services selected`, [`Running: ${sel.filter(e => e.running).length} · Stopped: ${sel.filter(e => e.stopped).length}`, `Critical (protected): ${sel.filter(e => e.critical).length}`]) + '<div class="evid"><b>Safety</b>Critical services are skipped automatically. You see the full list before anything changes.</div>' :
+    f ? `<h3>Details</h3><h4>${esc(f.display)}</h4><div class="muted">${esc(f.name)} · runs as ${esc(f.account)}</div><div class="evid"><b>What it does</b>${esc(f.description || 'No description provided.')}</div><div class="evid"><b>Program</b>${esc(f.path)}\n${esc(f.publisher)} · ${esc(f.signature)}</div>${f.warnings ? `<div class="evid"><b>Warnings</b>${esc(f.warnings)}</div>` : ''}${f.deps.length ? `<div class="evid"><b>Needs</b>${esc(f.deps.join(', '))}</div>` : ''}${f.critical ? '<div class="evid"><b>Protected</b>This service is on the critical list. Stopping or disabling it is blocked.</div>' : ''}` : '<h3>Details</h3><div class="muted">Select a service to see what it does and what depends on it.</div>';
+  return `<div class="toolbar">${searchBox(L, 'Search services')}${chips(L, 'state', [['all', 'All'], ['running', 'Running'], ['stopped', 'Stopped'], ['auto', 'Automatic'], ['disabled', 'Disabled'], ['thirdparty', 'Not Microsoft'], ['critical', 'Critical']])}${selectBox(L, 'start', 'Start type', startKinds)}${selectBox(L, 'safety', 'Safety', safeKinds)}<label class="muted"><input type="checkbox" id="drv" ${v.drivers ? 'checked' : ''}> Include kernel drivers</label></div>
+  ${selBar(L, 'services', batch)}${splitView(table(L, [{ h: 'Service', s: 'name' }, { h: 'State', s: 'state' }, { h: 'Start type', s: 'start' }, { h: 'Safety', s: 'safety' }, { h: 'Publisher', s: 'pub' }], rows, 'No services match.'), side)}`;
+};
+
+// ---------- Drivers ----------
+TOPACT.drivers = () => `<button class="btn ghost" data-act="drvRefresh">Refresh</button>`;
+PAGES.drivers = () => {
+  const d = S.drivers, tab = (k, l) => `<button class="chip ${d.tab === k ? 'on' : ''}" data-dtab="${k}">${l}</button>`;
+  return `<div class="tabs">${tab('installed', 'Installed drivers')}${tab('updates', 'Driver updates')}</div>` + (d.tab === 'installed' ? drvInstalled() : drvUpdates());
+};
+function drvInstalled() {
+  const d = S.drivers, L = LS('drvinst'); if (!d.items) return '<div class="card empty">Reading installed drivers…</div>';
+  const old = e => e.date && (Date.now() - Date.parse(e.date)) > 3 * 365 * 864e5; const kinds = { unsigned: e => !e.signed, old };
+  let list = d.items.filter(e => matchQ(L, e.name + ' ' + e.maker + ' ' + e.provider + ' ' + e.inf) && (!L.f.cls || e.class === L.f.cls) && (!L.f.prov || e.provider === L.f.prov) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)));
+  list = sortItems(L, list, { name: e => e.name, cls: e => e.class, prov: e => e.provider, ver: e => e.version, date: e => e.date });
+  const rows = list.map(e => ({ k: e.i, cells: [`<div class="nm">${esc(e.name)}</div><div class="muted">${esc(e.inf)}</div>`, esc(e.class), esc(e.provider || e.maker), esc(e.version), esc(e.date) + (old(e) ? ' <span class="pill warn">3+ years</span>' : ''), e.signed ? '<span class="pill ok">signed</span>' : '<span class="pill bad">unsigned</span>'], csv: [e.name, e.class, e.provider, e.version, e.date, e.inf, e.signed ? 'signed' : 'unsigned'] }));
+  const sel = selectedOf(L, d.items, e => e.i), f = d.items.find(e => e.i === L.focus);
+  const side = sel.length > 1 ? panelMulti(`${sel.length} drivers selected`, [`Unsigned: ${sel.filter(e => !e.signed).length}`, `Older than 3 years: ${sel.filter(old).length}`]) :
+    f ? `<h3>Driver</h3><h4>${esc(f.name)}</h4><dl class="kv"><dt>Class</dt><dd>${esc(f.class)}</dd><dt>Manufacturer</dt><dd>${esc(f.maker)}</dd><dt>Provider</dt><dd>${esc(f.provider)}</dd><dt>Version</dt><dd>${esc(f.version)}</dd><dt>Date</dt><dd>${esc(f.date)}</dd><dt>INF file</dt><dd>${esc(f.inf)}</dd></dl>` : '<h3>Driver</h3><div class="muted">Select a driver to see its details. This list is read-only.</div>';
+  return `<div class="toolbar">${searchBox(L, 'Search drivers')}${chips(L, 'kind', [['all', 'All'], ['unsigned', 'Unsigned'], ['old', 'Older than 3 years']])}${selectBox(L, 'cls', 'Class', uniq(d.items, e => e.class))}${selectBox(L, 'prov', 'Provider', uniq(d.items, e => e.provider))}</div>${selBar(L, 'drivers', '')}${splitView(table(L, [{ h: 'Device', s: 'name' }, { h: 'Class', s: 'cls' }, { h: 'Provider', s: 'prov' }, { h: 'Version', s: 'ver' }, { h: 'Date', s: 'date' }, { h: 'Signature' }], rows, 'No drivers match.'), side)}`;
+}
+function drvUpdates() {
+  const d = S.drivers, L = LS('drvupd');
+  const intro = `<div class="card" style="margin-bottom:12px"><b>Driver updates come from Windows Update only.</b><div class="muted" style="margin:4px 0 10px">Feather asks Windows’ own update service for drivers Microsoft has validated for this PC. Nothing is downloaded from other websites, and Feather itself sends nothing. Installing needs administrator rights and an internet connection. A restore point first is a good idea (Tools page).</div><button class="btn pri" data-act="drvCheck">${d.upd ? 'Check again' : 'Check for driver updates'}</button> <button class="btn ghost" data-go="tools">Create a restore point…</button></div>`;
+  if (d.updErr) return intro + `<div class="card empty">${esc(d.updErr)}</div>`;
+  if (!d.upd) return intro + '<div class="card empty">Press “Check for driver updates”. This contacts Windows Update and can take a minute.</div>';
+  let list = d.upd.filter(e => matchQ(L, e.title + ' ' + e.desc)); list = sortItems(L, list, { name: e => e.title, date: e => e.date, size: e => e.size });
+  const rows = list.map(e => ({ k: e.id, cells: [`<div class="nm">${esc(e.title)}</div><div class="muted cut">${esc(e.desc)}</div>`, esc(e.date), e.size ? fmt(e.size) : '—'], csv: [e.title, e.date, e.size] }));
+  const sel = selectedOf(L, d.upd, e => e.id);
+  return intro + `<div class="toolbar">${searchBox(L, 'Filter updates')}</div>${selBar(L, 'updates', `<button class="btn pri sm" data-act="drvInstall" ${sel.length ? '' : 'disabled'}>Install selected${sel.length ? ' (' + sel.length + ')' : ''}…</button>`)}${table(L, [{ h: 'Update', s: 'name' }, { h: 'Released', s: 'date' }, { h: 'Size', s: 'size', n: 1 }], rows, 'Windows Update has no driver updates for this PC right now. That is normal and good.')}`;
+}
+
+// ---------- Processes ----------
+TOPACT.procs = () => `<button class="btn ghost" data-act="procRefresh">Refresh</button>`;
+PAGES.procs = () => {
+  const p = S.procs, L = LS('procs'); if (!p.items) return '<div class="card empty">Reading processes…</div>';
+  const kinds = { big: e => e.mem >= 200 * 1048576, third: e => !/Microsoft/.test(e.publisher) && e.path, nopath: e => !e.path };
+  let list = p.items.filter(e => matchQ(L, e.name + ' ' + e.path + ' ' + e.publisher) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)));
+  list = sortItems(L, list, { name: e => e.name, pid: e => e.pid, mem: e => e.mem, pub: e => e.publisher, thr: e => e.threads });
+  const rows = list.map(e => ({ k: e.pid, cells: [`<div class="nm">${esc(e.name)}${e.protected ? ' <span class="pill neutral">protected</span>' : ''}</div><div class="muted cut">${esc(e.path)}</div>`, e.pid, fmt(e.mem), e.threads, esc(e.publisher)], csv: [e.name, e.pid, e.mem, e.threads, e.publisher, e.path] }));
+  const sel = selectedOf(L, p.items, e => e.pid), f = p.items.find(e => e.pid === L.focus), killable = sel.filter(e => !e.protected);
+  const side = sel.length > 1 ? panelMulti(`${sel.length} processes selected`, [`Memory: ${fmt(sel.reduce((a, e) => a + e.mem, 0))}`, `Protected (will be skipped): ${sel.length - killable.length}`]) : f ? `<h3>Process</h3><h4>${esc(f.name)}</h4><dl class="kv"><dt>PID</dt><dd>${f.pid}</dd><dt>Memory</dt><dd>${fmt(f.mem)}</dd><dt>Threads</dt><dd>${f.threads}</dd><dt>Publisher</dt><dd>${esc(f.publisher || 'Unknown')}</dd><dt>File</dt><dd>${esc(f.path || 'not accessible')}</dd></dl>${f.protected ? '<div class="evid"><b>Protected</b>Ending this process could crash Windows, so it cannot be ended here.</div>' : '<div class="evid"><b>What ending does</b>The program closes immediately and unsaved work in it is lost.</div>'}` : '<h3>Process</h3><div class="muted">Select a process to see its file and publisher.</div>';
+  return `<div class="toolbar">${searchBox(L, 'Search processes')}${chips(L, 'kind', [['all', 'All'], ['big', 'Using 200 MB+'], ['third', 'Not Microsoft'], ['nopath', 'No file path']])}</div>${selBar(L, 'processes', `<button class="btn danger sm" data-act="procEnd" ${killable.length ? '' : 'disabled'}>End task${killable.length > 1 ? 's (' + killable.length + ')' : ''}…</button>`)}${splitView(table(L, [{ h: 'Name', s: 'name' }, { h: 'PID', s: 'pid', n: 1 }, { h: 'Memory', s: 'mem', n: 1 }, { h: 'Threads', s: 'thr', n: 1 }, { h: 'Publisher', s: 'pub' }], rows, 'No processes match.'), side)}`;
 };
 
 // ---------- Files ----------
-TOPACT.files = () => { const d = S.files.data[S.files.mode]; return `<button class="btn pri" data-act="fileScan">${d ? 'Rescan' : 'Scan'}</button>`; };
+TOPACT.files = () => { const d = S.files.data[S.files.mode]; return `<button class="btn ghost" data-act="scanFolders">Scan folders…</button> <button class="btn pri" data-act="fileScan">${d ? 'Rescan' : 'Scan'}</button>`; };
 PAGES.files = () => {
-  const F = S.files, m = F.mode, d = F.data[m]; const tab = (k, l) => `<button class="chip ${m === k ? 'on' : ''}" data-ft="${k}">${l}</button>`;
-  const desc = m === 'dupes' ? 'Duplicates are matched by <b>file content</b> (a SHA-256 fingerprint), never by size alone. Before anything is deleted, the file is compared byte-for-byte with the copy you keep.' : m === 'large' ? 'The biggest files in your scan folders, so you can decide what to keep.' : 'Folders that contain nothing at all.';
-  let body = `<div class="muted" style="margin-bottom:10px">${desc}</div>`;
-  if (!d) return `<div class="tabs">${tab('large', 'Large files')}${tab('dupes', 'Duplicates')}${tab('empty', 'Empty folders')}</div>${body}<div class="card empty">Press <b>Scan</b>. Scan folders: ${esc((S.info.scanRootsText) || 'your Documents, Downloads, Desktop, Pictures, Music and Videos')}.</div>`;
-  const q = F.q.toLowerCase(), list = d.items.filter(f => !q || (f.name + ' ' + f.folder).toLowerCase().includes(q) && !f.gone), n = F.sel.size;
-  const rows = list.map(f => `<tr class="r ${F.focus === f.i ? 'sel' : ''}" data-file="${f.i}"><td style="width:34px"><input type="checkbox" data-fchk="${f.i}" ${F.sel.has(f.i) ? 'checked' : ''} aria-label="Select ${esc(f.name)}"></td><td><div class="nm">${esc(f.name)}</div><div class="muted cut">${esc(f.folder)}</div></td><td class="num">${m === 'empty' ? '' : fmt(f.size)}</td><td>${esc(f.date)}</td>${m === 'dupes' ? `<td><span class="pill info">Group ${f.group}</span> <span class="muted" title="SHA-256 ${esc(f.hash)}">${esc((f.hash || '').slice(0, 12))}…</span></td>` : ''}</tr>`);
-  const cols = [{ h: '' }, { h: 'Name' }, { h: 'Size', n: 1 }, { h: 'Modified' }].concat(m === 'dupes' ? [{ h: 'Content fingerprint' }] : []);
-  const sum = m === 'dupes' ? `${d.groups} groups · ${fmt(d.reclaimable)} reclaimable` : m === 'large' ? `${list.length} files · ${fmt(d.totalBytes)}` : `${list.length} folders`;
-  return `<div class="tabs">${tab('large', 'Large files')}${tab('dupes', 'Duplicates')}${tab('empty', 'Empty folders')}</div>${body}
-  <div class="toolbar">${searchBox('fq', F.q, 'Filter results')}<span class="muted">${sum}${d.cancelled ? ' · scan was stopped' : ''}</span><span class="grow"></span>
-  ${m === 'dupes' ? '<button class="btn ghost sm" data-act="dupKeep" data-v="newest">Keep newest</button><button class="btn ghost sm" data-act="dupKeep" data-v="oldest">Keep oldest</button><button class="btn ghost sm" data-act="dupKeep" data-v="shortest">Keep shortest path</button>' : ''}
-  <button class="btn ghost sm" data-act="fileOpen" ${n === 1 || F.focus >= 0 ? '' : 'disabled'}>Open location</button><button class="btn ghost sm" data-act="fileRemove" data-v="0" ${n ? '' : 'disabled'}>Move to Recycle Bin${n ? ' (' + n + ')' : ''}</button><button class="btn danger sm" data-act="fileRemove" data-v="1" ${n ? '' : 'disabled'}>Delete permanently</button></div>
-  ${tbl(cols, rows, 'Nothing found.')}<div class="muted" style="margin-top:8px">${esc(d.coverage)}</div>`;
+  const F = S.files, m = F.mode, d = F.data[m], L = LS(m); const tab = (k, l) => `<button class="chip ${m === k ? 'on' : ''}" data-ft="${k}">${l}</button>`;
+  const desc = m === 'dupes' ? 'Matched by <b>file content</b> (SHA-256), then proven <b>byte-for-byte identical</b>. Size or name alone is never used. The file is compared again with the copy you keep, right before it is removed.' : m === 'large' ? 'The biggest files in your scan folders, so you can decide what to keep.' : 'A folder counts as empty only if its whole tree holds no files (hidden and system files count). The check is repeated right before removal.';
+  const tabs = `<div class="tabs">${tab('large', 'Large files')}${tab('dupes', 'Duplicates')}${tab('empty', 'Empty folders')}</div><div class="muted" style="margin-bottom:10px">${desc}</div>`;
+  if (!d) return tabs + `<div class="card empty">Press <b>Scan</b>. Folders to scan: ${esc((S.scan && S.scan.items.join(', ')) || 'your Documents, Downloads, Desktop, Pictures, Music and Videos')}. Change them with “Scan folders…”.</div>`;
+  const minMB = { '1 MB+': 1, '10 MB+': 10, '100 MB+': 100, '1 GB+': 1024 }[L.f.size] || 0, exts = uniq(d.items, f => f.ext);
+  let list = d.items.filter(f => matchQ(L, f.name + ' ' + f.folder) && (!L.f.ext || f.ext === L.f.ext) && f.size >= minMB * 1048576);
+  list = sortItems(L, list, { name: f => f.name, size: f => f.size, date: f => f.date, folder: f => f.folder, group: f => f.group * 1e6 + f.i, path: f => f.folder + '\\' + f.name });
+  const rows = list.map(f => ({ k: f.i, cells: [`<div class="nm">${esc(f.name)}</div><div class="muted cut">${esc(f.folder)}</div>`, m === 'empty' ? (f.count ? f.count + ' nested' : '') : fmt(f.size), esc(f.date)].concat(m === 'dupes' ? [`<span class="pill info">Group ${f.group}</span> ${f.verified ? '<span class="pill ok" title="Compared byte-for-byte with the other copies in its group">identical ✔</span>' : ''} <span class="muted" title="SHA-256 ${esc(f.hash)}">${esc((f.hash || '').slice(0, 10))}…</span>`] : []), csv: [f.name, f.folder, f.size, f.date, f.hash] }));
+  const cols = [{ h: 'Name', s: 'name' }, { h: m === 'empty' ? 'Contents' : 'Size', s: 'size', n: 1 }, { h: 'Modified', s: 'date' }].concat(m === 'dupes' ? [{ h: 'Content proof', s: 'group' }] : []);
+  const sel = selectedOf(L, d.items, f => f.i), n = sel.length, sum = m === 'dupes' ? `${d.groups} groups · ${fmt(d.reclaimable)} reclaimable` : m === 'large' ? `${fmt(d.totalBytes)} in the ${d.items.length} largest` : `${d.items.length} folders`;
+  const batch = (m === 'dupes' ? '<button class="btn ghost sm" data-act="dupKeep" data-v="newest">Keep newest</button><button class="btn ghost sm" data-act="dupKeep" data-v="oldest">Keep oldest</button><button class="btn ghost sm" data-act="dupKeep" data-v="shortest">Keep shortest path</button>' : '') +
+    `<button class="btn ghost sm" data-act="fileOpen" ${L.focus != null ? '' : 'disabled'}>Open location</button><button class="btn ghost sm" data-act="fileRemove" data-v="0" ${n ? '' : 'disabled'}>Recycle Bin${n ? ' (' + n + ')' : ''}</button><button class="btn danger sm" data-act="fileRemove" data-v="1" ${n ? '' : 'disabled'}>Delete permanently</button>`;
+  return tabs + `<div class="toolbar">${searchBox(L, 'Filter results')}${m !== 'empty' ? selectBox(L, 'size', 'Size', ['1 MB+', '10 MB+', '100 MB+', '1 GB+']) + selectBox(L, 'ext', 'Type', exts) : ''}<span class="muted">${sum}${d.cancelled ? ' · scan was stopped' : ''}</span></div>${selBar(L, m === 'empty' ? 'folders' : 'files', batch)}${table(L, cols, rows, 'Nothing found.')}<div class="muted" style="margin-top:8px">${esc(d.coverage)}</div>`;
 };
 
 // ---------- Storage ----------
@@ -287,37 +370,52 @@ PAGES.storage = () => {
   const parts = d.path.split('\\').filter(Boolean); let acc = ''; const crumbs = parts.map((p, k) => { acc += (k ? '\\' : '') + p; return `<a data-path="${esc(k === 0 ? p + '\\' : acc)}">${esc(p)}</a>`; }).join(' › ');
   const box = squarify(tiles, 1000, 430);
   return dr + `<div class="card"><div class="crumbs">${crumbs}<span class="grow"></span><span>${fmt(d.total)} in this folder</span></div><div class="tm" id="tm">${box.map((b, k) => `<div class="c" style="left:${b.x / 10}%;top:${b.y / 430 * 100}%;width:${b.w / 10}%;height:${b.h / 430 * 100}%;background:${b.it.i.other ? '#6b7a99' : TMC[k % TMC.length]}" ${b.it.i.dir ? `data-path="${esc(b.it.i.path)}"` : ''} title="${esc(b.it.i.name)} — ${fmt(b.it.i.bytes)}">${b.w > 60 && b.h > 34 ? esc(b.it.i.name) + `<small>${fmt(b.it.i.bytes)}</small>` : ''}</div>`).join('')}</div>
-  <div class="muted" style="margin-top:10px">Folders you click open one level deeper. Files directly in a folder are shown too. Reparse points (junctions) are skipped so nothing is counted twice.</div></div>`;
+  <div class="muted" style="margin-top:10px">Folders you click open one level deeper. Files directly in a folder are shown too. Junctions and links are skipped so nothing is counted twice.</div></div>`;
 };
+
+// ---------- Tools ----------
+const TOOLS = [['restorepoint', 'Create a restore point', 'Saves a Windows restore point so you can roll back system changes. Do this before installing drivers.', 1], ['sfc', 'System File Checker', 'Scans protected Windows files and repairs damaged ones (sfc /scannow). Takes several minutes.', 1], ['dism', 'DISM repair', 'Repairs the Windows component store (DISM /RestoreHealth). Needs internet for some repairs.', 1], ['chkdsk', 'Check disk (online scan)', 'Looks for file-system errors on C: without taking the drive offline.', 1], ['memdiag', 'Memory diagnostic', 'Tests your RAM after a restart.', 1], ['dns', 'Flush DNS cache', 'Clears Windows’ DNS cache. Safe; fixes some “site not found” problems.', 0], ['devmgmt', 'Device Manager', '', 0], ['diskmgmt', 'Disk Management', '', 0], ['taskschd', 'Task Scheduler', '', 0], ['services', 'Windows Services', '', 0], ['appwiz', 'Programs and Features', '', 0], ['wu', 'Windows Update settings', '', 0]];
+TOPACT.tools = () => '';
+PAGES.tools = () => { const i = S.sys;
+  const info = i ? `<div class="grid g3" style="margin-bottom:16px"><div class="card"><h3>Computer</h3><div class="big" style="font-size:22px">${esc(i.computer)}</div><div class="sub">${esc(i.os)} · build ${i.build} · ${esc(i.arch)}</div></div><div class="card"><h3>Processor</h3><div class="big" style="font-size:22px">${i.cores} cores</div><div class="sub">${esc(i.cpu)}</div></div><div class="card"><h3>Memory</h3><div class="big" style="font-size:22px">${fmt(i.ramTotal)}</div><div class="sub">${fmt(i.ramFree)} free · up ${Math.floor(i.uptimeSec / 3600)} h ${Math.floor(i.uptimeSec % 3600 / 60)} min</div></div></div>` : '<div class="card empty">Loading system information…</div>';
+  return info + `<div class="tools">${TOOLS.map(t => `<div class="tool"><b>${esc(t[1])}</b><div class="muted">${esc(t[2] || 'Opens the Windows tool.')}</div><button class="btn ghost sm" data-act="tool" data-id="${t[0]}">${t[3] ? 'Run (asks for permission)' : 'Open'}</button></div>`).join('')}</div>`; };
 
 // ---------- Journal ----------
 PAGES.journal = () => {
-  const j = S.journal; const bk = j.backups;
-  return `<div class="grid split"><div class="card"><h3>Timeline</h3>${j.items ? (j.items.length ? `<div class="tablewrap" style="max-height:none;border:0"><table><thead><tr><th>When</th><th>What</th><th>Change</th><th>Result</th></tr></thead><tbody>${j.items.map(e => `<tr><td class="num" style="text-align:left">${esc((e.time || '').replace('T', ' ').slice(0, 16))}</td><td><div class="nm">${esc(e.target)}</div><div class="muted">${esc(e.source)}</div></td><td>${esc(e.before)} → ${esc(e.after)}</td><td><span class="pill ${/fail|block/i.test(e.result) ? 'bad' : e.reversible ? 'ok' : 'neutral'}">${esc(e.result)}</span></td></tr>`).join('')}</tbody></table></div>` : '<div class="muted">Nothing has been changed yet.</div>') : 'Loading…'}</div>
-  <div class="card side"><h3>Rollback shelf</h3><div class="muted">Backups Feather made before changing something.</div>${bk ? (bk.length ? bk.slice(0, 40).map((b, k) => `<div class="row"><div class="grow"><div class="nm cut" style="max-width:190px">${esc(b.label)}</div><div class="muted">${esc(b.time)} · ${b.kind === 'registry' ? 'Registry' : 'Startup'}</div></div><button class="btn ghost sm" data-act="restore" data-k="${k}">Restore</button></div>`).join('') : '<div class="muted" style="margin-top:8px">No backups yet.</div>') : 'Loading…'}
-  <button class="btn ghost sm" style="margin-top:10px" data-act="openBackups">Open backup folder</button></div></div>`;
+  const j = S.journal, L = LS('journal'), bk = j.backups; if (!j.items) return '<div class="card empty">Loading…</div>';
+  const kinds = { failed: e => /fail|block/i.test(e.result), rev: e => e.reversible, perm: e => !e.reversible };
+  let list = j.items.filter(e => matchQ(L, e.target + ' ' + e.source + ' ' + e.before + ' ' + e.after + ' ' + e.result) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)) && (!L.f.src || e.source === L.f.src));
+  list = sortItems(L, list, { time: e => e.time, target: e => e.target, source: e => e.source, result: e => e.result });
+  const rows = list.map((e, i) => ({ k: i, cells: [esc((e.time || '').replace('T', ' ').slice(0, 16)), `<div class="nm">${esc(e.target)}</div>`, esc(e.source), esc(e.before) + ' → ' + esc(e.after), `<span class="pill ${/fail|block/i.test(e.result) ? 'bad' : e.reversible ? 'ok' : 'neutral'}">${esc(e.result)}</span>`], csv: [e.time, e.target, e.source, e.before, e.after, e.result] }));
+  const side = `<h3>Rollback shelf</h3><div class="muted">Backups Feather made before changing something.</div>${bk ? (bk.length ? bk.slice(0, 40).map((b, k) => `<div class="row"><div class="grow"><div class="nm cut" style="max-width:190px">${esc(b.label)}</div><div class="muted">${esc(b.time)} · ${b.kind === 'registry' ? 'Registry' : 'Startup'}</div></div><button class="btn ghost sm" data-act="restore" data-k="${k}">Restore</button></div>`).join('') : '<div class="muted" style="margin-top:8px">No backups yet.</div>') : 'Loading…'}<button class="btn ghost sm" style="margin-top:10px" data-act="openBackups">Open backup folder</button>`;
+  return `<div class="toolbar">${searchBox(L, 'Search the journal')}${chips(L, 'kind', [['all', 'All'], ['failed', 'Failed / blocked'], ['rev', 'Reversible'], ['perm', 'Not reversible']])}${selectBox(L, 'src', 'Area', uniq(j.items, e => e.source))}</div>${selBar(L, 'entries', '')}${splitView(table(L, [{ h: 'When', s: 'time' }, { h: 'What', s: 'target' }, { h: 'Area', s: 'source' }, { h: 'Change' }, { h: 'Result', s: 'result' }], rows, 'Nothing matches.'), side)}`;
 };
 
 // ---------- Settings ----------
 PAGES.settings = () => { const i = S.info; const sw = (k, v) => `<button class="sw ${v ? 'on' : ''}" data-set="${k}" role="switch" aria-checked="${!!v}" aria-label="${k}"></button>`;
+  const sf = S.scan ? S.scan.items.map(p => `<div class="muted">${esc(p)}</div>`).join('') : '';
   return `<div class="card" style="max-width:760px"><div class="setrow"><div class="grow"><b>Check for updates automatically</b><div class="muted">One small request to the release page, when the app starts. Nothing else ever leaves this PC.</div></div>${sw('autoUpdate', i.autoUpdate)}</div>
   <div class="setrow"><div class="grow"><b>Keep the most recent files when cleaning</b><div class="muted">Skips files changed in the last day (recent documents, fresh temp files).</div></div>${sw('keepRecent', i.keepRecent)}</div>
   <div class="setrow"><div class="grow"><b>Ask before batch changes</b></div>${sw('confirmBatch', i.confirmBatch)}</div>
   <div class="setrow"><div class="grow"><b>Large file threshold</b><div class="muted">MB</div></div><input type="number" min="1" id="largeMin" value="${i.largeMinMB}"></div>
   <div class="setrow"><div class="grow"><b>Duplicate minimum size</b><div class="muted">KB (smaller files are ignored)</div></div><input type="number" min="1" id="dupMin" value="${i.dupMinKB}"></div>
-  <div class="setrow"><div class="grow"><b>Administrator rights</b><div class="muted">${i.admin ? 'Running as administrator.' : 'Some cleaning and service actions need administrator rights.'}</div></div>${i.admin ? '' : '<button class="btn ghost sm" data-act="admin">Restart as administrator</button>'}</div>
+  <div class="setrow"><div class="grow"><b>Folders scanned by the Files page</b>${sf}</div><button class="btn ghost sm" data-act="scanFolders">Change…</button></div>
+  <div class="setrow"><div class="grow"><b>Administrator rights</b><div class="muted">${i.admin ? 'Running as administrator.' : 'Some cleaning, driver and service actions need administrator rights.'}</div></div>${i.admin ? '' : '<button class="btn ghost sm" data-act="admin">Restart as administrator</button>'}</div>
   <div class="setrow"><div class="grow"><b>Version ${esc(i.version)}</b><div class="muted">${S.update ? (S.update.ok ? (S.update.newer ? 'Version ' + esc(S.update.version) + ' is available.' : 'You are up to date.') : esc(S.update.error)) : 'Not checked yet.'}</div></div><button class="btn ghost sm" data-act="checkUpdate">Check now</button>${S.update && S.update.newer ? '<button class="btn pri sm" data-act="updInstall">Install update</button>' : ''}</div>
-  <div class="setrow"><div class="grow"><b>Data folder</b><div class="muted">${esc(i.dataDir)}</div></div><button class="btn ghost sm" data-act="openData">Open</button></div>
-  <div class="muted" style="margin-top:8px">Developed by Akshaya Simha · Windows 7–11 · offline · no telemetry</div></div>`; };
+  <div class="setrow"><div class="grow"><b>Data folder</b><div class="muted">${esc(i.dataDir)}</div></div><button class="btn ghost sm" data-act="openData">Open</button></div></div>`; };
 
 // ======================= data loading =======================
-async function loadJournal() { const r = await call('journal.list', { limit: 300 }); S.journal.items = r.ok ? r.items : []; }
+async function loadJournal() { const r = await call('journal.list', { limit: 500 }); S.journal.items = r.ok ? r.items : []; }
 async function loadBackups() { const r = await call('backups.list'); S.journal.backups = r.ok ? r.items : []; }
 async function loadDrives() { const r = await call('storage.drives'); S.storage.drives = r.ok ? r.items : []; }
-async function loadClean(deep) { const r = await run(deep ? 'Deep scan…' : 'Scanning for junk…', () => call('clean.scan', { deep })); if (!r.ok) return toast(r.error, true); const sc = r.scan; S.clean.items = sc.items; S.clean.gen = sc.gen; S.clean.coverage = sc.coverage; S.clean.sel = new Set(); S.clean.focus = -1; S.clean.deep = deep; }
-async function loadStartup() { const r = await run('Reading startup entries…', () => call('startup.list')); if (r.ok) { S.startup.items = r.items; S.startup.coverage = r.coverage; const keys = new Set(r.items.map(e => e.key)); S.startup.sel = new Set([...S.startup.sel].filter(k => keys.has(k))); } else toast(r.error, true); }
-async function loadPrograms() { const r = await run('Reading installed programs…', () => call('programs.list')); if (r.ok) { S.programs.items = r.items; S.programs.coverage = r.coverage; } else toast(r.error, true); }
+async function loadScan() { const r = await call('scan.folders'); if (r.ok) S.scan = r; }
+async function loadClean(deep) { const r = await run(deep ? 'Deep scan…' : 'Scanning for junk…', () => call('clean.scan', { deep })); if (!r.ok) return toast(r.error, true); const sc = r.scan; Object.assign(S.clean, { items: sc.items, gen: sc.gen, coverage: sc.coverage, deep }); const L = LS('clean'); L.sel.clear(); L.focus = null; }
+async function loadStartup() { const r = await run('Reading startup entries…', () => call('startup.list')); if (r.ok) { S.startup.items = r.items; S.startup.coverage = r.coverage; } else toast(r.error, true); }
+async function loadPrograms() { const r = await run('Reading installed programs…', () => call('programs.list')); if (r.ok) S.programs.items = r.items; else toast(r.error, true); }
 async function loadServices() { const r = await run('Reading services…', () => call('services.list', { drivers: S.services.drivers })); if (r.ok) S.services.items = r.items; else toast(r.error, true); }
+async function loadDrivers() { const r = await run('Reading installed drivers…', () => call('drivers.list')); if (r.ok) S.drivers.items = r.items; else { S.drivers.items = []; toast(r.error, true); } }
+async function loadProcs() { const r = await run('Reading processes…', () => call('processes.list')); if (r.ok) S.procs.items = r.items; else toast(r.error, true); }
+async function loadSys() { const r = await call('sys.info'); if (r.ok) S.sys = r; }
 async function loadPage() {
   const p = S.page;
   if (p === 'today') { loadJournal().then(() => S.page === 'today' && draw()); loadDrives().then(() => S.page === 'today' && draw()); }
@@ -325,110 +423,152 @@ async function loadPage() {
   else if (p === 'programs' && !S.programs.items) { draw(); await loadPrograms(); }
   else if (p === 'startup' && !S.startup.items) { draw(); await loadStartup(); }
   else if (p === 'services' && !S.services.items) { draw(); await loadServices(); }
+  else if (p === 'drivers' && !S.drivers.items) { draw(); await loadDrivers(); }
+  else if (p === 'procs') { if (!S.procs.items) draw(); await loadProcs(); }
   else if (p === 'storage') { if (!S.storage.drives) await loadDrives(); }
+  else if (p === 'tools') { await loadSys(); }
   else if (p === 'journal') { await Promise.all([loadJournal(), loadBackups()]); }
+  else if (p === 'files' || p === 'settings') { await loadScan(); }
   if (S.page === p) draw();
 }
 
 // ======================= actions =======================
 const A = {};
+A.selAll = el => { const L = S.lists[el.dataset.l]; L.sel = new Set(L.order); draw(); };
+A.selNone = el => { S.lists[el.dataset.l].sel.clear(); draw(); };
+A.exportList = async el => { const L = S.lists[el.dataset.l]; if (!L.csv) return; const rows = L.csv.rows.filter(r => !L.sel.size || L.sel.has(r.k)).map(r => r.v); const r = await call('export.csv', { title: el.dataset.l, cols: L.csv.cols, rows }); if (r.ok && !r.cancelled) toast(`Exported ${rows.length} rows to ${r.path}`); else if (!r.ok) toast(r.error, true); };
 A.fullCheck = async () => { const T = S.today; if (T.running) return; T.running = true; draw();
   try { await loadClean(false); S.page === 'today' && draw(); await loadStartup(); await loadPrograms(); T.ran = true; } finally { T.running = false; } draw(); };
 A.cleanScan = async () => { await loadClean(false); draw(); };
 A.deepScan = async () => { const ok = await modal({ title: 'Deep scan', body: 'This walks all fixed drives looking for stray junk (old temp files, crash dumps, caches of developer tools). It only reads; you review the results before anything is deleted. It can take several minutes.', confirm: 'Start deep scan' }); if (!ok) return; await loadClean(true); draw(); };
-A.cleanRec = () => { S.clean.sel = new Set(S.clean.items.filter(i => i.risk === 0 && !i.admin && i.bytes > 0).map(i => i.i)); draw(); };
-A.cleanNone = () => { S.clean.sel.clear(); draw(); };
-A.cleanRun = async () => { const c = S.clean, sel = [...c.sel].map(i => c.items[i]).filter(Boolean); if (!sel.length) return; const bytes = sel.reduce((a, i) => a + i.bytes, 0), medium = sel.filter(i => i.risk > 0);
-  const ok = await modal({ title: `Clean ${sel.length} item${sel.length === 1 ? '' : 's'}?`, body: `About ${fmt(bytes)} will be removed. Temporary files are deleted permanently (they are re-created when needed). Registry entries are exported to a backup first, so you can restore them from the Journal page.` + (medium.length ? ` <b>${medium.length} item${medium.length === 1 ? ' has' : 's have'} medium risk</b> — check their notes first.` : ''), items: sel.map(i => `${i.name} — ${i.bytes ? fmt(i.bytes) : i.type}`), confirm: `Clean ${fmt(bytes)}`, danger: medium.length > 0 }); if (!ok) return;
-  const r = await run('Cleaning…', () => call('clean.run', { gen: c.gen, ids: [...c.sel] })); if (!r.ok) return toast(r.error, true);
+A.cleanRec = () => { const L = LS('clean'); L.sel = new Set(S.clean.items.filter(i => L.order.includes(i.i) && i.risk === 0 && !i.admin && i.bytes > 0).map(i => i.i)); draw(); };
+A.cleanRun = async () => { const c = S.clean, L = LS('clean'), sel = [...L.sel].map(i => c.items[i]).filter(Boolean); if (!sel.length) return; const bytes = sel.reduce((a, i) => a + i.bytes, 0), medium = sel.filter(i => i.risk > 0);
+  const ok = await modal({ title: `Clean ${plural(sel.length, 'item', 'items')}?`, body: `About ${fmt(bytes)} will be removed. Temporary files are deleted permanently (they are re-created when needed). Registry entries are exported to a backup first, so you can restore them from the Journal page.` + (medium.length ? ` <b>${plural(medium.length, 'item has', 'items have')} medium risk</b> — check their notes first.` : ''), items: sel.map(i => `${i.name} — ${i.bytes ? fmt(i.bytes) : i.type}`), confirm: `Clean ${fmt(bytes)}`, danger: medium.length > 0 }); if (!ok) return;
+  const r = await run('Cleaning…', () => call('clean.run', { gen: c.gen, ids: [...L.sel] })); if (!r.ok) return toast(r.error, true);
   toast(`${fmt(r.bytes)} freed · ${r.done} done${r.skipped ? ', ' + r.skipped + ' skipped' : ''}${r.failed ? ', ' + r.failed + ' failed: ' + r.firstError : ''}`, r.failed > 0);
   await loadClean(c.deep); loadJournal(); draw(); };
 A.progsRefresh = async () => { await loadPrograms(); draw(); };
-A.uninstall = async (el) => { const e = S.programs.items.find(p => p.key === el.dataset.key); if (!e) return;
-  const buttons = [{ label: 'Cancel', value: false, ghost: true }, { label: 'Standard uninstaller', value: 'std', ghost: e.silent }].concat(e.silent ? [{ label: 'Silent (no windows)', value: 'silent' }] : []);
-  const mode = await modal({ title: `Uninstall ${e.name}?`, body: 'Standard opens the program’s own uninstaller window. Silent runs it without windows (only offered when the program documents a silent switch). Afterwards Feather searches for leftovers and shows them to you — nothing is deleted without your tick.', buttons });
-  if (!mode) return; const silent = mode === 'silent';
-  const r = await run((silent ? 'Uninstalling silently: ' : 'Uninstalling: ') + e.name + '…', () => call('programs.uninstall', { key: e.key, silent })); if (!r.ok) return toast(r.error, true);
-  if (!r.removed) toast(`${e.name} was not removed. ${r.note || ''}`, true); await afterUninstall(r, e); await loadPrograms(); draw(); };
-A.forceRemove = async (el) => { const e = S.programs.items.find(p => p.key === el.dataset.key); if (!e) return; const ok = await modal({ title: `Force remove ${e.name}?`, body: 'This skips the official uninstaller. Use it only when the uninstaller is broken or missing. Feather lists the program’s folders, registry keys and startup entries, and you choose what to delete. The program’s own uninstall entry is included so the list in Windows is cleaned too.', confirm: 'Find leftovers' }); if (!ok) return;
-  const r = await run('Looking for leftovers…', () => call('programs.uninstall', { key: e.key, force: true })); if (!r.ok) return toast(r.error, true); await afterUninstall(r, e); await loadPrograms(); draw(); };
-async function afterUninstall(r, e) {
-  if (!r.leftovers.length) { toast(r.removed ? `${e.name} removed. No leftovers found.` : 'No leftovers found.'); return; }
+async function uninstallMany(items, force) {
+  const buttons = force ? [{ label: 'Cancel', value: false, ghost: true }, { label: 'Find leftovers', value: 'force' }] : (() => { const silentN = items.filter(e => e.silent).length; return [{ label: 'Cancel', value: false, ghost: true }, { label: 'Standard uninstallers', value: 'std', ghost: silentN > 0 }].concat(silentN ? [{ label: silentN === items.length ? 'Silent (no windows)' : `Silent (${silentN} of ${items.length})`, value: 'silent' }] : []); })();
+  const mode = await modal({ title: force ? `Force remove ${plural(items.length, 'program', 'programs')}?` : `Uninstall ${plural(items.length, 'program', 'programs')}?`, body: force ? 'This skips the official uninstaller. Use it only when the uninstaller is broken or missing. Feather lists the programs’ folders, registry keys and startup entries, and you choose what to delete.' : 'Standard opens each program’s own uninstaller window, one after another. Silent runs without windows where the program documents a silent switch; others are skipped. Afterwards Feather lists all leftovers for your review.', items: items.map(e => e.name + (force ? '' : e.silent ? ' (silent available)' : '')), buttons }); if (!mode) return;
+  let last = null, removed = 0, failed = 0, skipped = 0, note = '';
+  for (let i = 0; i < items.length; i++) { const e = items[i], silent = mode === 'silent'; if (silent && !e.silent) { skipped++; continue; }
+    const r = await run(`${force ? 'Looking for leftovers of' : silent ? 'Uninstalling silently:' : 'Uninstalling:'} ${e.name} (${i + 1} of ${items.length})…`, () => call('programs.uninstall', { key: e.key, silent, force: mode === 'force', keep: last !== null })); if (!r.ok) { failed++; note = note || `${e.name}: ${r.error}`; continue; }
+    last = r; if (r.removed) removed++; else { failed++; note = note || `${e.name}: ${r.note || 'not removed'}`; } }
+  toast(`${force ? removed + ' analysed' : removed + ' removed'}${failed ? ', ' + failed + ' failed' : ''}${skipped ? ', ' + skipped + ' skipped (no silent switch)' : ''}${note ? '. ' + note : ''}`, failed > 0);
+  if (last) await afterUninstall(last, items.length === 1 ? items[0].name : plural(items.length, 'program', 'programs')); await loadPrograms(); draw(); }
+A.uninstallBatch = async () => { const L = LS('programs'); const sel = selectedOf(L, S.programs.items, e => e.key).filter(e => e.canUninstall); if (!sel.length) return toast('None of the selected programs has an uninstaller. Use Force remove.', true); await uninstallMany(sel, false); };
+A.forceBatch = async () => { const L = LS('programs'); const sel = selectedOf(L, S.programs.items, e => e.key); if (sel.length) await uninstallMany(sel, true); };
+async function afterUninstall(r, name) {
+  if (!r.leftovers.length) { toast(`${name}: no leftovers found.`); return; }
   const rows = r.leftovers.map(l => `<label style="display:flex;gap:10px;padding:8px 10px;background:var(--soft);border-radius:10px;margin-bottom:6px"><input type="checkbox" id="lo${l.i}" ${l.risk === 0 ? 'checked' : ''}><span><b>${esc(l.name)}</b><br><span class="muted">${esc(l.type)} · ${esc(l.detail)}${l.bytes ? ' · ' + fmt(l.bytes) : ''}${l.why ? '<br>' + esc(l.why) : ''}</span></span></label>`).join('');
-  const ok = await modal({ title: `Leftovers of ${e.name}`, body: `${r.leftovers.length} item${r.leftovers.length === 1 ? '' : 's'} found. Untick anything you want to keep. Registry keys are backed up first.`, extra: rows, confirm: 'Remove selected', cancel: 'Keep all' }); if (!ok) return;
+  const ok = await modal({ title: `Leftovers of ${name}`, body: `${plural(r.leftovers.length, 'item', 'items')} found. Untick anything you want to keep. Registry keys are backed up first.`, extra: rows, confirm: 'Remove selected', cancel: 'Keep all' }); if (!ok) return;
   const ids = r.leftovers.filter(l => modal.vals['lo' + l.i]).map(l => l.i); if (!ids.length) return;
-  const d = await run('Removing leftovers…', () => call('programs.removeLeftovers', { gen: r.gen, ids })); if (!d.ok) return toast(d.error, true); toast(`${d.done} leftover item${d.done === 1 ? '' : 's'} removed${d.bytes ? ' (' + fmt(d.bytes) + ')' : ''}${d.failed ? ', ' + d.failed + ' failed: ' + d.firstError : ''}.`, d.failed > 0); }
+  const d = await run('Removing leftovers…', () => call('programs.removeLeftovers', { gen: r.gen, ids })); if (!d.ok) return toast(d.error, true); toast(`${plural(d.done, 'leftover item', 'leftover items')} removed${d.bytes ? ' (' + fmt(d.bytes) + ')' : ''}${d.failed ? ', ' + d.failed + ' failed: ' + d.firstError : ''}.`, d.failed > 0); }
 A.startupRefresh = async () => { await loadStartup(); draw(); };
 A.startupAdd = async () => { const inp = 'style="width:100%;padding:8px;border-radius:9px;border:1px solid var(--line);background:var(--card);margin-bottom:8px"';
   const ok = await modal({ title: 'Add a startup entry', body: 'Adds a Run entry. Nothing is started now; it runs at the next sign-in.', extra: `<label class="muted">Name</label><input id="anm" ${inp}><label class="muted">Command (full path; quote it if it has spaces)</label><input id="acmd" ${inp}><label><input type="checkbox" id="aall"> For all users (needs administrator rights)</label>`, confirm: 'Add' }); if (!ok) return;
   const v = modal.vals; if (!v.anm.trim() || !v.acmd.trim()) return toast('Name and command are required.', true);
   const r = await call('startup.add', { name: v.anm.trim(), command: v.acmd.trim(), allUsers: v.aall }); toast(r.ok ? 'Added. It will run at the next sign-in.' : r.error, !r.ok); await loadStartup(); draw(); };
-const selectedStartup = () => S.startup.items.filter(e => S.startup.sel.has(e.key));
-A.suBatch = async (el) => { const en = el.dataset.v === '1', sel = selectedStartup().filter(e => e.canToggle && (en ? e.state === 'Disabled' : e.state === 'Enabled')); if (!sel.length) return toast('Nothing to change in the selection.');
+const selStartup = () => selectedOf(LS('startup'), S.startup.items, e => e.key);
+A.suBatch = async (el) => { const en = el.dataset.v === '1', sel = selStartup().filter(e => e.canToggle && (en ? e.state === 'Disabled' : e.state === 'Enabled')); if (!sel.length) return toast('Nothing to change in the selection.');
   if (sel.length > 1 && S.info.confirmBatch && !await modal({ title: `${en ? 'Enable' : 'Disable'} ${sel.length} entries?`, items: sel.map(e => e.name), confirm: en ? 'Enable' : 'Disable' })) return;
   const r = await run('Applying…', () => call('startup.set', { keys: sel.map(e => e.key), enable: en })); toast(r.ok ? `${r.done} ${en ? 'enabled' : 'disabled'}. You can reverse this any time.` : `${r.done || 0} done, ${r.failed || 1} failed: ${r.error}`, !r.ok); await loadStartup(); loadJournal(); draw(); };
-A.suDelete = async () => { const sel = selectedStartup().filter(e => e.canDelete); if (!sel.length) return toast('None of the selected entries can be deleted here.', true);
-  const ok = await modal({ title: `Delete ${sel.length} startup entr${sel.length === 1 ? 'y' : 'ies'}?`, body: 'Only the startup registration is removed — the program is not uninstalled. Registry entries and scheduled tasks are backed up (restore from the Journal page); startup shortcuts go to the Recycle Bin. This also works when the program file is missing.', items: sel.map(e => `${e.name} (${e.type})${e.missing ? ' — file missing' : ''}`), confirm: 'Delete', danger: true }); if (!ok) return;
-  const r = await run('Deleting…', () => call('startup.delete', { keys: sel.map(e => e.key) })); toast(r.ok ? `${r.done} deleted. Backups saved.` : `${r.done || 0} deleted, ${r.failed || 1} failed: ${r.error}`, !r.ok); S.startup.sel.clear(); S.startup.focus = null; await loadStartup(); loadJournal(); draw(); };
-A.suDelay = async () => { const sel = selectedStartup().filter(e => e.canDelay); if (!sel.length) return toast('Only current-user Run entries can be started later.', true);
-  const ok = await modal({ title: 'Start later', body: 'Feather disables the original entry and starts it 60 seconds after sign-in through a task it manages. “Remove delay” in the entry restores the original.', items: sel.map(e => e.name), confirm: 'Start 60 s later' }); if (!ok) return;
+A.suDelete = async () => { const sel = selStartup().filter(e => e.canDelete); if (!sel.length) return toast('None of the selected entries can be deleted here.', true);
+  const ok = await modal({ title: `Delete ${plural(sel.length, 'startup entry', 'startup entries')}?`, body: 'Only the startup registration is removed — the program is not uninstalled. Registry entries and scheduled tasks are backed up (restore from the Journal page); startup shortcuts go to the Recycle Bin. This also works when the program file is missing.', items: sel.map(e => `${e.name} (${e.type})${e.missing ? ' — file missing' : ''}`), confirm: 'Delete', danger: true }); if (!ok) return;
+  const r = await run('Deleting…', () => call('startup.delete', { keys: sel.map(e => e.key) })); toast(r.ok ? `${r.done} deleted. Backups saved.` : `${r.done || 0} deleted, ${r.failed || 1} failed: ${r.error}`, !r.ok); LS('startup').sel.clear(); await loadStartup(); loadJournal(); draw(); };
+A.suDelay = async () => { const sel = selStartup().filter(e => e.canDelay); if (!sel.length) return toast('Only current-user Run entries can be started later.', true);
+  const ok = await modal({ title: 'Start later', body: 'Feather disables the original entry and starts it 60 seconds after sign-in through a task it manages. “Remove delay” restores the original.', items: sel.map(e => e.name), confirm: 'Start 60 s later' }); if (!ok) return;
   const r = await run('Applying…', () => call('startup.delay', { keys: sel.map(e => e.key), seconds: 60 })); toast(r.ok ? `${r.done} delayed.` : r.error, !r.ok); await loadStartup(); draw(); };
+A.suUndelay = async () => { const sel = selStartup().filter(e => e.delayed); if (!sel.length) return; const r = await run('Restoring…', () => call('startup.removeDelay', { keys: sel.map(e => e.key) })); toast(r.ok ? `${r.done} restored to normal startup.` : r.error, !r.ok); await loadStartup(); draw(); };
 A.suOpen = async (el) => { const r = await call('startup.openLocation', { key: el.dataset.key }); if (!r.ok) toast(r.error, true); };
 A.suReg = async (el) => { const r = await call('startup.regedit', { key: el.dataset.key }); if (!r.ok) toast(r.error, true); };
 A.suVt = async (el) => { const r = await call('startup.lookup', { key: el.dataset.key, virustotal: true }); if (!r.ok) toast(r.error, true); };
 A.svcRefresh = async () => { await loadServices(); draw(); };
-A.svcOp = async (el) => { const op = el.dataset.op, name = el.dataset.key, e = S.services.items.find(s => s.name === name); if (!e) return;
-  if (op !== 'start' && !await modal({ title: `${op === 'stop' ? 'Stop' : 'Restart'} ${e.display}?`, body: 'Programs that depend on this service may stop working until it is started again.', confirm: op === 'stop' ? 'Stop' : 'Restart' })) return;
-  const r = await run(`${op}…`, () => call('services.op', { name, op })); toast(r.ok ? 'Done.' : r.error, !r.ok); await loadServices(); loadJournal(); draw(); };
-A.fileScan = async () => { const F = S.files, m = F.mode; const r = await run('Scanning…', () => call('files.scan', { mode: m })); if (!r.ok) return toast(r.error, true); r.items.forEach(f => f.gone = false); F.data[m] = r; F.sel = new Set(); F.focus = -1; draw(); };
-A.fileOpen = async () => { const F = S.files, d = F.data[F.mode], i = F.sel.size === 1 ? [...F.sel][0] : F.focus; if (i < 0 || !d) return; const r = await call('files.openLocation', { mode: F.mode, gen: d.gen, i }); if (!r.ok) toast(r.error, true); };
-A.dupKeep = (el) => { const F = S.files, d = F.data.dupes; if (!d) return; const by = {}; d.items.filter(f => !f.gone).forEach(f => (by[f.group] = by[f.group] || []).push(f)); F.sel = new Set();
+A.svcBatch = async (el) => { const op = el.dataset.op, L = LS('services'), sel = selectedOf(L, S.services.items, e => e.name).filter(e => op === 'start' ? e.stopped : e.running && e.canStop && !e.critical); if (!sel.length) return toast('Nothing in the selection can do that.');
+  const verb = { start: 'Start', stop: 'Stop', restart: 'Restart' }[op]; if (!await modal({ title: `${verb} ${plural(sel.length, 'service', 'services')}?`, body: op === 'start' ? '' : 'Programs that depend on these services may stop working until they are started again.', items: sel.map(e => e.display), confirm: verb })) return;
+  let ok = 0, bad = 0, first = ''; for (const e of sel) { const r = await run(`${verb}: ${e.display}…`, () => call('services.op', { name: e.name, op })); if (r.ok) ok++; else { bad++; first = first || `${e.display}: ${r.error}`; } }
+  toast(`${ok} done${bad ? ', ' + bad + ' failed: ' + first : ''}`, bad > 0); await loadServices(); loadJournal(); draw(); };
+A.fileScan = async () => { const F = S.files, m = F.mode; const r = await run('Scanning…', () => call('files.scan', { mode: m })); if (!r.ok) return toast(r.error, true); r.items.forEach(f => f.gone = false); F.data[m] = r; const L = LS(m); L.sel.clear(); L.focus = null; draw(); };
+A.fileOpen = async () => { const F = S.files, d = F.data[F.mode], L = LS(F.mode), i = L.focus; if (i == null || !d) return; const r = await call('files.openLocation', { mode: F.mode, gen: d.gen, i }); if (!r.ok) toast(r.error, true); };
+A.dupKeep = (el) => { const F = S.files, d = F.data.dupes, L = LS('dupes'); if (!d) return; const by = {}; d.items.forEach(f => (by[f.group] = by[f.group] || []).push(f)); L.sel = new Set();
   const key = { newest: (a, b) => b.date.localeCompare(a.date), oldest: (a, b) => a.date.localeCompare(b.date), shortest: (a, b) => (a.folder + a.name).length - (b.folder + b.name).length }[el.dataset.v];
-  Object.values(by).forEach(g => { g.sort(key); g.slice(1).forEach(f => F.sel.add(f.i)); }); toast(`${F.sel.size} files selected — one copy per group is kept. Review, then remove.`); draw(); };
-A.fileRemove = async (el) => { const F = S.files, m = F.mode, d = F.data[m], perm = el.dataset.v === '1', sel = [...F.sel].map(i => d.items[i]).filter(Boolean), bytes = sel.reduce((a, f) => a + f.size, 0); if (!sel.length) return;
+  Object.values(by).forEach(g => { g.sort(key); g.slice(1).forEach(f => L.sel.add(f.i)); }); toast(`${L.sel.size} files selected — one copy per group is kept. Review, then remove.`); draw(); };
+A.fileRemove = async (el) => { const F = S.files, m = F.mode, d = F.data[m], L = LS(m), perm = el.dataset.v === '1', sel = selectedOf(L, d.items, f => f.i), bytes = sel.reduce((a, f) => a + f.size, 0); if (!sel.length) return;
   const what = `${sel.length} ${m === 'empty' ? 'empty folder' : 'file'}${sel.length === 1 ? '' : 's'}${m === 'empty' ? '' : ' (' + fmt(bytes) + ')'}`;
-  const ok = await modal({ title: perm ? `PERMANENTLY delete ${what}?` : `Move ${what} to the Recycle Bin?`, body: perm ? 'This does <b>not</b> use the Recycle Bin. These items cannot be restored afterwards.' : 'You can restore them from the Recycle Bin.' + (m === 'dupes' ? ' Each file is compared byte-for-byte with the copy you keep, right before it is removed.' : ''), items: sel.map(f => f.folder + '\\' + f.name), confirm: perm ? 'Delete permanently' : 'Move to Recycle Bin', danger: perm }); if (!ok) return;
-  const r = await run('Removing…', () => call('files.remove', { mode: m, gen: d.gen, ids: [...F.sel], permanent: perm })); if (!r.ok) return toast(r.error, true);
-  const gone = new Set(r.gone.map(Number)); d.items.forEach(f => { if (gone.has(f.i)) f.gone = true; }); d.items = d.items.filter(f => !f.gone || false); gone.forEach(i => F.sel.delete(i)); F.sel.clear();
+  const ok = await modal({ title: perm ? `PERMANENTLY delete ${what}?` : `Move ${what} to the Recycle Bin?`, body: perm ? 'This does <b>not</b> use the Recycle Bin. These items cannot be restored afterwards.' : 'You can restore them from the Recycle Bin.' + (m === 'dupes' ? ' Each file is compared byte-for-byte with the copy you keep, right before it is removed.' : '') + (m === 'empty' ? ' Each folder is checked again first; any that now contain files are left alone.' : ''), items: sel.map(f => f.folder + '\\' + f.name), confirm: perm ? 'Delete permanently' : 'Move to Recycle Bin', danger: perm }); if (!ok) return;
+  const r = await run('Removing…', () => call('files.remove', { mode: m, gen: d.gen, ids: sel.map(f => f.i), permanent: perm })); if (!r.ok) return toast(r.error, true);
+  const gone = new Set(r.gone.map(Number)); d.items = d.items.filter(f => !gone.has(f.i)); L.sel.clear();
   if (m === 'dupes') { const cnt = {}; d.items.forEach(f => cnt[f.group] = (cnt[f.group] || 0) + 1); d.items = d.items.filter(f => cnt[f.group] > 1); }
-  toast(`${gone.size} item${gone.size === 1 ? '' : 's'} removed (${fmt(r.freed)}).${r.warning ? ' ' + r.warning : ''}${r.error ? ' ' + r.error : ''}`, !!(r.warning || r.error)); loadJournal(); draw(); };
+  toast(`${plural(gone.size, 'item', 'items')} removed (${fmt(r.freed)}).${r.warning ? ' ' + r.warning : ''}${r.error ? ' ' + r.error : ''}`, !!(r.warning || r.error)); loadJournal(); draw(); };
+A.scanFolders = async () => { await loadScan(); const rows = () => S.scan.items.map((p, i) => `<li style="display:flex;gap:8px;align-items:center"><span class="grow">${esc(p)}</span><button class="btn ghost sm" data-r="${i + 10}">Remove</button></li>`).join('');
+  for (;;) { const buttons = [{ label: 'Done', value: 'done', ghost: true }, { label: 'Add folder…', value: 'add' }, { label: 'Use defaults', value: 'reset', ghost: true }].concat(S.scan.items.map((p, i) => ({ label: 'Remove ' + p.split('\\').filter(Boolean).pop(), value: 'rm' + i, ghost: true })));
+    const v = await modal({ title: 'Folders to scan', body: `The Files page scans only these folders${S.scan.custom ? '' : ' (the defaults)'}. Windows and Program Files are always skipped.`, items: S.scan.items, buttons }); if (!v || v === 'done') break;
+    if (v === 'add') await call('scan.add'); else if (v === 'reset') await call('scan.reset'); else if (v.startsWith('rm')) await call('scan.remove', { i: +v.slice(2) }); await loadScan(); }
+  draw(); };
 async function openFolder(path) { const s = S.storage; const r = await run('Measuring…', () => call('storage.children', { path })); if (r.ok) { s.data = r; draw(); } else if (r.error !== 'Cancelled.') toast(r.error, true); }
+A.drvRefresh = async () => { S.drivers.items = null; draw(); await loadDrivers(); draw(); };
+A.drvCheck = async () => { const r = await run('Asking Windows Update for drivers…', () => call('drivers.check')); if (r.ok) { S.drivers.upd = r.items; S.drivers.updErr = ''; LS('drvupd').sel.clear(); } else S.drivers.updErr = r.error; draw(); };
+A.drvInstall = async () => { const L = LS('drvupd'), sel = selectedOf(L, S.drivers.upd, e => e.id); if (!sel.length) return;
+  const ok = await modal({ title: `Install ${plural(sel.length, 'driver update', 'driver updates')}?`, body: 'Windows Update downloads and installs these drivers. The screen may flicker and a restart may be needed. <b>A restore point is recommended first</b> (Tools page). Needs administrator rights.', items: sel.map(e => e.title), confirm: 'Download and install' }); if (!ok) return;
+  const r = await run('Installing drivers…', () => call('drivers.install', { ids: sel.map(e => e.id) })); if (!r.ok) return toast(r.error, true);
+  await note('Driver update finished', `${plural(r.installed, 'driver update', 'driver updates')} installed.${r.reboot ? ' <b>Restart Windows to finish.</b>' : ' A restart may still be needed.'}`); await A.drvCheck(); loadDrivers().then(draw); };
+A.procRefresh = async () => { await loadProcs(); draw(); };
+A.procEnd = async () => { const L = LS('procs'), sel = selectedOf(L, S.procs.items, e => e.pid).filter(e => !e.protected); if (!sel.length) return;
+  if (!await modal({ title: `End ${plural(sel.length, 'task', 'tasks')}?`, body: 'The programs close immediately and unsaved work in them is lost.', items: sel.map(e => `${e.name} (PID ${e.pid})`), confirm: 'End tasks', danger: true })) return;
+  const r = await run('Ending…', () => call('processes.end', { pids: sel.map(e => e.pid) })); toast(r.ok ? `${r.done} ended.` : `${r.done || 0} ended, ${r.failed || 1} failed: ${r.error}`, !r.ok); L.sel.clear(); await loadProcs(); loadJournal(); draw(); };
+A.tool = async el => { const t = TOOLS.find(x => x[0] === el.dataset.id); if (t[3] && !await modal({ title: t[1], body: esc(t[2]) + '<br><br>Windows will ask for administrator permission and the tool opens in its own window.', confirm: 'Run' })) return; const r = await call('tools.run', { id: t[0] }); if (!r.ok) toast(r.error, true); };
 A.restore = async (el) => { const b = S.journal.backups[+el.dataset.k]; if (!b) return; const ok = await modal({ title: 'Restore this backup?', body: `${esc(b.label)}<br>${esc(b.time)}`, confirm: 'Restore' }); if (!ok) return; const r = await call('backups.restore', { path: b.path, kind: b.kind }); toast(r.ok ? (r.summary || 'Restored.') : r.error, !r.ok); loadJournal(); draw(); };
 A.openBackups = () => call('app.openData', { what: 'backups' });
 A.openData = () => call('app.openData', { what: 'data' });
 A.admin = async () => { const r = await call('app.restartAdmin'); if (!r.ok) toast(r.error, true); };
 A.checkUpdate = async () => { S.update = await run('Checking for updates…', () => call('update.check')); draw(); };
 A.updInstall = async () => { const ok = await modal({ title: `Update to ${S.update.version}?`, body: esc(S.update.notes || 'A newer version is available.') + '<br><br>The download is verified (size and SHA-256) before it is installed. Feather will restart.', confirm: 'Download and install' }); if (!ok) return; on('download', d => d.all && setBusy(`Downloading… ${Math.round(d.got / d.all * 100)}%`)); const r = await run('Downloading update…', () => call('update.install')); if (!r.ok) toast(r.error, true); };
+A.aboutMenu = () => { if ($('.menu')) return closeMenu(); const m = document.createElement('div'); m.className = 'menu'; m.innerHTML = '<button data-act="about">About Feather System Utilities</button><button data-act="shortcuts">Keyboard shortcuts</button><button data-act="checkUpdate2">Check for updates</button><button data-act="openData">Open data folder</button><button data-act="licenses">Third-party licences</button>'; document.body.appendChild(m); };
+function closeMenu() { const m = $('.menu'); if (m) m.remove(); }
+A.about = () => note('About Feather System Utilities', `<b>Version ${esc(S.info.version || '')}</b> · built ${esc(S.info.built || '')}<br>Developed by <b>Akshaya Simha</b><br><br>A private, offline maintenance suite for Windows 7–11. No telemetry: the only network feature is the optional update check, and driver updates, which are fetched by Windows Update itself.<br><br>Every change is previewed first, backed up where possible, and recorded in the Journal.<br><br><span class="muted">Data folder: ${esc(S.info.dataDir || '')}</span>`);
+A.shortcuts = () => note('Keyboard shortcuts', '<table style="width:100%"><tr><td><kbd>Ctrl</kbd>+<kbd>A</kbd></td><td>Select all rows in the list</td></tr><tr><td><kbd>Ctrl</kbd>/<kbd>Shift</kbd> + click</td><td>Add to / extend the selection</td></tr><tr><td><kbd>Space</kbd></td><td>Tick / untick the current row</td></tr><tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td>Move through rows (<kbd>Shift</kbd> extends)</td></tr><tr><td><kbd>Esc</kbd></td><td>Clear the selection</td></tr><tr><td><kbd>/</kbd></td><td>Jump to the search box</td></tr><tr><td><kbd>Delete</kbd></td><td>Delete / remove the selection (always asks first)</td></tr></table>');
+A.checkUpdate2 = async () => { await A.checkUpdate(); S.update && S.update.ok ? toast(S.update.newer ? `Version ${S.update.version} is available.` : 'You are up to date.') : toast((S.update && S.update.error) || 'Update check failed.', true); };
+A.licenses = () => note('Third-party licences', 'Microsoft Edge WebView2 SDK (BSD-style licence) · NSIS installer (zlib licence) · GCC runtime (GPLv3 with Runtime Library Exception). No other third-party code is included.');
 
 // ======================= events =======================
+function activeList() { const p = S.page; if (p === 'files') return LS(S.files.mode); if (p === 'drivers') return LS(S.drivers.tab === 'installed' ? 'drvinst' : 'drvupd'); return { clean: 'clean', startup: 'startup', programs: 'programs', services: 'services', procs: 'procs', journal: 'journal' }[p] ? LS(p) : null; }
 document.addEventListener('click', async e => {
-  const t = e.target, g = t.closest('[data-go]'); if (g) return go(g.dataset.go);
-  const a = t.closest('[data-act]'); if (a) { if (a.disabled) return; const f = A[a.dataset.act]; if (f) await f(a); return; }
+  const t = e.target; if (!t.closest('.menu') && !t.closest('[data-act=aboutMenu]')) closeMenu();
+  const g = t.closest('[data-go]'); if (g) return go(g.dataset.go);
+  const a = t.closest('[data-act]'); if (a) { if (a.disabled) return; closeMenu(); const f = A[a.dataset.act]; if (f) await f(a); return; }
   const sw = t.closest('[data-toggle]'); if (sw) { e.stopPropagation(); if (sw.disabled) return; const e1 = S.startup.items.find(x => x.key === sw.dataset.toggle), en = e1.state !== 'Enabled'; const r = await run('Applying…', () => call('startup.set', { keys: [e1.key], enable: en })); toast(r.ok ? `${e1.name} ${en ? 'enabled' : 'disabled'}. Reversible any time.` : r.error, !r.ok); await loadStartup(); loadJournal(); draw(); return; }
   const set = t.closest('[data-set]'); if (set) { const k = set.dataset.set, v = !S.info[k]; await call('app.set', { key: k, value: v }); S.info[k] = v; draw(); return; }
-  const cc = t.closest('[data-cchk]'); if (cc) { const i = +cc.dataset.cchk; cc.checked ? S.clean.sel.add(i) : S.clean.sel.delete(i); draw(); return; }
-  const sc = t.closest('[data-schk]'); if (sc) { const k = sc.dataset.schk; sc.checked ? S.startup.sel.add(k) : S.startup.sel.delete(k); draw(); return; }
-  const fc = t.closest('[data-fchk]'); if (fc) { const i = +fc.dataset.fchk; fc.checked ? S.files.sel.add(i) : S.files.sel.delete(i); draw(); return; }
-  const cr = t.closest('[data-clean]'); if (cr) { S.clean.focus = +cr.dataset.clean; draw(); return; }
-  const su = t.closest('[data-su]'); if (su) { S.startup.focus = su.dataset.su; draw(); return; }
-  const pr = t.closest('[data-prog]'); if (pr) { S.programs.focus = pr.dataset.prog; draw(); return; }
-  const sv = t.closest('[data-svc]'); if (sv) { S.services.focus = sv.dataset.svc; draw(); return; }
-  const fr = t.closest('[data-file]'); if (fr) { S.files.focus = +fr.dataset.file; draw(); return; }
-  const sf = t.closest('[data-sf]'); if (sf) { S.startup.filter = sf.dataset.sf; draw(); return; }
-  const vf = t.closest('[data-vf]'); if (vf) { S.services.filter = vf.dataset.vf; draw(); return; }
-  const ft = t.closest('[data-ft]'); if (ft) { S.files.mode = ft.dataset.ft; S.files.sel = new Set(); S.files.focus = -1; draw(); return; }
+  const all = t.closest('input[data-all]'); if (all) { const L = S.lists[all.dataset.all]; L.sel = all.checked ? new Set(L.order) : new Set(); draw(); return; }
+  const row = t.closest('tr[data-ix]'); if (row) { if (t.closest('button,a,select')) return; pickRow(S.lists[row.dataset.l], +row.dataset.ix, e, !!t.closest('input[data-chk]')); return; }
+  const th = t.closest('th[data-sort]'); if (th) { const L = S.lists[th.dataset.l]; L.sort = [th.dataset.sort, L.sort && L.sort[0] === th.dataset.sort ? -L.sort[1] : 1]; draw(); return; }
+  const fc = t.closest('[data-fc]'); if (fc) { const [id, field, val] = fc.dataset.fc.split('|'); LS(id).f[field] = val; draw(); return; }
+  const ft = t.closest('[data-ft]'); if (ft) { S.files.mode = ft.dataset.ft; draw(); return; }
+  const dt = t.closest('[data-dtab]'); if (dt) { S.drivers.tab = dt.dataset.dtab; draw(); return; }
   const dv = t.closest('[data-drive],[data-path]'); if (dv && S.page === 'storage') { await openFolder(dv.dataset.drive || dv.dataset.path); return; }
-  const th = t.closest('[data-sort]'); if (th) { const o = S[S.page]; if (o && o.sort) { o.sort = [th.dataset.sort, o.sort[0] === th.dataset.sort ? -o.sort[1] : 1]; draw(); } return; }
 });
-document.addEventListener('input', e => { const id = e.target.id;
-  if (id === 'sq') { S.startup.q = e.target.value; draw(); } else if (id === 'pq') { S.programs.q = e.target.value; draw(); } else if (id === 'vq') { S.services.q = e.target.value; draw(); } else if (id === 'fq') { S.files.q = e.target.value; draw(); } });
-document.addEventListener('change', async e => { const id = e.target.id;
-  if (id === 'hideMs') { S.startup.hideMs = e.target.checked; draw(); }
-  else if (id === 'drv') { S.services.drivers = e.target.checked; S.services.items = null; draw(); await loadServices(); draw(); }
-  else if (id === 'stype' && e.target.value) { const name = S.services.focus, r = await call('services.startType', { name, type: e.target.value }); toast(r.ok ? 'Start type changed. Undo from the Journal.' : r.error, !r.ok); await loadServices(); loadJournal(); draw(); }
-  else if (id === 'largeMin') { await call('app.set', { key: 'largeMinMB', value: +e.target.value }); S.info.largeMinMB = +e.target.value; }
-  else if (id === 'dupMin') { await call('app.set', { key: 'dupMinKB', value: +e.target.value }); S.info.dupMinKB = +e.target.value; } });
-on('goto', d => { const m = { speed: 'startup', toolbox: 'today', drivers: 'services', large: 'files', dupes: 'files', empty: 'files', history: 'journal' }; if (d.page === 'large' || d.page === 'dupes' || d.page === 'empty') S.files.mode = d.page; if (d.page === 'drivers') S.services.drivers = true; go(m[d.page] || d.page); });
+document.addEventListener('input', e => { const q = e.target.dataset && e.target.dataset.q; if (q) { LS(q).q = e.target.value; draw(); } });
+document.addEventListener('change', async e => { const el = e.target, id = el.id;
+  if (el.dataset.fs) { const [lid, field] = el.dataset.fs.split('|'); LS(lid).f[field] = el.value; draw(); return; }
+  if (el.dataset.fchk) { const [lid, field] = el.dataset.fchk.split('|'); LS(lid).f[field] = field === 'admin' ? (el.checked ? 'no' : '') : el.checked; draw(); return; }
+  if (id === 'drv') { S.services.drivers = el.checked; S.services.items = null; draw(); await loadServices(); draw(); }
+  else if (id === 'stypeBatch' && el.value) { const L = LS('services'), sel = selectedOf(L, S.services.items, x => x.name), type = el.value, lbl = el.options[el.selectedIndex].text; el.value = '';
+    if (!sel.length || !await modal({ title: `Set start type to ${lbl}?`, body: 'Critical services are skipped. This is recorded in the Journal and can be reversed.', items: sel.map(x => `${x.display} (now ${x.start})`), confirm: 'Apply' })) return;
+    let ok = 0, bad = 0, first = ''; for (const x of sel) { const r = await run(`${x.display}…`, () => call('services.startType', { name: x.name, type })); if (r.ok) ok++; else { bad++; first = first || `${x.display}: ${r.error}`; } }
+    toast(`${ok} changed${bad ? ', ' + bad + ' skipped/failed: ' + first : ''}`, bad > 0); await loadServices(); loadJournal(); draw(); }
+  else if (id === 'largeMin') { await call('app.set', { key: 'largeMinMB', value: +el.value }); S.info.largeMinMB = +el.value; }
+  else if (id === 'dupMin') { await call('app.set', { key: 'dupMinKB', value: +el.value }); S.info.dupMinKB = +el.value; } });
+document.addEventListener('keydown', e => {
+  if ($('#layer').children.length) return; const tg = e.target, typing = tg && /^(INPUT|SELECT|TEXTAREA)$/.test(tg.tagName) && tg.type !== 'checkbox';
+  if (e.key === '/' && !typing) { const q = document.querySelector('input[data-q]'); if (q) { e.preventDefault(); q.focus(); } return; }
+  if (typing) return; const L = activeList(); if (!L || !L.order.length) return; const ix = L.focus == null ? -1 : L.order.indexOf(L.focus);
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); L.sel = new Set(L.order); draw(); }
+  else if (e.key === 'Escape') { L.sel.clear(); draw(); }
+  else if (e.key === ' ' && ix >= 0) { e.preventDefault(); L.sel.has(L.focus) ? L.sel.delete(L.focus) : L.sel.add(L.focus); L.anchor = ix; draw(); }
+  else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); const n = Math.max(0, Math.min(L.order.length - 1, ix + (e.key === 'ArrowDown' ? 1 : -1))); if (e.shiftKey) { if (L.anchor < 0) L.anchor = ix < 0 ? n : ix; const [a, b] = [L.anchor, n].sort((x, y) => x - y); L.sel = new Set(L.order.slice(a, b + 1)); } else { L.sel = new Set([L.order[n]]); L.anchor = n; } L.focus = L.order[n]; S.scrollFocus = true; draw(); }
+  else if (e.key === 'Delete' && L.sel.size) { const act = { startup: 'suDelete', procs: 'procEnd' }[S.page]; if (S.page === 'files') A.fileRemove({ dataset: { v: e.shiftKey ? '1' : '0' } }); else if (act) A[act](); }
+});
+on('goto', d => { const m = { speed: 'startup', toolbox: 'tools', large: 'files', dupes: 'files', empty: 'files', history: 'journal' }; if (['large', 'dupes', 'empty'].includes(d.page)) S.files.mode = d.page; go(m[d.page] || d.page); });
 
 // ======================= boot =======================
 (async function () {

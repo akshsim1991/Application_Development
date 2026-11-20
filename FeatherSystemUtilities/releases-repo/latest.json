@@ -1,10 +1,10 @@
 {
-  "version": "3.0.0",
+  "version": "3.1.0",
   "date": "20 November 2026",
-  "notes": "New original interface (WebView2): Today dashboard, evidence panels (Why is this listed?), leftover preview, storage map, journal and rollback shelf. Open file location fix. Falls back to the classic window if the WebView2 runtime is missing.",
+  "notes": "Multi-select with checkboxes everywhere, sorting and filters on every list, Drivers (inventory + Windows Update driver updates), Processes and Tools pages, About menu, byte-for-byte duplicate proof, empty-folder deletion fix, more reliable Open file location.",
   "windows": {
-    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.0.0.exe",
-    "size": 2141875,
-    "sha256": "7b3aebbda4da7fea74ce3af8e254fbaa71a281843a487e755b7b4dd534dc131f"
+    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.1.0.exe",
+    "size": 2185575,
+    "sha256": "f7fe44e74f146875e4232c32ab1153a0d5153b00228ca96512950a79338725d7"
   }
 }

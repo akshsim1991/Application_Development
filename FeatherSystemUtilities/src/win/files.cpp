@@ -107,13 +107,16 @@ void ScanFiles(const FileScanOpts& o, FileScan& out) {
     int g = 0; out.files.clear();
     for (auto& kv : byFull) {
         std::vector<size_t> uniq; std::set<ULONGLONG> seenId; for (size_t i : kv.second) { if (ids[i] && !seenId.insert(ids[i]).second) continue; uniq.push_back(i); }   // hard links to the same data are not duplicates
+        {   // final proof: every member must be byte-for-byte identical to the first one (a matching size or hash alone is never trusted)
+            if (uniq.size() < 2) continue; std::vector<size_t> proven{uniq[0]}; for (size_t k2 = 1; k2 < uniq.size(); ++k2) { if (Cancelled(c)) break; if (o.progress) o.progress(L"Comparing byte by byte\u2026 " + c.hits[uniq[k2]].name); if (VerifyIdentical(c.hits[uniq[0]].path, c.hits[uniq[k2]].path)) proven.push_back(uniq[k2]); }
+            for (size_t i : proven) c.hits[i].verified = true; uniq = proven; }
         if (uniq.size() < 2) continue; ++g; std::sort(uniq.begin(), uniq.end(), [&](size_t a, size_t b2) { return c.hits[a].mtime < c.hits[b2].mtime; });
         for (size_t i : uniq) { FileEntry e = c.hits[i]; e.group = g; e.groupCount = (int)uniq.size(); out.files.push_back(std::move(e)); }
         out.reclaimable += c.hits[uniq[0]].size * (uniq.size() - 1); out.totalBytes += c.hits[uniq[0]].size * uniq.size();
     }
     std::stable_sort(out.files.begin(), out.files.end(), [](const FileEntry& a, const FileEntry& b2) { return a.group < b2.group; });
     out.groups = g; out.cancelled = Cancelled(c);
-    out.coverage = L"Checked " + std::to_wstring(c.scanned) + L" files; " + std::to_wstring(cand.size()) + L" had a same-size twin. Duplicates are byte-for-byte identical (SHA-256), hard links are not counted, and at least one copy per group is always kept." + (out.cancelled ? L" Scan was stopped early; results may be incomplete." : L"");
+    out.coverage = L"Checked " + std::to_wstring(c.scanned) + L" files; " + std::to_wstring(cand.size()) + L" had a same-size twin. Each duplicate group was matched by SHA-256 and then proven byte-for-byte identical; hard links are not counted, and at least one copy per group is always kept." + (out.cancelled ? L" Scan was stopped early; results may be incomplete." : L"");
 }
 
 bool VerifyIdentical(const wstring& a, const wstring& b) {
@@ -123,13 +126,26 @@ bool VerifyIdentical(const wstring& a, const wstring& b) {
     while (same) { DWORD na = 0, nb = 0; if (!ReadFile(fa, x.data(), (DWORD)x.size(), &na, nullptr) || !ReadFile(fb, y.data(), (DWORD)y.size(), &nb, nullptr)) { same = false; break; } if (na != nb || memcmp(x.data(), y.data(), na) != 0) { same = false; break; } if (na == 0) break; }
     CloseHandle(fa); CloseHandle(fb); return same;
 }
+// Re-checks right before deleting: true only if the whole tree holds no file at all (hidden/system count), no link, nothing unreadable.
+static bool TreeHasContent(const wstring& dir, int depth) {
+    if (depth > 40) return true; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return true;
+    bool content = false; do { wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { content = true; break; } if (TreeHasContent(dir + L"\\" + n, depth + 1)) { content = true; break; } } while (FindNextFileW(h, &fd));
+    FindClose(h); return content;
+}
+bool IsFolderTreeEmpty(const wstring& dir) { DWORD a = GetFileAttributesW(dir.c_str()); return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) && !(a & FILE_ATTRIBUTE_REPARSE_POINT) && !TreeHasContent(dir, 0); }
+static bool RemoveEmptyTree(const wstring& dir, int depth) {   // deepest folders first; only called after TreeHasContent() was false
+    if (depth > 40) return false; std::vector<wstring> kids; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0);
+    if (h != INVALID_HANDLE_VALUE) { do { wstring n = fd.cFileName; if (n != L"." && n != L"..") kids.push_back(dir + L"\\" + n); } while (FindNextFileW(h, &fd)); FindClose(h); }
+    bool ok = true; for (auto& k : kids) if (!RemoveEmptyTree(k, depth + 1)) ok = false; if (!ok) return false;
+    SetFileAttributesW(dir.c_str(), FILE_ATTRIBUTE_NORMAL); return RemoveDirectoryW(dir.c_str()) != 0;
+}
 bool DeleteFilesPermanently(const std::vector<wstring>& paths, wstring& err) {
     int failed = 0; for (auto& p : paths) {
         DWORD a = GetFileAttributesW(p.c_str()); if (a == INVALID_FILE_ATTRIBUTES) continue; if (a & FILE_ATTRIBUTE_REPARSE_POINT) { ++failed; continue; }   // never follow links
-        bool ok = (a & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(p.c_str()) != 0 : (SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL), DeleteFileW(p.c_str()) != 0);   // folders are removed only if still empty
+        bool ok = (a & FILE_ATTRIBUTE_DIRECTORY) ? (!TreeHasContent(p, 0) && RemoveEmptyTree(p, 0)) : (SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL), DeleteFileW(p.c_str()) != 0);   // folders are removed only if still empty
         if (!ok) ++failed;
     }
-    if (failed) err = std::to_wstring(failed) + L" item(s) could not be deleted (in use, protected, or a folder that is no longer empty)."; return failed == 0;
+    if (failed) err = std::to_wstring(failed) + L" item(s) could not be deleted (in use, protected, or a folder that now contains files)."; return failed == 0;
 }
 bool RecycleFiles(HWND owner, const std::vector<wstring>& paths, wstring& err) {
     if (paths.empty()) return true; wstring list; for (auto& p : paths) { list += p; list.push_back(L'\0'); } list.push_back(L'\0');

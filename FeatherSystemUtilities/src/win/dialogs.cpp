@@ -20,29 +20,30 @@ static BOOL CALLBACK FindExplorerWnd(HWND h, LPARAM l) {   // bring the Explorer
     auto* want = (std::pair<std::wstring, HWND>*)l; wchar_t cls[64], title[512]; GetClassNameW(h, cls, 64); if (wcscmp(cls, L"CabinetWClass") != 0 || !IsWindowVisible(h)) return TRUE; GetWindowTextW(h, title, 512);
     if (_wcsicmp(title, want->first.c_str()) == 0) { want->second = h; return FALSE; } return TRUE;
 }
-static void ShowExplorerFor(const wstring& folderLeaf) {
-    std::pair<std::wstring, HWND> w{folderLeaf, nullptr};
-    for (int i = 0; i < 25 && !w.second; ++i) { Sleep(100); EnumWindows(FindExplorerWnd, (LPARAM)&w); }
-    if (w.second) { if (IsIconic(w.second)) ShowWindow(w.second, SW_RESTORE); SetForegroundWindow(w.second); BringWindowToTop(w.second); FLASHWINFO fi{sizeof fi, w.second, FLASHW_ALL | FLASHW_TIMERNOFG, 3, 0}; FlashWindowEx(&fi); }
+static bool ShowExplorerFor(const wstring& folderLeaf, const wstring& folderFull, int waitMs) {   // true when an Explorer window for the folder is visible; brings it to the front
+    std::pair<std::wstring, HWND> w{folderLeaf, nullptr}; std::pair<std::wstring, HWND> w2{folderFull, nullptr};
+    for (int i = 0; i < waitMs / 100 && !w.second && !w2.second; ++i) { Sleep(100); EnumWindows(FindExplorerWnd, (LPARAM)&w); if (!w.second) EnumWindows(FindExplorerWnd, (LPARAM)&w2); }
+    HWND h = w.second ? w.second : w2.second; if (!h) return false;
+    if (IsIconic(h)) ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); BringWindowToTop(h); FLASHWINFO fi{sizeof fi, h, FLASHW_ALL | FLASHW_TIMERNOFG, 3, 0}; FlashWindowEx(&fi); return true;
 }
-void OpenFileLocation(const wstring& program) {
-    wstring p = program.find(L'%') != wstring::npos ? ExpandEnv(program) : program; while (p.size() > 3 && (p.back() == L'\\' || p.back() == L'"')) p.pop_back(); if (!p.empty() && p.front() == L'"') p.erase(p.begin());
-    DWORD attr = p.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(p.c_str()); size_t sl = p.find_last_of(L'\\'); wstring dir = sl == wstring::npos ? L"" : p.substr(0, sl);
-    wstring leaf = dir.empty() ? L"" : dir.substr(dir.find_last_of(L'\\') == wstring::npos ? 0 : dir.find_last_of(L'\\') + 1); if (dir.size() == 2) leaf = dir + L"\\";
-    AllowSetForegroundWindow(ASFW_ANY);
-    bool launched = false;
-    if (attr != INVALID_FILE_ATTRIBUTES) {   // 1) select the file in Explorer
-        std::replace(p.begin(), p.end(), L'/', L'\\'); wchar_t canon[MAX_PATH * 2]; if (PathCanonicalizeW(canon, p.c_str())) p = canon;
-        if (PIDLIST_ABSOLUTE full = ILCreateFromPathW(p.c_str())) { launched = SUCCEEDED(SHOpenFolderAndSelectItems(full, 0, nullptr, 0)); ILFree(full); }
-        if (!launched) {   // exact command line: explorer.exe /select,"C:\\path\\file"
-            wstring cl = L"explorer.exe /select,\"" + p + L"\""; STARTUPINFOW si{sizeof si}; PROCESS_INFORMATION pi{};
-            if (CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); launched = true; }
-        }
+// Opens Explorer on the file's folder with the file selected. Each method is verified by looking for the Explorer window; if it did not appear the next method is tried.
+bool OpenFileLocationEx(const wstring& program, wstring& err) {
+    wstring p = program.find(L'%') != wstring::npos ? ExpandEnv(program) : program; while (!p.empty() && (p.back() == L'"' || (p.size() > 3 && p.back() == L'\\'))) p.pop_back(); if (!p.empty() && p.front() == L'"') p.erase(p.begin());
+    std::replace(p.begin(), p.end(), L'/', L'\\'); wchar_t canon[MAX_PATH * 2]; if (!p.empty() && PathCanonicalizeW(canon, p.c_str())) p = canon;
+    DWORD attr = p.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(p.c_str()); bool isDir = attr != INVALID_FILE_ATTRIBUTES && (attr & FILE_ATTRIBUTE_DIRECTORY);
+    size_t sl = p.find_last_of(L'\\'); wstring dir = isDir ? p : (sl == wstring::npos ? L"" : p.substr(0, sl)); if (dir.size() == 2 && dir[1] == L':') dir += L"\\";
+    if (dir.empty() || GetFileAttributesW(dir.c_str()) == INVALID_FILE_ATTRIBUTES) { err = L"The file or its folder was not found:\r\n" + p; return false; }
+    wstring leaf = dir.size() <= 3 ? dir : dir.substr(dir.find_last_of(L'\\') + 1); AllowSetForegroundWindow(ASFW_ANY);
+    auto spawn = [](wstring cl) { STARTUPINFOW si{sizeof si}; PROCESS_INFORMATION pi{}; if (!CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false; CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return true; };
+    if (attr != INVALID_FILE_ATTRIBUTES && !isDir) {   // 1) explorer.exe /select,"file"  (needs no COM and works from any thread)
+        if (spawn(L"explorer.exe /select,\"" + p + L"\"") && ShowExplorerFor(leaf, dir, 3000)) return true;
+        if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(p.c_str())) { HRESULT hr = SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0); ILFree(pidl); if (SUCCEEDED(hr) && ShowExplorerFor(leaf, dir, 2500)) return true; }   // 2) shell API
     }
-    if (!launched && !dir.empty() && GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) { launched = (INT_PTR)ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > 32; }   // 2) at least open the folder
-    if (!launched) { DarkMsg(GetActiveWindow(), L"Open file location", L"The file or its folder was not found:\r\n" + p, 0); return; }
-    if (!leaf.empty()) ShowExplorerFor(leaf);
+    if (spawn(L"explorer.exe \"" + dir + L"\"") && ShowExplorerFor(leaf, dir, 3000)) return true;   // 3) at least the folder
+    if ((INT_PTR)ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > 32) return true;
+    err = L"Explorer could not be opened for:\r\n" + dir; return false;
 }
+void OpenFileLocation(const wstring& program) { wstring err; if (!OpenFileLocationEx(program, err)) DarkMsg(GetActiveWindow(), L"Open file location", err, 0); }
 void ShowInRegistryEditor(const wstring& loc) {
     if (loc.rfind(L"Task Scheduler:", 0) == 0) { ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); return; }
     if (loc.rfind(L"HKCU", 0) != 0 && loc.rfind(L"HKLM", 0) != 0) { ShellExecuteW(nullptr, L"open", ExpandEnv(loc).c_str(), nullptr, nullptr, SW_SHOWNORMAL); return; }   // startup folder

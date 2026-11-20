@@ -15,6 +15,7 @@ button,input,select{font:inherit;color:inherit}
 .nav svg{display:block;width:22px;height:22px;margin:0 auto 4px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .nav:hover{background:#1a2a52;color:#fff}.nav.on{background:#223a74;color:#fff}.nav.on svg{stroke:#38e0c5}
 .rail .sp{flex:1}
+@media (max-height:820px){.nav{font-size:0;padding:9px 0;width:56px}.nav svg{margin:0 auto;width:23px;height:23px}.logo{margin-bottom:6px}}
 .main{display:flex;flex-direction:column;min-width:0;height:100vh}
 .top{display:flex;align-items:center;gap:14px;padding:16px 28px 10px;flex:none}
 .title h1{margin:0;font-size:22px;letter-spacing:-.2px}.title span{color:var(--mute);font-size:12.5px}
@@ -203,7 +204,7 @@ const panelMulti = (title, lines) => `<h3>${esc(title)}</h3><div class="evid"><b
 // ======================= rendering core =======================
 function go(page) { S.page = page; draw(); loadPage(); }
 function drawRail() { $('#rail').innerHTML = `<div class="logo"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round"><path d="M20 4C10 4 5 9 5 16l-1 4M5 16c6 0 10-4 12-9M9 13c3 0 6-2 8-5"/></svg></div>` +
-  NAV.map(([k, l]) => `<button class="nav ${S.page === k ? 'on' : ''}" data-go="${k}" aria-label="${l}">${ICON[k]}${l}</button>`).join('') + `<span class="sp"></span><button class="nav" data-act="aboutMenu" aria-label="About">${ICON.about}About</button><button class="nav ${S.page === 'settings' ? 'on' : ''}" data-go="settings" aria-label="Settings">${ICON.settings}Settings</button>`; }
+  NAV.map(([k, l]) => `<button class="nav ${S.page === k ? 'on' : ''}" data-go="${k}" aria-label="${l}" title="${l}">${ICON[k]}${l}</button>`).join('') + `<span class="sp"></span><button class="nav" data-act="aboutMenu" aria-label="About" title="About">${ICON.about}About</button><button class="nav ${S.page === 'settings' ? 'on' : ''}" data-go="settings" aria-label="Settings" title="Settings">${ICON.settings}Settings</button>`; }
 function greet() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 function draw() {
   const ae = document.activeElement, keep = ae && ae.id && /^q-/.test(ae.id) ? [ae.id, ae.selectionStart] : null, scroll = $('.tablewrap') ? $('.tablewrap').scrollTop : 0;

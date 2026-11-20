@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Usage: tools/release.sh 3.5.0 "release notes"   (env: SIGNER="Cert subject", RELEASES_BASE=https://raw.githubusercontent.com/<owner>/<repo>/<ref>/<path>)
 set -euo pipefail; cd "$(dirname "$0")/.."; V="$1"; NOTES="$2"
-BASE="${RELEASES_BASE:-https://raw.githubusercontent.com/akshsim1991/Application_Development/claude/new-session-ann5h4/FeatherSystemUtilities/releases-repo}"
+BASE="${RELEASES_BASE:-https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main}"   # then copy releases-repo/* into that repo and push
 ./build.sh all >/dev/null
 mkdir -p releases/v$V; cp build/FeatherSystemUtilities-Setup-$V.exe releases/v$V/; cp build/FeatherSystemUtilities.exe releases/v$V/FeatherSystemUtilities-x64.exe; cp build/FeatherSystemUtilities-x86.exe build/WebView2Loader.dll build/WebView2Loader-x86.dll data/advice.json releases/v$V/
 python3 tools/make_sbom.py "$V" releases/v$V/SBOM.cdx.json

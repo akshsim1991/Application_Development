@@ -1325,6 +1325,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     g_inst = inst; wstring c = cmd ? cmd : L"";
     if (c.find(L"--cleanup") != wstring::npos) {   // used by the uninstaller: restore delayed entries, remove our tasks
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); wstring rep; CleanupManagedTasks(rep); return 0; }
+    if (c.find(L"--broker") != wstring::npos) { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); LoadSettings(); return BrokerMain(GetCommandLineW(), BrokerExecute); }   // elevated administrator helper (no window, no single-instance lock)
     g_mtx = CreateMutexW(nullptr, TRUE, L"Local\\FeatherSystemUtilities.Instance");
     Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else if (c.find(L"--cleaner") != wstring::npos) req = P_CLEAN; else if (c.find(L"--large") != wstring::npos) req = P_LARGE; else if (c.find(L"--duplicates") != wstring::npos) req = P_DUPES; else haveReq = false;
     if (GetLastError() == ERROR_ALREADY_EXISTS) { if (HWND e = FindWindowW(L"FeatherSystemUtilitiesWnd", nullptr)) PostMessageW(e, WM_ACTIVATE_PAGE, req, 0); return 0; }   // F004

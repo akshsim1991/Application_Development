@@ -21,6 +21,17 @@ int ThemeCount() { return 5; }
 
 static Settings g_cfg;
 Settings& Cfg() { return g_cfg; }
+const std::vector<FlagInfo>& FeatureFlags() {
+    static const std::vector<FlagInfo> f = {
+        {"storeRemove", "Remove Microsoft Store apps", "Runs PowerShell to remove apps. Needs more real-world testing.", true},
+        {"hotfixUninstall", "Uninstall Windows updates", "Starts Windows' own update uninstaller. Needs more real-world testing.", true},
+        {"adminHelper", "Administrator helper", "Lets Feather do administrator-only changes after ONE permission prompt instead of restarting the whole app as administrator.", true}};
+    return f;
+}
+bool FeatureOn(const char* id) {
+    auto it = g_cfg.flags.find(id); if (it != g_cfg.flags.end()) return it->second != 0;
+    for (auto& f : FeatureFlags()) if (!strcmp(f.id, id)) return f.beta ? g_cfg.betaFeatures : true; return false;
+}
 static std::wstring LowerPath(std::wstring s) { for (auto& c : s) c = (wchar_t)towlower(c); while (s.size() > 3 && s.back() == L'\\') s.pop_back(); return s; }
 bool IsExcluded(const std::wstring& path) {
     if (g_cfg.exclusions.empty()) return false; std::wstring p = LowerPath(path);
@@ -39,6 +50,7 @@ void LoadSettings() {
         else if (k.rfind("excl.", 0) == 0) { if (g_cfg.exclusions.size() < 100 && !v.empty()) g_cfg.exclusions.push_back(FromUtf8(v)); }
         else if (k.rfind("ign.", 0) == 0) { if (g_cfg.ignored.size() < 500 && !v.empty()) g_cfg.ignored.push_back(FromUtf8(v)); }
         else if (k.rfind("verify.", 0) == 0) { if (g_cfg.pendingVerify.size() < 50 && !v.empty()) g_cfg.pendingVerify.push_back(FromUtf8(v)); }
+        else if (k == "betaFeatures") g_cfg.betaFeatures = n != 0; else if (k.rfind("flag.", 0) == 0) { if (g_cfg.flags.size() < 40) g_cfg.flags[k.substr(5)] = n != 0; }
         else if (k == "liveMetrics") g_cfg.liveMetrics = n != 0;
         else if (k == "onlineAdvice") g_cfg.onlineAdvice = n != 0; else if (k == "adviceCheck") g_cfg.adviceCheck = atoll(v.c_str());
         else if (k == "skipVersion") g_cfg.skipVersion = FromUtf8(v); else if (k == "deferUntil") g_cfg.deferUntil = atoll(v.c_str());
@@ -58,7 +70,7 @@ void SaveSettings() {
     std::ostringstream o;
     o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nautoUpdate=" << g_cfg.autoUpdate << "\nlastUpdateCheck=" << g_cfg.lastUpdateCheck << "\nkeepRecent=" << g_cfg.keepRecent << "\nlargeMinMB=" << g_cfg.largeMinMB << "\ndupMinKB=" << g_cfg.dupMinKB << "\nstartPage=" << g_cfg.startPage
       << "\nmaximized=" << g_cfg.maximized << "\nwinX=" << g_cfg.winX << "\nwinY=" << g_cfg.winY << "\nwinW=" << g_cfg.winW << "\nwinH=" << g_cfg.winH << "\n";
-    o << "liveMetrics=" << g_cfg.liveMetrics << "\nonlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
+    o << "betaFeatures=" << g_cfg.betaFeatures << "\n"; for (auto& kv : g_cfg.flags) o << "flag." << kv.first << "=" << kv.second << "\n"; o << "liveMetrics=" << g_cfg.liveMetrics << "\nonlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
     for (size_t i = 0; i < g_cfg.pendingVerify.size(); ++i) o << "verify." << i << "=" << ToUtf8(g_cfg.pendingVerify[i]) << "\n";
     for (size_t i = 0; i < g_cfg.exclusions.size(); ++i) o << "excl." << i << "=" << ToUtf8(g_cfg.exclusions[i]) << "\n";
     for (size_t i = 0; i < g_cfg.ignored.size(); ++i) o << "ign." << i << "=" << ToUtf8(g_cfg.ignored[i]) << "\n";

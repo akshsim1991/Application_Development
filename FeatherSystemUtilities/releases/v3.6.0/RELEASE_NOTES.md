@@ -1,0 +1,1 @@
+Phase 3 remaining items: beta feature switches (Store app removal, Windows update uninstall, administrator helper), typed action records in the journal with how-to-undo, and an optional administrator helper that avoids restarting Feather as administrator.

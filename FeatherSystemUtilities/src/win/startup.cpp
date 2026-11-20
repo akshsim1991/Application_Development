@@ -7,6 +7,7 @@
 #include <set>
 #include <map>
 #include <fstream>
+#include <atomic>
 #include <filesystem>
 #include <algorithm>
 
@@ -20,8 +21,20 @@ static const wchar_t* kApprovedRun32 = L"Software\\Microsoft\\Windows\\CurrentVe
 static const wchar_t* kBlocked = L"Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Blocked";
 
 // ---------- journal (F158) ----------
+static std::string ActionType(const wstring& src, const wstring& tgt) {
+    wstring s = src + L"|" + tgt; auto has = [&](const wchar_t* x) { return s.find(x) != wstring::npos; };
+    if (has(L"Quarantine")) return "quarantine"; if (has(L"Restore point") || has(L"System Restore")) return "recovery"; if (has(L"privacy:")) return "privacy"; if (has(L"Store app")) return "store"; if (has(L"Windows Update removal") || has(L"Driver updates")) return "update";
+    if (has(L"registry cleaner")) return "registry"; if (has(L"cleaner") || has(L"deep scan")) return "clean"; if (has(L"File finder")) return "file"; if (has(L"SCM") || has(L"service")) return "service"; if (has(L"process")) return "process";
+    if (has(L"maintenance tool") || has(L"Safe Mode")) return "tool"; if (has(L"License")) return "license"; if (has(L"Registry") || has(L"HKCU") || has(L"HKLM") || has(L"Startup") || has(L"task")) return "startup"; return "other";
+}
+static std::string RollbackText(const std::string& type, bool reversible) {
+    if (!reversible) return "Not undoable";
+    if (type == "startup" || type == "registry" || type == "clean") return "Recovery > Backups (Restore)"; if (type == "quarantine") return "Recovery > Quarantine (Restore)"; if (type == "file") return "Windows Recycle Bin";
+    if (type == "service") return "Set the previous start type on the Services page"; if (type == "store") return "Reinstall from the Microsoft Store"; return "See the Result column";
+}
 void WriteJournal(const wstring& target, const wstring& source, const wstring& before, const wstring& after, const wstring& result, bool reversible) {
-    JournalEntry j{NowIsoUtc(), L"user", target, source, before, after, result, reversible};
+    static std::atomic<unsigned> seq{0}; char idb[24]; snprintf(idb, sizeof idb, "%08llx%02x", (unsigned long long)(GetTickCount64() & 0xFFFFFFFFULL), (unsigned)(++seq & 0xFF));
+    JournalEntry j{NowIsoUtc(), L"user", target, source, before, after, result, reversible, idb, ActionType(source, target), ""}; j.rollback = RollbackText(j.type, reversible);
     std::ofstream f(std::filesystem::path(DataDir() + L"\\journal.jsonl"), std::ios::app | std::ios::binary);
     if (f) f << JournalLine(j);
 }

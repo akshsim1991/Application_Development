@@ -52,6 +52,7 @@ int main() {
     JournalEntry je{L"2026-11-13T00:00:00Z", L"user", L"Svc\"X", L"SCM", L"Auto", L"Disabled", L"ok", true};
     auto jl = JournalLine(je);
     CHECK(jl.find("Svc\\\"X") != std::string::npos && jl.back() == '\n' && jl.find("\"reversible\":true") != std::string::npos);
+    { JournalEntry t2 = je; t2.id = "ab12"; t2.type = "service"; t2.rollback = "Restore from Recovery"; auto l2 = JournalLine(t2); CHECK(l2.find("\"type\":\"service\"") != std::string::npos && l2.find("\"id\":\"ab12\"") != std::string::npos && l2.find("Restore from Recovery") != std::string::npos); }
     // Atomic write
     auto p = std::filesystem::temp_directory_path() / "fsu_atomic_test.txt";
     CHECK(AtomicWrite(p.wstring(), "one"));
@@ -88,6 +89,7 @@ int main() {
         CHECK(js::Q("a\"b\\\n\x01") == "\"a\\\"b\\\\\\n\\u0001\"" && js::Obj().str("k", "v").num("n", 3).boolean("b", true).done() == "{\"k\":\"v\",\"n\":3,\"b\":true}");
         js::V rt; CHECK(js::Parse(js::Obj().str("x", "q\"\\").raw("arr", js::Arr().add("1").add("\"z\"").done()).done(), rt) && rt.str("x") == "q\"\\" && rt.get("arr")->a.size() == 2);
     }
+    { js::V d; CHECK(js::Parse("{\"a\":[1,true,null,\"x\\\"y\"],\"b\":{\"c\":2.5}}", d)); js::V d2; CHECK(js::Parse(js::Dump(d), d2) && d2.get("a")->a.size() == 4 && d2.get("a")->a[3].s == "x\"y" && d2.get("b")->num("c") == 2.5); }
     std::printf("%d/%d passed\n", total - fails, total);
     return fails ? 1 : 0;
 }

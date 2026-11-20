@@ -142,7 +142,7 @@ const TITLES = {
 const S = { page: 'today', info: {}, today: { ran: false, running: false }, lists: {},
   clean: { items: null, gen: 0, coverage: '', deep: false }, startup: { items: null, coverage: '' }, programs: { items: null, tab: 'desktop', store: null, hot: null }, services: { items: null, drivers: false },
   drivers: { tab: 'installed', items: null, upd: null, updErr: '' }, procs: { items: null }, files: { mode: 'large', data: {} }, storage: { drives: null, data: null }, sys: null, scan: null,
-  journal: { items: null, backups: null }, rec: { points: null, quar: null }, dash: null, live: null, lic: null, wu: null, priv: { items: null, gen: 0, sel: new Set(), checklist: null }, trouble: { status: null, events: null, evWarn: '', opts: { hours: 24, levels: [1, 2], logs: ['System', 'Application'], redact: true, maskPaths: false } }, ign: null, excl: null, update: null, busy: null };
+  journal: { items: null, backups: null }, rec: { points: null, quar: null }, dash: null, live: null, lic: null, wu: null, flags: null, priv: { items: null, gen: 0, sel: new Set(), checklist: null }, trouble: { status: null, events: null, evWarn: '', opts: { hours: 24, levels: [1, 2], logs: ['System', 'Application'], redact: true, maskPaths: false } }, ign: null, excl: null, update: null, busy: null };
 function LS(id) { if (!S.lists[id]) S.lists[id] = { id, sel: new Set(), anchor: -1, focus: null, order: [], sort: DEF_SORT[id.split(':')[0]] || null, q: '', f: {}, csv: null }; return S.lists[id]; }
 const DEF_SORT = { clean: ['size', -1], startup: ['name', 1], programs: ['name', 1], services: ['name', 1], drvinst: ['name', 1], drvupd: ['name', 1], procs: ['mem', -1], large: ['size', -1], dupes: ['group', 1], empty: ['path', 1], journal: ['time', -1], rp: ['seq', -1], quar: ['time', -1], privchk: ['title', 1], events: ['time', -1], downloads: ['date', 1], store: ['name', 1], hotfix: ['date', -1] };
 
@@ -150,7 +150,7 @@ const DEF_SORT = { clean: ['size', -1], startup: ['name', 1], programs: ['name',
 const ST = { kind: 'idle', text: '', details: '', cancel: null, timer: null };
 function renderStatus() {
   const el = $('#status'); if (!el) return; el.className = 'status ' + ST.kind;
-  const mode = `${S.info.safeMode ? '<span class="pill warn">Safe Mode</span>' : ''}<span class="pill ${S.info.admin ? 'ok' : 'neutral'}" title="${S.info.admin ? 'Running as administrator' : 'Running as a standard user. Some actions need administrator rights.'}">${S.info.admin ? 'Administrator' : 'Standard user'}</span>`;
+  const mode = `${S.info.safeMode ? '<span class="pill warn">Safe Mode</span>' : ''}<span class="pill ${S.info.admin || S.info.helper ? 'ok' : 'neutral'}" title="${S.info.admin ? 'Running as administrator' : S.info.helper ? 'Administrator helper is running' : 'Running as a standard user. Some actions need administrator rights.'}">${S.info.admin ? 'Administrator' : S.info.helper ? 'Admin helper on' : 'Standard user'}</span>`;
   let left;
   if (ST.kind === 'busy') left = `<i class="spin"></i><span class="msg" title="${esc(ST.text)}">${esc(ST.text)}</span><span class="ind"><b></b></span>${ST.cancel ? '<button class="btn ghost sm" data-act="stCancel">Cancel</button>' : ''}`;
   else if (ST.kind === 'ok') left = `<span class="dot">✔</span><span class="msg" title="${esc(ST.text)}">${esc(ST.text)}</span><button class="x" data-act="stDismiss" aria-label="Dismiss">×</button>`;
@@ -175,10 +175,14 @@ function modal({ title, body, items, confirm, cancel = 'Cancel', danger, extra, 
 const note = (title, body, items) => modal({ title, body, items, cancel: '', confirm: 'OK' });
 async function run(text, fn, cancel) { setBusy(text, cancel); try { return await fn(); } finally { setBusy(null); } }
 async function adminGate(items, what) {
-  if (S.info.admin) return true; const n = items.filter(x => x.needsAdmin).length; if (!n) return true;
-  const v = await modal({ title: 'Administrator rights needed', body: `${plural(n, 'of the selected items needs', 'of the selected items need')} administrator rights to ${esc(what)}. Without them Windows will refuse and nothing changes. Restart Feather as administrator, or continue and only the items that do not need it will work.`, buttons: [{ label: 'Cancel', value: false, ghost: true }, { label: 'Continue anyway', value: 'go', ghost: true }, { label: 'Restart as administrator', value: 'admin' }] });
-  if (v === 'admin') { await A.admin(); return false; } return v === 'go';
+  if (S.info.admin || S.info.helper) return true; const n = items.filter(x => x.needsAdmin).length; if (!n) return true;
+  const helper = flagOn('adminHelper');
+  const v = await modal({ title: 'Administrator rights needed', body: `${plural(n, 'of the selected items needs', 'of the selected items need')} administrator rights to ${esc(what)}. Without them Windows will refuse and nothing changes.${helper ? ' You can allow the administrator helper (one permission prompt, Feather stays open) or restart Feather as administrator.' : ' Restart Feather as administrator, or continue and only the items that do not need it will work.'}`, buttons: [{ label: 'Cancel', value: false, ghost: true }, { label: 'Continue anyway', value: 'go', ghost: true }, { label: 'Restart as administrator', value: 'admin', ghost: helper }].concat(helper ? [{ label: 'Use administrator helper', value: 'helper' }] : []) });
+  if (v === 'admin') { await A.admin(); return false; }
+  if (v === 'helper') { const r = await run('Waiting for the administrator prompt…', () => call('broker.start')); if (!r.ok) { toast(r.error, true); return false; } S.info.helper = true; draw(); toast('Administrator helper is running. It closes when you close Feather.'); return true; }
+  return v === 'go';
 }
+const flagOn = id => !!(S.flags && S.flags.items && (S.flags.items.find(f => f.id === id) || {}).on);
 const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
 
 // ======================= list framework: checkbox + click + Ctrl/Shift multi-select, sort, filter =======================
@@ -444,11 +448,11 @@ PAGES.tools = () => { const i = S.sys;
 PAGES.journal = () => {
   const j = S.journal, L = LS('journal'), bk = j.backups; if (!j.items) return '<div class="card empty">Loading…</div>';
   const kinds = { failed: e => /fail|block/i.test(e.result), rev: e => e.reversible, perm: e => !e.reversible };
-  let list = j.items.filter(e => matchQ(L, e.target + ' ' + e.source + ' ' + e.before + ' ' + e.after + ' ' + e.result) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)) && (!L.f.src || e.source === L.f.src));
-  list = sortItems(L, list, { time: e => e.time, target: e => e.target, source: e => e.source, result: e => e.result });
-  const rows = list.map((e, i) => ({ k: i, cells: [esc((e.time || '').replace('T', ' ').slice(0, 16)), `<div class="nm">${esc(e.target)}</div>`, esc(e.source), esc(e.before) + ' → ' + esc(e.after), `<span class="pill ${/fail|block/i.test(e.result) ? 'bad' : e.reversible ? 'ok' : 'neutral'}">${esc(e.result)}</span>`], csv: [e.time, e.target, e.source, e.before, e.after, e.result] }));
+  let list = j.items.filter(e => matchQ(L, e.target + ' ' + e.source + ' ' + e.before + ' ' + e.after + ' ' + e.result) && (!L.f.kind || L.f.kind === 'all' || kinds[L.f.kind](e)) && (!L.f.src || e.source === L.f.src) && (!L.f.type || e.type === L.f.type));
+  list = sortItems(L, list, { time: e => e.time, target: e => e.target, source: e => e.source, result: e => e.result, type: e => e.type });
+  const rows = list.map((e, i) => ({ k: i, cells: [esc((e.time || '').replace('T', ' ').slice(0, 16)), `<div class="nm">${esc(e.target)}</div><div class="muted">${esc(e.id || '')}</div>`, `<span class="pill neutral">${esc(e.type || 'other')}</span>`, esc(e.source), esc(e.before) + ' → ' + esc(e.after), `<span class="pill ${/fail|block/i.test(e.result) ? 'bad' : e.reversible ? 'ok' : 'neutral'}">${esc(e.result)}</span>`, esc(e.rollback || '')], csv: [e.id, e.time, e.type, e.target, e.source, e.before, e.after, e.result, e.rollback] }));
   const side = `<h3>Rollback shelf</h3><div class="muted">Backups Feather made before changing something.</div>${bk ? (bk.length ? bk.slice(0, 40).map((b, k) => `<div class="row"><div class="grow"><div class="nm cut" style="max-width:190px">${esc(b.label)}</div><div class="muted">${esc(b.time)} · ${b.kind === 'registry' ? 'Registry' : 'Startup'}</div></div><button class="btn ghost sm" data-act="restore" data-k="${k}">Restore</button></div>`).join('') : '<div class="muted" style="margin-top:8px">No backups yet.</div>') : 'Loading…'}<button class="btn ghost sm" style="margin-top:10px" data-act="openBackups">Open backup folder</button>`;
-  return `<div class="toolbar">${searchBox(L, 'Search the journal')}${chips(L, 'kind', [['all', 'All'], ['failed', 'Failed / blocked'], ['rev', 'Reversible'], ['perm', 'Not reversible']])}${selectBox(L, 'src', 'Area', uniq(j.items, e => e.source))}</div>${selBar(L, 'entries', '')}${splitView(table(L, [{ h: 'When', s: 'time' }, { h: 'What', s: 'target' }, { h: 'Area', s: 'source' }, { h: 'Change' }, { h: 'Result', s: 'result' }], rows, 'Nothing matches.'), side)}`;
+  return `<div class="toolbar">${searchBox(L, 'Search the journal')}${chips(L, 'kind', [['all', 'All'], ['failed', 'Failed / blocked'], ['rev', 'Reversible'], ['perm', 'Not reversible']])}${selectBox(L, 'src', 'Area', uniq(j.items, e => e.source))}${selectBox(L, 'type', 'Type', uniq(j.items, e => e.type))}</div>${selBar(L, 'entries', '')}${splitView(table(L, [{ h: 'When', s: 'time' }, { h: 'What', s: 'target' }, { h: 'Type', s: 'type' }, { h: 'Area', s: 'source' }, { h: 'Change' }, { h: 'Result', s: 'result' }, { h: 'How to undo' }], rows, 'Nothing matches.'), side)}`;
 };
 
 
@@ -515,13 +519,13 @@ function storeTab() {
   const rows = list.map(e => ({ k: e.full, cells: [`<div class="nm">${esc(e.name)}</div><div class="muted cut">${esc(e.full)}</div>`, esc(e.publisher), esc(e.version), e.removable ? '<span class="pill ok">removable</span>' : `<span class="pill neutral">${e.framework ? 'framework' : 'protected'}</span>`], csv: [e.name, e.publisher, e.version, e.full] }));
   const sel = selectedOf(L, P.store, e => e.full), f = P.store.find(e => e.full === L.focus);
   const side = sel.length > 1 ? panelMulti(`${sel.length} apps selected`, [`Removable: ${sel.filter(e => e.removable).length}`, `Protected: ${sel.filter(e => !e.removable).length}`]) : f ? `<h3>Details</h3><h4>${esc(f.name)}</h4><dl class="kv"><dt>Publisher</dt><dd>${esc(f.publisher)}</dd><dt>Version</dt><dd>${esc(f.version)}</dd><dt>Package</dt><dd>${esc(f.full)}</dd><dt>Location</dt><dd>${esc(f.location)}</dd></dl>${f.removable ? '' : '<div class="evid"><b>Protected</b>Windows components, frameworks and non-removable apps cannot be removed here.</div>'}` : '<h3>Details</h3><div class="muted">Select an app. Only apps Windows allows you to remove are offered.</div>';
-  return `<div class="toolbar">${searchBox(L, 'Search Store apps')}${chips(L, 'kind', [['all', 'All'], ['rem', 'Removable'], ['prot', 'Protected']])}</div>${selBar(L, 'apps', `<button class="btn danger sm" data-act="storeRemove" ${sel.some(e => e.removable) ? '' : 'disabled'}>Remove…</button>`)}${splitView(table(L, [{ h: 'App', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Version', s: 'ver' }, { h: 'Status' }], rows, 'No Store apps match.'), side)}`;
+  return `<div class="toolbar">${searchBox(L, 'Search Store apps')}${chips(L, 'kind', [['all', 'All'], ['rem', 'Removable'], ['prot', 'Protected']])}</div>${selBar(L, 'apps', `<button class="btn danger sm" data-act="storeRemove" ${sel.some(e => e.removable) && flagOn('storeRemove') ? '' : 'disabled'} title="${flagOn('storeRemove') ? '' : 'Beta feature: turn it on in Settings'}">Remove…</button>${flagOn('storeRemove') ? '' : '<span class="pill neutral">beta — off</span>'}`)}${splitView(table(L, [{ h: 'App', s: 'name' }, { h: 'Publisher', s: 'pub' }, { h: 'Version', s: 'ver' }, { h: 'Status' }], rows, 'No Store apps match.'), side)}`;
 }
 function hotTab() {
   const P = S.programs, L = LS('hotfix'); if (!P.hot) return '<div class="card empty">Reading installed Windows updates…</div>'; if (P.hotErr) return `<div class="card empty">${esc(P.hotErr)}</div>`;
   let list = P.hot.filter(e => matchQ(L, e.kb + ' ' + e.desc)); list = sortItems(L, list, { kb: e => e.kb, desc: e => e.desc, date: e => { const d = Date.parse(e.date); return isNaN(d) ? 0 : d; } });
   const rows = list.map(e => ({ k: e.kb, cells: [`<div class="nm">${esc(e.kb)}</div>`, esc(e.desc), esc(e.date), esc(e.by)], csv: [e.kb, e.desc, e.date, e.by] })); const sel = selectedOf(L, P.hot, e => e.kb);
-  return `<div class="muted" style="margin-bottom:8px">Updates are removed only through Windows’ own supported uninstaller (wusa). Removing security updates can leave the PC exposed.</div><div class="toolbar">${searchBox(L, 'Search updates')}</div>${selBar(L, 'updates', `<button class="btn danger sm" data-act="hotUninstall" ${sel.length === 1 ? '' : 'disabled'}>Uninstall…</button>`)}${table(L, [{ h: 'Update', s: 'kb' }, { h: 'Type', s: 'desc' }, { h: 'Installed', s: 'date' }, { h: 'By' }], rows, 'No updates found.')}`;
+  return `<div class="muted" style="margin-bottom:8px">Updates are removed only through Windows’ own supported uninstaller (wusa). Removing security updates can leave the PC exposed.</div><div class="toolbar">${searchBox(L, 'Search updates')}</div>${selBar(L, 'updates', `<button class="btn danger sm" data-act="hotUninstall" ${sel.length === 1 && flagOn('hotfixUninstall') ? '' : 'disabled'} title="${flagOn('hotfixUninstall') ? '' : 'Beta feature: turn it on in Settings'}">Uninstall…</button>${flagOn('hotfixUninstall') ? '' : '<span class="pill neutral">beta — off</span>'}`)}${table(L, [{ h: 'Update', s: 'kb' }, { h: 'Type', s: 'desc' }, { h: 'Installed', s: 'date' }, { h: 'By' }], rows, 'No updates found.')}`;
 }
 
 // ---------- Settings ----------
@@ -532,6 +536,7 @@ PAGES.settings = () => { const i = S.info; const sw = (k, v) => `<button class="
   <div class="setrow"><div class="grow"><b>Ask before batch changes</b></div>${sw('confirmBatch', i.confirmBatch)}</div>
   <div class="setrow"><div class="grow"><b>Download newer “safe to disable?” recommendations</b><div class="muted">When this PC is online Feather fetches one small file (the Startup/Services recommendation list) from the release page. Nothing about your PC is sent. Recommendations in use: version ${esc(i.adviceVersion || '')} (${esc(i.adviceSource || '')}).</div></div>${sw('onlineAdvice', i.onlineAdvice)}<button class="btn ghost sm" data-act="adviceRefresh">Update now</button></div>
   <div class="setrow"><div class="grow"><b>Move leftovers and stray files to quarantine</b><div class="muted">Instead of deleting them. You can restore them from the Recovery page. Caches and temporary files are always deleted, because Windows rebuilds them.</div></div>${sw('quarantine', i.quarantine)}</div>
+  <div class="setrow" style="align-items:flex-start"><div class="grow"><b>Beta features</b><div class="muted">Features that need more real-world testing. Off by default. Turning the master switch on enables them all; each can also be switched individually.</div>${S.flags ? S.flags.items.map(f => `<div class="row"><div class="grow"><b>${esc(f.title)}</b><div class="muted">${esc(f.why)}</div></div><button class="sw ${f.on ? 'on' : ''}" data-flag="${esc(f.id)}" role="switch" aria-checked="${f.on}" aria-label="${esc(f.title)}"></button></div>`).join('') : ''}</div><button class="sw ${S.flags && S.flags.beta ? 'on' : ''}" data-flagbeta="1" role="switch" aria-checked="${!!(S.flags && S.flags.beta)}" aria-label="Include beta features"></button></div>
   <div class="setrow"><div class="grow"><b>Show live activity on Today</b><div class="muted">Off by default. Reads CPU, memory and network use every 3 seconds only while the Today page is open.</div></div>${sw('liveMetrics', i.liveMetrics)}</div>
   <div class="setrow"><div class="grow"><b>License</b><div class="muted">${esc(S.lic ? S.lic.state : 'Checking…')}${S.lic && S.lic.valid ? ' · ' + esc(S.lic.name) : ''}<br>All current features are free. A license is only needed for optional paid features, if and when they are offered.</div></div><button class="btn ghost sm" data-act="licEnter">Enter key…</button>${S.lic && S.lic.valid ? '<button class="btn ghost sm" data-act="licRemove">Remove</button>' : ''}</div>
   <div class="setrow"><div class="grow"><b>Start Feather with Windows</b><div class="muted">Off by default. Adds an entry to your startup list that you can remove here or on the Startup page.</div></div>${sw('startWithWindows', i.startWithWindows)}</div>
@@ -563,6 +568,7 @@ async function loadSettingsData() { const [e, i] = await Promise.all([call('excl
 async function loadStore() { const r = await run('Reading Store apps…', () => call('store.list')); S.programs.storeErr = r.ok ? '' : r.error; S.programs.store = r.ok ? r.items : []; }
 async function loadHot() { const r = await run('Reading installed updates…', () => call('hotfix.list')); S.programs.hotErr = r.ok ? '' : r.error; S.programs.hot = r.ok ? r.items : []; }
 async function loadDash() { const r = await call('dashboard.info'); if (r.ok) S.dash = r; }
+async function loadFlags() { const r = await call('flags.list'); if (r.ok) S.flags = r; }
 async function loadLic() { const r = await call('license.status'); if (r.ok) S.lic = r; }
 async function loadImpact() { const r = await call('startup.impact'); S.startup.impact = {}; S.startup.impactErr = r.error || ''; if (r.ok) for (const x of r.items) S.startup.impact[x.exe] = x; }
 async function loadSys() { const r = await call('sys.info'); if (r.ok) S.sys = r; }
@@ -582,7 +588,7 @@ async function loadPage() {
   else if (p === 'trouble') { if (!S.trouble.status) draw(); await loadTrouble(); }
   else if (p === 'recovery') { if (!S.rec.points) draw(); await loadRecovery(); }
   else if (p === 'files') { await loadScan(); }
-  else if (p === 'settings') { await Promise.all([loadScan(), loadSettingsData(), loadLic()]); }
+  else if (p === 'settings') { await Promise.all([loadScan(), loadSettingsData(), loadLic(), loadFlags()]); }
   if (S.page === p) draw();
 }
 
@@ -793,6 +799,8 @@ document.addEventListener('click', async e => {
   const g = t.closest('[data-go]'); if (g) return go(g.dataset.go);
   const a = t.closest('[data-act]'); if (a) { if (a.disabled) return; closeMenu(); const f = A[a.dataset.act]; if (f) await f(a); return; }
   const sw = t.closest('[data-toggle]'); if (sw) { e.stopPropagation(); if (sw.disabled) return; const e1 = S.startup.items.find(x => x.key === sw.dataset.toggle), en = e1.state !== 'Enabled'; if (!await adminGate([e1], en ? 'enable this entry' : 'disable this entry')) return; const r = await run('Applying…', () => call('startup.set', { keys: [e1.key], enable: en })); toast(r.ok ? `${e1.name} ${en ? 'enabled' : 'disabled'}. Reversible any time.` : r.error, !r.ok); await loadStartup(); loadJournal(); draw(); return; }
+  const fg = t.closest('[data-flag]'); if (fg) { const f = S.flags.items.find(x => x.id === fg.dataset.flag); await call('flags.set', { id: f.id, on: !f.on }); await loadFlags(); draw(); return; }
+  const fb = t.closest('[data-flagbeta]'); if (fb) { await call('flags.beta', { on: !S.flags.beta }); await loadFlags(); draw(); return; }
   const set = t.closest('[data-set]'); if (set) { const k = set.dataset.set, v = !S.info[k]; const r = k === 'startWithWindows' ? await call('app.startWithWindows', { on: v }) : await call('app.set', { key: k, value: v }); if (r.ok) S.info[k] = v; else toast(r.error, true); draw(); return; }
   const all = t.closest('input[data-all]'); if (all) { const L = S.lists[all.dataset.all]; L.sel = all.checked ? new Set(L.order) : new Set(); draw(); return; }
   const row = t.closest('tr[data-ix]'); if (row) { if (t.closest('button,a,select')) return; pickRow(S.lists[row.dataset.l], +row.dataset.ix, e, !!t.closest('input[data-chk]')); return; }
@@ -834,7 +842,7 @@ on('goto', d => { const m = { speed: 'startup', toolbox: 'tools', large: 'files'
 
 // ======================= boot =======================
 (async function () {
-  draw(); const r = await call('app.info'); if (r.ok) S.info = r; draw(); loadPage(); loadDash().then(draw);
+  draw(); const r = await call('app.info'); if (r.ok) S.info = r; draw(); loadPage(); loadDash().then(draw); loadFlags().then(draw);
   if (S.info.onlineAdvice) call('advice.refresh').then(a => { if (a.ok) { S.info.adviceVersion = a.version; S.info.adviceSource = a.source; if (a.source === 'downloaded') { S.startup.items = null; S.services.items = null; if (S.page === 'startup' || S.page === 'services') loadPage(); } } });
   if (S.info.autoUpdate) { const u = await call('update.check', { launch: true }); if (u.ok) { S.update = u; draw(); if (u.newer && !u.suppressed) promptUpdate(u); } }
 })();

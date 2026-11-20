@@ -71,7 +71,7 @@ template <class I, class... A> struct Cb : I {
 };
 
 // ---------- sending to the page ----------
-static void PostToPage(const string& json) { PostMessageW(g_wnd, WM_WV_POST, 0, (LPARAM) new wstring(W(json))); }
+static void PostToPage(const string& json) { if (!g_wnd) return; PostMessageW(g_wnd, WM_WV_POST, 0, (LPARAM) new wstring(W(json))); }
 static void Emit(const char* ev, const string& data) { PostToPage(js::Obj().str("event", ev).raw("data", data).done()); }
 static void Progress(const wstring& m) { Emit("progress", js::Obj().str("text", U(m)).done()); }
 
@@ -244,7 +244,7 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).boolean("liveMetrics", c.liveMetrics).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("helper", BrokerConnected()).boolean("quarantine", c.quarantineLeftovers).boolean("liveMetrics", c.liveMetrics).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
@@ -372,7 +372,7 @@ static std::map<string, Fn>& Handlers() {
     // ---- history / rollback ----
     h["journal.list"] = [](const js::V& a) {
         size_t lim = (size_t)std::clamp(a.num("limit", 300), 1.0, 5000.0); std::ifstream f(std::filesystem::path(DataDir() + L"\\journal.jsonl"), std::ios::binary); string line; std::vector<string> lines; while (std::getline(f, line)) if (!line.empty()) lines.push_back(line);
-        js::Arr arr; size_t n = 0; for (auto it = lines.rbegin(); it != lines.rend() && n < lim; ++it) { js::V v; if (js::Parse(*it, v) && v.t == js::V::Obj) { arr.add(js::Obj().str("time", v.str("time")).str("target", v.str("target")).str("source", v.str("source")).str("before", v.str("before")).str("after", v.str("after")).str("result", v.str("result")).boolean("reversible", v.boolean("reversible")).done()); ++n; } }
+        js::Arr arr; size_t n = 0; for (auto it = lines.rbegin(); it != lines.rend() && n < lim; ++it) { js::V v; if (js::Parse(*it, v) && v.t == js::V::Obj) { arr.add(js::Obj().str("time", v.str("time")).str("target", v.str("target")).str("source", v.str("source")).str("id", v.str("id")).str("type", v.str("type")).str("rollback", v.str("rollback")).str("before", v.str("before")).str("after", v.str("after")).str("result", v.str("result")).boolean("reversible", v.boolean("reversible")).done()); ++n; } }
         return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
     h["backups.list"] = [](const js::V&) {
         js::Arr a; auto add = [&](const std::vector<BackupInfo>& v, const char* kind) { for (auto& b : v) { SYSTEMTIME st; FileTimeToSystemTime(&b.written, &st); char t[32]; snprintf(t, sizeof t, "%04d-%02d-%02d %02d:%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute); a.add(js::Obj().str("path", U(b.path)).str("label", U(b.label)).str("time", t).str("kind", kind).done()); } };
@@ -523,17 +523,24 @@ static std::map<string, Fn>& Handlers() {
             arr.add(js::Obj().str("full", full).str("name", x->str("Name")).str("publisher", pub).str("version", x->str("Version")).str("location", x->str("InstallLocation")).boolean("framework", fw).boolean("removable", removable).boolean("system", sig == 4).done()); }
         return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
     h["store.remove"] = [](const js::V& a) {
+        if (!FeatureOn("storeRemove")) return Err(L"Removing Store apps is a beta feature. Turn it on in Settings > Beta features.");
         string full = a.str("full"); { std::lock_guard<std::mutex> l(g_m); if (!g_store.count(full)) return Err(L"That app is not in the removable list. Refresh and try again."); } std::string out; DWORD code = 1;
         wstring cmd = L"powershell.exe -NoProfile -NonInteractive -Command \"try { Remove-AppxPackage -Package '" + W(full) + L"' -ErrorAction Stop; 'OK' } catch { $_.Exception.Message }\""; bool ran = RunCapture(cmd, out, 180000, &code); bool ok = ran && out.find("OK") != string::npos && out.size() < 8;
         WriteJournal(W(full), L"Store app removal", L"installed", ok ? L"removed" : L"unchanged", ok ? L"ok (reinstall from the Microsoft Store)" : L"failed: " + W(out.substr(0, 200)), true); return ok ? Ok() : Err(L"Windows could not remove the app: " + W(out.substr(0, 300))); };
     h["hotfix.list"] = [](const js::V&) { wstring err; auto v = ListHotfixes(err); if (v.empty() && !err.empty()) return Err(err); js::Arr a; std::lock_guard<std::mutex> l(g_m); g_hot.clear(); for (auto& x : v) { string kb = U(x.kb); if (kb.size() > 2 && kb.size() < 12 && kb.compare(0, 2, "KB") == 0 && kb.find_first_not_of("0123456789", 2) == string::npos) g_hot.insert(kb.substr(2)); a.add(js::Obj().str("kb", kb).str("desc", U(x.desc)).str("date", U(x.date)).str("by", U(x.by)).done()); } return js::Obj().boolean("ok", true).raw("items", a.done()).done(); };
-    h["hotfix.uninstall"] = [](const js::V& a) { string kb = a.str("kb"); if (kb.compare(0, 2, "KB") == 0) kb = kb.substr(2); { std::lock_guard<std::mutex> l(g_m); if (!g_hot.count(kb)) return Err(L"That update is not in the installed list."); }
+    h["hotfix.uninstall"] = [](const js::V& a) { if (!FeatureOn("hotfixUninstall")) return Err(L"Uninstalling Windows updates is a beta feature. Turn it on in Settings > Beta features."); string kb = a.str("kb"); if (kb.compare(0, 2, "KB") == 0) kb = kb.substr(2); { std::lock_guard<std::mutex> l(g_m); if (!g_hot.count(kb)) return Err(L"That update is not in the installed list."); }
         wstring args = L"/uninstall /kb:" + W(kb) + L" /norestart"; bool ok = (INT_PTR)ShellExecuteW(nullptr, L"runas", L"wusa.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32; WriteJournal(L"KB" + W(kb), L"Windows Update removal", L"installed", ok ? L"uninstall started (Windows asks you to confirm)" : L"not started", ok ? L"ok (Windows Update completes it)" : L"failed", false); return ok ? Ok() : Err(L"The Windows Update uninstaller could not be started (administrator permission may have been declined)."); };
 
     // ---- license ----
     h["license.status"] = [](const js::V&) { auto L = LicenseStatus(); return js::Obj().boolean("ok", true).boolean("valid", L.valid).str("state", U(L.state)).str("edition", U(L.edition)).str("name", U(L.name)).str("expires", U(L.expires)).str("id", U(L.id)).num("devices", L.devices).done(); };
     h["license.activate"] = [](const js::V& a) { wstring e; return LicenseActivate(a.str("token"), e) ? Ok() : Err(e); };
     h["license.remove"] = [](const js::V&) { LicenseRemove(); return Ok(); };
+    // ---- feature flags and the administrator helper ----
+    h["flags.list"] = [](const js::V&) { js::Arr a; for (auto& f : FeatureFlags()) a.add(js::Obj().str("id", f.id).str("title", f.title).str("why", f.why).boolean("beta", f.beta).boolean("on", FeatureOn(f.id)).done()); return js::Obj().boolean("ok", true).boolean("beta", Cfg().betaFeatures).raw("items", a.done()).done(); };
+    h["flags.beta"] = [](const js::V& a) { Cfg().betaFeatures = a.boolean("on"); Cfg().flags.clear(); SaveSettings(); return Ok(); };   // the master switch resets per-feature overrides
+    h["flags.set"] = [](const js::V& a) { string id = a.str("id"); bool known = false; for (auto& f : FeatureFlags()) if (id == f.id) known = true; if (!known) return Err(L"Unknown feature."); Cfg().flags[id] = a.boolean("on") ? 1 : 0; SaveSettings(); return Ok(); };
+    h["broker.start"] = [](const js::V&) { if (!FeatureOn("adminHelper")) return Err(L"The administrator helper is a beta feature. Turn it on in Settings > Beta features."); wstring e; return BrokerStart(e) ? Ok() : Err(e); };
+    h["broker.stop"] = [](const js::V&) { BrokerStop(); return Ok(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----
@@ -617,10 +624,18 @@ static std::map<string, Fn>& Handlers() {
     return h;
 }
 
+string BrokerExecute(const string& cmd, const string& req) {
+    js::V r; js::Parse(req, r); js::V args; if (auto* a = r.get("args")) args = *a; auto& hs = Handlers(); auto it = hs.find(cmd); if (it == hs.end()) return Err(L"Unknown command.");
+    if (cmd.rfind("startup.", 0) == 0) { bool empty; { std::lock_guard<std::mutex> l(g_m); empty = g_su.entries.empty(); } if (empty) hs["startup.list"](js::V()); }
+    if (cmd.rfind("services.", 0) == 0) { bool empty; { std::lock_guard<std::mutex> l(g_m); empty = g_sv.entries.empty(); } if (empty) hs["services.list"](js::V()); }
+    return it->second(args);
+}
 static void OnMessage(const string& text) {
     js::V v; if (!js::Parse(text, v) || v.t != js::V::Obj) return; long id = (long)v.num("id", -1); string cmd = v.str("cmd"); auto& hs = Handlers(); auto it = hs.find(cmd);
     if (it == hs.end()) { PostToPage(js::Obj().num("id", (double)id).raw("data", Err(L"Unknown command.")).done()); return; }
-    js::V args; if (auto* a = v.get("args")) args = *a; RunAsync(id, it->second, args);
+    js::V args; if (auto* a = v.get("args")) args = *a;
+    if (!IsElevated() && BrokerAllows(cmd) && BrokerConnected()) { string c = cmd; RunAsync(id, [c](const js::V& a2) { string res; wstring e; if (!BrokerCall(c, js::Dump(a2), res, e)) return Err(e); return res; }, args); return; }   // administrator helper is running: use it
+    RunAsync(id, it->second, args);
 }
 
 static void Layout() { if (g_ctl) { RECT r; GetClientRect(g_wnd, &r); g_ctl->put_Bounds(r); } }

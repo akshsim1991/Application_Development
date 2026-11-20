@@ -228,7 +228,7 @@ static std::string JEsc(const std::wstring& w) {
 std::string JournalLine(const JournalEntry& e) {
     return "{\"time\":\"" + JEsc(e.timeUtc) + "\",\"actor\":\"" + JEsc(e.actor) + "\",\"target\":\"" + JEsc(e.target) +
            "\",\"source\":\"" + JEsc(e.source) + "\",\"before\":\"" + JEsc(e.before) + "\",\"after\":\"" + JEsc(e.after) +
-           "\",\"result\":\"" + JEsc(e.result) + "\",\"reversible\":" + (e.reversible ? "true" : "false") + "}\n";
+           "\",\"result\":\"" + JEsc(e.result) + "\",\"reversible\":" + (e.reversible ? "true" : "false") + ",\"id\":\"" + e.id + "\",\"type\":\"" + e.type + "\",\"rollback\":\"" + e.rollback + "\"}\n";
 }
 
 bool AtomicWrite(const std::wstring& path, const std::string& bytes) {

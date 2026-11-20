@@ -61,6 +61,11 @@ inline std::string Q(const std::string& s) {
         default: if (c < 0x20) { char b[8]; snprintf(b, sizeof b, "\\u%04x", c); o += b; } else o += (char)c; } }
     return o + "\"";
 }
+inline std::string Dump(const V& v) {   // serialise a parsed value back to JSON text
+    switch (v.t) { case V::Null: return "null"; case V::Bool: return v.b ? "true" : "false"; case V::Num: { char b[40]; snprintf(b, sizeof b, "%.15g", v.n); return b; } case V::Str: return Q(v.s);
+        case V::Arr: { std::string o = "["; for (size_t i = 0; i < v.a.size(); ++i) o += (i ? "," : "") + Dump(v.a[i]); return o + "]"; }
+        case V::Obj: { std::string o = "{"; for (size_t i = 0; i < v.o.size(); ++i) o += (i ? "," : "") + Q(v.o[i].first) + ":" + Dump(v.o[i].second); return o + "}"; } } return "null";
+}
 struct Obj { std::string s = "{"; bool first = true;
     Obj& raw(const char* k, const std::string& v) { if (!first) s += ","; first = false; s += Q(k) + ":" + v; return *this; }
     Obj& str(const char* k, const std::string& v) { return raw(k, Q(v)); }

@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.5.1"
+#define FSU_VERSION L"3.6.0"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    bool betaFeatures = false; std::map<std::string, int> flags;          // feature flags: explicit per-flag overrides (0/1); beta flags follow betaFeatures otherwise
     bool liveMetrics = false;                                           // optional low-frequency CPU/RAM/network readout on Today (off by default)
     bool onlineAdvice = true; long long adviceCheck = 0;                // download newer startup/service recommendations when online
     std::vector<std::wstring> pendingVerify;                             // "hwid|title|time" drivers installed but not yet verified after restart
@@ -197,6 +198,18 @@ struct LicenseInfo { bool valid = false; std::wstring state, edition, name, expi
 LicenseInfo LicenseStatus();
 bool LicenseActivate(const std::string& token, std::wstring& err);
 void LicenseRemove();
+
+// ---- feature flags (settings.cpp) and the administrator helper (broker.cpp) ----
+struct FlagInfo { const char* id; const char* title; const char* why; bool beta; };
+const std::vector<FlagInfo>& FeatureFlags();
+bool FeatureOn(const char* id);
+bool BrokerAllows(const std::string& cmd);
+int BrokerMain(const std::wstring& cmdline, const std::function<std::string(const std::string&, const std::string&)>& exec);
+bool BrokerStart(std::wstring& err);
+bool BrokerConnected();
+bool BrokerCall(const std::string& cmd, const std::string& argsJson, std::string& result, std::wstring& err);
+void BrokerStop();
+std::string BrokerExecute(const std::string& cmd, const std::string& requestJson);   // webui.cpp: runs a whitelisted handler inside the elevated helper
 
 // ---- recommendations (advice.cpp): "can this be disabled?" ----
 struct Advice { std::wstring verdict, reason, source; };   // verdict: safe | optional | caution | keep | unknown

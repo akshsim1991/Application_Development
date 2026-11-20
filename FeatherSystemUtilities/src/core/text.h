@@ -37,6 +37,7 @@ OrderResult StopOrder(const std::vector<std::wstring>& targets,
 struct JournalEntry {
     std::wstring timeUtc, actor, target, source, before, after, result;
     bool reversible = false;
+    std::string id, type, rollback;   // typed action record: stable id, category, and how to undo it
 };
 std::string JournalLine(const JournalEntry& e);
 

@@ -4,6 +4,7 @@
 #include <dwmapi.h>
 #include <bcrypt.h>
 #include <shellapi.h>
+#include <shlobj.h>
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -15,10 +16,19 @@ void SetDarkTitleBar(HWND h, bool dark) { BOOL v = dark; DwmSetWindowAttribute(h
 
 // ---------- shell actions ----------
 void OpenFileLocation(const wstring& program) {
-    wstring p = ExpandEnv(program);
-    if (p.empty() || GetFileAttributesW(p.c_str()) == INVALID_FILE_ATTRIBUTES) { DarkMsg(nullptr, L"Open file location", L"The file was not found, so its location cannot be opened.", 0); return; }
-    wstring args = L"/select,\"" + p + L"\"";                              // arguments array-style: quoted path, no shell interpretation of the target
-    ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+    wstring p = program.find(L'%') != wstring::npos ? ExpandEnv(program) : program; while (p.size() > 3 && (p.back() == L'\\' || p.back() == L'"')) p.pop_back(); if (!p.empty() && p.front() == L'"') p.erase(p.begin());
+    DWORD attr = p.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(p.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES) {   // file gone: fall back to its folder if that still exists
+        size_t sl = p.find_last_of(L'\\'); wstring dir = sl == wstring::npos ? L"" : p.substr(0, sl);
+        if (!dir.empty() && GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) { ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); return; }
+        DarkMsg(GetActiveWindow(), L"Open file location", L"The file was not found, so its location cannot be opened:\r\n" + p, 0); return; }
+    // Preferred: ask Explorer to select the item (handles commas, brackets, Unicode and long names reliably)
+    PIDLIST_ABSOLUTE pidl = nullptr; bool done = false;
+    if (SUCCEEDED(SHParseDisplayName(p.c_str(), nullptr, &pidl, 0, nullptr)) && pidl) { done = SUCCEEDED(SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0)); CoTaskMemFree(pidl); }
+    if (done) return;
+    wstring args = L"/select,\"" + p + L"\"";                                  // fallback: classic explorer command
+    if ((INT_PTR)ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32) return;
+    size_t sl = p.find_last_of(L'\\'); if (sl != wstring::npos) ShellExecuteW(nullptr, L"open", p.substr(0, sl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
 }
 void ShowInRegistryEditor(const wstring& loc) {
     if (loc.rfind(L"Task Scheduler:", 0) == 0) { ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); return; }

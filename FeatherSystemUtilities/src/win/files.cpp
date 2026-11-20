@@ -116,6 +116,14 @@ void ScanFiles(const FileScanOpts& o, FileScan& out) {
     out.coverage = L"Checked " + std::to_wstring(c.scanned) + L" files; " + std::to_wstring(cand.size()) + L" had a same-size twin. Duplicates are byte-for-byte identical (SHA-256), hard links are not counted, and at least one copy per group is always kept." + (out.cancelled ? L" Scan was stopped early; results may be incomplete." : L"");
 }
 
+bool DeleteFilesPermanently(const std::vector<wstring>& paths, wstring& err) {
+    int failed = 0; for (auto& p : paths) {
+        DWORD a = GetFileAttributesW(p.c_str()); if (a == INVALID_FILE_ATTRIBUTES) continue; if (a & FILE_ATTRIBUTE_REPARSE_POINT) { ++failed; continue; }   // never follow links
+        bool ok = (a & FILE_ATTRIBUTE_DIRECTORY) ? RemoveDirectoryW(p.c_str()) != 0 : (SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL), DeleteFileW(p.c_str()) != 0);   // folders are removed only if still empty
+        if (!ok) ++failed;
+    }
+    if (failed) err = std::to_wstring(failed) + L" item(s) could not be deleted (in use, protected, or a folder that is no longer empty)."; return failed == 0;
+}
 bool RecycleFiles(HWND owner, const std::vector<wstring>& paths, wstring& err) {
     if (paths.empty()) return true; wstring list; for (auto& p : paths) { list += p; list.push_back(L'\0'); } list.push_back(L'\0');
     SHFILEOPSTRUCTW op{}; op.hwnd = owner; op.wFunc = FO_DELETE; op.pFrom = list.c_str(); op.fFlags = FOF_ALLOWUNDO | FOF_WANTNUKEWARNING | FOF_NOERRORUI;   // Windows itself warns if a file would be destroyed instead of recycled

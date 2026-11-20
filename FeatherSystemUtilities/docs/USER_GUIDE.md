@@ -1,5 +1,16 @@
-# Feather System Utilities 1.8 - User guide
+# Feather System Utilities 2.0 - User guide
 One window with Dashboard, Startup, Services, Drivers, Cleaner, Large files, Duplicates, Empty folders, History and Settings. Offline. Developed by Akshaya Simha.
+
+## Layout (2.0)
+Left sidebar: **Care** (big SCAN button, Smart or Manual mode), **Custom Clean** (Cleaner, Large files, Duplicates, Empty folders), **Speed Up** (Overview, Startup, Services, Drivers), **Software** (program uninstaller), **Toolbox** (every tool in one place), **Action Center** (history), **Settings**. Ctrl+1..7 switch sections.
+**Care**: press SCAN. Smart mode checks junk, registry, startup, services and programs; Manual mode lets you add Large files, Duplicates, Empty folders and Deep scan. A progress ring shows real steps. Nothing is changed by scanning; **Review & Clean** takes you to Custom Clean.
+**Custom Clean**: tick items (checkbox column, Space toggles, Select all / Recommended / Select none), then press the green **Clean** button. **Deep scan...** searches all fixed drives for stray .tmp/.temp files, orphaned Office lock files, thumbnail databases, old dumps and logs, plus npm/pip/Yarn/NuGet and Discord/Slack/VS Code/Spotify caches and offers Windows' component-store cleanup (DISM).
+
+## Software uninstaller
+Select programs, then **Uninstall** (official uninstaller, long method) or **Uninstall silently** (publisher quiet command, Windows Installer /qn, Inno Setup and NSIS switches; programs without a documented silent switch are skipped). Afterwards, leftovers are searched using evidence: the install folder, folders named after the program in standard locations, vendor registry keys, and startup entries, services, scheduled tasks and Explorer add-ons that point into the removed install folder. They appear in Custom Clean under "Leftovers of uninstalled programs", pre-ticked, and are deleted when you press Clean (folders permanently; registry entries are backed up first; task XML is saved). **Force remove** skips the uninstaller for broken ones. Folders used by another installed program, system and user-document folders are never offered. Store apps and portable apps are not covered yet.
+
+## Updates
+Settings > "Check for updates automatically" (default on; once a day) and More > Check for updates. The app downloads latest.json from the project's public releases page on GitHub, asks before downloading, verifies size and SHA-256, installs silently (administrator prompt) and reopens, like Feather PDF. This is the only network use. Turn it off in Settings for a fully offline app.
 
 ## Safety model
 Reading works with standard rights. Machine-wide changes need "Restart as administrator" (bottom right). Every change is journaled (History page), verified by reading it back, and critical services are blocked from stop/disable/kill. Undo (Ctrl+Z) reverts configuration changes only, never running state.
@@ -29,11 +40,11 @@ Finds folders that contain no files at all (hidden/system files and links count 
 Windows 10/11 (x64) are the main targets. The installer also contains an x86 build for 32-bit Windows 7 SP1 and later; on Windows 7/8 some cosmetic features (dark menus, per-monitor DPI) are unavailable. Windows 7 support is built to the Windows 7 API level but has not yet been tested on a real Windows 7 PC.
 
 ## Keys
-Ctrl+F search, Esc clear, F5 refresh, Enter details, Del delete, Ctrl+A select all, Ctrl+C copy name, Ctrl+Shift+C copy details, Ctrl+E export (CSV/HTML/JSON), Ctrl+Z undo, Ctrl+Shift+S/T/R/K service start/stop/restart/kill, Ctrl+1..0 pages, Ctrl+, settings, F1 about.
+Ctrl+F search, Esc clear, F5 refresh, Enter details, Del delete, Ctrl+A select all, Ctrl+C copy name, Ctrl+Shift+C copy details, Ctrl+E export (CSV/HTML/JSON), Ctrl+Z undo, Ctrl+Shift+S/T/R/K service start/stop/restart/kill, Ctrl+1..7 pages, Ctrl+, settings, F1 about.
 
 ## Data
 `%LOCALAPPDATA%\FeatherSystemUtilities`: settings.ini, journal.jsonl, backups\, profiles\, firstseen.tsv, legacy\ (copies of old Startup/Services Manager data; originals are never touched or deleted).
 Uninstall keeps this folder unless you choose to delete it.
 
 ## Known limits
-Not deployed or tested on real Windows by the developer yet (see docs/TEST_REPORT.md). No remote-computer mode, boot-time measurement, tray monitor or scheduled service operations in 1.8.
+Not deployed or tested on real Windows by the developer yet (see docs/TEST_REPORT.md). No remote-computer mode, boot-time measurement, tray monitor or scheduled service operations in 2.0.

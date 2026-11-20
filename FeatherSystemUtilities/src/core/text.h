@@ -55,6 +55,15 @@ bool IsDriveAbsolute(const std::wstring& p);
 struct DupRec { int group; unsigned long long mtime; size_t pathLen; };
 std::vector<size_t> SelectDuplicatesToRemove(const std::vector<DupRec>& recs, int mode);
 
+// Uninstaller helpers (portable, unit-tested).
+bool IsPathUnder(const std::wstring& path, const std::wstring& root);          // case-insensitive, whole path components only ("C:\\Apps\\Foo" is not under "C:\\Apps\\Fo")
+std::wstring StripVersionSuffix(std::wstring name);                           // "Foo 2.3.4 (x64)" -> "Foo"
+std::wstring ExtractGuid(const std::wstring& s);                              // first {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX} or ""
+std::wstring MsiRemoveArgs(const std::wstring& args, bool silent);            // "/I{GUID}" -> "/X{GUID}", adds /qn /norestart when silent
+
+// Version compare for "1.9.0"-style strings: -1, 0, 1 (missing parts = 0; non-numeric parts ignored).
+int CompareVersions(const std::wstring& a, const std::wstring& b);
+
 std::string ToUtf8(const std::wstring& w);
 std::wstring FromUtf8(const std::string& s);
 std::wstring Lower(const std::wstring& s);

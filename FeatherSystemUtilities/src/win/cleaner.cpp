@@ -5,6 +5,7 @@
 #include <shlobj.h>
 #include <shellapi.h>
 #include <shlwapi.h>
+#include <taskschd.h>
 #include <tlhelp32.h>
 #include <fstream>
 #include <filesystem>
@@ -149,6 +150,68 @@ CleanScan ScanCleaner(bool keep) {
     return cs;
 }
 
+// ---- deep scan: whole-system junk (explicit file lists) ----
+struct DeepCat { const wchar_t* id; const wchar_t* name; int risk; int minAgeDays; const wchar_t* why; std::vector<wstring> files; ULONGLONG bytes = 0; bool capped = false; };
+struct DeepCtx { std::atomic<bool>* cancel; const std::function<void(const wstring&)>* progress; std::vector<DeepCat> cats; ULONGLONG scanned = 0, lastReport = 0; std::set<wstring> skipRoots; ULONGLONG now; };
+static void DeepAdd(DeepCtx& c, int cat, const wstring& path, ULONGLONG size, ULONGLONG mtime) {
+    DeepCat& d = c.cats[cat]; if (d.minAgeDays && mtime > c.now - (ULONGLONG)d.minAgeDays * 24 * 3600 * 10000000ULL) return; if (d.files.size() >= 200000) { d.capped = true; return; } d.files.push_back(path); d.bytes += size;
+}
+static void DeepWalk(DeepCtx& c, const wstring& dir, int depth) {
+    if (depth > 40 || (c.cancel && c.cancel->load())) return; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH); if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue; wstring full = dir + L"\\" + n;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            wstring ln = Lower(n), lf = Lower(full); if (ln == L".git" || ln == L".svn" || ln == L"node_modules" || ln == L"$recycle.bin" || ln == L"system volume information" || ln == L"recovery") continue; bool skip = false; for (auto& r : c.skipRoots) if (lf == r) { skip = true; break; } if (skip) continue;
+            if (n.size() > 6 && Lower(n.substr(0, 6)) == L"found.") { ULONGLONG f = 0; (void)f; }
+            DeepWalk(c, full, depth + 1); if (c.cancel && c.cancel->load()) break; continue; }
+        if (fd.dwFileAttributes & (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_OFFLINE | FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS | FILE_ATTRIBUTE_RECALL_ON_OPEN)) continue;
+        ++c.scanned; if (c.progress && *c.progress && c.scanned - c.lastReport >= 5000) { c.lastReport = c.scanned; (*c.progress)(L"Deep scan… " + std::to_wstring(c.scanned) + L" files checked · " + dir); }
+        wstring l = Lower(n); size_t dot = l.find_last_of(L'.'); wstring ext = dot == wstring::npos ? L"" : l.substr(dot + 1); ULONGLONG size = ((ULONGLONG)fd.nFileSizeHigh << 32) | fd.nFileSizeLow, mt = FtU(fd.ftLastWriteTime);
+        if (ext == L"tmp" || ext == L"temp" || (l.size() > 2 && l[0] == L'~' && ext == L"tmp")) DeepAdd(c, 0, full, size, mt);
+        else if (l.rfind(L"~$", 0) == 0) DeepAdd(c, 1, full, size, mt);
+        else if (l == L"thumbs.db" || l == L"ehthumbs.db" || l == L".ds_store") DeepAdd(c, 2, full, size, mt);
+        else if (ext == L"chk") DeepAdd(c, 3, full, size, mt);
+        else if (ext == L"dmp" || ext == L"mdmp") DeepAdd(c, 4, full, size, mt);
+        else if (ext == L"log" || ext == L"etl") DeepAdd(c, 5, full, size, mt);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+CleanScan ScanDeep(std::atomic<bool>* cancel, const std::function<void(const wstring&)>& progress) {
+    CleanScan cs; DeepCtx c; c.cancel = cancel; c.progress = &progress; FILETIME ft; GetSystemTimeAsFileTime(&ft); c.now = FtU(ft);
+    c.cats = {{L"d.tmp", L"Stray temporary files (*.tmp, *.temp)", 0, 7, L"Leftover temp files anywhere on your drives, untouched for 7+ days. Files still in use are skipped."},
+              {L"d.office", L"Orphaned Office lock files (~$*)", 0, 7, L"Hidden lock files left behind by Word/Excel/PowerPoint after a crash."},
+              {L"d.thumbs", L"Thumbnail databases (Thumbs.db, ehthumbs.db)", 0, 0, L"Old Explorer thumbnail caches scattered in your folders; Windows recreates them if needed."},
+              {L"d.chk", L"Disk-check fragments (*.chk)", 0, 0, L"Recovered file fragments created by Windows disk checks."},
+              {L"d.dmp", L"Old crash dumps (*.dmp) older than 14 days", 0, 14, L"Memory dumps from crashed programs anywhere on your drives."},
+              {L"d.log", L"Old log files (*.log, *.etl) older than 90 days", 1, 90, L"Application logs untouched for 90+ days outside Windows and Program Files. Keep them if you troubleshoot software."}};
+    for (auto& cat : c.cats) cat.minAgeDays = cat.minAgeDays;
+    wstring win = Lower(KnownFolder(FOLDERID_Windows)), pf = Lower(KnownFolder(FOLDERID_ProgramFiles)), pf86 = Lower(KnownFolder(FOLDERID_ProgramFilesX86)); c.skipRoots = {win, pf, pf86, Lower(DataDir())};
+    wchar_t drives[256]; DWORD n = GetLogicalDriveStringsW(255, drives); int nd = 0;
+    for (wchar_t* d = drives; n && *d && !(cancel && cancel->load()); d += wcslen(d) + 1) { if (GetDriveTypeW(d) != DRIVE_FIXED) continue; wstring root = d; while (root.size() > 2 && root.back() == L'\\') root.pop_back(); ++nd; DeepWalk(c, root, 0); }
+    wstring local = KnownFolder(FOLDERID_LocalAppData), appdata = KnownFolder(FOLDERID_RoamingAppData), prof = KnownFolder(FOLDERID_Profile);
+    for (auto& cat : c.cats) { if (cat.files.empty()) continue; CleanItem it; it.id = cat.id; it.name = cat.name; it.type = L"Deep scan: stray files"; it.kind = 7; it.risk = cat.risk; it.minAgeDays = cat.minAgeDays; it.ignoreRecent = true; it.paths = cat.files; it.bytes = cat.bytes; it.files = cat.files.size();
+        it.location = std::to_wstring(it.files) + L" files across " + std::to_wstring(nd) + L" fixed drive(s); e.g. " + cat.files[0]; it.detail = std::to_wstring(it.files) + L" files" + (cat.capped ? L" (first 200,000)" : L""); it.why = cat.why; it.needsAdmin = false; cs.totalBytes += it.bytes; cs.items.push_back(std::move(it)); }
+    // developer / application caches (known folders; caches only, never settings, packages or logins)
+    struct Known { const wchar_t* id; const wchar_t* name; std::vector<wstring> roots; const wchar_t* why; };
+    std::vector<Known> known = {
+        {L"d.npm", L"npm cache", {local + L"\\npm-cache"}, L"Downloaded npm packages. npm downloads them again when needed."}, {L"d.pip", L"pip cache", {local + L"\\pip\\Cache"}, L"Downloaded Python packages and wheels."},
+        {L"d.yarn", L"Yarn cache", {local + L"\\Yarn\\Cache"}, L"Downloaded Yarn packages."}, {L"d.nuget", L"NuGet HTTP cache", {local + L"\\NuGet\\v3-cache"}, L"NuGet web cache (your installed packages are not touched)."},
+        {L"d.discord", L"Discord cache", {appdata + L"\\discord\\Cache", appdata + L"\\discord\\Code Cache", appdata + L"\\discord\\GPUCache"}, L"Discord image/web cache. You stay signed in."},
+        {L"d.slack", L"Slack cache", {appdata + L"\\Slack\\Cache", appdata + L"\\Slack\\Code Cache", appdata + L"\\Slack\\GPUCache"}, L"Slack web cache. You stay signed in."},
+        {L"d.vscode", L"VS Code cache", {appdata + L"\\Code\\Cache", appdata + L"\\Code\\CachedData", appdata + L"\\Code\\Code Cache", appdata + L"\\Code\\GPUCache"}, L"Editor caches. Settings, extensions and workspaces are not touched."},
+        {L"d.spotify", L"Spotify cache", {local + L"\\Spotify\\Data", local + L"\\Spotify\\Storage"}, L"Cached songs and artwork. Offline downloads in Storage may need re-downloading."},
+        {L"d.edgeprof", L"Edge cache (other profiles)", {}, L"Cache of additional Edge profiles (browser cache only)."}, {L"d.chromeprof", L"Chrome cache (other profiles)", {}, L"Cache of additional Chrome profiles (browser cache only)."}};
+    auto profCaches = [&](const wstring& userData, std::vector<wstring>& out) { WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW((userData + L"\\Profile *").c_str(), &fd); if (h == INVALID_HANDLE_VALUE) return; do { if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) for (auto sub : {L"\\Cache", L"\\Code Cache", L"\\GPUCache"}) out.push_back(userData + L"\\" + fd.cFileName + sub); } while (FindNextFileW(h, &fd) && out.size() < 60); FindClose(h); };
+    profCaches(local + L"\\Microsoft\\Edge\\User Data", known[8].roots); profCaches(local + L"\\Google\\Chrome\\User Data", known[9].roots);
+    for (auto& k : known) { if (cancel && cancel->load()) break; Walk w; w.cutoff = 0; CleanItem it; it.id = k.id; it.name = k.name; it.type = L"Deep scan: app and developer caches"; it.kind = 0; it.ignoreRecent = true; it.why = k.why;
+        for (auto& r : k.roots) { if (GetFileAttributesW(r.c_str()) == INVALID_FILE_ATTRIBUTES) continue; it.paths.push_back(r); WalkDir(r, w, 0); } if (it.paths.empty() || !w.bytes) continue;
+        it.bytes = w.bytes; it.files = w.files; it.location = it.paths[0]; it.detail = std::to_wstring(w.files) + L" files"; cs.totalBytes += it.bytes; cs.items.push_back(std::move(it)); }
+    if (IsElevated() || true) { CleanItem it; it.id = L"d.winsxs"; it.name = L"Windows component store cleanup (DISM)"; it.type = L"Deep scan: Windows system"; it.kind = 4; it.risk = 1; it.needsAdmin = true; it.timeoutSec = 1800; it.cmd = L"dism.exe /Online /Cleanup-Image /StartComponentCleanup"; it.location = L"dism.exe /Online /Cleanup-Image /StartComponentCleanup"; it.detail = L"can take 5-30 min";
+        it.why = L"Windows' own cleanup of superseded update components (WinSxS). Safe and supported; it can run for several minutes and may need a restart. Pending updates are left alone."; cs.items.push_back(std::move(it)); }
+    cs.coverage = L"Deep scan checked " + std::to_wstring(c.scanned) + L" files on " + std::to_wstring(nd) + L" fixed drive(s) (skipping Windows, Program Files, links, system files and cloud placeholders) plus known app/developer caches. " + FormatBytes(cs.totalBytes) + L" reclaimable." + (cancel && cancel->load() ? L" Stopped early." : L"");
+    return cs;
+}
+
 // ---- registry backup / restore ----
 static wstring Hex(const void* p, size_t n) { wstring o; const BYTE* b = (const BYTE*)p; for (size_t i = 0; i < n; ++i) { wchar_t t[3]; swprintf(t, 3, L"%02X", b[i]); o += t; } return o; }
 static bool UnHex(const wstring& h, std::vector<BYTE>& out) { if (h.size() % 2 || h.size() > 140000) return false; for (size_t i = 0; i < h.size(); i += 2) { wchar_t t[3] = {h[i], h[i + 1], 0}; wchar_t* e; unsigned long v = wcstoul(t, &e, 16); if (*e) return false; out.push_back((BYTE)v); } return true; }
@@ -157,7 +220,14 @@ static bool UnHexStr(const wstring& h, wstring& s) { std::vector<BYTE> b; if (!U
 static bool AllowedRegPath(const wstring& p) {
     wstring l = Lower(p); static const wchar_t* ok[] = {L"software\\microsoft\\windows\\currentversion\\uninstall\\", L"software\\microsoft\\windows\\currentversion\\app paths\\", L"software\\microsoft\\windows\\currentversion\\shareddlls",
         L"software\\classes\\local settings\\software\\microsoft\\windows\\shell\\muicache"};
-    for (auto o : ok) if (l.rfind(o, 0) == 0) return true; return false;
+    for (auto o : ok) if (l.rfind(o, 0) == 0) return true;
+    // vendor/app settings keys written by the uninstaller leftover scan (never persistence or policy locations)
+    static const wchar_t* deny[] = {L"software\\microsoft\\windows nt\\currentversion\\winlogon", L"software\\microsoft\\windows nt\\currentversion\\image file execution options", L"software\\microsoft\\windows\\currentversion\\policies",
+        L"software\\policies", L"software\\microsoft\\windows\\currentversion\\explorer", L"software\\microsoft\\windows nt", L"software\\microsoft\\cryptography", L"software\\microsoft\\security center", L"software\\classes\\clsid\\{", L"software\\wow6432node\\microsoft\\windows nt"};
+    static const wchar_t* allowRun[] = {L"software\\microsoft\\windows\\currentversion\\run", L"software\\microsoft\\windows\\currentversion\\runonce"};
+    for (auto a : allowRun) if (l == a) return true;
+    for (auto d : deny) if (l.rfind(d, 0) == 0) return false;
+    return l.rfind(L"software\\", 0) == 0 && l.find(L'\\') != std::wstring::npos && l.size() > 10;
 }
 static void ExportKeyTree(HKEY root, REGSAM view, const wstring& sub, wstring& out, int depth, int& budget) {
     if (depth > 6 || budget <= 0) return; HKEY k; if (RegOpenKeyExW(root, sub.c_str(), 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | view, &k) != ERROR_SUCCESS) return;
@@ -226,7 +296,7 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
             WriteJournal(it.name, L"cleaner: temporary files", FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", L"deleted " + FormatBytes(w.bytes) + L" in " + std::to_wstring(w.files) + L" files, " + std::to_wstring(w.failed + w.skipped) + L" skipped", L"ok (not undoable)", false);
         } else if (it.kind == 4) {
             STARTUPINFOW si{sizeof si}; si.dwFlags = STARTF_USESHOWWINDOW; si.wShowWindow = SW_HIDE; PROCESS_INFORMATION pi{}; wstring cl = it.cmd; DWORD code = 1; bool ok = false;
-            if (CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) { WaitForSingleObject(pi.hProcess, 30000); GetExitCodeProcess(pi.hProcess, &code); CloseHandle(pi.hProcess); CloseHandle(pi.hThread); ok = code == 0; }
+            if (CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi)) { WaitForSingleObject(pi.hProcess, (DWORD)(it.timeoutSec > 0 ? it.timeoutSec : 30) * 1000); GetExitCodeProcess(pi.hProcess, &code); CloseHandle(pi.hProcess); CloseHandle(pi.hThread); ok = code == 0; }
             if (ok) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": command failed"; }
             WriteJournal(it.name, L"cleaner: " + it.cmd, L"", ok ? L"done" : L"failed", ok ? L"ok" : L"failed", false);
         } else if (it.kind == 5) {
@@ -236,6 +306,38 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
             HRESULT hr = SHEmptyRecycleBinW(nullptr, nullptr, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
             if (SUCCEEDED(hr) || hr == S_FALSE) { r.bytes += it.bytes; r.files += it.files; ++r.ok; } else { ++r.failed; if (r.firstErr.empty()) r.firstErr = L"Recycle Bin: could not be emptied"; }
             WriteJournal(L"Recycle Bin", L"cleaner", FormatBytes(it.bytes), L"emptied", SUCCEEDED(hr) ? L"ok (not undoable)" : L"failed", false);
+        } else if (it.kind == 7) {
+            if (it.needsAdmin && !IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights"; continue; }
+            ULONGLONG cutoff = ItemCutoff(keep, true, it.minAgeDays); ULONGLONG bytes = 0, files = 0, failed = 0, newer = 0; wstring win = Lower(KnownFolder(FOLDERID_Windows)), pf = Lower(KnownFolder(FOLDERID_ProgramFiles)), pf86 = Lower(KnownFolder(FOLDERID_ProgramFilesX86));
+            for (auto& p : it.paths) {
+                wstring l = Lower(p); if (l.rfind(win + L"\\", 0) == 0 || l.rfind(pf + L"\\", 0) == 0 || l.rfind(pf86 + L"\\", 0) == 0) continue;           // re-checked at delete time
+                WIN32_FILE_ATTRIBUTE_DATA fa; if (!GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &fa) || (fa.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) continue;
+                if (cutoff && FtU(fa.ftLastWriteTime) > cutoff) { ++newer; continue; }
+                SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL); if (DeleteFileW(p.c_str())) { bytes += ((ULONGLONG)fa.nFileSizeHigh << 32) | fa.nFileSizeLow; ++files; } else ++failed; }
+            r.bytes += bytes; r.files += files; ++r.ok; if (failed && r.firstErr.empty()) r.firstErr = it.name + L": " + std::to_wstring(failed) + L" files in use were skipped";
+            WriteJournal(it.name, L"cleaner: deep scan", FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", L"deleted " + FormatBytes(bytes) + L" in " + std::to_wstring(files) + L" files, " + std::to_wstring(failed + newer) + L" skipped", L"ok (not undoable)", false);
+        } else if (it.kind == 6) {
+            wstring dir = it.location; if (it.needsAdmin && !IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights (use Restart as administrator)"; continue; }
+            if (IsProtectedPath(dir)) { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": protected location, not deleted"; WriteJournal(it.name, dir, L"present", L"unchanged", L"blocked: protected path", false); continue; }
+            Walk w; w.del = true; WalkDir(dir, w, 0); SetFileAttributesW(dir.c_str(), FILE_ATTRIBUTE_NORMAL); bool gone = RemoveDirectoryW(dir.c_str()) != 0 || GetFileAttributesW(dir.c_str()) == INVALID_FILE_ATTRIBUTES;
+            r.bytes += w.bytes; r.files += w.files; if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + std::to_wstring(w.failed) + L" file(s) in use remain; restart and scan again"; }
+            WriteJournal(it.name, dir, FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", gone ? L"deleted (" + FormatBytes(w.bytes) + L")" : L"partly deleted", gone ? L"ok (leftover folder, not undoable)" : L"partial", false);
+        } else if (it.kind == 8) {
+            if (!IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights"; continue; }
+            wstring e2; int st = SvcStopIfRunning(it.cmd, e2); bool gone = false; wstring err;
+            if (st < 0) err = L"could not stop the service (" + e2 + L")";
+            else { SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); if (scm) { SC_HANDLE sv = OpenServiceW(scm, it.cmd.c_str(), DELETE); if (sv) { gone = DeleteService(sv) != 0 || GetLastError() == ERROR_SERVICE_MARKED_FOR_DELETE; if (!gone) err = Win32Err(GetLastError()); CloseServiceHandle(sv); } else gone = GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST; CloseServiceHandle(scm); } }
+            if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + err; }
+            WriteJournal(it.name, L"service " + it.cmd, it.location, gone ? L"deleted" : L"unchanged", gone ? L"ok (not undoable)" : L"failed: " + err, false);
+        } else if (it.kind == 9) {
+            if (!IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights"; continue; }
+            bool gone = false; wstring err; ITaskService* svc = nullptr;
+            if (SUCCEEDED(CoCreateInstance(CLSID_TaskScheduler, nullptr, CLSCTX_INPROC_SERVER, IID_ITaskService, (void**)&svc)) && svc) { VARIANT v; VariantInit(&v);
+                if (SUCCEEDED(svc->Connect(v, v, v, v))) { ITaskFolder* root = nullptr; BSTR rp = SysAllocString(L"\\"); if (SUCCEEDED(svc->GetFolder(rp, &root)) && root) { BSTR tp = SysAllocString(it.cmd.c_str()); IRegisteredTask* t = nullptr;
+                        if (SUCCEEDED(root->GetTask(tp, &t)) && t) { BSTR xml = nullptr; if (SUCCEEDED(t->get_Xml(&xml)) && xml) { wstring bd = SubDir(L"taskbackups"); wstring fn = it.name; for (auto& c : fn) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_'; wstring bp = bd + L"\\" + fn + L"_" + std::to_wstring(GetTickCount() % 100000) + L".xml"; if (AtomicWrite(bp, "\xEF\xBB\xBF" + ToUtf8(wstring(xml)))) { gone = SUCCEEDED(root->DeleteTask(tp, 0)); if (!gone) err = L"Task Scheduler refused the deletion"; } else err = L"could not save the task XML backup; task kept"; SysFreeString(xml); } else err = L"could not read the task definition"; t->Release(); } else gone = true;
+                        SysFreeString(tp); root->Release(); } SysFreeString(rp); } else err = L"cannot connect to Task Scheduler"; svc->Release(); } else err = L"Task Scheduler unavailable";
+            if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + err; }
+            WriteJournal(it.name, L"task " + it.cmd, L"present", gone ? L"deleted (XML saved in taskbackups)" : L"unchanged", gone ? L"ok" : L"failed: " + err, false);
         } else if (it.kind == 2 || it.kind == 3) reg.push_back(&it);
     }
     if (!reg.empty()) {

@@ -74,6 +74,12 @@ int main() {
       auto n = SelectDuplicatesToRemove(d, 1); CHECK(n.size() == 3 && std::find(n.begin(), n.end(), 2) == n.end() && std::find(n.begin(), n.end(), 4) == n.end());                                          // keeps newest
       auto s = SelectDuplicatesToRemove(d, 2); CHECK(s.size() == 3 && std::find(s.begin(), s.end(), 2) == s.end());                                                                                           // shortest path
       CHECK(SelectDuplicatesToRemove({}, 0).empty()); }
+    // Uninstaller helpers
+    CHECK(IsPathUnder(L"C:\\Apps\\Foo\\bin\\x.exe", L"c:\\apps\\foo") && IsPathUnder(L"C:\\Apps\\Foo", L"C:\\Apps\\Foo\\") && !IsPathUnder(L"C:\\Apps\\FooBar\\x", L"C:\\Apps\\Foo") && !IsPathUnder(L"C:\\Apps", L"C:\\Apps\\Foo") && !IsPathUnder(L"C:\\x", L""));
+    CHECK(StripVersionSuffix(L"Foo Player 2.3.4 (x64)") == L"Foo Player" && StripVersionSuffix(L"7-Zip 23.01") == L"7-Zip 23.01" && StripVersionSuffix(L"Tool (64-bit)") == L"Tool");
+    CHECK(ExtractGuid(L"MsiExec.exe /I{AC76BA86-7AD7-1033-7B44-AC0F074E4100}") == L"{AC76BA86-7AD7-1033-7B44-AC0F074E4100}" && ExtractGuid(L"{not-a-guid}").empty() && ExtractGuid(L"").empty());
+    CHECK(MsiRemoveArgs(L"/I{AC76BA86-7AD7-1033-7B44-AC0F074E4100}", false) == L"/X{AC76BA86-7AD7-1033-7B44-AC0F074E4100}" && MsiRemoveArgs(L"/I{G}", true) == L"/X{G} /qn /norestart" && MsiRemoveArgs(L"/X{G} /qb", true) == L"/X{G} /qb");
+    CHECK(CompareVersions(L"1.9.0", L"1.10.0") < 0 && CompareVersions(L"2.0", L"2.0.0") == 0 && CompareVersions(L"2.22.0", L"2.21.9") > 0 && CompareVersions(L"1.9.0", L"1.9.0") == 0 && CompareVersions(L"v1.2", L"1.2.1") < 0);
     std::printf("%d/%d passed\n", total - fails, total);
     return fails ? 1 : 0;
 }

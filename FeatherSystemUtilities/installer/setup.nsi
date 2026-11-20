@@ -1,7 +1,7 @@
 ; Feather System Utilities - offline installer (NSIS, zlib license). Build: ./build.sh installer
 Unicode true
 !define APP "Feather System Utilities"
-!define VER "1.8.0"
+!define VER "2.0.0"
 !define EXE "FeatherSystemUtilities.exe"
 !define UNKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherSystemUtilities"
 !include "MUI2.nsh"
@@ -14,7 +14,7 @@ InstallDirRegKey HKLM "${UNKEY}" "InstallLocation"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 BrandingText "Developed by Akshaya Simha"
-VIProductVersion "1.8.0.0"
+VIProductVersion "2.0.0.0"
 VIAddVersionKey "ProductName" "${APP}"
 VIAddVersionKey "FileDescription" "${APP} Setup"
 VIAddVersionKey "FileVersion" "${VER}"

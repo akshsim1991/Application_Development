@@ -10,3 +10,6 @@
 - KI9: Large files / Duplicates (1.7) are compile-checked only; never executed. Recycle Bin move uses SHFileOperation (Windows prompts itself if a file is too large to recycle). Duplicate hashing reads whole files (can be slow on big drives); scans cannot be resumed.
 - KI10: 1.8 is compile-checked only (see TEST_REPORT). Windows Update cache cleanup stops wuauserv/bits and restarts them; if a restart fails the message tells you to start them from the Services page. Windows 7 untested.
 - KI11: Cleaner does not yet offer clipboard-history cleaning, installer-package cleaning, exclusion lists or scheduled runs.
+- KI12: 2.0 UI (navy theme, GDI+ drawing, Care page, banner, sub-tabs) has never been seen running. Layout may need tuning at small window sizes.
+- KI13: Auto-update needs the public repo akshsim1991/FeatherSystemUtilities-releases (latest.json + installer) - see releases-repo/. Until it exists the check says no release is published. Installer is unsigned.
+- KI14: Leftover detection is evidence-based but conservative; it cannot find leftovers whose names/paths do not match the program. Deleting leftover folders is permanent.

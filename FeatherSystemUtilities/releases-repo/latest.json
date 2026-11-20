@@ -1,0 +1,10 @@
+{
+  "version": "2.0.0",
+  "date": "20 November 2026",
+  "notes": "New navy look with a Scan button, Custom Clean with tick boxes and Deep Scan, full program uninstaller (silent or standard, with leftover removal), Large/Duplicate/Empty-folder finders, Windows Update cache cleanup, Windows 7 support and automatic update checks.",
+  "windows": {
+    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-2.0.0.exe",
+    "size": 1859688,
+    "sha256": "9a1ec87471258df7fb7322ab53bd4677b3e748da26dfcfa118db1ac16de3fed6"
+  }
+}

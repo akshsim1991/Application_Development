@@ -3,11 +3,11 @@ Status key: DONE = real, implemented. PART = partly implemented. NEXT = planned,
 
 | # | Module | Status | Notes |
 |---|---|---|---|
-| 2 | System cleaner | PART (1.8) | Done: user/Windows temp, **Windows Update download cache** (stops/restarts wuauserv+BITS, skipped while updates install), Delivery Optimization, DirectX shader cache, Windows internet cache, thumbnails, error reports, user crash dumps, system memory dumps, old Windows logs, recent-files history, prefetch (30+ days, medium risk), font cache (service-assisted, medium), Edge/Chrome/Brave/Firefox cache, Recycle Bin, DNS cache flush, Windows.old detection that opens Disk Cleanup (high risk). Not done: clipboard history, installer package cache (unsafe), scheduled run. Risk column and per-item selection, sizes, file counts, logs (History page) are in. |
+| 2 | System cleaner | PART (2.0: + Deep scan, checkbox UI) | Done: user/Windows temp, **Windows Update download cache** (stops/restarts wuauserv+BITS, skipped while updates install), Delivery Optimization, DirectX shader cache, Windows internet cache, thumbnails, error reports, user crash dumps, system memory dumps, old Windows logs, recent-files history, prefetch (30+ days, medium risk), font cache (service-assisted, medium), Edge/Chrome/Brave/Firefox cache, Recycle Bin, DNS cache flush, Windows.old detection that opens Disk Cleanup (high risk). Not done: clipboard history, installer package cache (unsafe), scheduled run. Risk column and per-item selection, sizes, file counts, logs (History page) are in. |
 | 3 | Temp cleaner extras | NEXT | custom folders, exclusion list, scheduled cleaning, detailed report export (export exists) |
 | 4 | Registry cleaner | PART | 4 conservative areas with backup/restore. NEXT: broken file associations, stale COM/ActiveX (needs careful rules) |
 | 5-6 | Driver cleaner / updater | NEXT | needs SetupAPI/PnPUtil + Windows Update Agent integration; read-only driver list exists |
-| 7 | Full uninstaller | NEXT (high value) | list from Uninstall keys, run official/quiet uninstaller, leftover detection by install path, associated startup/service/task detection (existing scanners reusable) |
+| 7 | Full uninstaller | PART (2.0) | Win32/MSI list, standard + silent uninstall (batch), leftover detection and deletion via Custom Clean, force remove. NEXT: Store/provisioned apps, browser extensions, portable detection, uninstall history view, app backup |
 | 8 | Windows Apps manager | NEXT | PowerShell Appx cmdlets (Windows 10/11 only) |
 | 9 | Duplicate finder | PART (1.7) | SHA-256, Recycle Bin, keep-one rule. NEXT: quarantine folder, ignore lists, max size, report |
 | 10-11 | Disk analyzer / storage optimizer | NEXT | treemap needs a custom-drawn control; TRIM/SSD via DeviceIoControl; Optimize Drives via defrag.exe /O |
@@ -29,3 +29,6 @@ Status key: DONE = real, implemented. PART = partly implemented. NEXT = planned,
 ## Platform support
 - Windows 10 and 11 x64: primary targets.
 - **Windows 7 SP1 (x64 and x86) and Windows 8/8.1**: 1.8 builds an x86 exe and compiles both builds against the Windows 7 API level (`_WIN32_WINNT=0x0601`); Windows 10-only features (per-monitor DPI, dark popup menus, per-user services) are detected at run time and skipped. Not yet tested on a real Windows 7 machine. Windows 7 has no Store apps, so the future Apps manager will not exist there.
+
+## 2.0 additions
+New navy UI (sidebar, Care scan, cards, Toolbox), Deep scan, auto-update (latest.json + SHA-256 like Feather PDF), uninstaller, delete-permanently option, Open file location rewrite. Still NEXT: scheduler panel for automatic cleaning, system repair, process manager, performance tools, privacy manager, file shredder, driver cleaner/updater.

@@ -1,3 +1,0 @@
-4eb566a83ec5420298fdc118fc6cc9ed62458e229a936af0fa8d1885e08a2278  FeatherSystemUtilities-Setup-1.8.0.exe
-a4f2f726e2e27b6d027381895f272a4b67118cc5c542f77278f220e5ed0b6067  FeatherSystemUtilities-x64.exe
-fe7df498cd51d5c3be175885836adf0316ae67f941c9bd0ce70c9f10ae254b91  FeatherSystemUtilities-x86.exe

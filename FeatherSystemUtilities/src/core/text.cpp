@@ -34,6 +34,32 @@ std::vector<size_t> SelectDuplicatesToRemove(const std::vector<DupRec>& r, int m
     std::vector<size_t> out; for (size_t i = 0; i < r.size(); ++i) if (keep[r[i].group] != i) out.push_back(i); return out;
 }
 
+static std::wstring TrimPath(std::wstring s) { while (!s.empty() && (s.back() == L'\\' || s.back() == L'/' || s.back() == L' ' || s.back() == L'"')) s.pop_back(); size_t b = 0; while (b < s.size() && (s[b] == L' ' || s[b] == L'"')) ++b; return s.substr(b); }
+bool IsPathUnder(const std::wstring& path, const std::wstring& root) {
+    std::wstring p = Lower(TrimPath(path)), r = Lower(TrimPath(root)); if (r.empty()) return false; for (auto& c : p) if (c == L'/') c = L'\\'; for (auto& c : r) if (c == L'/') c = L'\\';
+    return p == r || (p.size() > r.size() && p.compare(0, r.size(), r) == 0 && p[r.size()] == L'\\');
+}
+std::wstring StripVersionSuffix(std::wstring n) {
+    size_t p = n.find_first_of(L"0123456789"); if (p != std::wstring::npos && p > 3 && n[p - 1] == L' ') n = n.substr(0, p - 1);
+    size_t q = n.find(L" ("); if (q != std::wstring::npos) n = n.substr(0, q); while (!n.empty() && n.back() == L' ') n.pop_back(); return n;
+}
+std::wstring ExtractGuid(const std::wstring& s) {
+    for (size_t a = s.find(L'{'); a != std::wstring::npos; a = s.find(L'{', a + 1)) { if (a + 38 > s.size() || s[a + 37] != L'}') continue; bool ok = true;
+        for (size_t i = 1; i < 37; ++i) { wchar_t c = s[a + i]; bool dash = i == 9 || i == 14 || i == 19 || i == 24; if (dash ? c != L'-' : !iswxdigit(c)) { ok = false; break; } }
+        if (ok) return s.substr(a, 38); }
+    return L"";
+}
+std::wstring MsiRemoveArgs(const std::wstring& args, bool silent) {
+    std::wstring a = args; std::wstring l = Lower(a);
+    for (size_t i = 0; i + 1 < l.size(); ++i) if ((l[i] == L'/' || l[i] == L'-') && l[i + 1] == L'i' && (i + 2 >= l.size() || l[i + 2] == L'{' || l[i + 2] == L' ')) { a[i] = L'/'; a[i + 1] = L'X'; break; }
+    if (silent && Lower(a).find(L"/q") == std::wstring::npos) a += L" /qn /norestart"; return a;
+}
+
+int CompareVersions(const std::wstring& a, const std::wstring& b) {
+    auto parts = [](const std::wstring& s) { std::vector<long> v; long cur = 0; bool have = false; for (wchar_t ch : s) { if (ch >= L'0' && ch <= L'9') { cur = cur * 10 + (ch - L'0'); have = true; } else if (ch == L'.') { v.push_back(have ? cur : 0); cur = 0; have = false; } else if (have) break; } if (have) v.push_back(cur); return v; };
+    auto x = parts(a), y = parts(b); size_t n = x.size() > y.size() ? x.size() : y.size(); for (size_t i = 0; i < n; ++i) { long p = i < x.size() ? x[i] : 0, q = i < y.size() ? y[i] : 0; if (p != q) return p < q ? -1 : 1; } return 0;
+}
+
 std::string ToUtf8(const std::wstring& w) {
     std::string o;
     for (size_t i = 0; i < w.size(); ++i) {

@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"1.8.0"
+#define FSU_VERSION L"2.0.0"
 
 namespace fsu {
 
@@ -33,8 +33,9 @@ struct Pal { COLORREF bg, bar, rail, railSel, text, dim, grid, green, red, lav, 
 const Pal& PalFor(int theme);   // 0 Dark 1 Midnight 2 Warm 3 Light
 int ThemeCount();
 struct Settings {
-    int theme = 0, density = 1, startPage = 0;
+    int theme = 4, density = 1, startPage = 0;
     bool hideSystem = true, confirmBatch = true, maximized = false, keepRecent = true;
+    bool autoUpdate = true; long long lastUpdateCheck = 0;                // seconds since 1970 (UTC)
     int largeMinMB = 100, dupMinKB = 1024; std::vector<std::wstring> scanRoots;   // empty = default user folders
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
     std::map<std::wstring, std::vector<int>> colw;   // per page column widths (96-dpi units)
@@ -113,17 +114,36 @@ bool SaveProfile(const std::wstring& label, const std::vector<ServiceEntry>& ite
 bool BuildPlan(const ProfileInfo& p, const std::vector<ServiceEntry>& current, std::vector<PlanItem>& plan, std::wstring& note, std::wstring& err);
 std::wstring PlanText(const std::vector<PlanItem>& plan);
 
+// ---- programs: full uninstaller (programs.cpp) ----
+struct ProgramEntry {
+    std::wstring name, publisher, version, installDate, installLocation, uninstallString, quietUninstallString, displayIcon, type, scope, arch, keyName, key, source;
+    ULONGLONG sizeBytes = 0; bool isMsi = false, canUninstall = true; HKEY root = nullptr; REGSAM view = 0; std::wstring productCode;
+};
+struct ProgramScan { std::vector<ProgramEntry> entries; std::wstring coverage; int skipped = 0; };
+ProgramScan ScanPrograms();
+struct UninstallPlan { std::wstring file, args, note; bool available = false, elevate = false; };
+UninstallPlan PlanUninstall(const ProgramEntry& e, bool silent);
+struct UninstallResult { bool started = false, removed = false; DWORD exitCode = 0; std::wstring note; };
+void RunUninstall(const ProgramEntry& e, bool silent, UninstallResult& r, std::atomic<bool>* cancel);   // blocking; run off the UI thread
+bool ProgramStillInstalled(const ProgramEntry& e);
+bool IsProtectedPath(const std::wstring& path);
+struct LeftoverCtx;
+std::vector<struct CleanItem> FindLeftovers(const ProgramEntry& e, bool includeUninstallKey);   // evidence-based: install folder, name-matched data folders, vendor keys, startup/service/task/shell entries pointing into the install folder
+
 // ---- cleaner: temporary files + invalid registry entries ----
 struct CleanItem {
     std::wstring id, name, type, detail, location, why;
     ULONGLONG bytes = 0, files = 0; int kind = 0;               // 0 temp folders, 1 recycle bin, 2 registry key, 3 registry value, 4 run command, 5 open Windows tool
     int risk = 0;                                                // 0 low, 1 medium, 2 high
+    int timeoutSec = 30;                                         // for kind 4 commands
+    // kinds 6 = delete a whole leftover folder (incl. the folder itself), 8 = delete service (cmd = service name), 9 = delete scheduled task (cmd = task path)
     std::vector<std::wstring> services; std::wstring pattern, cmd; int minAgeDays = 0; bool ignoreRecent = false;
     bool needsAdmin = false; HKEY root = nullptr; REGSAM view = 0; std::wstring subKey, valueName;
     std::vector<std::wstring> paths;
 };
 struct CleanScan { std::vector<CleanItem> items; std::wstring coverage; ULONGLONG totalBytes = 0; int registryCount = 0; };
 CleanScan ScanCleaner(bool keepRecent);
+CleanScan ScanDeep(std::atomic<bool>* cancel, const std::function<void(const std::wstring&)>& progress);   // walks all fixed drives for stray junk (kind 7 file lists) + developer/app caches
 struct CleanResult { ULONGLONG bytes = 0, files = 0; int ok = 0, skipped = 0, failed = 0; std::wstring firstErr, backupPath; };
 void RunClean(const std::vector<CleanItem>& items, bool keepRecent, CleanResult& r);   // temp files are permanently deleted; registry items are backed up first
 std::vector<BackupInfo> ListRegBackups();
@@ -135,8 +155,16 @@ struct FileScan { std::vector<FileEntry> files; std::wstring coverage; ULONGLONG
 struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false, empty = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
 std::vector<std::wstring> DefaultScanRoots();
 void ScanFiles(const FileScanOpts& o, FileScan& out);
-bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);   // to the Recycle Bin (undoable from Explorer)
+bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);
+bool DeleteFilesPermanently(const std::vector<std::wstring>& paths, std::wstring& err);   // not recoverable   // to the Recycle Bin (undoable from Explorer)
 std::wstring FileDateText(ULONGLONG ft);
+
+// ---- updates (update.cpp): the only network feature; reads one small manifest over HTTPS ----
+struct UpdateInfo { bool ok = false; std::wstring version, date, notes, url, sha256, error; ULONGLONG size = 0; };
+bool FetchLatestVersion(UpdateInfo& u);                                     // manifest like Feather PDF's latest.json
+bool DownloadUpdate(const UpdateInfo& u, std::wstring& path, std::wstring& err, std::atomic<bool>* cancel, const std::function<void(ULONGLONG, ULONGLONG)>& progress);   // verifies size + SHA-256
+bool LaunchUpdateInstaller(const std::wstring& installerPath, std::wstring& err);   // elevated silent install, then relaunches this app
+bool IsInstalledCopy();
 
 // ---- dialogs and shell actions (dialogs.cpp) ----
 struct ReportTab { std::wstring name, text; };

@@ -13,3 +13,5 @@
 - KI12: 2.0 UI (navy theme, GDI+ drawing, Care page, banner, sub-tabs) has never been seen running. Layout may need tuning at small window sizes.
 - KI13: Auto-update needs the public repo akshsim1991/FeatherSystemUtilities-releases (latest.json + installer) - see releases-repo/. Until it exists the check says no release is published. Installer is unsigned.
 - KI14: Leftover detection is evidence-based but conservative; it cannot find leftovers whose names/paths do not match the program. Deleting leftover folders is permanent.
+- KI15: 3.0 WebView2 host + all bridge commands are compile-checked only; the page was tested against a mock bridge in Chromium (no console errors), never inside WebView2. WebView2 runtime on Windows 7/8 is Edge 109 (last supported) and must be installed separately; otherwise the classic UI starts. No scheduler, process manager, privacy cleaner or Store apps page in the new UI yet (classic UI has Services/Drivers/History only).
+- KI16: The new UI's Services page hides drivers by default and lacks profiles/properties editors of the classic UI (use `--classic`).

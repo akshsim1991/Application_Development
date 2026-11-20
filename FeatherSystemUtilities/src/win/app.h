@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"2.0.1"
+#define FSU_VERSION L"3.0.0"
 
 namespace fsu {
 
@@ -176,6 +176,7 @@ struct FormField { std::wstring label, value; int type = 0; std::vector<std::wst
 bool FormDialog(HWND owner, const std::wstring& title, const std::wstring& okText, std::vector<FormField>& fields, const std::wstring& note = L"");
 void SetDarkTitleBar(HWND h, bool dark);
 void OpenFileLocation(const std::wstring& program);
+int RunWebUi(HINSTANCE inst, int show, int firstPage, HANDLE* instMutex);   // webui.cpp: 0 = ran, 1 = WebView2 unavailable
 void ShowInRegistryEditor(const std::wstring& location);
 void OnlineLookup(HWND owner, bool virusTotal, const std::wstring& program, const std::wstring& name);
 std::wstring StartupDetailsText(const StartupEntry& e);

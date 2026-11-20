@@ -1329,7 +1329,9 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else if (c.find(L"--cleaner") != wstring::npos) req = P_CLEAN; else if (c.find(L"--large") != wstring::npos) req = P_LARGE; else if (c.find(L"--duplicates") != wstring::npos) req = P_DUPES; else haveReq = false;
     if (GetLastError() == ERROR_ALREADY_EXISTS) { if (HWND e = FindWindowW(L"FeatherSystemUtilitiesWnd", nullptr)) PostMessageW(e, WM_ACTIVATE_PAGE, req, 0); return 0; }   // F004
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    LoadSettings(); MigrateLegacyData(); P = PalFor(Cfg().theme);
+    LoadSettings(); MigrateLegacyData();
+    if (c.find(L"--classic") == wstring::npos && RunWebUi(inst, show, haveReq ? (int)req : 0, &g_mtx) == 0) return 0;   // new HTML UI (WebView2); falls back to the classic Win32 UI when the runtime is missing
+    P = PalFor(Cfg().theme);
     INITCOMMONCONTROLSEX ic{sizeof ic, ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES}; InitCommonControlsEx(&ic);
     DarkModeInit(Cfg().theme); gfx::Init();
     WNDCLASSW wc{}; wc.hInstance = inst; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1));

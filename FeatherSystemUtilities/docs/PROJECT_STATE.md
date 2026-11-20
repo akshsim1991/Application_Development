@@ -10,3 +10,6 @@ Cleaner expanded (WU cache, DO, shader, dumps, logs, prefetch, fontcache, browse
 
 ## 2.0
 Navy UI rewrite, deep scan, uninstaller, auto-update, delete options. Compile-checked only. Release package for the public updates repo: releases-repo/.
+
+## 3.0 (WebView2 UI)
+New UI = `ui/index.html` (single file, vanilla JS, embedded via `tools/embed.py`) hosted by `src/win/webui.cpp` (WebView2, WebView2Loader.dll loaded at runtime, SDK in `third_party/webview2`, MinGW shim `third_party/shim/EventToken.h`). Bridge = JSON messages (`src/win/json.h`, tested): the page names scan items by key or generation+index, never raw paths. Fallback to classic Win32 UI (main.cpp) when the runtime is missing or `--classic`. Dev preview without Windows: `tools/ui-preview/shot.js` (Playwright + `mock.js`). NOT run on real Windows yet.

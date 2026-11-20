@@ -1,7 +1,7 @@
 ; Feather System Utilities - offline installer (NSIS, zlib license). Build: ./build.sh installer
 Unicode true
 !define APP "Feather System Utilities"
-!define VER "2.0.1"
+!define VER "3.0.0"
 !define EXE "FeatherSystemUtilities.exe"
 !define UNKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherSystemUtilities"
 !include "MUI2.nsh"
@@ -14,7 +14,7 @@ InstallDirRegKey HKLM "${UNKEY}" "InstallLocation"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 BrandingText "Developed by Akshaya Simha"
-VIProductVersion "2.0.1.0"
+VIProductVersion "3.0.0.0"
 VIAddVersionKey "ProductName" "${APP}"
 VIAddVersionKey "FileDescription" "${APP} Setup"
 VIAddVersionKey "FileVersion" "${VER}"
@@ -51,8 +51,10 @@ Section "Install"
   SetOutPath "$INSTDIR"
   ${If} ${RunningX64}
     File "..\build\${EXE}"
+    File "..\build\WebView2Loader.dll"
   ${Else}
     File /oname=${EXE} "..\build\FeatherSystemUtilities-x86.exe"
+    File /oname=WebView2Loader.dll "..\build\WebView2Loader-x86.dll"
   ${EndIf}
   File "..\README.md"
   File "..\THIRD_PARTY_NOTICES.md"
@@ -83,6 +85,8 @@ Section "Uninstall"
   ; hand back any startup apps delayed by this program, then remove its scheduled tasks
   ExecWait '"$INSTDIR\${EXE}" --cleanup'
   Delete "$INSTDIR\${EXE}"
+  Delete "$INSTDIR\WebView2Loader.dll"
+  RMDir /r "$LOCALAPPDATA\FeatherSystemUtilities\webview2"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\THIRD_PARTY_NOTICES.md"
   Delete "$INSTDIR\USER_GUIDE.md"

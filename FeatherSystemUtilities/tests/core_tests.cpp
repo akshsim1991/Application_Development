@@ -1,3 +1,4 @@
+#include "../src/win/json.h"
 #include "../src/core/text.h"
 #include <cstdio>
 #include <filesystem>
@@ -80,6 +81,13 @@ int main() {
     CHECK(ExtractGuid(L"MsiExec.exe /I{AC76BA86-7AD7-1033-7B44-AC0F074E4100}") == L"{AC76BA86-7AD7-1033-7B44-AC0F074E4100}" && ExtractGuid(L"{not-a-guid}").empty() && ExtractGuid(L"").empty());
     CHECK(MsiRemoveArgs(L"/I{AC76BA86-7AD7-1033-7B44-AC0F074E4100}", false) == L"/X{AC76BA86-7AD7-1033-7B44-AC0F074E4100}" && MsiRemoveArgs(L"/I{G}", true) == L"/X{G} /qn /norestart" && MsiRemoveArgs(L"/X{G} /qb", true) == L"/X{G} /qb");
     CHECK(CompareVersions(L"1.9.0", L"1.10.0") < 0 && CompareVersions(L"2.0", L"2.0.0") == 0 && CompareVersions(L"2.22.0", L"2.21.9") > 0 && CompareVersions(L"1.9.0", L"1.9.0") == 0 && CompareVersions(L"v1.2", L"1.2.1") < 0);
+    {   // JSON bridge reader/writer
+        js::V v; CHECK(js::Parse("{\"id\":7,\"cmd\":\"clean.run\",\"args\":{\"ids\":[1,2],\"ok\":true,\"s\":\"a\\u00e9\\n\\ud83d\\ude00\"}}", v) && v.num("id") == 7 && v.str("cmd") == "clean.run");
+        const js::V* a = v.get("args"); CHECK(a && a->boolean("ok") && a->get("ids")->a.size() == 2 && a->str("s") == "a\xc3\xa9\n\xf0\x9f\x98\x80");
+        js::V bad; CHECK(!js::Parse("{\"a\":", bad) && !js::Parse("{} x", bad) && !js::Parse(std::string(200, '['), bad));
+        CHECK(js::Q("a\"b\\\n\x01") == "\"a\\\"b\\\\\\n\\u0001\"" && js::Obj().str("k", "v").num("n", 3).boolean("b", true).done() == "{\"k\":\"v\",\"n\":3,\"b\":true}");
+        js::V rt; CHECK(js::Parse(js::Obj().str("x", "q\"\\").raw("arr", js::Arr().add("1").add("\"z\"").done()).done(), rt) && rt.str("x") == "q\"\\" && rt.get("arr")->a.size() == 2);
+    }
     std::printf("%d/%d passed\n", total - fails, total);
     return fails ? 1 : 0;
 }

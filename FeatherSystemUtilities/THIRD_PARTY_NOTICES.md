@@ -11,3 +11,5 @@ Developed by Akshaya Simha. No third-party code is embedded in the application s
 Build toolchain: x86_64-w64-mingw32-g++ 13 (win32 threads), windres, makensis. No package-registry access at runtime.
 No telemetry, no automatic update, no network connections by the app. The app opens your browser only after you confirm "Check on VirusTotal"/"Search online".
 Not code-signed: Windows SmartScreen may warn.
+
+| Microsoft.Web.WebView2 SDK 1.0.2792.45 (headers + WebView2Loader.dll; see third_party/webview2/LICENSE.txt, NOTICE.txt) | Hosts the HTML UI | Microsoft BSD-style license |

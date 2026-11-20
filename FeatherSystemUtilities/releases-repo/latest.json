@@ -1,10 +1,10 @@
 {
-  "version": "3.1.0",
+  "version": "3.2.0",
   "date": "20 November 2026",
-  "notes": "Multi-select with checkboxes everywhere, sorting and filters on every list, Drivers (inventory + Windows Update driver updates), Processes and Tools pages, About menu, byte-for-byte duplicate proof, empty-folder deletion fix, more reliable Open file location.",
+  "notes": "Update check at launch with Update now / Remind me later / Skip. Quarantine and Recovery page, dry-run previews, exclusions and ignored findings, safer uninstaller, startup warnings for security/device/backup software.",
   "windows": {
-    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.1.0.exe",
-    "size": 2185575,
-    "sha256": "f7fe44e74f146875e4232c32ab1153a0d5153b00228ca96512950a79338725d7"
+    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.2.0.exe",
+    "size": 2229477,
+    "sha256": "133137e7c990e0c9f518dc7aa5a87fcf9b7d2f6e954fc8d35d6dc03c3437c0e1"
   }
 }

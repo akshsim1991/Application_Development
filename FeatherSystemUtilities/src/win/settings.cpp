@@ -21,16 +21,25 @@ int ThemeCount() { return 5; }
 
 static Settings g_cfg;
 Settings& Cfg() { return g_cfg; }
+static std::wstring LowerPath(std::wstring s) { for (auto& c : s) c = (wchar_t)towlower(c); while (s.size() > 3 && s.back() == L'\\') s.pop_back(); return s; }
+bool IsExcluded(const std::wstring& path) {
+    if (g_cfg.exclusions.empty()) return false; std::wstring p = LowerPath(path);
+    for (auto& e : g_cfg.exclusions) { std::wstring x = LowerPath(e); if (!x.empty() && (p == x || p.rfind(x + L"\\", 0) == 0)) return true; } return false;
+}
 
 void LoadSettings() {
     std::ifstream f(std::filesystem::path(DataDir() + L"\\settings.ini"), std::ios::binary); std::string line; int guard = 0;
-    while (std::getline(f, line) && ++guard < 500) {
+    while (std::getline(f, line) && ++guard < 2000) {
         if (!line.empty() && line.back() == '\r') line.pop_back();
         size_t eq = line.find('='); if (eq == std::string::npos) continue;
         std::string k = line.substr(0, eq), v = line.substr(eq + 1); int n = atoi(v.c_str());
         if (k == "theme") g_cfg.theme = (n >= 0 && n < 5) ? n : 4; else if (k == "density") g_cfg.density = n ? 1 : 0;
         else if (k == "largeMinMB") g_cfg.largeMinMB = (n >= 1 && n <= 100000) ? n : 100; else if (k == "dupMinKB") g_cfg.dupMinKB = (n >= 1 && n <= 10000000) ? n : 1024;
         else if (k.rfind("scan.", 0) == 0) { if (g_cfg.scanRoots.size() < 20 && !v.empty()) g_cfg.scanRoots.push_back(FromUtf8(v)); }
+        else if (k.rfind("excl.", 0) == 0) { if (g_cfg.exclusions.size() < 100 && !v.empty()) g_cfg.exclusions.push_back(FromUtf8(v)); }
+        else if (k.rfind("ign.", 0) == 0) { if (g_cfg.ignored.size() < 500 && !v.empty()) g_cfg.ignored.push_back(FromUtf8(v)); }
+        else if (k == "skipVersion") g_cfg.skipVersion = FromUtf8(v); else if (k == "deferUntil") g_cfg.deferUntil = atoll(v.c_str());
+        else if (k == "logDays") g_cfg.logRetentionDays = (n >= 0 && n <= 3650) ? n : 0; else if (k == "quarantine") g_cfg.quarantineLeftovers = n != 0;
         else if (k == "autoUpdate") g_cfg.autoUpdate = n != 0; else if (k == "lastUpdateCheck") g_cfg.lastUpdateCheck = atoll(v.c_str());
         else if (k == "keepRecent") g_cfg.keepRecent = n != 0; else if (k == "hideSystem") g_cfg.hideSystem = n != 0; else if (k == "confirmBatch") g_cfg.confirmBatch = n != 0;
         else if (k == "startPage") g_cfg.startPage = (n >= 0 && n < 13) ? n : 0; else if (k == "maximized") g_cfg.maximized = n != 0;
@@ -46,6 +55,9 @@ void SaveSettings() {
     std::ostringstream o;
     o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nautoUpdate=" << g_cfg.autoUpdate << "\nlastUpdateCheck=" << g_cfg.lastUpdateCheck << "\nkeepRecent=" << g_cfg.keepRecent << "\nlargeMinMB=" << g_cfg.largeMinMB << "\ndupMinKB=" << g_cfg.dupMinKB << "\nstartPage=" << g_cfg.startPage
       << "\nmaximized=" << g_cfg.maximized << "\nwinX=" << g_cfg.winX << "\nwinY=" << g_cfg.winY << "\nwinW=" << g_cfg.winW << "\nwinH=" << g_cfg.winH << "\n";
+    o << "skipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
+    for (size_t i = 0; i < g_cfg.exclusions.size(); ++i) o << "excl." << i << "=" << ToUtf8(g_cfg.exclusions[i]) << "\n";
+    for (size_t i = 0; i < g_cfg.ignored.size(); ++i) o << "ign." << i << "=" << ToUtf8(g_cfg.ignored[i]) << "\n";
     for (size_t i = 0; i < g_cfg.scanRoots.size(); ++i) o << "scan." << i << "=" << ToUtf8(g_cfg.scanRoots[i]) << "\n";
     for (auto& kv : g_cfg.colw) { o << "cols." << ToUtf8(kv.first) << "="; for (size_t i = 0; i < kv.second.size(); ++i) o << (i ? "," : "") << kv.second[i]; o << "\n"; }
     AtomicWrite(DataDir() + L"\\settings.ini", o.str());

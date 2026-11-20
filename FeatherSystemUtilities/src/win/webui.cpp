@@ -14,6 +14,7 @@
 #include <wuapi.h>
 #include <commdlg.h>
 #include <mutex>
+#include <tuple>
 #include <set>
 #include <fstream>
 #include <filesystem>
@@ -35,6 +36,16 @@ static string U(const wstring& w) { return ToUtf8(w); }
 static wstring W(const string& s) { return FromUtf8(s); }
 static string Q(const wstring& w) { return js::Q(U(w)); }
 static string Err(const wstring& e) { return js::Obj().boolean("ok", false).str("error", U(e)).done(); }
+
+static wstring LowerW(wstring s) { for (auto& c : s) c = (wchar_t)towlower(c); return s; }
+static bool HasAny(const wstring& hay, std::initializer_list<const wchar_t*> needles) { for (auto* n : needles) if (hay.find(n) != wstring::npos) return true; return false; }
+static void ClassifyStartup(const StartupEntry& e, string& kind, wstring& advice) {
+    wstring s = LowerW(e.name + L" " + e.publisher + L" " + e.command); kind.clear(); advice.clear();
+    if (HasAny(s, {L"defender", L"windows security", L"securityhealth", L"antivirus", L"kaspersky", L"norton", L"mcafee", L"avast", L"bitdefender", L"eset", L"malwarebytes", L"sophos", L"trend micro", L"crowdstrike", L"webroot", L"f-secure"})) { kind = "security"; advice = L"Security software. Disabling it can leave this PC without real-time protection."; }
+    else if (HasAny(s, {L"narrator", L"magnif", L"on-screen keyboard", L"osk.exe", L"utilman", L"voiceaccess", L"nvda", L"jaws"})) { kind = "accessibility"; advice = L"Accessibility tool. Disabling it may remove features someone relies on."; }
+    else if (HasAny(s, {L"onedrive", L"dropbox", L"google drive", L"googledrive", L"icloud", L"backup", L"acronis", L"veeam", L"sync"})) { kind = "backup"; advice = L"Backup or sync software. Disabling it can stop your files from being backed up or synced."; }
+    else if (HasAny(s, {L"realtek", L"nvidia", L"radeon", L"synaptics", L"touchpad", L"logitech", L"razer", L"corsair", L"steelseries", L"bluetooth", L"wacom", L"hotkey", L"intel(r)", L"intel corporation", L"advanced micro devices"})) { kind = "device"; advice = L"Device software. Disabling it can disable hotkeys, touchpad gestures, audio or graphics controls."; }
+}
 
 // ---------- COM callback helper ----------
 // MinGW cannot resolve __uuidof for the WebView2 header's interfaces, so the IIDs are listed here (values from WebView2.h).
@@ -65,12 +76,19 @@ static void Emit(const char* ev, const string& data) { PostToPage(js::Obj().str(
 static void Progress(const wstring& m) { Emit("progress", js::Obj().str("text", U(m)).done()); }
 
 // ---------- JSON builders for engine structs ----------
+static bool ProtectedProgram(const ProgramEntry& e, wstring& why) {
+    wstring s = LowerW(e.name + L" " + e.publisher);
+    if (HasAny(s, {L"defender", L"antivirus", L"anti-virus", L"endpoint", L"kaspersky", L"norton", L"mcafee", L"avast", L"bitdefender", L"eset ", L"malwarebytes", L"sophos", L"trend micro", L"crowdstrike", L"webroot"})) { why = L"a security product"; return true; }
+    if (HasAny(s, {L" driver", L"chipset", L"graphics driver", L"management engine", L"rapid storage", L"nvidia graphics", L"amd software", L"radeon", L"realtek audio", L"realtek high definition"})) { why = L"a driver or hardware component"; return true; }
+    if (HasAny(s, {L"visual c++", L"microsoft .net", L"windows sdk", L"webview2", L"directx", L"vcredist", L"windows software development kit"})) { why = L"a system component other programs depend on"; return true; }
+    return false;
+}
 static bool CanDeleteEntry(const StartupEntry& e) {
     if (e.managedDelay) return false;
     return e.type == L"Registry" || e.type == L"Registry (RunOnce)" || e.type.rfind(L"Scheduled task", 0) == 0 || e.type.rfind(L"Explorer add-on", 0) == 0 || e.type == L"Startup folder";
 }
 static string CleanItemJson(const CleanItem& c, size_t i) {
-    return js::Obj().num("i", (double)i).str("name", U(c.name)).str("type", U(c.type)).str("detail", U(c.detail)).str("why", U(c.why)).str("loc", U(c.location)).num("bytes", (double)c.bytes).num("files", (double)c.files)
+    return js::Obj().num("i", (double)i).str("id", U(c.id.empty() ? c.name : c.id)).str("name", U(c.name)).str("type", U(c.type)).str("detail", U(c.detail)).str("why", U(c.why)).str("loc", U(c.location)).num("bytes", (double)c.bytes).num("files", (double)c.files)
         .num("risk", c.risk).num("kind", c.kind).boolean("admin", c.needsAdmin).done();
 }
 static string CleanJson() {
@@ -78,16 +96,16 @@ static string CleanJson() {
     return js::Obj().num("gen", g_clGen).raw("items", a.done()).str("coverage", U(g_cl.coverage)).num("totalBytes", (double)g_cl.totalBytes).num("registry", g_cl.registryCount).done();
 }
 static string StartupJson(const StartupEntry& e) {
-    wstring prog = e.program; bool exists = prog.empty() ? true : FileExistsExpanded(prog);
+    wstring prog = e.program; bool exists = prog.empty() ? true : FileExistsExpanded(prog); string kindS; wstring advice; ClassifyStartup(e, kindS, advice);
     return js::Obj().str("key", U(e.key)).str("name", U(e.name)).str("state", U(e.state)).str("type", U(e.type)).str("starts", U(e.starts)).str("scope", U(e.scope)).str("command", U(e.command)).str("program", U(e.program))
         .str("publisher", U(e.publisher)).str("version", U(e.version)).str("signature", U(e.signature)).str("warnings", U(e.warnings)).str("location", U(e.location)).str("firstSeen", U(e.firstSeen))
         .boolean("canToggle", e.toggle != Toggle::None && !e.managedDelay).boolean("canDelete", CanDeleteEntry(e)).boolean("canDelay", CanDelay(e)).boolean("microsoft", e.microsoft).boolean("system", e.isSystem).boolean("recent", e.recent)
-        .boolean("missing", !exists).boolean("delayed", e.managedDelay).str("details", U(StartupDetailsText(e))).done();
+        .boolean("missing", !exists).boolean("delayed", e.managedDelay).str("kind", kindS).str("advice", U(advice)).str("details", U(StartupDetailsText(e))).done();
 }
 static string ProgramJson(const ProgramEntry& e) {
-    UninstallPlan s = PlanUninstall(e, true);
+    UninstallPlan s = PlanUninstall(e, true); wstring why; bool prot = ProtectedProgram(e, why);
     return js::Obj().str("key", U(e.key)).str("name", U(e.name)).str("publisher", U(e.publisher)).str("version", U(e.version)).str("date", U(e.installDate)).num("size", (double)e.sizeBytes).str("type", U(e.type)).str("scope", U(e.scope))
-        .str("location", U(e.installLocation)).boolean("canUninstall", e.canUninstall).boolean("silent", s.available).str("silentNote", U(s.note)).done();
+        .str("location", U(e.installLocation)).boolean("canUninstall", e.canUninstall).boolean("silent", s.available).str("silentNote", U(s.note)).str("uninstall", U(e.uninstallString)).str("quiet", U(e.quietUninstallString)).str("source", U(e.source.empty() ? wstring(e.root == HKEY_CURRENT_USER ? L"HKCU" : L"HKLM") + L"\\...\\Uninstall\\" + e.keyName : e.source)).boolean("protected", prot).str("why", U(why)).done();
 }
 static string ServiceJson(const ServiceEntry& s) {
     js::Arr d; for (auto& x : s.deps) d.add(Q(x));
@@ -161,6 +179,39 @@ static ULONGLONG ProcStart(HANDLE h) { FILETIME c, e, k, u; return GetProcessTim
 static bool ProtectedProcess(const wstring& n) { static const wchar_t* p[] = {L"system", L"registry", L"smss.exe", L"csrss.exe", L"wininit.exe", L"winlogon.exe", L"services.exe", L"lsass.exe", L"lsm.exe", L"fontdrvhost.exe", L"memory compression", L"secure system"}; for (auto* x : p) if (_wcsicmp(n.c_str(), x) == 0) return true; return false; }
 static std::vector<wstring> g_scanSeen;
 
+
+// ---------- classification, ignore lists, journal housekeeping, restore points ----------
+static bool LeftoverSafe(const CleanItem& c) {   // never offer drivers, system folders or system registry as leftovers
+    wstring l = LowerW(c.location + L" " + c.subKey);
+    if (l.find(L"\\drivers\\") != wstring::npos || l.find(L"\\system32\\") != wstring::npos || l.find(L"\\syswow64\\") != wstring::npos || l.find(L"\\winsxs\\") != wstring::npos || l.find(L"hklm\\system") != wstring::npos || LowerW(c.subKey).rfind(L"system\\", 0) == 0) return false;
+    if (c.kind == 8) { if (IsCriticalService(c.cmd)) return false; SC_HANDLE m = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); bool ok = true; if (m) { SC_HANDLE sv = OpenServiceW(m, c.cmd.c_str(), SERVICE_QUERY_CONFIG); if (sv) { DWORD n = 0; QueryServiceConfigW(sv, nullptr, 0, &n); std::vector<BYTE> b(n ? n : 1); if (QueryServiceConfigW(sv, (LPQUERY_SERVICE_CONFIGW)b.data(), n, &n)) { DWORD t = ((LPQUERY_SERVICE_CONFIGW)b.data())->dwServiceType; if (t & (SERVICE_KERNEL_DRIVER | SERVICE_FILE_SYSTEM_DRIVER)) ok = false; } CloseServiceHandle(sv); } CloseServiceHandle(m); } return ok; }
+    return true;
+}
+static string IgnId(const string& kind, const wstring& id) { return kind + "|" + U(id); }
+static bool IsIgnored(const string& kind, const wstring& id) { string k = IgnId(kind, id) + "|"; for (auto& x : Cfg().ignored) { string u = U(x); if (u.compare(0, k.size(), k) == 0) return true; } return false; }
+static void PruneJournal(int days) {
+    if (days <= 0) return; FILETIME ft; GetSystemTimeAsFileTime(&ft); ULONGLONG t = (((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) - (ULONGLONG)days * 864000000000ULL; ft.dwLowDateTime = (DWORD)t; ft.dwHighDateTime = (DWORD)(t >> 32); SYSTEMTIME st; FileTimeToSystemTime(&ft, &st);
+    char cut[32]; snprintf(cut, sizeof cut, "%04d-%02d-%02dT%02d:%02d:%02d", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+    std::ifstream f(std::filesystem::path(DataDir() + L"\\journal.jsonl"), std::ios::binary); if (!f) return; string line, out; bool changed = false; while (std::getline(f, line)) { if (line.empty()) continue; js::V v; string tm = js::Parse(line, v) ? v.str("time") : ""; if (tm.size() >= 19 && tm.compare(0, 19, cut) < 0) { changed = true; continue; } out += line + "\n"; }
+    f.close(); if (changed) AtomicWrite(DataDir() + L"\\journal.jsonl", out);
+}
+static wstring CimDate(const wstring& d) { return d.size() >= 14 ? d.substr(0, 4) + L"-" + d.substr(4, 2) + L"-" + d.substr(6, 2) + L" " + d.substr(8, 2) + L":" + d.substr(10, 2) : d; }
+static bool ListRestorePoints(std::vector<std::tuple<long long, wstring, wstring, int>>& out, wstring& err) {
+    IWbemLocator* loc = nullptr; IWbemServices* svc = nullptr; IEnumWbemClassObject* en = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WbemLocator, nullptr, CLSCTX_INPROC_SERVER, IID_IWbemLocator, (void**)&loc)) || !loc) { err = L"WMI is not available."; return false; }
+    BSTR ns = SysAllocString(L"ROOT\\DEFAULT"); HRESULT hr = loc->ConnectServer(ns, nullptr, nullptr, nullptr, 0, nullptr, nullptr, &svc); SysFreeString(ns); if (FAILED(hr) || !svc) { loc->Release(); err = L"Could not read restore points (administrator rights may be required)."; return false; }
+    CoSetProxyBlanket(svc, RPC_C_AUTHN_WINNT, RPC_C_AUTHZ_NONE, nullptr, RPC_C_AUTHN_LEVEL_CALL, RPC_C_IMP_LEVEL_IMPERSONATE, nullptr, EOAC_NONE);
+    BSTR ql = SysAllocString(L"WQL"), q = SysAllocString(L"SELECT SequenceNumber,Description,CreationTime,RestorePointType FROM SystemRestore"); hr = svc->ExecQuery(ql, q, WBEM_FLAG_FORWARD_ONLY | WBEM_FLAG_RETURN_IMMEDIATELY, nullptr, &en); SysFreeString(ql); SysFreeString(q);
+    bool ok = SUCCEEDED(hr) && en; if (ok) { IWbemClassObject* o = nullptr; ULONG n = 0; while (en->Next(WBEM_INFINITE, 1, &o, &n) == S_OK && n) { VARIANT a, b, c, d; VariantInit(&a); VariantInit(&b); VariantInit(&c); VariantInit(&d); o->Get(L"SequenceNumber", 0, &a, nullptr, nullptr); o->Get(L"Description", 0, &b, nullptr, nullptr); o->Get(L"CreationTime", 0, &c, nullptr, nullptr); o->Get(L"RestorePointType", 0, &d, nullptr, nullptr);
+            out.emplace_back(a.vt == VT_I4 || a.vt == VT_UI4 ? (long long)a.lVal : 0, VStr(b), CimDate(VStr(c)), d.vt == VT_I4 || d.vt == VT_UI4 ? (int)d.lVal : 0); VariantClear(&a); VariantClear(&b); VariantClear(&c); VariantClear(&d); o->Release(); } en->Release(); } else err = L"Could not read restore points.";
+    svc->Release(); loc->Release(); return ok;
+}
+#pragma pack(push, 1)
+struct RPInfo { DWORD ev; DWORD type; INT64 seq; WCHAR desc[256]; };
+struct RPStatus { DWORD status; INT64 seq; };
+#pragma pack(pop)
+typedef BOOL(WINAPI* PFN_SRSet)(RPInfo*, RPStatus*);
+
 // ---------- request dispatch ----------
 using Fn = std::function<string(const js::V&)>;
 struct AsyncJob { long id; Fn fn; js::V a; };
@@ -175,6 +226,8 @@ static void RunAsync(long id, Fn fn, const js::V a) {
 }
 static string Ok(const char* k = nullptr, const string& raw = "") { js::Obj o; o.boolean("ok", true); if (k) o.raw(k, raw); return o.done(); }
 
+static bool StartWithWindows() { HKEY k; bool on = false; if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS) { on = RegQueryValueExW(k, L"FeatherSystemUtilities", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; RegCloseKey(k); } return on; }
+static bool SetStartWithWindows(bool on) { HKEY k; if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &k, nullptr) != ERROR_SUCCESS) return false; bool ok; if (on) { wchar_t exe[MAX_PATH]; GetModuleFileNameW(nullptr, exe, MAX_PATH); wstring v = L"\"" + wstring(exe) + L"\""; ok = RegSetValueExW(k, L"FeatherSystemUtilities", 0, REG_SZ, (const BYTE*)v.c_str(), (DWORD)((v.size() + 1) * 2)) == ERROR_SUCCESS; } else { LONG r = RegDeleteValueW(k, L"FeatherSystemUtilities"); ok = r == ERROR_SUCCESS || r == ERROR_FILE_NOT_FOUND; } RegCloseKey(k); return ok; }
 static string ExeDir() { wchar_t p[MAX_PATH]; GetModuleFileNameW(nullptr, p, MAX_PATH); PathRemoveFileSpecW(p); return U(p); }
 static bool Newer(const wstring& v) { return CompareVersions(v, FSU_VERSION) > 0; }
 
@@ -182,11 +235,11 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
-        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0;
+        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0; else if (k == "quarantine") c.quarantineLeftovers = v != 0; else if (k == "logDays") c.logRetentionDays = (int)std::clamp(v, 0.0, 3650.0);
         else if (k == "largeMinMB") c.largeMinMB = (int)std::clamp(v, 1.0, 1000000.0); else if (k == "dupMinKB") c.dupMinKB = (int)std::clamp(v, 1.0, 100000000.0); else return Err(L"Unknown setting.");
         SaveSettings(); return Ok(); };
     h["app.restartAdmin"] = [](const js::V&) {
@@ -199,16 +252,22 @@ static std::map<string, Fn>& Handlers() {
     h["clean.scan"] = [](const js::V& a) {
         bool deep = a.boolean("deep"); CleanScan s = ScanCleaner(Cfg().keepRecent);
         if (deep) { g_cancel = false; CleanScan d = ScanDeep(&g_cancel, [](const wstring& m) { Progress(m); }); std::set<wstring> have; for (auto& i : s.items) have.insert(i.id); for (auto& i : d.items) if (!have.count(i.id)) { s.items.push_back(i); s.totalBytes += i.bytes; } s.coverage += L" " + d.coverage; }
-        std::lock_guard<std::mutex> l(g_m); g_cl = std::move(s); ++g_clGen; return Ok("scan", CleanJson()); };
+        int hidden = 0; { std::vector<CleanItem> keep; for (auto& i : s.items) { bool ex = IsExcluded(i.location); for (auto& p : i.paths) if (IsExcluded(p)) ex = true; if (ex || IsIgnored("clean", i.id.empty() ? i.name : i.id)) { ++hidden; s.totalBytes -= std::min(s.totalBytes, i.bytes); } else keep.push_back(i); } s.items = std::move(keep); }
+        std::lock_guard<std::mutex> l(g_m); g_cl = std::move(s); ++g_clGen; string j = CleanJson(); j.pop_back(); j += ",\"hidden\":" + std::to_string(hidden) + "}"; return Ok("scan", j); };
+    h["clean.preview"] = [](const js::V& a) {
+        std::vector<CleanItem> sel; { std::lock_guard<std::mutex> l(g_m); if ((int)a.num("gen", -1) != g_clGen) return Err(L"The list changed. Scan again."); if (auto* v = a.get("ids")) for (auto& x : v->a) { size_t i = (size_t)x.n; if (x.t == js::V::Num && i < g_cl.items.size()) sel.push_back(g_cl.items[i]); } }
+        js::Arr out; for (auto& it : sel) { std::vector<PreviewRow> rows; ULONGLONG total = 0; PreviewClean(it, Cfg().keepRecent, 300, rows, total); js::Arr fr; for (auto& r : rows) fr.add(js::Obj().str("path", U(r.path)).num("bytes", (double)r.bytes).str("date", U(FileDateText(r.mtime))).done());
+            bool recoverable = Cfg().quarantineLeftovers && (it.kind == 6 || it.kind == 7); out.add(js::Obj().str("name", U(it.name)).num("kind", it.kind).num("bytes", (double)it.bytes).num("files", (double)it.files).num("shown", (double)rows.size()).num("total", (double)total).boolean("recoverable", recoverable).str("how", U(it.kind == 1 ? L"Empties the Recycle Bin (not recoverable)." : it.kind == 2 || it.kind == 3 ? L"Registry entry: exported to a backup first, restorable from Recovery." : it.kind == 4 || it.kind == 5 ? L"Runs a Windows maintenance command." : it.kind == 8 ? L"Deletes a Windows service (administrator rights needed)." : it.kind == 9 ? L"Deletes a scheduled task (XML saved first)." : recoverable ? L"Moved to quarantine: restorable from Recovery." : L"Deleted permanently. These are caches/temp files Windows rebuilds.")).raw("rows", fr.done()).done()); }
+        return js::Obj().boolean("ok", true).raw("items", out.done()).done(); };
     h["clean.run"] = [](const js::V& a) {
         std::vector<CleanItem> sel; { std::lock_guard<std::mutex> l(g_m); if ((int)a.num("gen", -1) != g_clGen) return Err(L"The list changed. Scan again.");
             if (auto* v = a.get("ids")) for (auto& x : v->a) { size_t i = (size_t)x.n; if (x.t == js::V::Num && i < g_cl.items.size()) sel.push_back(g_cl.items[i]); } }
-        if (sel.empty()) return Err(L"Nothing selected."); CleanResult r; RunClean(sel, Cfg().keepRecent, r);
+        if (sel.empty()) return Err(L"Nothing selected."); CleanResult r; RunClean(sel, Cfg().keepRecent, r, Cfg().quarantineLeftovers);
         return js::Obj().boolean("ok", true).num("bytes", (double)r.bytes).num("files", (double)r.files).num("done", r.ok).num("skipped", r.skipped).num("failed", r.failed).str("firstError", U(r.firstErr)).str("backup", U(r.backupPath)).done(); };
     h["clean.cancel"] = [](const js::V&) { g_cancel = true; return Ok(); };
 
     // ---- startup ----
-    h["startup.list"] = [](const js::V&) { StartupScan s = ScanStartup(); js::Arr a; for (auto& e : s.entries) a.add(StartupJson(e)); string cov = U(s.coverage); { std::lock_guard<std::mutex> l(g_m); g_su = std::move(s); } return js::Obj().boolean("ok", true).raw("items", a.done()).str("coverage", cov).done(); };
+    h["startup.list"] = [](const js::V&) { StartupScan s = ScanStartup(); int hidden = 0; std::vector<StartupEntry> keep; for (auto& e : s.entries) { if (IsIgnored("startup", e.key)) ++hidden; else keep.push_back(e); } s.entries = std::move(keep); js::Arr a; for (auto& e : s.entries) a.add(StartupJson(e)); string cov = U(s.coverage); { std::lock_guard<std::mutex> l(g_m); g_su = std::move(s); } return js::Obj().boolean("ok", true).raw("items", a.done()).str("coverage", cov).num("hidden", hidden).done(); };
     auto findSu = [](const string& key, StartupEntry& out) { std::lock_guard<std::mutex> l(g_m); for (auto& e : g_su.entries) if (U(e.key) == key) { out = e; return true; } return false; };
     h["startup.set"] = [findSu](const js::V& a) {
         std::vector<string> keys = a.strs("keys"); bool en = a.boolean("enable"); int ok = 0, bad = 0; wstring first; for (auto& k : keys) { StartupEntry e; if (!findSu(k, e) || e.toggle == Toggle::None) { ++bad; continue; } wstring err; if (SetStartupEnabled(e, en, err)) ++ok; else { ++bad; if (first.empty()) first = e.name + L": " + err; } }
@@ -228,18 +287,21 @@ static std::map<string, Fn>& Handlers() {
     h["programs.list"] = [](const js::V&) { ProgramScan s = ScanPrograms(); js::Arr a; for (auto& e : s.entries) a.add(ProgramJson(e)); string cov = U(s.coverage); { std::lock_guard<std::mutex> l(g_m); g_pg = std::move(s); } return js::Obj().boolean("ok", true).raw("items", a.done()).str("coverage", cov).done(); };
     h["programs.uninstall"] = [](const js::V& a) {
         ProgramEntry e; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& p : g_pg.entries) if (U(p.key) == a.str("key")) { e = p; f = true; break; } if (!f) return Err(L"Program not found. Refresh the list."); }
-        bool silent = a.boolean("silent"), force = a.boolean("force"); std::vector<CleanItem> left; bool removed = false; wstring note;
+        bool silent = a.boolean("silent"), force = a.boolean("force"); std::vector<CleanItem> left; bool removed = false; wstring note; wstring pwhy; bool prot = ProtectedProgram(e, pwhy);
+        if (force && prot) return Err(L"Force remove is disabled for " + e.name + L": it looks like " + pwhy + L". Use its own uninstaller.");
         if (force) { Progress(L"Looking for leftovers of " + e.name + L"…"); left = FindLeftovers(e, true); removed = true; }
         else { UninstallPlan pl = PlanUninstall(e, silent); if (!pl.available) return Err(pl.note.empty() ? L"This uninstall method is not available." : pl.note);
             Progress((silent ? L"Uninstalling silently: " : L"Uninstalling: ") + e.name + L"…"); UninstallResult r; RunUninstall(e, silent, r, nullptr); removed = r.removed; note = r.note;
-            if (removed) { Progress(L"Looking for leftovers…"); left = FindLeftovers(e, false); } }
+            if (removed && !prot) { Progress(L"Looking for leftovers…"); left = FindLeftovers(e, false); } else if (removed) note = L"Feather does not search for leftovers of " + pwhy + L"."; }
+        { std::vector<CleanItem> safe; for (auto& c : left) if (LeftoverSafe(c) && !IsExcluded(c.location)) safe.push_back(c); left = std::move(safe); }
         std::lock_guard<std::mutex> l(g_m); if (a.boolean("keep")) g_left.insert(g_left.end(), left.begin(), left.end()); else { g_left = left; ++g_leftGen; } js::Arr arr; for (size_t i = 0; i < g_left.size(); ++i) arr.add(CleanItemJson(g_left[i], i));
         return js::Obj().boolean("ok", true).boolean("removed", removed).str("note", U(note)).num("gen", g_leftGen).raw("leftovers", arr.done()).done(); };
+    h["programs.openFolder"] = [](const js::V& a) { wstring d; { std::lock_guard<std::mutex> l(g_m); for (auto& p : g_pg.entries) if (U(p.key) == a.str("key")) { d = ExpandEnv(p.installLocation); break; } } if (d.empty() || GetFileAttributesW(d.c_str()) == INVALID_FILE_ATTRIBUTES) return Err(L"The install folder is not recorded or no longer exists."); wstring e; return OpenFileLocationEx(d, e) ? Ok() : Err(e); };
     h["programs.removeLeftovers"] = [](const js::V& a) {
         std::vector<CleanItem> sel; { std::lock_guard<std::mutex> l(g_m); if ((int)a.num("gen", -1) != g_leftGen) return Err(L"The leftover list changed. Run the check again.");
             if (auto* v = a.get("ids")) for (auto& x : v->a) { size_t i = (size_t)x.n; if (x.t == js::V::Num && i < g_left.size()) sel.push_back(g_left[i]); } }
-        if (sel.empty()) return Err(L"Nothing selected."); CleanResult r; RunClean(sel, false, r);
-        return js::Obj().boolean("ok", true).num("bytes", (double)r.bytes).num("done", r.ok).num("skipped", r.skipped).num("failed", r.failed).str("firstError", U(r.firstErr)).done(); };
+        if (sel.empty()) return Err(L"Nothing selected."); CleanResult r; RunClean(sel, false, r, Cfg().quarantineLeftovers);
+        return js::Obj().boolean("ok", true).boolean("quarantined", Cfg().quarantineLeftovers).num("bytes", (double)r.bytes).num("done", r.ok).num("skipped", r.skipped).num("failed", r.failed).str("firstError", U(r.firstErr)).done(); };
 
     // ---- services ----
     h["services.list"] = [](const js::V& a) { ServiceScan s = ScanServices(a.boolean("drivers")); js::Arr arr; for (auto& e : s.entries) arr.add(ServiceJson(e)); string cov = U(s.coverage); { std::lock_guard<std::mutex> l(g_m); g_sv = std::move(s); } return js::Obj().boolean("ok", true).raw("items", arr.done()).str("coverage", cov).done(); };
@@ -310,12 +372,49 @@ static std::map<string, Fn>& Handlers() {
         if (!found) return Err(L"Backup not found."); wstring err, sum; bool ok = kind == "registry" ? RestoreRegBackup(p, err, sum) : RestoreBackup(p, err, sum); return ok ? js::Obj().boolean("ok", true).str("summary", U(sum)).done() : Err(err); };
 
     // ---- updates ----
-    h["update.check"] = [](const js::V&) { UpdateInfo u; if (!FetchLatestVersion(u) || !u.ok) return js::Obj().boolean("ok", false).str("error", U(u.error.empty() ? L"Could not reach the update server." : u.error)).done();
-        return js::Obj().boolean("ok", true).boolean("newer", Newer(u.version)).str("version", U(u.version)).str("date", U(u.date)).str("notes", U(u.notes)).num("size", (double)u.size).done(); };
+    h["update.check"] = [](const js::V& a) { UpdateInfo u; if (!FetchLatestVersion(u) || !u.ok) return js::Obj().boolean("ok", false).str("error", U(u.error.empty() ? L"Could not reach the update server." : u.error)).done();
+        bool newer = Newer(u.version), launch = a.boolean("launch"); bool suppressed = false; if (launch && newer) { FILETIME ft; GetSystemTimeAsFileTime(&ft); long long now = (long long)((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 10000000ULL) - 11644473600LL; auto& c = Cfg(); if (c.skipVersion == u.version || now < c.deferUntil) suppressed = true; c.lastUpdateCheck = now; SaveSettings(); }
+        return js::Obj().boolean("ok", true).boolean("newer", newer).boolean("suppressed", suppressed).str("version", U(u.version)).str("date", U(u.date)).str("notes", U(u.notes)).num("size", (double)u.size).done(); };
+    h["update.skip"] = [](const js::V& a) { Cfg().skipVersion = W(a.str("version")); SaveSettings(); return Ok(); };
+    h["update.defer"] = [](const js::V& a) { FILETIME ft; GetSystemTimeAsFileTime(&ft); long long now = (long long)((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 10000000ULL) - 11644473600LL; Cfg().deferUntil = now + (long long)std::clamp(a.num("hours", 24), 1.0, 720.0) * 3600; SaveSettings(); return Ok(); };
     h["update.install"] = [](const js::V&) {
         UpdateInfo u; if (!FetchLatestVersion(u) || !u.ok || !Newer(u.version)) return Err(L"No newer version is available."); wstring path, err;
         if (!DownloadUpdate(u, path, err, nullptr, [](ULONGLONG got, ULONGLONG all) { Emit("download", js::Obj().num("got", (double)got).num("all", (double)all).done()); })) return Err(err);
         if (!LaunchUpdateInstaller(path, err)) return Err(err); PostMessageW(g_wnd, WM_CLOSE, 0, 0); return Ok(); };
+
+    // ---- application settings helpers ----
+    h["app.startWithWindows"] = [](const js::V& a) { bool on = a.boolean("on"); return SetStartWithWindows(on) ? Ok() : Err(L"Windows refused the change to your startup list."); };
+    h["journal.clear"] = [](const js::V&) { bool ok = AtomicWrite(DataDir() + L"\\journal.jsonl", ""); if (ok) WriteJournal(L"Journal", L"user", L"history present", L"history cleared", L"ok", false); return ok ? Ok() : Err(L"The journal could not be cleared."); };
+
+    // ---- ignored findings and exclusions ----
+    h["ignore.list"] = [](const js::V&) { js::Arr arr; size_t i = 0; for (auto& x : Cfg().ignored) { string u = U(x); size_t p1 = u.find('|'), p2 = p1 == string::npos ? p1 : u.find('|', p1 + 1); if (p2 == string::npos) { ++i; continue; } arr.add(js::Obj().num("i", (double)i++).str("kind", u.substr(0, p1)).str("label", u.substr(p2 + 1)).done()); } return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
+    h["ignore.add"] = [](const js::V& a) { string kind = a.str("kind"); if (kind != "clean" && kind != "startup" && kind != "driver") return Err(L"Unknown finding type."); int n = 0; if (auto* v = a.get("items")) for (auto& x : v->a) { string id = x.str("id"), label = x.str("label"); if (id.empty() || Cfg().ignored.size() >= 500) continue; if (id.find('|') != string::npos) continue; string e = kind + "|" + id + "|" + label; Cfg().ignored.push_back(W(e)); ++n; } SaveSettings(); return js::Obj().boolean("ok", true).num("added", n).done(); };
+    h["ignore.remove"] = [](const js::V& a) { size_t i = (size_t)a.num("i", -1); auto& v = Cfg().ignored; if (i < v.size()) v.erase(v.begin() + i); SaveSettings(); return Ok(); };
+    h["ignore.clear"] = [](const js::V&) { Cfg().ignored.clear(); SaveSettings(); return Ok(); };
+    h["exclusions.list"] = [](const js::V&) { js::Arr a; for (auto& x : Cfg().exclusions) a.add(Q(x)); return js::Obj().boolean("ok", true).raw("items", a.done()).done(); };
+    h["exclusions.add"] = [](const js::V& a) {
+        IFileOpenDialog* d = nullptr; if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_IFileOpenDialog, (void**)&d)) || !d) return Err(L"The folder picker is not available."); DWORD o = 0; d->GetOptions(&o); d->SetOptions(o | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+        wstring path; if (SUCCEEDED(d->Show(g_wnd))) { IShellItem* it = nullptr; if (SUCCEEDED(d->GetResult(&it)) && it) { PWSTR p = nullptr; if (SUCCEEDED(it->GetDisplayName(SIGDN_FILESYSPATH, &p)) && p) { path = p; CoTaskMemFree(p); } it->Release(); } } d->Release();
+        if (path.empty()) return js::Obj().boolean("ok", true).boolean("cancelled", true).done(); auto& c = Cfg(); for (auto& x : c.exclusions) if (_wcsicmp(x.c_str(), path.c_str()) == 0) return Ok(); if (c.exclusions.size() >= 100) return Err(L"Too many exclusions."); c.exclusions.push_back(path); SaveSettings(); return Ok(); };
+    h["exclusions.remove"] = [](const js::V& a) { size_t i = (size_t)a.num("i", -1); auto& v = Cfg().exclusions; if (i < v.size()) v.erase(v.begin() + i); SaveSettings(); return Ok(); };
+
+    // ---- quarantine and restore points ----
+    h["quarantine.list"] = [](const js::V&) { js::Arr arr; ULONGLONG tot = 0; for (auto& q : QuarantineList()) { tot += q.bytes; arr.add(js::Obj().str("id", U(q.id)).str("orig", U(q.orig)).str("source", U(q.source)).str("time", U(q.time)).num("bytes", (double)q.bytes).boolean("dir", q.isDir).done()); } return js::Obj().boolean("ok", true).raw("items", arr.done()).num("total", (double)tot).done(); };
+    h["quarantine.restore"] = [](const js::V& a) { int ok = 0, bad = 0; wstring first; for (auto& id : a.strs("ids")) { wstring e; if (QuarantineRestore(W(id), e)) ++ok; else { ++bad; if (first.empty()) first = e; } } return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
+    h["quarantine.purge"] = [](const js::V& a) { int ok = 0, bad = 0; wstring first; for (auto& id : a.strs("ids")) { wstring e; if (QuarantinePurge(W(id), e)) ++ok; else { ++bad; if (first.empty()) first = e; } } return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
+    h["recovery.points"] = [](const js::V&) {
+        std::vector<std::tuple<long long, wstring, wstring, int>> v; wstring err; bool ok = ListRestorePoints(v, err); bool policyOff = false; HKEY k; if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Policies\\Microsoft\\Windows NT\\SystemRestore", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { DWORD d = 0, n = sizeof d; if (RegQueryValueExW(k, L"DisableSR", nullptr, nullptr, (BYTE*)&d, &n) == ERROR_SUCCESS && d == 1) policyOff = true; RegCloseKey(k); }
+        std::sort(v.begin(), v.end(), [](auto& a, auto& b) { return std::get<0>(a) > std::get<0>(b); }); js::Arr arr; for (auto& t : v) arr.add(js::Obj().num("seq", (double)std::get<0>(t)).str("desc", U(std::get<1>(t))).str("date", U(std::get<2>(t))).num("type", std::get<3>(t)).done());
+        return js::Obj().boolean("ok", ok).str("error", U(err)).boolean("policyOff", policyOff).boolean("admin", IsElevated()).raw("items", arr.done()).done(); };
+    h["recovery.create"] = [](const js::V& a) {
+        if (!IsElevated()) return Err(L"Creating a restore point needs administrator rights. Restart as administrator from Settings.");
+        HMODULE m = LoadLibraryW(L"srclient.dll"); auto fn = m ? (PFN_SRSet)GetProcAddress(m, "SRSetRestorePointW") : nullptr; if (!fn) return Err(L"System Restore is not available on this PC.");
+        std::vector<std::tuple<long long, wstring, wstring, int>> before, after; wstring e; ListRestorePoints(before, e); long long maxBefore = 0; for (auto& t : before) maxBefore = std::max(maxBefore, std::get<0>(t));
+        wstring desc = W(a.str("desc", "Feather System Utilities")); RPInfo ri{}; ri.ev = 100; ri.type = 12; wcsncpy(ri.desc, desc.c_str(), 255); RPStatus st{}; BOOL ok = fn(&ri, &st); DWORD s1 = st.status;
+        RPInfo re{}; re.ev = 101; re.type = 12; re.seq = st.seq; RPStatus st2{}; if (ok) fn(&re, &st2); FreeLibrary(m); e.clear(); ListRestorePoints(after, e); bool found = false; for (auto& t : after) if (std::get<0>(t) > maxBefore) found = true;
+        WriteJournal(L"Restore point", L"System Restore", std::to_wstring(before.size()) + L" restore points", found ? L"created: " + desc : L"not created", found ? L"ok (verified in the restore point list)" : L"failed or skipped by Windows", false);
+        if (found) return Ok(); if (!ok || s1 != 0) return Err(L"Windows refused to create the restore point (code " + std::to_wstring(s1) + L"). System Protection may be turned off for the system drive."); return Err(L"Windows accepted the request but no new restore point appeared. By default Windows creates at most one every 24 hours, or System Protection is off.");
+    };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----
@@ -324,6 +423,7 @@ static std::map<string, Fn>& Handlers() {
         IUpdateSession* ses = nullptr; IUpdateSearcher* sr = nullptr; IUpdateCollection* col = nullptr; wstring err; if (!SearchDriverUpdates(&ses, &sr, &col, err)) { if (sr) sr->Release(); if (ses) ses->Release(); return Err(err); }
         LONG n = 0; col->get_Count(&n); js::Arr arr; for (LONG i = 0; i < n; ++i) { IUpdate* u = nullptr; if (FAILED(col->get_Item(i, &u)) || !u) continue; BSTR t = nullptr; u->get_Title(&t); wstring title = TakeBstr(t); DECIMAL sz{}; double bytes = 0; if (SUCCEEDED(u->get_MaxDownloadSize(&sz))) { VarR8FromDec(&sz, &bytes); }
             wstring maker, model, cls, ver; BSTR dsc = nullptr; u->get_Description(&dsc); wstring desc = TakeBstr(dsc); DATE ld = 0; u->get_LastDeploymentChangeTime(&ld); ver = DateText(ld); VARIANT_BOOL reboot = VARIANT_FALSE;
+            if (IsIgnored("driver", UpdId(u))) { u->Release(); continue; }
             arr.add(js::Obj().str("id", U(UpdId(u))).str("title", U(title)).str("desc", U(desc)).str("date", U(ver)).num("size", bytes).done()); u->Release(); }
         col->Release(); sr->Release(); ses->Release(); return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
     h["drivers.install"] = [](const js::V& a) {
@@ -368,7 +468,7 @@ static std::map<string, Fn>& Handlers() {
         static const T tools[] = {
             {"sfc", L"cmd.exe", L"/k sfc /scannow", true, L"System File Checker"}, {"dism", L"cmd.exe", L"/k DISM /Online /Cleanup-Image /RestoreHealth", true, L"DISM repair"}, {"chkdsk", L"cmd.exe", L"/k chkdsk C: /scan", true, L"Check disk (online scan)"},
             {"dns", L"cmd.exe", L"/c ipconfig /flushdns & pause", false, L"Flush DNS cache"}, {"restorepoint", L"powershell.exe", L"-NoProfile -Command \"Checkpoint-Computer -Description 'Feather System Utilities' -RestorePointType MODIFY_SETTINGS; pause\"", true, L"Create restore point"},
-            {"memdiag", L"mdsched.exe", L"", true, L"Windows Memory Diagnostic"}, {"devmgmt", L"devmgmt.msc", L"", false, L"Device Manager"}, {"diskmgmt", L"diskmgmt.msc", L"", false, L"Disk Management"}, {"taskschd", L"taskschd.msc", L"", false, L"Task Scheduler"}, {"services", L"services.msc", L"", false, L"Services"}, {"appwiz", L"appwiz.cpl", L"", false, L"Programs and Features"}, {"wu", L"ms-settings:windowsupdate", L"", false, L"Windows Update"} };
+            {"memdiag", L"mdsched.exe", L"", true, L"Windows Memory Diagnostic"}, {"devmgmt", L"devmgmt.msc", L"", false, L"Device Manager"}, {"diskmgmt", L"diskmgmt.msc", L"", false, L"Disk Management"}, {"taskschd", L"taskschd.msc", L"", false, L"Task Scheduler"}, {"services", L"services.msc", L"", false, L"Services"}, {"appwiz", L"appwiz.cpl", L"", false, L"Programs and Features"}, {"wu", L"ms-settings:windowsupdate", L"", false, L"Windows Update"}, {"taskmgr", L"taskmgr.exe", L"/7", false, L"Task Manager (Startup)"}, {"startupapps", L"ms-settings:startupapps", L"", false, L"Startup apps settings"}, {"sysprot", L"SystemPropertiesProtection.exe", L"", true, L"System Protection"} };
         string id = a.str("id"); for (auto& t : tools) if (id == t.id) { bool ok = (INT_PTR)ShellExecuteW(nullptr, t.admin ? L"runas" : L"open", t.file, t.args[0] ? t.args : nullptr, nullptr, SW_SHOWNORMAL) > 32; if (ok && (id == "sfc" || id == "dism" || id == "chkdsk" || id == "restorepoint")) WriteJournal(t.label, L"maintenance tool", L"", L"started", L"ok (runs in its own window)", false); return ok ? Ok() : Err(L"The tool could not be started (administrator permission may have been declined)."); }
         return Err(L"Unknown tool."); };
 
@@ -423,7 +523,7 @@ bool WebUiAvailable() {
 }
 
 int RunWebUi(HINSTANCE inst, int show, int firstPage, HANDLE* instMutex) {   // returns 0 = ran and exited, 1 = could not start (caller falls back to the classic UI)
-    g_instMutex = instMutex; if (!WebUiAvailable()) return 1;
+    g_instMutex = instMutex; PruneJournal(Cfg().logRetentionDays); if (!WebUiAvailable()) return 1;
     wchar_t p[MAX_PATH]; GetModuleFileNameW(nullptr, p, MAX_PATH); PathRemoveFileSpecW(p); HMODULE ldr = LoadLibraryW((wstring(p) + L"\\WebView2Loader.dll").c_str()); auto create = ldr ? (PFN_Create)GetProcAddress(ldr, "CreateCoreWebView2EnvironmentWithOptions") : nullptr; if (!create) return 1;
     WNDCLASSW wc{}; wc.hInstance = inst; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1)); wc.lpfnWndProc = HostProc; wc.lpszClassName = L"FeatherSystemUtilitiesWnd"; RegisterClassW(&wc);
     HDC sdc = GetDC(nullptr); int sdpi = GetDeviceCaps(sdc, LOGPIXELSX); ReleaseDC(nullptr, sdc); auto& cf = Cfg();

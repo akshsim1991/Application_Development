@@ -16,3 +16,6 @@ New UI = `ui/index.html` (single file, vanilla JS, embedded via `tools/embed.py`
 
 ## 3.1
 UI list framework (ui/index.html: `LS()`, `table()`, `pickRow()`, filters/sort helpers) gives every list checkbox + Ctrl/Shift multi-select, sorting, filters, CSV export. New host commands: drivers.list (WMI) / drivers.check / drivers.install (Windows Update Agent, admin), processes.list/end, sys.info, tools.run (whitelist), export.csv, scan.*, startup.removeDelay. Duplicate groups proven byte-for-byte at scan time; empty-folder tree delete re-verifies then removes deepest-first. UI behaviour tests: `cd tools/ui-preview && NODE_PATH=$(npm root -g) node test.js` (36 checks, mock bridge, Chromium). Still never run inside real WebView2/Windows.
+
+## 3.2 (Phase 1)
+New: src/win/quarantine.cpp (restorable quarantine, index.jsonl), Settings fields exclusions/ignored/skipVersion/deferUntil/logRetentionDays/quarantineLeftovers, PreviewClean (dry run), host commands ignore.*, exclusions.*, quarantine.*, recovery.*, clean.preview, update.skip/defer, journal.clear, app.startWithWindows, programs.openFolder. UI: Recovery page, update prompt, previews, ignore, protected-program rules. UI tests: 50 checks (tools/ui-preview/test.js).

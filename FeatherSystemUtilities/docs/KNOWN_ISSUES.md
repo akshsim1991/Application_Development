@@ -18,3 +18,5 @@
 - KI17: Driver updates (WUA COM) and WMI driver inventory are compile-checked only. MinGW's wuapi.h lacks IWindowsDriverUpdate, so update entries show Windows Update's title/description rather than model/class. Reboot-required is only known after install.
 - KI18: Open file location now verifies an Explorer window appears (title = folder name or full path). If Explorer is configured with an unusual title the check can time out and a second window may open.
 - KI19: Not yet in the new UI: scheduler, privacy/browser-data cleaner, file shredder, Store apps, context-menu manager, services profiles/properties editors (use --classic).
+- KI20: Quarantine moves use SHFileOperation (works across drives) and are untested on Windows. Restore point creation uses srclient.dll SRSetRestorePointW and is verified by re-reading the restore point list; it needs administrator rights and Windows limits automatic creation to one per 24 h.
+- KI21: The launch update prompt needs the public releases repo to exist; until then the check fails silently at startup.

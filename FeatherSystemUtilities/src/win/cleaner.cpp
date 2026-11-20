@@ -278,7 +278,7 @@ bool RestoreRegBackup(const wstring& path, wstring& err, wstring& summary) {
 }
 
 // ---- run ----
-void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
+void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r, bool quarantine) {
     wstring backup; HKEY lastRoot = nullptr; REGSAM lastView = 0; std::vector<const CleanItem*> reg;
     for (auto& it : items) {
         if (it.kind == 0) {
@@ -313,12 +313,14 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
                 wstring l = Lower(p); if (l.rfind(win + L"\\", 0) == 0 || l.rfind(pf + L"\\", 0) == 0 || l.rfind(pf86 + L"\\", 0) == 0) continue;           // re-checked at delete time
                 WIN32_FILE_ATTRIBUTE_DATA fa; if (!GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &fa) || (fa.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))) continue;
                 if (cutoff && FtU(fa.ftLastWriteTime) > cutoff) { ++newer; continue; }
+                if (quarantine) { wstring qe; if (QuarantinePath(p, it.name, qe, false)) { bytes += ((ULONGLONG)fa.nFileSizeHigh << 32) | fa.nFileSizeLow; ++files; } else ++failed; continue; }
                 SetFileAttributesW(p.c_str(), FILE_ATTRIBUTE_NORMAL); if (DeleteFileW(p.c_str())) { bytes += ((ULONGLONG)fa.nFileSizeHigh << 32) | fa.nFileSizeLow; ++files; } else ++failed; }
             r.bytes += bytes; r.files += files; ++r.ok; if (failed && r.firstErr.empty()) r.firstErr = it.name + L": " + std::to_wstring(failed) + L" files in use were skipped";
-            WriteJournal(it.name, L"cleaner: deep scan", FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", L"deleted " + FormatBytes(bytes) + L" in " + std::to_wstring(files) + L" files, " + std::to_wstring(failed + newer) + L" skipped", L"ok (not undoable)", false);
+            WriteJournal(it.name, L"cleaner: deep scan", FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", (quarantine ? L"moved to quarantine " : L"deleted ") + FormatBytes(bytes) + L" in " + std::to_wstring(files) + L" files, " + std::to_wstring(failed + newer) + L" skipped", quarantine ? L"ok (restorable from Recovery)" : L"ok (not undoable)", quarantine);
         } else if (it.kind == 6) {
             wstring dir = it.location; if (it.needsAdmin && !IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights (use Restart as administrator)"; continue; }
             if (IsProtectedPath(dir)) { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": protected location, not deleted"; WriteJournal(it.name, dir, L"present", L"unchanged", L"blocked: protected path", false); continue; }
+            if (quarantine) { wstring qe; if (QuarantinePath(dir, it.name, qe)) { r.bytes += it.bytes; r.files += it.files; ++r.ok; } else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + qe; } continue; }   // restorable: Recovery > Quarantine
             Walk w; w.del = true; WalkDir(dir, w, 0); SetFileAttributesW(dir.c_str(), FILE_ATTRIBUTE_NORMAL); bool gone = RemoveDirectoryW(dir.c_str()) != 0 || GetFileAttributesW(dir.c_str()) == INVALID_FILE_ATTRIBUTES;
             r.bytes += w.bytes; r.files += w.files; if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + std::to_wstring(w.failed) + L" file(s) in use remain; restart and scan again"; }
             WriteJournal(it.name, dir, FormatBytes(it.bytes) + L", " + std::to_wstring(it.files) + L" files", gone ? L"deleted (" + FormatBytes(w.bytes) + L")" : L"partly deleted", gone ? L"ok (leftover folder, not undoable)" : L"partial", false);
@@ -364,3 +366,20 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
 }
 
 } // namespace fsu
+
+namespace fsu {
+// Dry run: lists the exact files a clean of this item would remove (same rules as RunClean), capped at maxRows.
+void PreviewClean(const CleanItem& it, bool keep, size_t maxRows, std::vector<PreviewRow>& rows, ULONGLONG& total) {
+    total = 0; ULONGLONG cutoff = ItemCutoff(keep, it.ignoreRecent || it.kind == 7, it.minAgeDays);
+    auto add = [&](const wstring& p, ULONGLONG sz, ULONGLONG mt) { ++total; if (rows.size() < maxRows) rows.push_back({p, sz, mt}); };
+    std::function<void(const wstring&, int)> rec = [&](const wstring& dir, int depth) {
+        if (depth > 24) return; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd); if (h == INVALID_HANDLE_VALUE) return;
+        do { wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n; if (IsReparse(fd.dwFileAttributes)) continue;
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) { rec(full, depth + 1); continue; }
+            if (!it.pattern.empty() && !PathMatchSpecW(n.c_str(), it.pattern.c_str())) continue; ULONGLONG mt = FtU(fd.ftLastWriteTime); if (cutoff && mt > cutoff) continue;
+            add(full, ((ULONGLONG)fd.nFileSizeHigh << 32) | fd.nFileSizeLow, mt); } while (FindNextFileW(h, &fd)); FindClose(h); };
+    if (it.kind == 0) { for (auto& p : it.paths) { DWORD at = GetFileAttributesW(p.c_str()); if (at == INVALID_FILE_ATTRIBUTES) continue; if (at & FILE_ATTRIBUTE_DIRECTORY) rec(p, 0); else { WIN32_FILE_ATTRIBUTE_DATA fa; if (GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &fa) && !(cutoff && FtU(fa.ftLastWriteTime) > cutoff)) add(p, ((ULONGLONG)fa.nFileSizeHigh << 32) | fa.nFileSizeLow, FtU(fa.ftLastWriteTime)); } } }
+    else if (it.kind == 6) { ULONGLONG save = cutoff; cutoff = 0; rec(it.location, 0); cutoff = save; }
+    else if (it.kind == 7) { for (auto& p : it.paths) { WIN32_FILE_ATTRIBUTE_DATA fa; if (GetFileAttributesExW(p.c_str(), GetFileExInfoStandard, &fa) && !(fa.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) && !(cutoff && FtU(fa.ftLastWriteTime) > cutoff)) add(p, ((ULONGLONG)fa.nFileSizeHigh << 32) | fa.nFileSizeLow, FtU(fa.ftLastWriteTime)); } }
+}
+}

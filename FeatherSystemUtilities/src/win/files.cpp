@@ -29,6 +29,7 @@ static void Walk(Ctx& c, const wstring& dir, int depth) {
     WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH); if (h == INVALID_HANDLE_VALUE) return;
     do {
         wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n;
+        if (IsExcluded(full)) continue;                                                              // user exclusion list
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;                         // never follow junctions/symlinks/OneDrive placeholders
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
             wstring l = Lower(full); if (l == c.winDir || l == c.pfDir || l == c.pf86Dir) continue; Walk(c, full, depth + 1); if (Cancelled(c)) break; continue; }
@@ -69,7 +70,7 @@ static bool EmptyRec(ECtx& c, const wstring& dir, int depth, std::vector<FileEnt
     do {
         wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n;
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { files = true; continue; }
-        wstring l = Lower(full); if ((fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) || l == c.winDir || l == c.pfDir || l == c.pf86Dir) { files = true; continue; }   // protected: counts as content
+        wstring l = Lower(full); if (IsExcluded(full) || (fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) || l == c.winDir || l == c.pfDir || l == c.pf86Dir) { files = true; continue; }   // protected: counts as content
         ++c.scanned; if (c.o.progress && c.scanned % 2000 == 0) c.o.progress(L"Scanning\u2026 " + std::to_wstring(c.scanned) + L" folders checked");
         int kn = 0; std::vector<FileEntry> sub; bool e = EmptyRec(c, full, depth + 1, sub, kn);
         if (e) { FileEntry fe; fe.path = full; fe.name = n; fe.folder = dir; fe.ext = L"folder"; fe.groupCount = kn; fe.mtime = FtU(fd.ftLastWriteTime); emptyKids.push_back(fe); kidNested += kn + 1; }

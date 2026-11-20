@@ -177,3 +177,9 @@ Browser profile listing, per-category review (cookies/history/downloads/site dat
 7. Dashboard: device model, Windows Update status, optional low-frequency CPU/RAM/disk/network, storage trend.
 8. Store apps in the uninstaller; uninstall Windows updates.
 9. Licensing/activation, ARM64, SQLite, privilege broker.
+
+
+---
+## Phase 1 status (version 3.2.0)
+Built (compiles; UI tested against mock data; not run on Windows): launch-time update prompt with Update now / Remind me later / Skip this version; quarantine for leftovers and stray files with restore and permanent delete; Recovery page (restore point list, System Protection status, create restore point with verification, quarantine, backups); dry-run preview of exact files before cleaning; "recoverable / permanent / backed up" labels; exclusion list and ignored findings (Clean, Startup, Driver updates) with management in Settings; Start with Windows (off by default), journal retention and clear log; uninstaller safety (protected security/driver/system programs: no force remove, no leftover search; leftovers never include drivers, system folders or system registry); uninstall command/source and open-install-folder in the new UI; startup warnings for security/accessibility/device/backup software; Task Manager and Startup-settings links; System Protection shortcut.
+Not done in Phase 1 (on purpose): "automatic maintenance" and "background monitoring" switches (no such features exist yet), beta channel switch, language selection.

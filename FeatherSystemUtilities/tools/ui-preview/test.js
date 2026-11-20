@@ -4,11 +4,13 @@ const ok = (c, m) => { total++; if (!c) { fails++; console.log('FAIL', m); } };
 (async () => {
   const b = await chromium.launch(); const ctx = await b.newContext({ viewport: { width: 1360, height: 820 } }); const p = await ctx.newPage(); const errs = [];
   p.on('pageerror', e => errs.push(e.message)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.addInitScript({ path: path.join(__dirname, 'mock.js') }); await p.goto('file://' + path.resolve(__dirname, '../../ui/index.html')); await p.waitForTimeout(300);
+  await p.addInitScript({ path: path.join(__dirname, 'mock.js') }); await p.addInitScript('window.__newer = true;'); await p.goto('file://' + path.resolve(__dirname, '../../ui/index.html')); await p.waitForTimeout(300);
+  // launch update prompt (like Feather PDF)
+  ok(await p.locator('.modal').innerText().then(x => x.includes('new version is available') && x.includes('Update now') && x.includes('Remind me later') && x.includes('Skip this version')).catch(() => false), 'update prompt appears at launch'); await p.click('[data-r="1"]'); await p.waitForTimeout(150); ok(await p.locator('.modal').count() === 0, 'remind me later closes prompt'); ok(await p.locator('.banner').count() === 0, 'banner hidden after deferral');
   const go = async n => { await p.click(`[data-go=${n}]`); await p.waitForTimeout(350); };
   const selCount = id => p.evaluate(id => S.lists[id].sel.size, id); const rowsN = () => p.locator('tbody tr').count();
   // ---- Startup: checkbox, click, ctrl, shift, select-all, keyboard ----
-  await go('startup'); const n0 = await rowsN(); ok(n0 === 5, 'startup rows ' + n0);
+  await go('startup'); const n0 = await rowsN(); ok(n0 === 6, 'startup rows ' + n0);
   await p.locator('tbody tr').nth(0).locator('input[data-chk]').click(); await p.locator('tbody tr').nth(2).locator('input[data-chk]').click(); ok(await selCount('startup') === 2, 'two checkboxes -> 2 selected');
   await p.locator('tbody tr').nth(3).locator('td').nth(2).click(); ok(await selCount('startup') === 1, 'plain click selects only that row');
   await p.locator('tbody tr').nth(1).locator('td').nth(2).click({ modifiers: ['Control'] }); ok(await selCount('startup') === 2, 'ctrl-click adds');
@@ -34,11 +36,20 @@ const ok = (c, m) => { total++; if (!c) { fails++; console.log('FAIL', m); } };
   await go('services'); await p.click('[data-fc="services|state|critical"]'); ok(await rowsN() === 1, 'critical filter'); await p.click('[data-fc="services|state|all"]'); await p.keyboard.press('Control+a'); ok(await selCount('services') === 4, 'services select all');
   await go('procs'); await p.keyboard.press('Control+a'); await p.click('[data-act=procEnd]'); ok(await p.locator('.modal li').count() === 5, 'protected process excluded from end-task list'); await p.click('[data-r="0"]');
   await go('drivers'); ok(await rowsN() === 4, 'drivers rows'); await p.click('[data-fc="drvinst|kind|unsigned"]'); ok(await rowsN() === 1, 'unsigned -> 1'); await p.click('[data-dtab=updates]'); await p.click('[data-act=drvCheck]'); await p.waitForTimeout(300); ok(await rowsN() === 2, 'driver updates'); await p.keyboard.press('Control+a'); await p.click('[data-act=drvInstall]'); ok(await p.locator('.modal li').count() === 2, 'install confirm lists 2'); await p.click('[data-r="0"]');
+  // ---- Phase 1 ----
+  await go('startup'); await p.click('[data-fc="startup|state|all"]'); await p.evaluate(() => { S.lists.startup.sel.clear(); draw(); }); await p.fill('#q-startup', 'avast'); await p.locator('tbody tr').nth(0).locator('input[data-chk]').click(); await p.click('[data-act=suBatch][data-v="0"]'); const warnTxt = await p.locator('.modal').innerText(); ok(warnTxt.includes('security') && warnTxt.includes('real-time protection'), 'disabling security software warns'); await p.click('[data-r="0"]'); await p.fill('#q-startup', '');
+  await go('clean'); await p.keyboard.press('Control+a'); await p.click('[data-act=cleanPreview]'); ok((await p.locator('.modal').innerText()).includes('Exact files'), 'dry-run preview opens'); ok(await p.locator('.modal tbody tr').count() >= 3, 'preview lists files'); await p.click('[data-r="0"]');
+  await p.click('[data-act=cleanRun]'); ok((await p.locator('.modal').innerText()).includes('Preview exact files'), 'clean confirm offers preview'); await p.click('[data-r="0"]');
+  await p.click('[data-act=cleanIgnore]'); await p.click('[data-r="1"]'); await p.waitForTimeout(300); ok((await p.locator('.muted', { hasText: 'ignored or excluded' }).count()) === 1, 'ignored items hidden note');
+  await go('programs'); await p.click('[data-fc="programs|kind|all"]'); await p.evaluate(() => { S.lists.programs.sel.clear(); draw(); }); await p.locator('tbody tr', { hasText: 'NVIDIA' }).locator('input[data-chk]').click(); ok(await p.locator('[data-act=forceBatch]').isDisabled(), 'force remove disabled for protected driver'); ok((await p.locator('.side').innerText()).includes('Uninstall command'), 'uninstall command shown');
+  await go('recovery'); ok(await p.locator('tbody tr').count() >= 4, 'recovery lists quarantine + restore points'); await p.locator('[data-l=quar][data-ix="0"] input[data-chk]').click(); await p.locator('[data-l=quar][data-ix="1"] input[data-chk]').click(); await p.click('[data-act=quarRestore]'); ok(await p.locator('.modal li').count() === 2, 'quarantine restore lists 2 selected'); await p.click('[data-r="0"]');
+  await p.click('[data-act=rpCreate]'); await p.click('[data-r="1"]'); await p.waitForTimeout(300); ok((await p.locator('.toast').innerText()).includes('administrator'), 'restore point failure reported honestly');
+  await go('settings'); ok((await p.locator('.card').innerText()).includes('Start Feather with Windows') && (await p.locator('.card').innerText()).includes('Exclusions') && (await p.locator('.card').innerText()).includes('Ignored findings'), 'settings has phase 1 options');
   await go('journal'); ok(await rowsN() === 3, 'journal rows'); await p.click('[data-fc="journal|kind|perm"]'); ok(await rowsN() === 1, 'journal not-reversible filter');
   await go('files'); await p.click('[data-ft=dupes]'); await p.click('[data-act=fileScan]'); await p.waitForTimeout(300); ok(await rowsN() === 10, 'dupe rows ' + await rowsN()); ok(await p.locator('.pill.ok', { hasText: 'identical' }).count() === 0 || true, 'verified badge optional in mock');
   await p.click('[data-act=dupKeep][data-v=newest]'); ok(await selCount('dupes') === 6, 'keep newest selects 6 (one per group kept) got ' + await selCount('dupes'));
   await p.click('[data-act=exportList]'); await p.waitForTimeout(200); ok((await p.locator('.toast').innerText()).includes('Exported'), 'export toast');
   await p.click('[data-act=aboutMenu]'); await p.click('[data-act=about]'); ok((await p.locator('.modal').innerText()).includes('Akshaya Simha'), 'about dialog'); await p.click('[data-r="0"]');
-  await go('tools'); ok(await p.locator('.tool').count() === 12, 'tools shown');
+  await go('tools'); ok(await p.locator('.tool').count() === 15, 'tools shown');
   await b.close(); console.log(errs.length ? 'ERRORS:\n' + errs.join('\n') : 'no console errors'); console.log(`${total - fails}/${total} UI checks passed`); process.exit(fails || errs.length ? 1 : 0);
 })();

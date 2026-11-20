@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.1.0"
+#define FSU_VERSION L"3.2.0"
 
 namespace fsu {
 
@@ -37,10 +37,15 @@ struct Settings {
     bool hideSystem = true, confirmBatch = true, maximized = false, keepRecent = true;
     bool autoUpdate = true; long long lastUpdateCheck = 0;                // seconds since 1970 (UTC)
     int largeMinMB = 100, dupMinKB = 1024; std::vector<std::wstring> scanRoots;   // empty = default user folders
+    std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
+    std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
+    std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    int logRetentionDays = 0; bool quarantineLeftovers = true;           // 0 = keep the journal forever
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
     std::map<std::wstring, std::vector<int>> colw;   // per page column widths (96-dpi units)
 };
 Settings& Cfg();
+bool IsExcluded(const std::wstring& path);   // true when the path is inside a user-defined exclusion
 void LoadSettings();
 void SaveSettings();
 void MigrateLegacyData();                       // copies old portable-app data (never deletes originals)
@@ -145,9 +150,18 @@ struct CleanScan { std::vector<CleanItem> items; std::wstring coverage; ULONGLON
 CleanScan ScanCleaner(bool keepRecent);
 CleanScan ScanDeep(std::atomic<bool>* cancel, const std::function<void(const std::wstring&)>& progress);   // walks all fixed drives for stray junk (kind 7 file lists) + developer/app caches
 struct CleanResult { ULONGLONG bytes = 0, files = 0; int ok = 0, skipped = 0, failed = 0; std::wstring firstErr, backupPath; };
-void RunClean(const std::vector<CleanItem>& items, bool keepRecent, CleanResult& r);   // temp files are permanently deleted; registry items are backed up first
+void RunClean(const std::vector<CleanItem>& items, bool keepRecent, CleanResult& r, bool quarantine = false);   // quarantine: leftover folders and stray files are moved to the restorable quarantine instead of deleted
+struct PreviewRow { std::wstring path; ULONGLONG bytes = 0, mtime = 0; };
+void PreviewClean(const CleanItem& it, bool keepRecent, size_t maxRows, std::vector<PreviewRow>& rows, ULONGLONG& totalFiles);   // dry run: the exact files a clean would remove   // temp files are permanently deleted; registry items are backed up first
 std::vector<BackupInfo> ListRegBackups();
 bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring& summary);
+
+// ---- quarantine (quarantine.cpp): restorable holding area for leftovers and stray files ----
+struct QItem { std::wstring id, orig, stored, source, time; ULONGLONG bytes = 0; bool isDir = false; };
+bool QuarantinePath(const std::wstring& path, const std::wstring& source, std::wstring& err, bool journal = true);
+std::vector<QItem> QuarantineList();
+bool QuarantineRestore(const std::wstring& id, std::wstring& err);
+bool QuarantinePurge(const std::wstring& id, std::wstring& err);
 
 // ---- large-file and duplicate finder (files.cpp) ----
 struct FileEntry { std::wstring path, name, folder, ext, hash; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; bool verified = false; };

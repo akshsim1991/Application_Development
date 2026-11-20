@@ -61,10 +61,10 @@ input[type=checkbox]{width:17px;height:17px;accent-color:var(--teal);cursor:poin
 .modal{background:var(--card);border-radius:20px;box-shadow:0 20px 60px rgba(0,0,0,.35);width:min(640px,100%);max-height:86vh;display:flex;flex-direction:column;overflow:hidden}
 .modal header{padding:20px 24px 6px}.modal header h2{margin:0;font-size:19px}.modal .body{padding:6px 24px;overflow:auto;user-select:text}.modal footer{padding:14px 24px 20px;display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
 .modal ul{margin:8px 0;padding:0;list-style:none}.modal li{padding:6px 10px;border-radius:9px;background:var(--soft);margin-bottom:4px;font-size:13px;word-break:break-all}
-.busy{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--card);padding:11px 20px;border-radius:99px;z-index:60;display:flex;gap:12px;align-items:center;box-shadow:var(--shadow);max-width:80vw}
-.busy i{width:14px;height:14px;border-radius:50%;border:3px solid currentColor;border-right-color:transparent;animation:sp .8s linear infinite;flex:none}@keyframes sp{to{transform:rotate(360deg)}}
-.busy span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.toast{position:fixed;right:24px;top:20px;background:var(--card);border:1px solid var(--line);border-left:5px solid var(--teal);border-radius:12px;padding:12px 16px;box-shadow:var(--shadow);z-index:70;max-width:420px}.toast.err{border-left-color:var(--coral)}
+.status{display:flex;align-items:center;gap:12px;padding:0 20px;min-height:40px;border-top:1px solid var(--line);background:var(--card);flex:none;font-size:13px}
+.status .msg{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;user-select:text}.status .spin{width:14px;height:14px;border-radius:50%;border:3px solid var(--teal);border-right-color:transparent;animation:sp .8s linear infinite;flex:none}@keyframes sp{to{transform:rotate(360deg)}}
+.status .ind{width:140px;height:6px;border-radius:6px;background:var(--line);overflow:hidden;flex:none;position:relative}.status .ind b{position:absolute;top:0;bottom:0;width:40%;border-radius:6px;background:linear-gradient(90deg,#14b39d,#3b4bd8);animation:ind 1.3s ease-in-out infinite}@keyframes ind{0%{left:-40%}100%{left:100%}}
+.status.err{background:var(--badbg);color:var(--badfg)}.status.ok .dot{color:var(--okfg)}.status .x{border:0;background:none;color:inherit;cursor:pointer;font-size:16px;padding:2px 8px}
 .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 12px;font-size:13px}.kv dt{color:var(--mute)}.kv dd{margin:0;word-break:break-word}
 .setrow{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line2)}.setrow:first-of-type{border-top:0}
 input[type=number]{width:110px;padding:6px 10px;border-radius:9px;border:1px solid var(--line);background:var(--card)}
@@ -80,7 +80,7 @@ kbd{background:var(--soft);border:1px solid var(--line);border-radius:6px;paddin
 <body>
 <div class="app">
 <nav class="rail" id="rail" aria-label="Main"></nav>
-<div class="main"><div class="top"><div class="title"><h1 id="ttl"></h1><span id="sub"></span></div><div class="grow"></div><div id="topact"></div></div><div id="ban"></div><main class="view" id="view"></main></div>
+<div class="main"><div class="top"><div class="title"><h1 id="ttl"></h1><span id="sub"></span></div><div class="grow"></div><div id="topact"></div></div><div id="ban"></div><main class="view" id="view"></main><div class="status" id="status" role="status" aria-live="polite"></div></div>
 </div>
 <div id="layer"></div>
 <script>
@@ -147,9 +147,20 @@ function LS(id) { if (!S.lists[id]) S.lists[id] = { id, sel: new Set(), anchor: 
 const DEF_SORT = { clean: ['size', -1], startup: ['name', 1], programs: ['name', 1], services: ['name', 1], drvinst: ['name', 1], drvupd: ['name', 1], procs: ['mem', -1], large: ['size', -1], dupes: ['group', 1], empty: ['path', 1], journal: ['time', -1], rp: ['seq', -1], quar: ['time', -1], privchk: ['title', 1], events: ['time', -1], downloads: ['date', 1], store: ['name', 1], hotfix: ['date', -1] };
 
 // ======================= UI primitives =======================
-function setBusy(text) { S.busy = text; let b = $('#busyBar'); if (!text) { if (b) b.remove(); return; } if (!b) { b = document.createElement('div'); b.id = 'busyBar'; b.className = 'busy'; b.setAttribute('role', 'status'); b.innerHTML = '<i></i><span></span>'; document.body.appendChild(b); } $('span', b).textContent = text; }
-on('progress', d => { if (S.busy) setBusy(d.text); });
-let toastT; function toast(msg, err) { const old = $('.toast'); if (old) old.remove(); const t = document.createElement('div'); t.className = 'toast' + (err ? ' err' : ''); t.setAttribute('role', 'alert'); t.textContent = msg; document.body.appendChild(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), err ? 9000 : 4500); }
+const ST = { kind: 'idle', text: '', details: '', cancel: null, timer: null };
+function renderStatus() {
+  const el = $('#status'); if (!el) return; el.className = 'status ' + ST.kind;
+  const mode = `${S.info.safeMode ? '<span class="pill warn">Safe Mode</span>' : ''}<span class="pill ${S.info.admin ? 'ok' : 'neutral'}" title="${S.info.admin ? 'Running as administrator' : 'Running as a standard user. Some actions need administrator rights.'}">${S.info.admin ? 'Administrator' : 'Standard user'}</span>`;
+  let left;
+  if (ST.kind === 'busy') left = `<i class="spin"></i><span class="msg" title="${esc(ST.text)}">${esc(ST.text)}</span><span class="ind"><b></b></span>${ST.cancel ? '<button class="btn ghost sm" data-act="stCancel">Cancel</button>' : ''}`;
+  else if (ST.kind === 'ok') left = `<span class="dot">✔</span><span class="msg" title="${esc(ST.text)}">${esc(ST.text)}</span><button class="x" data-act="stDismiss" aria-label="Dismiss">×</button>`;
+  else if (ST.kind === 'err') left = `<span>⚠</span><span class="msg" title="${esc(ST.text)}">${esc(ST.text)}</span><button class="btn ghost sm" data-act="stDetails">Details</button><button class="x" data-act="stDismiss" aria-label="Dismiss">×</button>`;
+  else left = '<span class="msg muted">Ready</span>';
+  el.innerHTML = left + mode;
+}
+function setBusy(text, cancel) { clearTimeout(ST.timer); if (!text) { S.busy = null; if (ST.kind === 'busy') { ST.kind = 'idle'; ST.cancel = null; } renderStatus(); return; } S.busy = text; ST.kind = 'busy'; ST.text = text; ST.cancel = cancel || null; renderStatus(); }
+on('progress', d => { if (ST.kind === 'busy') { ST.text = d.text; renderStatus(); } });
+function toast(msg, err) { clearTimeout(ST.timer); ST.kind = err ? 'err' : 'ok'; ST.text = msg; ST.details = msg; renderStatus(); if (!err) ST.timer = setTimeout(() => { if (ST.kind === 'ok') { ST.kind = 'idle'; renderStatus(); } }, 9000); }
 function modal({ title, body, items, confirm, cancel = 'Cancel', danger, extra, buttons }) {
   return new Promise(res => {
     const el = document.createElement('div'); el.className = 'shade';
@@ -162,7 +173,7 @@ function modal({ title, body, items, confirm, cancel = 'Cancel', danger, extra, 
   });
 }
 const note = (title, body, items) => modal({ title, body, items, cancel: '', confirm: 'OK' });
-async function run(text, fn) { setBusy(text); try { return await fn(); } finally { setBusy(null); } }
+async function run(text, fn, cancel) { setBusy(text, cancel); try { return await fn(); } finally { setBusy(null); } }
 async function adminGate(items, what) {
   if (S.info.admin) return true; const n = items.filter(x => x.needsAdmin).length; if (!n) return true;
   const v = await modal({ title: 'Administrator rights needed', body: `${plural(n, 'of the selected items needs', 'of the selected items need')} administrator rights to ${esc(what)}. Without them Windows will refuse and nothing changes. Restart Feather as administrator, or continue and only the items that do not need it will work.`, buttons: [{ label: 'Cancel', value: false, ghost: true }, { label: 'Continue anyway', value: 'go', ghost: true }, { label: 'Restart as administrator', value: 'admin' }] });
@@ -211,7 +222,7 @@ function draw() {
   drawRail(); const t = TITLES[S.page]; $('#ttl').textContent = S.page === 'today' ? greet() : t[0]; $('#sub').textContent = t[1];
   $('#ban').innerHTML = (S.dash && (S.dash.domain || S.dash.mdm || S.dash.azureAd || S.dash.policies) ? `<div class="banner" role="status">This PC appears to be managed by an organization (${[S.dash.domain && 'domain ' + S.dash.domainName, S.dash.azureAd && 'Azure AD', S.dash.mdm && 'device management', S.dash.policies && 'policies'].filter(Boolean).join(', ')}). Some settings may be controlled by policy; Feather never overrides them.</div>` : '') + (S.info.safeMode ? `<div class="banner warn" role="status">Windows is in Safe Mode${S.info.safeMode === 2 ? ' with Networking' : ''}. Some Windows services Feather relies on are not running, so scheduled tasks, MSI uninstalls, drivers and restore points may fail.<button class="btn ghost sm" data-act="safeMode">Check &amp; fix…</button></div>` : '') + (S.update && S.update.newer && !S.update.suppressed ? `<div class="banner" role="status">Version ${esc(S.update.version)} is available.<button class="btn pri sm" data-act="updInstall">Update now</button></div>` : '');
   const v = $('#view'); const top = v.scrollTop; v.innerHTML = PAGES[S.page](); $('#topact').innerHTML = TOPACT[S.page] ? TOPACT[S.page]() : ''; v.scrollTop = top; if ($('.tablewrap')) $('.tablewrap').scrollTop = scroll;
-  document.querySelectorAll('input[data-ind]').forEach(i => i.indeterminate = true);
+  document.querySelectorAll('input[data-ind]').forEach(i => i.indeterminate = true); renderStatus();
   if (keep) { const e = document.getElementById(keep[0]); if (e) { e.focus(); try { e.setSelectionRange(keep[1], keep[1]); } catch (_) { } } }
   const fr = $('tr.fc'); if (fr && S.scrollFocus) { fr.scrollIntoView({ block: 'nearest' }); S.scrollFocus = false; }
 }
@@ -539,7 +550,7 @@ async function loadJournal() { const r = await call('journal.list', { limit: 500
 async function loadBackups() { const r = await call('backups.list'); S.journal.backups = r.ok ? r.items : []; }
 async function loadDrives() { const r = await call('storage.drives'); S.storage.drives = r.ok ? r.items : []; }
 async function loadScan() { const r = await call('scan.folders'); if (r.ok) S.scan = r; }
-async function loadClean(deep) { const r = await run(deep ? 'Deep scan…' : 'Scanning for junk…', () => call('clean.scan', { deep })); if (!r.ok) return toast(r.error, true); const sc = r.scan; Object.assign(S.clean, { items: sc.items, gen: sc.gen, coverage: sc.coverage, deep, hidden: sc.hidden || 0 }); const L = LS('clean'); L.sel.clear(); L.focus = null; }
+async function loadClean(deep) { const r = await run(deep ? 'Deep scan…' : 'Scanning for junk…', () => call('clean.scan', { deep }), deep ? 'clean.cancel' : null); if (!r.ok) return toast(r.error, true); const sc = r.scan; Object.assign(S.clean, { items: sc.items, gen: sc.gen, coverage: sc.coverage, deep, hidden: sc.hidden || 0 }); const L = LS('clean'); L.sel.clear(); L.focus = null; }
 async function loadStartup() { const r = await run('Reading startup entries…', () => call('startup.list')); if (r.ok) { loadImpact().then(() => S.page === 'startup' && draw()); S.startup.items = r.items; S.startup.coverage = r.coverage; S.startup.hidden = r.hidden || 0; } else toast(r.error, true); }
 async function loadPrograms() { const r = await run('Reading installed programs…', () => call('programs.list')); if (r.ok) S.programs.items = r.items; else toast(r.error, true); }
 async function loadServices() { const r = await run('Reading services…', () => call('services.list', { drivers: S.services.drivers })); if (r.ok) S.services.items = r.items; else toast(r.error, true); }
@@ -649,7 +660,7 @@ A.svcBatch = async (el) => { const op = el.dataset.op, L = LS('services'), sel =
   const verb = { start: 'Start', stop: 'Stop', restart: 'Restart' }[op]; if (!await modal({ title: `${verb} ${plural(sel.length, 'service', 'services')}?`, body: op === 'start' ? '' : 'Programs that depend on these services may stop working until they are started again.', items: sel.map(e => e.display), confirm: verb })) return;
   let ok = 0, bad = 0, first = ''; for (const e of sel) { const r = await run(`${verb}: ${e.display}…`, () => call('services.op', { name: e.name, op })); if (r.ok) ok++; else { bad++; first = first || `${e.display}: ${r.error}`; } }
   toast(`${ok} done${bad ? ', ' + bad + ' failed: ' + first : ''}`, bad > 0); await loadServices(); loadJournal(); draw(); };
-A.fileScan = async () => { const F = S.files, m = F.mode; const r = await run('Scanning…', () => call('files.scan', { mode: m, days: F.days || 60 })); if (!r.ok) return toast(r.error, true); r.items.forEach(f => f.gone = false); F.data[m] = r; const L = LS(m); L.sel.clear(); L.focus = null; draw(); };
+A.fileScan = async () => { const F = S.files, m = F.mode; const r = await run('Scanning…', () => call('files.scan', { mode: m, days: F.days || 60 }), 'files.cancel'); if (!r.ok) return toast(r.error, true); r.items.forEach(f => f.gone = false); F.data[m] = r; const L = LS(m); L.sel.clear(); L.focus = null; draw(); };
 A.fileOpen = async () => { const F = S.files, d = F.data[F.mode], L = LS(F.mode), i = L.focus; if (i == null || !d) return; const r = await call('files.openLocation', { mode: F.mode, gen: d.gen, i }); if (!r.ok) toast(r.error, true); };
 A.dupKeep = (el) => { const F = S.files, d = F.data.dupes, L = LS('dupes'); if (!d) return; const by = {}; d.items.forEach(f => (by[f.group] = by[f.group] || []).push(f)); L.sel = new Set();
   const key = { newest: (a, b) => b.date.localeCompare(a.date), oldest: (a, b) => a.date.localeCompare(b.date), shortest: (a, b) => (a.folder + a.name).length - (b.folder + b.name).length }[el.dataset.v];
@@ -666,7 +677,7 @@ A.scanFolders = async () => { await loadScan(); const rows = () => S.scan.items.
     const v = await modal({ title: 'Folders to scan', body: `The Files page scans only these folders${S.scan.custom ? '' : ' (the defaults)'}. Windows and Program Files are always skipped.`, items: S.scan.items, buttons }); if (!v || v === 'done') break;
     if (v === 'add') await call('scan.add'); else if (v === 'reset') await call('scan.reset'); else if (v.startsWith('rm')) await call('scan.remove', { i: +v.slice(2) }); await loadScan(); }
   draw(); };
-async function openFolder(path) { const s = S.storage; const r = await run('Measuring…', () => call('storage.children', { path })); if (r.ok) { s.data = r; draw(); } else if (r.error !== 'Cancelled.') toast(r.error, true); }
+async function openFolder(path) { const s = S.storage; const r = await run('Measuring…', () => call('storage.children', { path }), 'files.cancel'); if (r.ok) { s.data = r; draw(); } else if (r.error !== 'Cancelled.') toast(r.error, true); }
 A.drvRefresh = async () => { S.drivers.items = null; draw(); await loadDrivers(); draw(); };
 A.drvCheck = async () => { const r = await run('Asking Windows Update for drivers…', () => call('drivers.check')); if (r.ok) { S.drivers.upd = r.items; S.drivers.updErr = ''; LS('drvupd').sel.clear(); } else S.drivers.updErr = r.error; draw(); };
 A.drvInstall = async () => { const L = LS('drvupd'), sel = selectedOf(L, S.drivers.upd, e => e.id); if (!sel.length) return;
@@ -740,6 +751,9 @@ A.hotUninstall = async () => { const L = LS('hotfix'), sel = selectedOf(L, S.pro
 A.licEnter = async () => { const ok = await modal({ title: 'Enter a license key', body: 'Paste the key you received. It is verified on this PC; nothing is sent anywhere.', extra: '<textarea id="lictok" style="width:100%;height:110px;border-radius:10px;border:1px solid var(--line);background:var(--soft);color:var(--ink);padding:8px;font:12px Consolas,monospace"></textarea>', confirm: 'Activate' }); if (!ok) return; const r = await call('license.activate', { token: modal.vals.lictok || '' }); toast(r.ok ? 'License activated.' : r.error, !r.ok); await loadLic(); draw(); };
 A.licRemove = async () => { if (!await modal({ title: 'Remove the license from this PC?', body: 'Feather returns to the free edition. Core features stay free.', confirm: 'Remove', danger: true })) return; await call('license.remove'); await loadLic(); draw(); };
 
+A.stCancel = async () => { if (ST.cancel) { await call(ST.cancel); ST.text = 'Stopping…'; renderStatus(); } };
+A.stDismiss = () => { clearTimeout(ST.timer); ST.kind = 'idle'; renderStatus(); };
+A.stDetails = () => note('Details', `<span style="white-space:pre-wrap;user-select:text">${esc(ST.details || ST.text)}</span><br><br><span class="muted">Every change and failure is also recorded in the Journal.</span>`);
 A.recRefresh = async () => { S.rec.points = null; S.rec.quar = null; draw(); await loadRecovery(); draw(); };
 A.rpCreate = async () => { const ok = await modal({ title: 'Create a restore point?', body: 'Windows saves a snapshot of system files and settings so you can roll back later. Needs administrator rights. Windows normally allows one automatic restore point per 24 hours; Feather checks the list afterwards and tells you honestly whether it was created.', confirm: 'Create restore point' }); if (!ok) return;
   const r = await run('Creating a restore point…', () => call('recovery.create', { desc: 'Feather System Utilities' })); toast(r.ok ? 'Restore point created and verified in the list.' : r.error, !r.ok); await loadRecovery(); loadJournal(); draw(); };

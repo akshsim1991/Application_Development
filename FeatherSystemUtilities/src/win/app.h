@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.5.0"
+#define FSU_VERSION L"3.5.1"
 
 namespace fsu {
 

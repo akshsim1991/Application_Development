@@ -1,0 +1,1 @@
+Progress and results now appear in a dedicated status bar (with Cancel for scans) instead of floating pop-ups. Registry deletes of Explorer add-ons and other keys now retry in the other 32/64-bit view and with backup/restore privileges, and report the exact reason when they still fail.

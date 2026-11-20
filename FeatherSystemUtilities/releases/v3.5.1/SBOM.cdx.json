@@ -1,0 +1,91 @@
+{
+ "bomFormat": "CycloneDX",
+ "specVersion": "1.5",
+ "version": 1,
+ "metadata": {
+  "timestamp": "2026-11-20T17:32:12Z",
+  "component": {
+   "type": "application",
+   "name": "Feather System Utilities",
+   "version": "3.5.1",
+   "supplier": {
+    "name": "Akshaya Simha"
+   }
+  }
+ },
+ "components": [
+  {
+   "type": "library",
+   "name": "Microsoft.Web.WebView2 (SDK headers + WebView2Loader.dll)",
+   "version": "1.0.2792.45",
+   "licenses": [
+    {
+     "license": {
+      "name": "Microsoft BSD-style (see third_party/webview2/LICENSE.txt)"
+     }
+    }
+   ],
+   "hashes": [
+    {
+     "alg": "SHA-256",
+     "content": "9468470d6a4d11179ec179183d130465a380e0dedfdbe1fc2ab404c86c45a85e"
+    }
+   ],
+   "purl": "pkg:nuget/Microsoft.Web.WebView2@1.0.2792.45"
+  },
+  {
+   "type": "framework",
+   "name": "GCC runtime (libstdc++, libgcc) statically linked",
+   "version": "13-win32",
+   "licenses": [
+    {
+     "license": {
+      "name": "GPL-3.0-with-GCC-exception"
+     }
+    }
+   ]
+  },
+  {
+   "type": "application",
+   "name": "NSIS (installer builder, not shipped in the app)",
+   "version": "Processing config: /etc/nsisconf.nsh",
+   "licenses": [
+    {
+     "license": {
+      "id": "Zlib"
+     }
+    }
+   ]
+  },
+  {
+   "type": "data",
+   "name": "Feather recommendation list (data/advice.json)",
+   "version": "2026.11.20",
+   "hashes": [
+    {
+     "alg": "SHA-256",
+     "content": "831acde06dd18233cbfaad88cbae37f8c28edcddb85e8ceda8bc8dccc5f81f3f"
+    }
+   ],
+   "licenses": [
+    {
+     "license": {
+      "name": "Project-owned"
+     }
+    }
+   ]
+  },
+  {
+   "type": "library",
+   "name": "Microsoft Windows SDK APIs (system DLLs, not redistributed)",
+   "version": "Windows 7 or later",
+   "licenses": [
+    {
+     "license": {
+      "name": "Operating system component"
+     }
+    }
+   ]
+  }
+ ]
+}

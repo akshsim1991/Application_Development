@@ -125,7 +125,7 @@ static bool DeleteStartupCore(const StartupEntry& e, wstring& err) {
     }
     CleanItem it; it.name = e.name; it.location = e.location; it.risk = 1;
     if (e.type.rfind(L"Scheduled task", 0) == 0) { it.kind = 9; it.cmd = e.taskPath; } else { it.kind = 2; it.root = e.root; it.view = e.view; it.subKey = e.subKey; it.detail = L"key"; it.why = L"Explorer add-on registration"; it.needsAdmin = e.root == HKEY_LOCAL_MACHINE; }
-    CleanResult r; RunClean({it}, false, r); bool done = r.ok == 1 && r.failed == 0 && r.skipped == 0; if (!done) err = r.firstErr.empty() ? L"Windows refused the change (administrator rights may be required)." : r.firstErr; return done;
+    CleanResult r; RunClean({it}, false, r); bool done = r.ok == 1 && r.failed == 0 && r.skipped == 0; if (!done) err = r.firstErr.empty() ? L"Nothing was changed and Windows reported no error. The entry may already be gone; refresh the list. (Details are in the Journal.)" : r.firstErr; return done;
 }
 
 // ---------- storage map: sizes of the immediate children of a folder ----------

@@ -229,8 +229,31 @@ static bool AllowedRegPath(const wstring& p) {
     for (auto d : deny) if (l.rfind(d, 0) == 0) return false;
     return l.rfind(L"software\\", 0) == 0 && l.find(L'\\') != std::wstring::npos && l.size() > 10;
 }
+
+// ---- registry access that survives 32/64-bit view mix-ups and protected keys (administrator + backup/restore privileges) ----
+static void EnableRegPrivileges() {
+    static bool done = false; if (done) return; done = true; HANDLE t; if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, &t)) return;
+    for (const wchar_t* n : {L"SeBackupPrivilege", L"SeRestorePrivilege"}) { TOKEN_PRIVILEGES tp{}; tp.PrivilegeCount = 1; if (LookupPrivilegeValueW(nullptr, n, &tp.Privileges[0].Luid)) { tp.Privileges[0].Attributes = SE_PRIVILEGE_ENABLED; AdjustTokenPrivileges(t, FALSE, &tp, 0, nullptr, nullptr); } } CloseHandle(t);
+}
+// Opens a key; tries the recorded view, then the other view, then the default view; if access is denied and we are elevated, retries with backup/restore semantics. `view` is updated to the view that worked.
+static LONG OpenKeyFlexible(HKEY root, const wstring& sub, REGSAM access, REGSAM& view, HKEY& out) {
+    REGSAM tries[3] = {view, view == KEY_WOW64_32KEY ? (REGSAM)KEY_WOW64_64KEY : (REGSAM)KEY_WOW64_32KEY, 0}; LONG last = ERROR_FILE_NOT_FOUND;
+    for (int pass = 0; pass < 2; ++pass) { if (pass == 1 && (last != ERROR_ACCESS_DENIED || !IsElevated())) break; if (pass == 1) EnableRegPrivileges();
+        for (REGSAM v : tries) { LONG r; if (pass == 0) r = RegOpenKeyExW(root, sub.c_str(), 0, access | v, &out);
+            else { DWORD disp = 0; r = RegCreateKeyExW(root, sub.c_str(), 0, nullptr, REG_OPTION_BACKUP_RESTORE, access | v, nullptr, &out, &disp); if (r == ERROR_SUCCESS && disp == REG_CREATED_NEW_KEY) { RegCloseKey(out); RegDeleteKeyExW(root, sub.c_str(), v, 0); r = ERROR_FILE_NOT_FOUND; } }
+            if (r == ERROR_SUCCESS) { view = v; return r; } if (r != ERROR_FILE_NOT_FOUND) last = r; } }
+    return last;
+}
+typedef LONG(NTAPI* PFN_NtDeleteKey)(HANDLE);
+static bool DeleteKeyPriv(HKEY root, REGSAM view, const wstring& sub, int depth, wstring& err) {   // deletes a key and everything under it, even when its ACL blocks normal deletion
+    if (depth > 40) { err = L"key tree too deep"; return false; } HKEY k; REGSAM v = view; LONG r = OpenKeyFlexible(root, sub, KEY_ENUMERATE_SUB_KEYS | KEY_QUERY_VALUE, v, k); if (r == ERROR_FILE_NOT_FOUND) return true; if (r != ERROR_SUCCESS) { err = Win32Err(r); return false; }
+    std::vector<wstring> kids; for (DWORD i = 0;; ++i) { wchar_t nm[512]; DWORD nl = 512; if (RegEnumKeyExW(k, i, nm, &nl, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break; kids.push_back(nm); } RegCloseKey(k);
+    for (auto& c : kids) if (!DeleteKeyPriv(root, v, sub + L"\\" + c, depth + 1, err)) return false;
+    r = OpenKeyFlexible(root, sub, DELETE, v, k); if (r != ERROR_SUCCESS) { err = Win32Err(r); return false; }
+    auto nt = (PFN_NtDeleteKey)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "NtDeleteKey"); LONG st = nt ? nt((HANDLE)k) : -1; RegCloseKey(k); if (st != 0) { wchar_t b[64]; swprintf(b, 64, L"NtDeleteKey status 0x%08lX", (unsigned long)st); err = b; return false; } return true;
+}
 static void ExportKeyTree(HKEY root, REGSAM view, const wstring& sub, wstring& out, int depth, int& budget) {
-    if (depth > 6 || budget <= 0) return; HKEY k; if (RegOpenKeyExW(root, sub.c_str(), 0, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS | view, &k) != ERROR_SUCCESS) return;
+    if (depth > 6 || budget <= 0) return; HKEY k; REGSAM v2 = view; if (OpenKeyFlexible(root, sub, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, v2, k) != ERROR_SUCCESS) return;
     out += L"K\t" + HexStr(sub) + L"\n";
     for (DWORD i = 0; budget > 0; ++i) {
         wchar_t nm[16384 / 8]; DWORD nl = 2048, ty = 0, sz = 0; if (RegEnumValueW(k, i, nm, &nl, nullptr, &ty, nullptr, &sz) != ERROR_SUCCESS) break;
@@ -279,7 +302,7 @@ bool RestoreRegBackup(const wstring& path, wstring& err, wstring& summary) {
 
 // ---- run ----
 void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r, bool quarantine) {
-    wstring backup; HKEY lastRoot = nullptr; REGSAM lastView = 0; std::vector<const CleanItem*> reg;
+    wstring backup; HKEY lastRoot = nullptr; REGSAM lastView = 0; std::vector<CleanItem*> reg; std::vector<CleanItem> regItems; regItems.reserve(items.size());
     for (auto& it : items) {
         if (it.kind == 0) {
             if (it.needsAdmin && !IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights"; continue; }
@@ -340,23 +363,30 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r, bo
             if (!gone && err == L"Task Scheduler refused the deletion" && !IsElevated()) err += L" (administrator rights are likely required: More > Restart as administrator)";
             if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + err; }
             WriteJournal(it.name, L"task " + it.cmd, L"present", gone ? L"deleted (XML saved in taskbackups)" : L"unchanged", gone ? L"ok" : L"failed: " + err, false);
-        } else if (it.kind == 2 || it.kind == 3) reg.push_back(&it);
+        } else if (it.kind == 2 || it.kind == 3) regItems.push_back(it);
     }
+    for (auto& x : regItems) reg.push_back(&x);
     if (!reg.empty()) {
         if (!JournalWritable()) { r.failed += (int)reg.size(); if (r.firstErr.empty()) r.firstErr = L"Cannot write the change journal; registry entries were not touched."; return; }
         wstring bk = L"FSUREGBACKUP1\nlabel=Registry cleaner (" + std::to_wstring(reg.size()) + L" entries)\ntime=" + NowIsoUtc() + L"\n"; std::vector<const CleanItem*> todo;
         for (auto* it : reg) { if (it->needsAdmin && !IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it->name + L": needs administrator rights"; continue; }
+            { HKEY probe; REGSAM pv = it->view; LONG pr = OpenKeyFlexible(it->root, it->subKey, KEY_QUERY_VALUE | KEY_ENUMERATE_SUB_KEYS, pv, probe);   // find the view the key really lives in, and report the exact reason when it cannot be opened
+              if (pr != ERROR_SUCCESS) { ++r.failed; if (r.firstErr.empty()) r.firstErr = it->name + (pr == ERROR_FILE_NOT_FOUND ? L": the registry key no longer exists (it may already have been removed). Refresh the list." : L": the registry key could not be opened (" + Win32Err(pr) + L") at " + wstring(RootName(it->root)) + L"\\" + it->subKey); continue; }
+              RegCloseKey(probe); it->view = pv; }
             if (it->root != lastRoot || it->view != lastView) { bk += wstring(L"R\t") + RootName(it->root) + L"\t" + (it->view == KEY_WOW64_32KEY ? L"32" : L"64") + L"\n"; lastRoot = it->root; lastView = it->view; }
             wstring part; bool ok = it->kind == 2 ? ([&] { int budget = 2000; ExportKeyTree(it->root, it->view, it->subKey, part, 0, budget); return !part.empty(); })() : ExportValue(it->root, it->view, it->subKey, it->valueName, part);
-            if (!ok) { ++r.skipped; continue; } bk += part; todo.push_back(it); }
+            if (!ok) { ++r.failed; if (r.firstErr.empty()) r.firstErr = it->name + L": its registry data could not be backed up, so it was not touched."; continue; } bk += part; todo.push_back(it); }
         if (!todo.empty()) {
             wstring fn = NowIsoUtc(); for (auto& c : fn) if (c == L':') c = L'-'; wstring path = RegBackupDir() + L"\\regclean_" + fn + L".fsureg";
             if (!AtomicWrite(path, ToUtf8(bk))) { r.failed += (int)todo.size(); if (r.firstErr.empty()) r.firstErr = L"Backup could not be written; no registry entry was removed."; return; }   // abort without backup
             r.backupPath = path;
             for (auto* it : todo) {
                 bool gone = false; wstring err;
-                if (it->kind == 2) { size_t sl = it->subKey.find_last_of(L'\\'); wstring parent = it->subKey.substr(0, sl), child = it->subKey.substr(sl + 1); HKEY pk;
-                    if (RegOpenKeyExW(it->root, parent.c_str(), 0, KEY_ALL_ACCESS | it->view, &pk) == ERROR_SUCCESS) { LONG x = RegDeleteTreeW(pk, child.c_str()); HKEY chk; gone = x == ERROR_SUCCESS && RegOpenKeyExW(pk, child.c_str(), 0, KEY_READ | it->view, &chk) != ERROR_SUCCESS; if (!gone) err = Win32Err(x); RegCloseKey(pk); } else err = L"cannot open parent key"; }
+                if (it->kind == 2) { size_t sl = it->subKey.find_last_of(L'\\'); wstring parent = it->subKey.substr(0, sl == wstring::npos ? 0 : sl), child = sl == wstring::npos ? it->subKey : it->subKey.substr(sl + 1); HKEY pk; LONG x = ERROR_ACCESS_DENIED;
+                    if (RegOpenKeyExW(it->root, parent.c_str(), 0, KEY_ALL_ACCESS | it->view, &pk) == ERROR_SUCCESS) { x = RegDeleteTreeW(pk, child.c_str()); RegCloseKey(pk); }
+                    HKEY chk; REGSAM cv = it->view; gone = x == ERROR_SUCCESS && OpenKeyFlexible(it->root, it->subKey, KEY_READ, cv, chk) == ERROR_FILE_NOT_FOUND;
+                    if (!gone && IsElevated()) { wstring e2; if (DeleteKeyPriv(it->root, it->view, it->subKey, 0, e2)) { REGSAM cv2 = it->view; gone = OpenKeyFlexible(it->root, it->subKey, KEY_READ, cv2, chk) == ERROR_FILE_NOT_FOUND; if (!gone) err = L"the key is still present after deleting it"; } else err = e2.empty() ? Win32Err(x) : e2; }   // protected key: retry with backup/restore privileges
+                    else if (!gone) err = Win32Err(x) + L" (run Feather as administrator)"; }
                 else { HKEY k; if (RegOpenKeyExW(it->root, it->subKey.c_str(), 0, KEY_SET_VALUE | KEY_QUERY_VALUE | it->view, &k) == ERROR_SUCCESS) { LONG x = RegDeleteValueW(k, it->valueName.c_str()); gone = (x == ERROR_SUCCESS || x == ERROR_FILE_NOT_FOUND) && RegQueryValueExW(k, it->valueName.c_str(), nullptr, nullptr, nullptr, nullptr) == ERROR_FILE_NOT_FOUND; if (!gone) err = Win32Err(x); RegCloseKey(k); } else err = L"cannot open key"; }
                 if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it->name + L": " + err; }
                 WriteJournal(it->name, it->location, L"present (" + it->why + L")", gone ? L"removed (backup: " + path + L")" : L"unchanged", gone ? L"ok (restorable)" : L"failed: " + err, true);

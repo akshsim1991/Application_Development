@@ -1,4 +1,4 @@
-# Test report - 1.7.0 (2026-11-13)
+# Test report - 1.8.0 (2026-11-13)
 Environment: Linux container, MinGW-w64 GCC 13 cross-build; Wine 9 + Xvfb for UI smoke tests. NOT real Windows.
 | Area | Method | Result |
 |---|---|---|
@@ -13,5 +13,8 @@ Environment: Linux container, MinGW-w64 GCC 13 cross-build; Wine 9 + Xvfb for UI
 | Dark scrollbars, UI Automation, high-DPI, Narrator | not available | untested |
 Not run: spec acceptance tests AT01-AT30 on a Windows VM, performance budgets, offline network trace.
 
-## Addendum 1.7.0 (Large files, Duplicates)
+## Addendum 1.8.0 (Large files, Duplicates)
 Unit tests cover the keeper-selection logic (36/36). The scanner, hashing, UI pages and Recycle Bin move compile cleanly but were NOT run: Wine stopped working in this container (wineboot aborts with "free(): invalid pointer") after an environment restart, so no runtime smoke test was possible. Treat 1.7 file-finder features as untested.
+
+## Addendum 1.8.0
+Built: x64 and x86 exes and the installer, all compiled with Windows 7 API headers (_WIN32_WINNT=0x0601). 36/36 unit checks pass. New Cleaner categories (Windows Update cache with service stop/restart, Delivery Optimization, shader cache, memory dumps, logs, prefetch, font cache, Firefox/Brave, recent files, DNS flush, Windows.old launcher), the risk column, the Empty folders page, Windows 7 fallbacks (service enumeration, DPI, dark mode guard) and the x86/x64 installer logic were NOT executed: Wine is unavailable in this container. Nothing has been run on real Windows 7, 10 or 11.

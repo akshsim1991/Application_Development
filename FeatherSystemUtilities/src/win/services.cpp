@@ -52,9 +52,10 @@ ServiceScan ScanServices(bool drivers) {
     ServiceScan out;
     SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_ENUMERATE_SERVICE | SC_MANAGER_CONNECT);
     if (!scm) { out.coverage = L"Cannot open the Service Control Manager: " + Win32Err(GetLastError()); return out; }
-    const DWORD types = drivers ? (DWORD)SERVICE_DRIVER : (DWORD)(SERVICE_WIN32 | SERVICE_USER_SERVICE | SERVICE_USERSERVICE_INSTANCE);
-    DWORD need = 0, cnt = 0, resume = 0;
+    const DWORD typesWanted = drivers ? (DWORD)SERVICE_DRIVER : (DWORD)(SERVICE_WIN32 | SERVICE_USER_SERVICE | SERVICE_USERSERVICE_INSTANCE);
+    DWORD need = 0, cnt = 0, resume = 0; DWORD types = typesWanted;
     EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, types, SERVICE_STATE_ALL, nullptr, 0, &need, &cnt, &resume, nullptr);
+    if (GetLastError() == ERROR_INVALID_PARAMETER && !drivers) { types = SERVICE_WIN32; need = cnt = resume = 0; EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, types, SERVICE_STATE_ALL, nullptr, 0, &need, &cnt, &resume, nullptr); }   // Windows 7/8: no per-user service types
     std::vector<BYTE> buf(need + 8192); resume = 0;
     if (!EnumServicesStatusExW(scm, SC_ENUM_PROCESS_INFO, types, SERVICE_STATE_ALL, buf.data(), (DWORD)buf.size(), &need, &cnt, &resume, nullptr) && GetLastError() != ERROR_MORE_DATA) {
         out.coverage = L"Enumeration failed: " + Win32Err(GetLastError()); CloseServiceHandle(scm); return out;
@@ -161,6 +162,15 @@ static bool StartOne(SC_HANDLE scm, const wstring& name, wstring& err) {
     if (ok) ok = WaitState(sv, SERVICE_RUNNING, 30000, err);
     CloseServiceHandle(sv); return ok;
 }
+int SvcStopIfRunning(const wstring& name, wstring& err) {
+    SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); if (!scm) { err = Win32Err(GetLastError()); return -1; } int r = 0;
+    SC_HANDLE sv = OpenServiceW(scm, name.c_str(), SERVICE_QUERY_STATUS); SERVICE_STATUS_PROCESS ss{}; DWORD n = 0;
+    if (!sv) r = GetLastError() == ERROR_SERVICE_DOES_NOT_EXIST ? 0 : (err = Win32Err(GetLastError()), -1);
+    else { if (QueryServiceStatusEx(sv, SC_STATUS_PROCESS_INFO, (LPBYTE)&ss, sizeof ss, &n) && ss.dwCurrentState != SERVICE_STOPPED) { wstring e2; if (IsCriticalService(name)) { err = L"critical service"; r = -1; } else { for (auto& d : ActiveDependents(name)) { if (!StopOne(scm, d, e2)) { err = L"dependent " + d + L": " + e2; r = -1; break; } } if (r == 0) r = StopOne(scm, name, err) ? 1 : -1; } } CloseServiceHandle(sv); }
+    CloseServiceHandle(scm); return r;
+}
+bool SvcStartByName(const wstring& name, wstring& err) { SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); if (!scm) { err = Win32Err(GetLastError()); return false; } bool ok = StartOne(scm, name, err); CloseServiceHandle(scm); return ok; }
+
 bool ServiceOp(const ServiceEntry& s, SvcOp op, wstring& err) {
     static const wchar_t* names[] = {L"Start", L"Stop", L"Restart", L"Pause", L"Resume"};
     wstring opName = names[(int)op];

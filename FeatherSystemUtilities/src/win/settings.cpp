@@ -31,7 +31,7 @@ void LoadSettings() {
         else if (k == "largeMinMB") g_cfg.largeMinMB = (n >= 1 && n <= 100000) ? n : 100; else if (k == "dupMinKB") g_cfg.dupMinKB = (n >= 1 && n <= 10000000) ? n : 1024;
         else if (k.rfind("scan.", 0) == 0) { if (g_cfg.scanRoots.size() < 20 && !v.empty()) g_cfg.scanRoots.push_back(FromUtf8(v)); }
         else if (k == "keepRecent") g_cfg.keepRecent = n != 0; else if (k == "hideSystem") g_cfg.hideSystem = n != 0; else if (k == "confirmBatch") g_cfg.confirmBatch = n != 0;
-        else if (k == "startPage") g_cfg.startPage = (n >= 0 && n < 9) ? n : 0; else if (k == "maximized") g_cfg.maximized = n != 0;
+        else if (k == "startPage") g_cfg.startPage = (n >= 0 && n < 10) ? n : 0; else if (k == "maximized") g_cfg.maximized = n != 0;
         else if (k == "winX") g_cfg.winX = n; else if (k == "winY") g_cfg.winY = n;
         else if (k == "winW") g_cfg.winW = (n >= 600 && n < 10000) ? n : 1360; else if (k == "winH") g_cfg.winH = (n >= 400 && n < 10000) ? n : 780;
         else if (k.rfind("cols.", 0) == 0) {   // cols.<page>=w,w,w

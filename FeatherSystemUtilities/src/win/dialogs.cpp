@@ -103,7 +103,7 @@ void ShowReport(HWND owner, const wstring& title, const std::vector<ReportTab>& 
     static bool reg = false;
     if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = RDProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuReportDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
     RD d; d.tabs = tabs; d.btns = btns; d.br = CreateSolidBrush(kWarmBg);
-    UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
+    UINT dpi = owner ? DpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
     d.font = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     RECT orc{0, 0, 0, 0}; if (owner) GetWindowRect(owner, &orc);
     int W = S(780), H = S(640), x = owner ? orc.left + ((orc.right - orc.left) - W) / 2 : CW_USEDEFAULT, y = owner ? orc.top + ((orc.bottom - orc.top) - H) / 2 : CW_USEDEFAULT;
@@ -144,7 +144,7 @@ int DarkMsg(HWND owner, const wstring& title, const wstring& text, int kind) {
     static bool reg = false;
     if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = MDProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuMsgDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
     MD d; d.br = CreateSolidBrush(kWarmBg); d.kind = kind;
-    UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
+    UINT dpi = owner ? DpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
     HFONT f = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     int tw = S(460); HDC dc = GetDC(nullptr); HFONT of = (HFONT)SelectObject(dc, f); RECT cr{0, 0, tw, 0}; DrawTextW(dc, text.c_str(), -1, &cr, DT_CALCRECT | DT_WORDBREAK | DT_NOPREFIX); SelectObject(dc, of); ReleaseDC(nullptr, dc);
     int th = std::min<int>(cr.bottom, S(420)); int W = tw + S(48), H = th + S(120);
@@ -185,7 +185,7 @@ bool FormDialog(HWND owner, const wstring& title, const wstring& okText, std::ve
     static bool reg = false;
     if (!reg) { WNDCLASSW wc{}; wc.lpfnWndProc = FDProc; wc.hInstance = GetModuleHandleW(nullptr); wc.lpszClassName = L"FsuFormDlg"; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); RegisterClassW(&wc); reg = true; }
     FD d; d.fields = &fields; d.br = CreateSolidBrush(kWarmBg);
-    UINT dpi = owner ? GetDpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
+    UINT dpi = owner ? DpiForWindow(owner) : 96; auto S = [&](int v) { return MulDiv(v, dpi, 96); };
     HFONT f = CreateFontW(-MulDiv(9, dpi, 72), 0, 0, 0, FW_NORMAL, 0, 0, 0, DEFAULT_CHARSET, 0, 0, CLEARTYPE_QUALITY, 0, L"Segoe UI");
     int W = S(584), y = S(14), nlines = note.empty() ? 0 : (int)(note.size() / 80) + 2;
     RECT orc{}; if (owner) GetWindowRect(owner, &orc); else orc = {0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN)};

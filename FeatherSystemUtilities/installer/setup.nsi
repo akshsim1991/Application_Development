@@ -1,7 +1,7 @@
 ; Feather System Utilities - offline installer (NSIS, zlib license). Build: ./build.sh installer
 Unicode true
 !define APP "Feather System Utilities"
-!define VER "1.7.0"
+!define VER "1.8.0"
 !define EXE "FeatherSystemUtilities.exe"
 !define UNKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherSystemUtilities"
 !include "MUI2.nsh"
@@ -14,7 +14,7 @@ InstallDirRegKey HKLM "${UNKEY}" "InstallLocation"
 RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 BrandingText "Developed by Akshaya Simha"
-VIProductVersion "1.7.0.0"
+VIProductVersion "1.8.0.0"
 VIAddVersionKey "ProductName" "${APP}"
 VIAddVersionKey "FileDescription" "${APP} Setup"
 VIAddVersionKey "FileVersion" "${VER}"
@@ -33,15 +33,15 @@ VIAddVersionKey "LegalCopyright" "Developed by Akshaya Simha"
 !insertmacro MUI_LANGUAGE "English"
 
 Function .onInit
-  ${IfNot} ${RunningX64}
-    MessageBox MB_OK|MB_ICONSTOP "${APP} requires 64-bit Windows 10 or 11."
-    Abort
+  ${If} ${RunningX64}
+    SetRegView 64
   ${EndIf}
-  SetRegView 64
 FunctionEnd
 
 Section "Install"
-  SetRegView 64
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
   ; close a running copy gracefully (upgrade)
   FindWindow $0 "FeatherSystemUtilitiesWnd"
   ${If} $0 != 0
@@ -49,7 +49,11 @@ Section "Install"
     Sleep 1500
   ${EndIf}
   SetOutPath "$INSTDIR"
-  File "..\build\${EXE}"
+  ${If} ${RunningX64}
+    File "..\build\${EXE}"
+  ${Else}
+    File /oname=${EXE} "..\build\FeatherSystemUtilities-x86.exe"
+  ${EndIf}
   File "..\README.md"
   File "..\THIRD_PARTY_NOTICES.md"
   File "..\docs\USER_GUIDE.md"
@@ -68,7 +72,9 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
-  SetRegView 64
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
   FindWindow $0 "FeatherSystemUtilitiesWnd"
   ${If} $0 != 0
     SendMessage $0 0x0010 0 0

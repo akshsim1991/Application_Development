@@ -1,2 +1,0 @@
-7661d6315d928b14e4a015d20d7f40b828dca9f261b77779c070aa6937d7a730  FeatherSystemUtilities-Setup-1.7.0.exe
-c3a15493224b55401d94528a03fcccb781efb8e090c7ead0422cf61ecb8b14cd  FeatherSystemUtilities.exe

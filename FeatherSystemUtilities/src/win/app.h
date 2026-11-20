@@ -13,10 +13,13 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"1.7.0"
+#define FSU_VERSION L"1.8.0"
 
 namespace fsu {
 
+UINT DpiForWindow(HWND h);                      // Windows 7 compatible (GetDpiForWindow only exists on Windows 10 1607+)
+DWORD WindowsBuild();                          // real build number (0 if unknown)
+bool IsProcessRunning(const wchar_t* exeName);
 std::wstring ExpandEnv(const std::wstring& s);
 std::wstring DataDir();                        // %LOCALAPPDATA%\FeatherSystemUtilities (created)
 std::wstring SubDir(const wchar_t* name);      // DataDir()\name (created)
@@ -91,6 +94,8 @@ enum class SvcOp { Start, Stop, Restart, Pause, Resume };
 bool ServiceOp(const ServiceEntry& s, SvcOp op, std::wstring& err);
 bool KillServiceProcess(const ServiceEntry& s, const std::vector<ServiceEntry>& all, std::wstring& err);
 std::vector<std::wstring> ActiveDependents(const std::wstring& name);
+int  SvcStopIfRunning(const std::wstring& name, std::wstring& err);   // 1 stopped, 0 was not running, -1 failed
+bool SvcStartByName(const std::wstring& name, std::wstring& err);
 bool SetServiceStartType(const std::wstring& name, DWORD startType, bool delayed, std::wstring& err, std::wstring& before);
 bool IsCriticalService(const std::wstring& name);
 std::wstring ServiceTabText(const ServiceEntry& s, int tab);   // 0 General 1 Configuration 2 Recovery 3 Dependencies 4 History
@@ -111,7 +116,9 @@ std::wstring PlanText(const std::vector<PlanItem>& plan);
 // ---- cleaner: temporary files + invalid registry entries ----
 struct CleanItem {
     std::wstring id, name, type, detail, location, why;
-    ULONGLONG bytes = 0, files = 0; int kind = 0;               // 0 temp folders, 1 recycle bin, 2 registry key, 3 registry value
+    ULONGLONG bytes = 0, files = 0; int kind = 0;               // 0 temp folders, 1 recycle bin, 2 registry key, 3 registry value, 4 run command, 5 open Windows tool
+    int risk = 0;                                                // 0 low, 1 medium, 2 high
+    std::vector<std::wstring> services; std::wstring pattern, cmd; int minAgeDays = 0; bool ignoreRecent = false;
     bool needsAdmin = false; HKEY root = nullptr; REGSAM view = 0; std::wstring subKey, valueName;
     std::vector<std::wstring> paths;
 };
@@ -125,7 +132,7 @@ bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring&
 // ---- large-file and duplicate finder (files.cpp) ----
 struct FileEntry { std::wstring path, name, folder, ext; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; };
 struct FileScan { std::vector<FileEntry> files; std::wstring coverage; ULONGLONG scanned = 0, totalBytes = 0, reclaimable = 0; int groups = 0; bool cancelled = false; };
-struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
+struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false, empty = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
 std::vector<std::wstring> DefaultScanRoots();
 void ScanFiles(const FileScanOpts& o, FileScan& out);
 bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);   // to the Recycle Bin (undoable from Explorer)

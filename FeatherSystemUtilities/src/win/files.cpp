@@ -60,7 +60,34 @@ static bool HashFile(const wstring& path, ULONGLONG limitHead, bool headTail, ws
     (void)limitHead; if (hh) BCryptDestroyHash(hh); if (alg) BCryptCloseAlgorithmProvider(alg, 0); CloseHandle(f); return ok;
 }
 
+// ---- empty folders: a folder is "empty" only if it contains no files at all (hidden/system files count), no links, and only empty subfolders ----
+struct ECtx { const FileScanOpts& o; ULONGLONG scanned = 0; wstring winDir, pfDir, pf86Dir; };
+static bool EmptyRec(ECtx& c, const wstring& dir, int depth, std::vector<FileEntry>& out, int& nested) {
+    nested = 0; if (depth > 40 || (c.o.cancel && c.o.cancel->load())) return false;
+    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return false;   // unreadable: never assume empty
+    bool files = false, anyNonEmpty = false; std::vector<FileEntry> emptyKids; int kidNested = 0;
+    do {
+        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n;
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { files = true; continue; }
+        wstring l = Lower(full); if ((fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) || l == c.winDir || l == c.pfDir || l == c.pf86Dir) { files = true; continue; }   // protected: counts as content
+        ++c.scanned; if (c.o.progress && c.scanned % 2000 == 0) c.o.progress(L"Scanning\u2026 " + std::to_wstring(c.scanned) + L" folders checked");
+        int kn = 0; std::vector<FileEntry> sub; bool e = EmptyRec(c, full, depth + 1, sub, kn);
+        if (e) { FileEntry fe; fe.path = full; fe.name = n; fe.folder = dir; fe.ext = L"folder"; fe.groupCount = kn; fe.mtime = FtU(fd.ftLastWriteTime); emptyKids.push_back(fe); kidNested += kn + 1; }
+        else { anyNonEmpty = true; out.insert(out.end(), sub.begin(), sub.end()); }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    if (!files && !anyNonEmpty) { nested = kidNested; return true; }       // whole tree empty: parent reports it, children are not listed separately
+    out.insert(out.end(), emptyKids.begin(), emptyKids.end()); return false;
+}
+static void ScanEmpty(const FileScanOpts& o, FileScan& out) {
+    ECtx c{o}; wchar_t b[MAX_PATH]; GetWindowsDirectoryW(b, MAX_PATH); c.winDir = Lower(b); c.pfDir = Lower(KF(FOLDERID_ProgramFiles)); c.pf86Dir = Lower(KF(FOLDERID_ProgramFilesX86));
+    for (auto r : o.roots) { while (r.size() > 3 && r.back() == L'\\') r.pop_back(); int n = 0; std::vector<FileEntry> found; EmptyRec(c, r, 0, found, n); out.files.insert(out.files.end(), found.begin(), found.end()); if (o.cancel && o.cancel->load()) break; }   // the chosen root itself is never listed
+    out.scanned = c.scanned; out.cancelled = o.cancel && o.cancel->load(); std::sort(out.files.begin(), out.files.end(), [](const FileEntry& a, const FileEntry& b2) { return Lower(a.path) < Lower(b2.path); });
+    out.coverage = L"Checked " + std::to_wstring(c.scanned) + L" folders. A folder counts as empty only if it has no files at all (hidden and system files count as content), no links, and only empty subfolders. Windows, Program Files and system folders are never listed. Folders go to the Recycle Bin." + (out.cancelled ? L" Scan was stopped early." : L"");
+}
+
 void ScanFiles(const FileScanOpts& o, FileScan& out) {
+    if (o.empty) { ScanEmpty(o, out); return; }
     Ctx c{o}; wchar_t b[MAX_PATH]; GetWindowsDirectoryW(b, MAX_PATH); c.winDir = Lower(b); c.pfDir = Lower(KF(FOLDERID_ProgramFiles)); c.pf86Dir = Lower(KF(FOLDERID_ProgramFilesX86));
     std::set<wstring> done; for (auto r : o.roots) { while (r.size() > 3 && r.back() == L'\\') r.pop_back(); wstring l = Lower(r); bool nested = false; for (auto& d : done) if (l.rfind(d + L"\\", 0) == 0 || l == d) nested = true; if (nested) continue; done.insert(l); Walk(c, r, 0); if (Cancelled(c)) break; }
     out.scanned = c.scanned; out.cancelled = Cancelled(c);

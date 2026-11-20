@@ -1,4 +1,4 @@
-# Third-party notices and SBOM (Feather System Utilities 1.7.0)
+# Third-party notices and SBOM (Feather System Utilities 1.8.0)
 
 Developed by Akshaya Simha. No third-party code is embedded in the application source.
 

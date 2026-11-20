@@ -1,6 +1,7 @@
 // File evidence: version resource + offline Authenticode (embedded or catalog). Read-only.
 #include "app.h"
 #include "../core/text.h"
+#include <tlhelp32.h>
 #include <softpub.h>
 #include <wincrypt.h>
 #include <wintrust.h>
@@ -11,6 +12,20 @@
 #include <filesystem>
 
 namespace fsu {
+
+UINT DpiForWindow(HWND h) {
+    static auto fn = (UINT(WINAPI*)(HWND))GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
+    if (fn && h) return fn(h);
+    HDC dc = GetDC(h); int d = dc ? GetDeviceCaps(dc, LOGPIXELSX) : 96; if (dc) ReleaseDC(h, dc); return d > 0 ? (UINT)d : 96;
+}
+DWORD WindowsBuild() {
+    typedef LONG(WINAPI * RtlGetVersionFn)(OSVERSIONINFOW*); static DWORD b = [] { auto f = (RtlGetVersionFn)GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlGetVersion"); OSVERSIONINFOW v{}; v.dwOSVersionInfoSize = sizeof v; if (f && f(&v) == 0) return (DWORD)v.dwBuildNumber; return (DWORD)0; }(); return b;
+}
+bool IsProcessRunning(const wchar_t* exe) {
+    HANDLE s = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0); if (s == INVALID_HANDLE_VALUE) return false; PROCESSENTRY32W pe{}; pe.dwSize = sizeof pe; bool found = false;
+    if (Process32FirstW(s, &pe)) do { if (_wcsicmp(pe.szExeFile, exe) == 0) { found = true; break; } } while (Process32NextW(s, &pe));
+    CloseHandle(s); return found;
+}
 
 std::wstring ExpandEnv(const std::wstring& s) {
     DWORD n = ExpandEnvironmentStringsW(s.c_str(), nullptr, 0);
@@ -93,7 +108,7 @@ static void VerifyFile(const std::wstring& path, FileInfo& fi) {
                     std::wstring tag; for (DWORD i = 0; i < hl; ++i) { wchar_t b[3]; swprintf(b, 3, L"%02X", hash[i]); tag += b; }
                     WINTRUST_CATALOG_INFO cat{}; cat.cbStruct = sizeof cat; cat.pcwszCatalogFilePath = cinfo.wszCatalogFile;
                     cat.pcwszMemberFilePath = path.c_str(); cat.hMemberFile = h; cat.pbCalculatedFileHash = hash; cat.cbCalculatedFileHash = hl;
-                    cat.pcwszMemberTag = tag.c_str(); cat.hCatAdmin = ca;
+                    cat.pcwszMemberTag = tag.c_str();
                     WINTRUST_DATA w2{}; w2.cbStruct = sizeof w2; w2.dwUIChoice = WTD_UI_NONE; w2.fdwRevocationChecks = WTD_REVOKE_NONE;
                     w2.dwUnionChoice = WTD_CHOICE_CATALOG; w2.pCatalog = &cat; w2.dwStateAction = WTD_STATEACTION_VERIFY;
                     w2.dwProvFlags = WTD_CACHE_ONLY_URL_RETRIEVAL | WTD_REVOCATION_CHECK_NONE;

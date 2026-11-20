@@ -12,6 +12,7 @@
 #include <filesystem>
 
 namespace fsu {
+bool InSafeMode(int* kind) { int m = GetSystemMetrics(SM_CLEANBOOT); if (kind) *kind = m; return m != 0; }
 
 UINT DpiForWindow(HWND h) {
     static auto fn = (UINT(WINAPI*)(HWND))GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");

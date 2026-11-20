@@ -24,11 +24,12 @@ wstring FileDateText(ULONGLONG ft) {
 
 struct Ctx { const FileScanOpts& o; std::vector<FileEntry> hits; ULONGLONG scanned = 0, lastReport = 0; std::set<wstring> seenRoots; wstring winDir, pfDir, pf86Dir; };
 static bool Cancelled(Ctx& c) { return c.o.cancel && c.o.cancel->load(); }
+static wstring Join(const wstring& dir, const wstring& n) { return !dir.empty() && dir.back() == L'\\' ? dir + n : dir + L"\\" + n; }   // "E:\\" + "x" must not become "E:\\\\x"
 static void Walk(Ctx& c, const wstring& dir, int depth) {
     if (depth > 40 || Cancelled(c)) return;
-    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH); if (h == INVALID_HANDLE_VALUE) return;
+    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((Join(dir, L"*")).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH); if (h == INVALID_HANDLE_VALUE) return;
     do {
-        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n;
+        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = Join(dir, n);
         if (IsExcluded(full)) continue;                                                              // user exclusion list
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) continue;                         // never follow junctions/symlinks/OneDrive placeholders
         if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
@@ -68,10 +69,10 @@ static bool HashFile(const wstring& path, ULONGLONG limitHead, bool headTail, ws
 struct ECtx { const FileScanOpts& o; ULONGLONG scanned = 0; wstring winDir, pfDir, pf86Dir; };
 static bool EmptyRec(ECtx& c, const wstring& dir, int depth, std::vector<FileEntry>& out, int& nested) {
     nested = 0; if (depth > 40 || (c.o.cancel && c.o.cancel->load())) return false;
-    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return false;   // unreadable: never assume empty
+    WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((Join(dir, L"*")).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return false;   // unreadable: never assume empty
     bool files = false, anyNonEmpty = false; std::vector<FileEntry> emptyKids; int kidNested = 0;
     do {
-        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = dir + L"\\" + n;
+        wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; wstring full = Join(dir, n);
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { files = true; continue; }
         wstring l = Lower(full); if (IsExcluded(full) || (fd.dwFileAttributes & FILE_ATTRIBUTE_SYSTEM) || l == c.winDir || l == c.pfDir || l == c.pf86Dir) { files = true; continue; }   // protected: counts as content
         ++c.scanned; if (c.o.progress && c.scanned % 2000 == 0) c.o.progress(L"Scanning\u2026 " + std::to_wstring(c.scanned) + L" folders checked");
@@ -132,14 +133,14 @@ bool VerifyIdentical(const wstring& a, const wstring& b) {
 }
 // Re-checks right before deleting: true only if the whole tree holds no file at all (hidden/system count), no link, nothing unreadable.
 static bool TreeHasContent(const wstring& dir, int depth) {
-    if (depth > 40) return true; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return true;
-    bool content = false; do { wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { content = true; break; } if (TreeHasContent(dir + L"\\" + n, depth + 1)) { content = true; break; } } while (FindNextFileW(h, &fd));
+    if (depth > 40) return true; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((Join(dir, L"*")).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0); if (h == INVALID_HANDLE_VALUE) return true;
+    bool content = false; do { wstring n = fd.cFileName; if (n == L"." || n == L"..") continue; if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT)) { content = true; break; } if (TreeHasContent(Join(dir, n), depth + 1)) { content = true; break; } } while (FindNextFileW(h, &fd));
     FindClose(h); return content;
 }
 bool IsFolderTreeEmpty(const wstring& dir) { DWORD a = GetFileAttributesW(dir.c_str()); return a != INVALID_FILE_ATTRIBUTES && (a & FILE_ATTRIBUTE_DIRECTORY) && !(a & FILE_ATTRIBUTE_REPARSE_POINT) && !TreeHasContent(dir, 0); }
 static bool RemoveEmptyTree(const wstring& dir, int depth) {   // deepest folders first; only called after TreeHasContent() was false
-    if (depth > 40) return false; std::vector<wstring> kids; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0);
-    if (h != INVALID_HANDLE_VALUE) { do { wstring n = fd.cFileName; if (n != L"." && n != L"..") kids.push_back(dir + L"\\" + n); } while (FindNextFileW(h, &fd)); FindClose(h); }
+    if (depth > 40) return false; std::vector<wstring> kids; WIN32_FIND_DATAW fd; HANDLE h = FindFirstFileExW((Join(dir, L"*")).c_str(), FindExInfoBasic, &fd, FindExSearchNameMatch, nullptr, 0);
+    if (h != INVALID_HANDLE_VALUE) { do { wstring n = fd.cFileName; if (n != L"." && n != L"..") kids.push_back(Join(dir, n)); } while (FindNextFileW(h, &fd)); FindClose(h); }
     bool ok = true; for (auto& k : kids) if (!RemoveEmptyTree(k, depth + 1)) ok = false; if (!ok) return false;
     SetFileAttributesW(dir.c_str(), FILE_ATTRIBUTE_NORMAL); return RemoveDirectoryW(dir.c_str()) != 0;
 }

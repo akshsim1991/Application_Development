@@ -1,10 +1,10 @@
 {
-  "version": "3.3.0",
+  "version": "3.4.0",
   "date": "20 November 2026",
-  "notes": "Drivers: problem codes, installed-vs-proposed comparison, one-at-a-time install with restore point and verification. Privacy: browser data by category and a Windows privacy checklist. Troubleshoot: event logs, redacted diagnostic report. Old downloads review and file preview.",
+  "notes": "Recommendation column (safe to disable?) for Startup and Services with an online-updatable knowledge base, administrator-rights prompts instead of silent failures, Safe Mode support, doubled-backslash path fix, dark-mode scrollbars.",
   "windows": {
-    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.3.0.exe",
-    "size": 2298282,
-    "sha256": "971953b410598defad69efde23eda134cb80f3e27acbfd3de4769278a105ee5f"
+    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.4.0.exe",
+    "size": 2320073,
+    "sha256": "71849b3561e6c9cdaee6fc3cedce5a50830f4174e4ef6c5852f9b1f518ddb2de"
   }
 }

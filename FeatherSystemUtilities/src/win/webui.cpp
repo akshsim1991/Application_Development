@@ -96,11 +96,11 @@ static string CleanJson() {
     return js::Obj().num("gen", g_clGen).raw("items", a.done()).str("coverage", U(g_cl.coverage)).num("totalBytes", (double)g_cl.totalBytes).num("registry", g_cl.registryCount).done();
 }
 static string StartupJson(const StartupEntry& e) {
-    wstring prog = e.program; bool exists = prog.empty() ? true : FileExistsExpanded(prog); string kindS; wstring advice; ClassifyStartup(e, kindS, advice);
+    wstring prog = e.program; bool exists = prog.empty() ? true : FileExistsExpanded(prog); string kindS; wstring advice; ClassifyStartup(e, kindS, advice); Advice adv = AdviceForStartup(e, !exists);
     return js::Obj().str("key", U(e.key)).str("name", U(e.name)).str("state", U(e.state)).str("type", U(e.type)).str("starts", U(e.starts)).str("scope", U(e.scope)).str("command", U(e.command)).str("program", U(e.program))
         .str("publisher", U(e.publisher)).str("version", U(e.version)).str("signature", U(e.signature)).str("warnings", U(e.warnings)).str("location", U(e.location)).str("firstSeen", U(e.firstSeen))
         .boolean("canToggle", e.toggle != Toggle::None && !e.managedDelay).boolean("canDelete", CanDeleteEntry(e)).boolean("canDelay", CanDelay(e)).boolean("microsoft", e.microsoft).boolean("system", e.isSystem).boolean("recent", e.recent)
-        .boolean("missing", !exists).boolean("delayed", e.managedDelay).str("kind", kindS).str("advice", U(advice)).str("details", U(StartupDetailsText(e))).done();
+        .boolean("missing", !exists).boolean("delayed", e.managedDelay).boolean("needsAdmin", e.root == HKEY_LOCAL_MACHINE || e.scope.find(L"All") != wstring::npos).str("adv", U(adv.verdict)).str("advWhy", U(adv.reason)).str("advSrc", U(adv.source)).str("kind", kindS).str("advice", U(advice)).str("details", U(StartupDetailsText(e))).done();
 }
 static string ProgramJson(const ProgramEntry& e) {
     UninstallPlan s = PlanUninstall(e, true); wstring why; bool prot = ProtectedProgram(e, why);
@@ -108,10 +108,10 @@ static string ProgramJson(const ProgramEntry& e) {
         .str("location", U(e.installLocation)).boolean("canUninstall", e.canUninstall).boolean("silent", s.available).str("silentNote", U(s.note)).str("uninstall", U(e.uninstallString)).str("quiet", U(e.quietUninstallString)).str("source", U(e.source.empty() ? wstring(e.root == HKEY_CURRENT_USER ? L"HKCU" : L"HKLM") + L"\\...\\Uninstall\\" + e.keyName : e.source)).boolean("protected", prot).str("why", U(why)).done();
 }
 static string ServiceJson(const ServiceEntry& s) {
-    js::Arr d; for (auto& x : s.deps) d.add(Q(x));
+    js::Arr d; for (auto& x : s.deps) d.add(Q(x)); Advice adv = AdviceForService(s);
     return js::Obj().str("name", U(s.name)).str("display", U(s.display)).str("state", U(s.state)).str("start", U(s.start)).str("safety", U(s.safety)).str("account", U(s.account)).str("description", U(s.description)).str("warnings", U(s.warnings))
         .str("path", U(s.path)).str("publisher", U(s.publisher)).str("signature", U(s.signature)).num("pid", s.pid).boolean("running", s.stateCode == SERVICE_RUNNING).boolean("stopped", s.stateCode == SERVICE_STOPPED)
-        .boolean("canStop", (s.controls & SERVICE_ACCEPT_STOP) != 0).boolean("critical", s.critical).boolean("driver", s.isDriver).raw("deps", d.done()).done();
+        .boolean("canStop", (s.controls & SERVICE_ACCEPT_STOP) != 0).boolean("critical", s.critical).boolean("driver", s.isDriver).boolean("needsAdmin", true).str("adv", U(adv.verdict)).str("advWhy", U(adv.reason)).str("advSrc", U(adv.source)).raw("deps", d.done()).done();
 }
 
 // ---------- startup deletion (preview/confirmation is done in the page; backups by the engine) ----------
@@ -234,6 +234,7 @@ static void RunAsync(long id, Fn fn, const js::V a) {
 }
 static string Ok(const char* k = nullptr, const string& raw = "") { js::Obj o; o.boolean("ok", true); if (k) o.raw(k, raw); return o.done(); }
 
+static int SafeModeKind() { int k = 0; InSafeMode(&k); return k; }
 static bool StartWithWindows() { HKEY k; bool on = false; if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, KEY_READ, &k) == ERROR_SUCCESS) { on = RegQueryValueExW(k, L"FeatherSystemUtilities", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; RegCloseKey(k); } return on; }
 static bool SetStartWithWindows(bool on) { HKEY k; if (RegCreateKeyExW(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Run", 0, nullptr, 0, KEY_SET_VALUE, nullptr, &k, nullptr) != ERROR_SUCCESS) return false; bool ok; if (on) { wchar_t exe[MAX_PATH]; GetModuleFileNameW(nullptr, exe, MAX_PATH); wstring v = L"\"" + wstring(exe) + L"\""; ok = RegSetValueExW(k, L"FeatherSystemUtilities", 0, REG_SZ, (const BYTE*)v.c_str(), (DWORD)((v.size() + 1) * 2)) == ERROR_SUCCESS; } else { LONG r = RegDeleteValueW(k, L"FeatherSystemUtilities"); ok = r == ERROR_SUCCESS || r == ERROR_FILE_NOT_FOUND; } RegCloseKey(k); return ok; }
 static string ExeDir() { wchar_t p[MAX_PATH]; GetModuleFileNameW(nullptr, p, MAX_PATH); PathRemoveFileSpecW(p); return U(p); }
@@ -243,11 +244,11 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
-        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0; else if (k == "quarantine") c.quarantineLeftovers = v != 0; else if (k == "logDays") c.logRetentionDays = (int)std::clamp(v, 0.0, 3650.0);
+        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0; else if (k == "quarantine") c.quarantineLeftovers = v != 0; else if (k == "onlineAdvice") c.onlineAdvice = v != 0; else if (k == "logDays") c.logRetentionDays = (int)std::clamp(v, 0.0, 3650.0);
         else if (k == "largeMinMB") c.largeMinMB = (int)std::clamp(v, 1.0, 1000000.0); else if (k == "dupMinKB") c.dupMinKB = (int)std::clamp(v, 1.0, 100000000.0); else return Err(L"Unknown setting.");
         SaveSettings(); return Ok(); };
     h["app.restartAdmin"] = [](const js::V&) {
@@ -319,6 +320,7 @@ static std::map<string, Fn>& Handlers() {
         if (op == "kill") ok = KillServiceProcess(s, g_sv.entries, err);
         else { SvcOp o = op == "start" ? SvcOp::Start : op == "stop" ? SvcOp::Stop : op == "restart" ? SvcOp::Restart : op == "pause" ? SvcOp::Pause : SvcOp::Resume; ok = ServiceOp(s, o, err); }
         return ok ? Ok() : Err(err); };
+    h["services.lookup"] = [](const js::V& a) { ServiceEntry sv; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& e : g_sv.entries) if (U(e.name) == a.str("name")) { sv = e; f = true; break; } if (!f) return Err(L"Service not found."); } OnlineLookup(g_wnd, false, sv.program, sv.display); return Ok(); };
     h["services.startType"] = [](const js::V& a) {
         ServiceEntry s; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& e : g_sv.entries) if (U(e.name) == a.str("name")) { s = e; f = true; break; } if (!f) return Err(L"Service not found. Refresh the list."); }
         string t = a.str("type"); if (s.critical && t == "disabled") return Err(L"Blocked: this service is on the critical list (Windows may become unstable).");
@@ -476,6 +478,23 @@ static std::map<string, Fn>& Handlers() {
         wchar_t file[MAX_PATH] = L"FeatherDiagnosticReport.txt"; OPENFILENAMEW o{sizeof o}; o.hwndOwner = g_wnd; o.lpstrFilter = L"Text (*.txt)\0*.txt\0"; o.lpstrFile = file; o.nMaxFile = MAX_PATH; o.lpstrDefExt = L"txt"; o.Flags = OFN_OVERWRITEPROMPT | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
         if (!GetSaveFileNameW(&o)) return js::Obj().boolean("ok", true).boolean("cancelled", true).done(); return AtomicWrite(file, "\xEF\xBB\xBF" + text) ? js::Obj().boolean("ok", true).str("path", U(file)).done() : Err(L"The file could not be written."); };
     h["help.open"] = [](const js::V& a) { string id = a.str("id"); const wchar_t* url = id == "windows" ? L"https://support.microsoft.com/windows" : id == "health" ? L"https://learn.microsoft.com/windows/release-health/" : nullptr; if (!url) return Err(L"Unknown help page."); ShellExecuteW(nullptr, L"open", url, nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
+
+    // ---- recommendations ("safe to disable?") ----
+    h["advice.status"] = [](const js::V&) { auto i = AdviceStatus(); return js::Obj().boolean("ok", true).str("version", U(i.version)).str("updated", U(i.updated)).str("source", U(i.source)).num("startupRules", i.startupRules).num("serviceRules", i.serviceRules).boolean("online", Cfg().onlineAdvice).done(); };
+    h["advice.refresh"] = [](const js::V& a) {
+        if (!Cfg().onlineAdvice && !a.boolean("force")) return Err(L"Downloading recommendations is turned off in Settings."); AdviceInfo i; wstring err; bool ok = AdviceRefresh(i, err);
+        FILETIME ft; GetSystemTimeAsFileTime(&ft); Cfg().adviceCheck = (long long)((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 10000000ULL) - 11644473600LL; SaveSettings();
+        if (!ok) { auto cur = AdviceStatus(); return js::Obj().boolean("ok", false).str("error", U(err)).str("version", U(cur.version)).str("source", U(cur.source)).done(); } return js::Obj().boolean("ok", true).str("version", U(i.version)).str("updated", U(i.updated)).str("source", U(i.source)).num("startupRules", i.startupRules).num("serviceRules", i.serviceRules).done(); };
+
+    // ---- Safe Mode ----
+    h["safemode.status"] = [](const js::V&) {
+        int kind = SafeModeKind(); js::Arr arr; static const struct { const wchar_t* name; const wchar_t* label; const wchar_t* needed; } svc[] = {{L"Schedule", L"Task Scheduler", L"scheduled startup entries (list and delete)"}, {L"msiserver", L"Windows Installer", L"uninstalling MSI-based programs"}, {L"Winmgmt", L"WMI", L"the Drivers page and some system info"}, {L"VSS", L"Volume Shadow Copy", L"restore points"}};
+        SC_HANDLE m = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT); for (auto& x : svc) { bool running = false; if (m) { SC_HANDLE sv = OpenServiceW(m, x.name, SERVICE_QUERY_STATUS); if (sv) { SERVICE_STATUS st{}; if (QueryServiceStatus(sv, &st)) running = st.dwCurrentState == SERVICE_RUNNING; CloseServiceHandle(sv); } } arr.add(js::Obj().str("name", U(x.name)).str("label", U(x.label)).str("needed", U(x.needed)).boolean("running", running).done()); } if (m) CloseServiceHandle(m);
+        return js::Obj().boolean("ok", true).num("kind", kind).boolean("admin", IsElevated()).raw("services", arr.done()).done(); };
+    h["safemode.fix"] = [](const js::V&) {
+        if (!SafeModeKind()) return Err(L"Windows is not in Safe Mode."); if (!IsElevated()) return Err(L"Starting Windows services needs administrator rights. Restart as administrator from Settings."); int ok = 0, bad = 0; wstring first;
+        for (const wchar_t* n : {L"Schedule", L"msiserver", L"Winmgmt"}) { wstring e; if (SvcStartByName(n, e)) { ++ok; WriteJournal(n, L"Safe Mode helper", L"stopped", L"started", L"ok", false); } else { ++bad; if (first.empty()) first = wstring(n) + L": " + e; } }
+        return js::Obj().boolean("ok", bad == 0).num("started", ok).num("failed", bad).str("error", U(first)).done(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----
@@ -576,6 +595,7 @@ static LRESULT CALLBACK HostProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_APP + 2: case WM_WV_PAGE: { if (IsIconic(h)) ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); static const char* pages[] = {"today", "speed", "toolbox", "startup", "services", "drivers", "programs", "clean", "large", "dupes", "empty", "history", "settings"};
         if (g_wv && w < 13) { wstring js = L"{\"event\":\"goto\",\"data\":{\"page\":\"" + W(pages[w]) + L"\"}}"; g_wv->PostWebMessageAsJson(js.c_str()); } return 0; }
     case WM_WV_FAIL: g_failed = true; DestroyWindow(h); return 0;
+    case WM_TIMER: if (w == 77) { KillTimer(h, 77); if (!g_ready) { g_failed = true; DestroyWindow(h); } } return 0;
     case WM_CLOSE: { auto& c = Cfg(); c.maximized = IsZoomed(h) != 0; if (!c.maximized && !IsIconic(h)) { RECT r; GetWindowRect(h, &r); UINT d = DpiForWindow(h); c.winX = r.left; c.winY = r.top; c.winW = MulDiv(r.right - r.left, 96, d); c.winH = MulDiv(r.bottom - r.top, 96, d); } SaveSettings(); DestroyWindow(h); return 0; }
     case WM_DESTROY: g_cancel = true; ++g_stGen; if (g_ctl) { g_ctl->Close(); g_ctl->Release(); g_ctl = nullptr; } if (g_wv) { g_wv->Release(); g_wv = nullptr; } PostQuitMessage(0); return 0;
     }
@@ -612,9 +632,10 @@ int RunWebUi(HINSTANCE inst, int show, int firstPage, HANDLE* instMutex) {   // 
                 LPWSTR u = nullptr; if (SUCCEEDED(a->get_Uri(&u)) && u) { if (wcsncmp(u, L"about:", 6) != 0 && wcsncmp(u, L"data:", 5) != 0) a->put_Cancel(TRUE); CoTaskMemFree(u); } return S_OK; }), &tk);
             g_wv->add_NewWindowRequested(new Cb<ICoreWebView2NewWindowRequestedEventHandler, ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs*>([](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* a) -> HRESULT { a->put_Handled(TRUE); return S_OK; }), &tk);
             g_wv->add_NavigationCompleted(new Cb<ICoreWebView2NavigationCompletedEventHandler, ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*>([firstPage](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*) -> HRESULT {
-                if (!g_ready) { g_ready = true; if (firstPage > 0) PostMessageW(g_wnd, WM_WV_PAGE, (WPARAM)firstPage, 0); } return S_OK; }), &tk);
+                if (!g_ready) { g_ready = true; KillTimer(g_wnd, 77); if (firstPage > 0) PostMessageW(g_wnd, WM_WV_PAGE, (WPARAM)firstPage, 0); } return S_OK; }), &tk);
             wstring html = FromUtf8(string((const char*)kUiHtml, kUiHtmlSize)); g_wv->NavigateToString(html.c_str()); return S_OK; });
         env->CreateCoreWebView2Controller(g_wnd, onCtl); onCtl->Release(); return S_OK; });
+    SetTimer(g_wnd, 77, 25000, nullptr);   // if the web view never comes up (e.g. Safe Mode, broken runtime) fall back to the classic window
     HRESULT hr = create(nullptr, udf.c_str(), nullptr, onEnv); onEnv->Release();
     if (FAILED(hr)) { DestroyWindow(g_wnd); UnregisterClassW(wc.lpszClassName, inst); return 1; }
     MSG msg; while (GetMessageW(&msg, nullptr, 0, 0)) { TranslateMessage(&msg); DispatchMessageW(&msg); }

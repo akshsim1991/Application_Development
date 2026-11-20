@@ -22,3 +22,6 @@ New: src/win/quarantine.cpp (restorable quarantine, index.jsonl), Settings field
 
 ## 3.3 (Phase 2)
 src/win/phase2.cpp (WMI drivers + PnP problem codes, browser profiles, privacy checklist, event logs via EvtQuery, Redact). webui.cpp: drivers.* (support/verify/enriched check, IDispatch late-binding for IWindowsDriverUpdate because MinGW lacks it), privacy.*, trouble.status, events.query, report.build/save, help.open, files.preview, files.scan mode "downloads". UI: Privacy and Troubleshoot pages, richer Drivers. UI tests: 66 checks.
+
+## 3.4
+advice.cpp + data/advice.json (embedded via tools/embed.py as kAdviceJson; same file published in releases-repo/advice.json and fetched by FetchAdviceJson when online). Startup/Service JSON carry adv/advWhy/advSrc. Safe Mode: InSafeMode(), safemode.status/fix (starts Schedule, msiserver, Winmgmt), MSI uninstall starts msiserver. UI: adminGate() before privileged actions, Recommendation column/filter. Files.cpp Join() fixes doubled backslash on drive roots. WebView2 watchdog (25 s) falls back to classic UI.

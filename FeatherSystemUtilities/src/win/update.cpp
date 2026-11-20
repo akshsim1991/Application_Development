@@ -14,6 +14,7 @@ using std::wstring;
 static const wchar_t* kManifestUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/latest.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/latest.json"};
 static const wchar_t* kAllowedHosts[] = {L"raw.githubusercontent.com", L"cdn.jsdelivr.net", L"github.com", L"objects.githubusercontent.com", L"release-assets.githubusercontent.com"};
 
+static const wchar_t* kAdviceUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/advice.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/advice.json"};
 static bool HostAllowed(const wstring& host) { for (auto h : kAllowedHosts) if (_wcsicmp(host.c_str(), h) == 0) return true; return false; }
 
 static bool HttpGet(const wstring& url, std::vector<char>& out, ULONGLONG maxBytes, std::atomic<bool>* cancel, const std::function<void(ULONGLONG, ULONGLONG)>& progress, wstring& err) {
@@ -46,6 +47,10 @@ static wstring JsonStr(const std::string& j, const char* key, size_t from = 0) {
 }
 static ULONGLONG JsonNum(const std::string& j, const char* key, size_t from) { std::string k = std::string("\"") + key + "\""; size_t p = j.find(k, from); if (p == std::string::npos) return 0; p = j.find(':', p); return p == std::string::npos ? 0 : (ULONGLONG)strtoull(j.c_str() + p + 1, nullptr, 10); }
 
+bool FetchAdviceJson(std::string& body, wstring& err) {
+    wstring last; for (auto url : kAdviceUrls) { std::vector<char> b; wstring e; if (HttpGet(url, b, 512 * 1024, nullptr, nullptr, e)) { body.assign(b.begin(), b.end()); return true; } last = e; }
+    err = last.empty() ? L"No recommendations found online." : last; return false;
+}
 bool FetchLatestVersion(UpdateInfo& u) {
     wstring lastErr;
     for (auto url : kManifestUrls) {

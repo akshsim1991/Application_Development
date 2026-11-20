@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.3.0"
+#define FSU_VERSION L"3.4.0"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    bool onlineAdvice = true; long long adviceCheck = 0;                // download newer startup/service recommendations when online
     std::vector<std::wstring> pendingVerify;                             // "hwid|title|time" drivers installed but not yet verified after restart
     int logRetentionDays = 0; bool quarantineLeftovers = true;           // 0 = keep the journal forever
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
@@ -175,6 +176,16 @@ bool OpenBrowserPrivacy(const std::wstring& key, std::wstring& err);
 struct EventRec { std::wstring time, log, provider, message; int level = 0; DWORD id = 0; ULONGLONG sort = 0; };
 std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);
 std::wstring Redact(std::wstring s, bool maskPaths);
+
+// ---- recommendations (advice.cpp): "can this be disabled?" ----
+struct Advice { std::wstring verdict, reason, source; };   // verdict: safe | optional | caution | keep | unknown
+struct AdviceInfo { std::wstring version, updated, source; int startupRules = 0, serviceRules = 0; };
+AdviceInfo AdviceStatus();
+Advice AdviceForStartup(const struct StartupEntry& e, bool fileMissing);
+Advice AdviceForService(const struct ServiceEntry& s);
+bool AdviceRefresh(AdviceInfo& info, std::wstring& err);   // downloads a newer knowledge base when online
+bool FetchAdviceJson(std::string& body, std::wstring& err);   // update.cpp
+bool InSafeMode(int* kind = nullptr);                        // 1 minimal, 2 with networking
 
 // ---- quarantine (quarantine.cpp): restorable holding area for leftovers and stray files ----
 struct QItem { std::wstring id, orig, stored, source, time; ULONGLONG bytes = 0; bool isDir = false; };

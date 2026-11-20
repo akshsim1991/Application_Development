@@ -119,6 +119,7 @@ bool ProgramStillInstalled(const ProgramEntry& e) {
 }
 void RunUninstall(const ProgramEntry& e, bool silent, UninstallResult& r, std::atomic<bool>* cancel) {
     UninstallPlan pl = PlanUninstall(e, silent); if (!pl.available) { r.note = pl.note; return; }
+    if (InSafeMode() && (e.isMsi || _wcsicmp(pl.file.c_str(), L"msiexec.exe") == 0 || pl.file.find(L"msiexec") != wstring::npos)) { wstring se; SvcStartByName(L"msiserver", se); }   // Windows Installer is not started in Safe Mode
     SHELLEXECUTEINFOW sei{sizeof sei}; sei.fMask = SEE_MASK_NOCLOSEPROCESS | SEE_MASK_NOASYNC | SEE_MASK_FLAG_NO_UI; sei.lpVerb = pl.elevate ? L"runas" : L"open"; sei.lpFile = pl.file.c_str(); sei.lpParameters = pl.args.empty() ? nullptr : pl.args.c_str(); sei.nShow = silent ? SW_HIDE : SW_SHOWNORMAL;
     wstring dir; size_t sl = pl.file.find_last_of(L'\\'); if (sl != wstring::npos) { dir = pl.file.substr(0, sl); sei.lpDirectory = dir.c_str(); }
     if (!ShellExecuteExW(&sei) || !sei.hProcess) { r.note = L"Could not start the uninstaller (" + Win32Err(GetLastError()) + L")" + (pl.elevate ? L" - the administrator prompt may have been declined." : L""); WriteJournal(e.name, L"uninstall", L"installed", L"unchanged", L"failed: " + r.note, false); return; }

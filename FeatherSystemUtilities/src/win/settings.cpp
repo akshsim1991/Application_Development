@@ -39,6 +39,7 @@ void LoadSettings() {
         else if (k.rfind("excl.", 0) == 0) { if (g_cfg.exclusions.size() < 100 && !v.empty()) g_cfg.exclusions.push_back(FromUtf8(v)); }
         else if (k.rfind("ign.", 0) == 0) { if (g_cfg.ignored.size() < 500 && !v.empty()) g_cfg.ignored.push_back(FromUtf8(v)); }
         else if (k.rfind("verify.", 0) == 0) { if (g_cfg.pendingVerify.size() < 50 && !v.empty()) g_cfg.pendingVerify.push_back(FromUtf8(v)); }
+        else if (k == "liveMetrics") g_cfg.liveMetrics = n != 0;
         else if (k == "onlineAdvice") g_cfg.onlineAdvice = n != 0; else if (k == "adviceCheck") g_cfg.adviceCheck = atoll(v.c_str());
         else if (k == "skipVersion") g_cfg.skipVersion = FromUtf8(v); else if (k == "deferUntil") g_cfg.deferUntil = atoll(v.c_str());
         else if (k == "logDays") g_cfg.logRetentionDays = (n >= 0 && n <= 3650) ? n : 0; else if (k == "quarantine") g_cfg.quarantineLeftovers = n != 0;
@@ -57,7 +58,7 @@ void SaveSettings() {
     std::ostringstream o;
     o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nautoUpdate=" << g_cfg.autoUpdate << "\nlastUpdateCheck=" << g_cfg.lastUpdateCheck << "\nkeepRecent=" << g_cfg.keepRecent << "\nlargeMinMB=" << g_cfg.largeMinMB << "\ndupMinKB=" << g_cfg.dupMinKB << "\nstartPage=" << g_cfg.startPage
       << "\nmaximized=" << g_cfg.maximized << "\nwinX=" << g_cfg.winX << "\nwinY=" << g_cfg.winY << "\nwinW=" << g_cfg.winW << "\nwinH=" << g_cfg.winH << "\n";
-    o << "onlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
+    o << "liveMetrics=" << g_cfg.liveMetrics << "\nonlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
     for (size_t i = 0; i < g_cfg.pendingVerify.size(); ++i) o << "verify." << i << "=" << ToUtf8(g_cfg.pendingVerify[i]) << "\n";
     for (size_t i = 0; i < g_cfg.exclusions.size(); ++i) o << "excl." << i << "=" << ToUtf8(g_cfg.exclusions[i]) << "\n";
     for (size_t i = 0; i < g_cfg.ignored.size(); ++i) o << "ign." << i << "=" << ToUtf8(g_cfg.ignored[i]) << "\n";

@@ -1,0 +1,1 @@
+Phase 3: dashboard (device model, Windows Update, live activity opt-in, storage trend, review list, organization detection), Microsoft Store apps and Windows updates in the uninstaller, startup boot impact, license verification, SBOM, privacy policy, signing tooling. Updates now also work from the project repo before a dedicated releases repo exists.

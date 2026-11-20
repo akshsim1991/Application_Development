@@ -25,3 +25,6 @@ src/win/phase2.cpp (WMI drivers + PnP problem codes, browser profiles, privacy c
 
 ## 3.4
 advice.cpp + data/advice.json (embedded via tools/embed.py as kAdviceJson; same file published in releases-repo/advice.json and fetched by FetchAdviceJson when online). Startup/Service JSON carry adv/advWhy/advSrc. Safe Mode: InSafeMode(), safemode.status/fix (starts Schedule, msiserver, Winmgmt), MSI uninstall starts msiserver. UI: adminGate() before privileged actions, Recommendation column/filter. Files.cpp Join() fixes doubled backslash on drive roots. WebView2 watchdog (25 s) falls back to classic UI.
+
+## 3.5 (Phase 3)
+phase3.cpp (org info, perf sample, storage trend, WU registry status, RunCapture, StartupImpact via Diagnostics-Performance event 101, license verify via CNG). webui: dashboard.info, perf.sample, wu.check, startup.impact, store.*, hotfix.*, license.*. UI: richer Today, Programs tabs (Store apps, Windows updates), Boot impact column, license + live-activity settings. Tools: license_keygen/issue, make_sbom, sign.sh/ps1, release.sh. UI tests: 88 checks.

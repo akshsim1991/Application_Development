@@ -30,7 +30,7 @@ static HWND g_wnd; static ICoreWebView2Controller* g_ctl; static ICoreWebView2* 
 enum { WM_WV_POST = WM_APP + 40, WM_WV_FAIL, WM_WV_PAGE };
 static std::mutex g_m;
 static std::atomic<bool> g_cancel{false}; static std::atomic<int> g_stGen{0};
-static StartupScan g_su; static ProgramScan g_pg; static ServiceScan g_sv; static CleanScan g_cl; static int g_clGen; static std::vector<CleanItem> g_left; static int g_leftGen; static FileScan g_fs[4]; static int g_fsGen[4]; static std::vector<BrowserProfile> g_priv; static int g_privGen;
+static StartupScan g_su; static ProgramScan g_pg; static ServiceScan g_sv; static CleanScan g_cl; static int g_clGen; static std::vector<CleanItem> g_left; static int g_leftGen; static FileScan g_fs[4]; static int g_fsGen[4]; static std::vector<BrowserProfile> g_priv; static int g_privGen; static std::set<string> g_store, g_hot;
 
 static string U(const wstring& w) { return ToUtf8(w); }
 static wstring W(const string& s) { return FromUtf8(s); }
@@ -100,7 +100,7 @@ static string StartupJson(const StartupEntry& e) {
     return js::Obj().str("key", U(e.key)).str("name", U(e.name)).str("state", U(e.state)).str("type", U(e.type)).str("starts", U(e.starts)).str("scope", U(e.scope)).str("command", U(e.command)).str("program", U(e.program))
         .str("publisher", U(e.publisher)).str("version", U(e.version)).str("signature", U(e.signature)).str("warnings", U(e.warnings)).str("location", U(e.location)).str("firstSeen", U(e.firstSeen))
         .boolean("canToggle", e.toggle != Toggle::None && !e.managedDelay).boolean("canDelete", CanDeleteEntry(e)).boolean("canDelay", CanDelay(e)).boolean("microsoft", e.microsoft).boolean("system", e.isSystem).boolean("recent", e.recent)
-        .boolean("missing", !exists).boolean("delayed", e.managedDelay).boolean("needsAdmin", e.root == HKEY_LOCAL_MACHINE || e.scope.find(L"All") != wstring::npos).str("adv", U(adv.verdict)).str("advWhy", U(adv.reason)).str("advSrc", U(adv.source)).str("kind", kindS).str("advice", U(advice)).str("details", U(StartupDetailsText(e))).done();
+        .boolean("missing", !exists).str("exe", U(LowerW(prog.substr(prog.find_last_of(L"\\/") == wstring::npos ? 0 : prog.find_last_of(L"\\/") + 1)))).boolean("delayed", e.managedDelay).boolean("needsAdmin", e.root == HKEY_LOCAL_MACHINE || e.scope.find(L"All") != wstring::npos).str("adv", U(adv.verdict)).str("advWhy", U(adv.reason)).str("advSrc", U(adv.source)).str("kind", kindS).str("advice", U(advice)).str("details", U(StartupDetailsText(e))).done();
 }
 static string ProgramJson(const ProgramEntry& e) {
     UninstallPlan s = PlanUninstall(e, true); wstring why; bool prot = ProtectedProgram(e, why);
@@ -244,11 +244,11 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).boolean("quarantine", c.quarantineLeftovers).boolean("liveMetrics", c.liveMetrics).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
-        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0; else if (k == "quarantine") c.quarantineLeftovers = v != 0; else if (k == "onlineAdvice") c.onlineAdvice = v != 0; else if (k == "logDays") c.logRetentionDays = (int)std::clamp(v, 0.0, 3650.0);
+        if (k == "autoUpdate") c.autoUpdate = v != 0; else if (k == "keepRecent") c.keepRecent = v != 0; else if (k == "confirmBatch") c.confirmBatch = v != 0; else if (k == "quarantine") c.quarantineLeftovers = v != 0; else if (k == "onlineAdvice") c.onlineAdvice = v != 0; else if (k == "liveMetrics") c.liveMetrics = v != 0; else if (k == "logDays") c.logRetentionDays = (int)std::clamp(v, 0.0, 3650.0);
         else if (k == "largeMinMB") c.largeMinMB = (int)std::clamp(v, 1.0, 1000000.0); else if (k == "dupMinKB") c.dupMinKB = (int)std::clamp(v, 1.0, 100000000.0); else return Err(L"Unknown setting.");
         SaveSettings(); return Ok(); };
     h["app.restartAdmin"] = [](const js::V&) {
@@ -495,6 +495,45 @@ static std::map<string, Fn>& Handlers() {
         if (!SafeModeKind()) return Err(L"Windows is not in Safe Mode."); if (!IsElevated()) return Err(L"Starting Windows services needs administrator rights. Restart as administrator from Settings."); int ok = 0, bad = 0; wstring first;
         for (const wchar_t* n : {L"Schedule", L"msiserver", L"Winmgmt"}) { wstring e; if (SvcStartByName(n, e)) { ++ok; WriteJournal(n, L"Safe Mode helper", L"stopped", L"started", L"ok", false); } else { ++bad; if (first.empty()) first = wstring(n) + L": " + e; } }
         return js::Obj().boolean("ok", bad == 0).num("started", ok).num("failed", bad).str("error", U(first)).done(); };
+
+    // ---- dashboard ----
+    h["dashboard.info"] = [](const js::V&) {
+        ComputerInfo ci = GetComputerInfo(); OrgInfo og = GetOrgInfo(); WuLast wu = WuLastTimes(); HKEY k; wstring os; wchar_t b[256]{}; DWORD n = sizeof b - 2; if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { if (RegQueryValueExW(k, L"ProductName", nullptr, nullptr, (BYTE*)b, &n) == ERROR_SUCCESS) os = b; wchar_t d[64]{}; DWORD n2 = sizeof d - 2; if (RegQueryValueExW(k, L"DisplayVersion", nullptr, nullptr, (BYTE*)d, &n2) == ERROR_SUCCESS && d[0]) os += L" " + wstring(d); RegCloseKey(k); }
+        bool reboot = RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS; if (reboot) RegCloseKey(k); else if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { reboot = true; RegCloseKey(k); }
+        js::Arr tr; DWORD mask = GetLogicalDrives(); for (int i = 0; i < 26; ++i) if (mask & (1u << i)) { wchar_t r[4] = {(wchar_t)(L'A' + i), L':', L'\\', 0}; if (GetDriveTypeW(r) != DRIVE_FIXED) continue; js::Arr pts; for (auto& p : StorageTrend(r)) pts.add(js::Obj().str("d", U(p.date)).num("free", (double)p.free).num("total", (double)p.total).done()); tr.add(js::Obj().str("path", U(r)).raw("points", pts.done()).done()); }
+        return js::Obj().boolean("ok", true).str("maker", U(ci.maker)).str("model", U(ci.model)).str("os", U(os)).num("build", WindowsBuild()).num("uptimeSec", (double)(GetTickCount64() / 1000)).boolean("domain", og.domain).str("domainName", U(og.domainName)).boolean("azureAd", og.azureAd).boolean("mdm", og.mdm).boolean("policies", og.policies)
+            .str("wuDetect", U(wu.detect)).str("wuInstall", U(wu.install)).boolean("pendingReboot", reboot).raw("trend", tr.done()).done(); };
+    h["perf.sample"] = [](const js::V&) { auto p = SamplePerf(); return js::Obj().boolean("ok", true).num("cpu", p.cpu).num("memTotal", (double)p.memTotal).num("memAvail", (double)p.memAvail).num("netRx", (double)p.netRx).num("netTx", (double)p.netTx).done(); };
+    h["wu.check"] = [](const js::V&) {
+        IUpdateSession* ses = nullptr; IUpdateSearcher* sr = NewSearcher(&ses); if (!sr) { if (ses) ses->Release(); return Err(L"The Windows Update Agent is not available."); }
+        BSTR crit = B(L"IsInstalled=0 and IsHidden=0"); ISearchResult* r = nullptr; HRESULT hr = sr->Search(crit, &r); SysFreeString(crit); if (FAILED(hr) || !r) { sr->Release(); ses->Release(); return Err(L"Windows Update could not be searched. Check your internet connection and that the Windows Update service is not disabled."); }
+        IUpdateCollection* c = nullptr; r->get_Updates(&c); LONG n = 0; js::Arr arr; if (c) { c->get_Count(&n); for (LONG i = 0; i < n && i < 40; ++i) { IUpdate* u = nullptr; if (SUCCEEDED(c->get_Item(i, &u)) && u) { BSTR t = nullptr; u->get_Title(&t); arr.add(Q(TakeBstr(t))); u->Release(); } } c->Release(); } r->Release(); sr->Release(); ses->Release();
+        return js::Obj().boolean("ok", true).num("count", n).raw("titles", arr.done()).done(); };
+
+    // ---- startup impact (from Windows' own boot diagnostics) ----
+    h["startup.impact"] = [](const js::V&) { wstring err; auto m = StartupImpact(err); js::Arr a; for (auto& kv : m) a.add(js::Obj().str("exe", U(kv.first)).num("boots", kv.second.boots).num("avgMs", kv.second.boots ? (double)kv.second.sumDeg / kv.second.boots : 0).num("maxMs", (double)kv.second.maxTotal).done()); return js::Obj().boolean("ok", true).str("error", U(err)).raw("items", a.done()).done(); };
+
+    // ---- Microsoft Store apps and Windows updates ----
+    h["store.list"] = [](const js::V&) {
+        if (WindowsBuild() < 9200) return Err(L"Store apps are not available on this version of Windows."); std::string out; DWORD code = 1;
+        if (!RunCapture(L"powershell.exe -NoProfile -NonInteractive -Command \"[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-AppxPackage | Select-Object Name,PackageFullName,Publisher,Version,InstallLocation,IsFramework,NonRemovable,SignatureKind | ConvertTo-Json -Compress\"", out, 60000, &code) || out.empty()) return Err(L"PowerShell could not list Store apps.");
+        if (out.compare(0, 3, "\xEF\xBB\xBF") == 0) out.erase(0, 3); js::V v; if (!js::Parse(out, v)) return Err(L"The Store app list could not be read."); std::vector<const js::V*> items; if (v.t == js::V::Arr) for (auto& x : v.a) items.push_back(&x); else if (v.t == js::V::Obj) items.push_back(&v);
+        js::Arr arr; std::lock_guard<std::mutex> l(g_m); g_store.clear(); for (auto* x : items) { string full = x->str("PackageFullName"); if (full.empty() || full.find_first_not_of("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._~-") != string::npos) continue; bool fw = x->boolean("IsFramework"), nonrem = x->boolean("NonRemovable"); int sig = (int)x->num("SignatureKind", 0); bool removable = !fw && !nonrem && sig != 4; if (removable) g_store.insert(full);
+            string pub = x->str("Publisher"); size_t cn = pub.find("CN="); if (cn != string::npos) { size_t e = pub.find(',', cn); pub = pub.substr(cn + 3, e == string::npos ? string::npos : e - cn - 3); }
+            arr.add(js::Obj().str("full", full).str("name", x->str("Name")).str("publisher", pub).str("version", x->str("Version")).str("location", x->str("InstallLocation")).boolean("framework", fw).boolean("removable", removable).boolean("system", sig == 4).done()); }
+        return js::Obj().boolean("ok", true).raw("items", arr.done()).done(); };
+    h["store.remove"] = [](const js::V& a) {
+        string full = a.str("full"); { std::lock_guard<std::mutex> l(g_m); if (!g_store.count(full)) return Err(L"That app is not in the removable list. Refresh and try again."); } std::string out; DWORD code = 1;
+        wstring cmd = L"powershell.exe -NoProfile -NonInteractive -Command \"try { Remove-AppxPackage -Package '" + W(full) + L"' -ErrorAction Stop; 'OK' } catch { $_.Exception.Message }\""; bool ran = RunCapture(cmd, out, 180000, &code); bool ok = ran && out.find("OK") != string::npos && out.size() < 8;
+        WriteJournal(W(full), L"Store app removal", L"installed", ok ? L"removed" : L"unchanged", ok ? L"ok (reinstall from the Microsoft Store)" : L"failed: " + W(out.substr(0, 200)), true); return ok ? Ok() : Err(L"Windows could not remove the app: " + W(out.substr(0, 300))); };
+    h["hotfix.list"] = [](const js::V&) { wstring err; auto v = ListHotfixes(err); if (v.empty() && !err.empty()) return Err(err); js::Arr a; std::lock_guard<std::mutex> l(g_m); g_hot.clear(); for (auto& x : v) { string kb = U(x.kb); if (kb.size() > 2 && kb.size() < 12 && kb.compare(0, 2, "KB") == 0 && kb.find_first_not_of("0123456789", 2) == string::npos) g_hot.insert(kb.substr(2)); a.add(js::Obj().str("kb", kb).str("desc", U(x.desc)).str("date", U(x.date)).str("by", U(x.by)).done()); } return js::Obj().boolean("ok", true).raw("items", a.done()).done(); };
+    h["hotfix.uninstall"] = [](const js::V& a) { string kb = a.str("kb"); if (kb.compare(0, 2, "KB") == 0) kb = kb.substr(2); { std::lock_guard<std::mutex> l(g_m); if (!g_hot.count(kb)) return Err(L"That update is not in the installed list."); }
+        wstring args = L"/uninstall /kb:" + W(kb) + L" /norestart"; bool ok = (INT_PTR)ShellExecuteW(nullptr, L"runas", L"wusa.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32; WriteJournal(L"KB" + W(kb), L"Windows Update removal", L"installed", ok ? L"uninstall started (Windows asks you to confirm)" : L"not started", ok ? L"ok (Windows Update completes it)" : L"failed", false); return ok ? Ok() : Err(L"The Windows Update uninstaller could not be started (administrator permission may have been declined)."); };
+
+    // ---- license ----
+    h["license.status"] = [](const js::V&) { auto L = LicenseStatus(); return js::Obj().boolean("ok", true).boolean("valid", L.valid).str("state", U(L.state)).str("edition", U(L.edition)).str("name", U(L.name)).str("expires", U(L.expires)).str("id", U(L.id)).num("devices", L.devices).done(); };
+    h["license.activate"] = [](const js::V& a) { wstring e; return LicenseActivate(a.str("token"), e) ? Ok() : Err(e); };
+    h["license.remove"] = [](const js::V&) { LicenseRemove(); return Ok(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----
@@ -611,7 +650,7 @@ bool WebUiAvailable() {
 }
 
 int RunWebUi(HINSTANCE inst, int show, int firstPage, HANDLE* instMutex) {   // returns 0 = ran and exited, 1 = could not start (caller falls back to the classic UI)
-    g_instMutex = instMutex; PruneJournal(Cfg().logRetentionDays); if (!WebUiAvailable()) return 1;
+    g_instMutex = instMutex; RecordStorageTrend(); PruneJournal(Cfg().logRetentionDays); if (!WebUiAvailable()) return 1;
     wchar_t p[MAX_PATH]; GetModuleFileNameW(nullptr, p, MAX_PATH); PathRemoveFileSpecW(p); HMODULE ldr = LoadLibraryW((wstring(p) + L"\\WebView2Loader.dll").c_str()); auto create = ldr ? (PFN_Create)GetProcAddress(ldr, "CreateCoreWebView2EnvironmentWithOptions") : nullptr; if (!create) return 1;
     WNDCLASSW wc{}; wc.hInstance = inst; wc.hCursor = LoadCursorW(nullptr, IDC_ARROW); wc.hIcon = LoadIconW(inst, MAKEINTRESOURCEW(1)); wc.lpfnWndProc = HostProc; wc.lpszClassName = L"FeatherSystemUtilitiesWnd"; RegisterClassW(&wc);
     HDC sdc = GetDC(nullptr); int sdpi = GetDeviceCaps(sdc, LOGPIXELSX); ReleaseDC(nullptr, sdc); auto& cf = Cfg();

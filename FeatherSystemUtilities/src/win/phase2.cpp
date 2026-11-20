@@ -179,3 +179,9 @@ wstring Redact(wstring s, bool maskPaths) {
     return s;
 }
 }
+
+namespace fsu {
+std::vector<Hotfix> ListHotfixes(std::wstring& err) {
+    std::vector<Hotfix> out; Wmi(L"ROOT\\CIMV2", L"SELECT HotFixID,Description,InstalledOn,InstalledBy FROM Win32_QuickFixEngineering", [&](IWbemClassObject* o) { Hotfix h; h.kb = Get(o, L"HotFixID"); if (h.kb.empty()) return; h.desc = Get(o, L"Description"); h.date = Get(o, L"InstalledOn"); h.by = Get(o, L"InstalledBy"); out.push_back(h); }, err); return out;
+}
+}

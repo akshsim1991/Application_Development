@@ -1,10 +1,10 @@
 {
-  "version": "3.4.0",
+  "version": "3.5.0",
   "date": "20 November 2026",
-  "notes": "Recommendation column (safe to disable?) for Startup and Services with an online-updatable knowledge base, administrator-rights prompts instead of silent failures, Safe Mode support, doubled-backslash path fix, dark-mode scrollbars.",
+  "notes": "Phase 3: dashboard (device model, Windows Update, live activity opt-in, storage trend, review list, organization detection), Microsoft Store apps and Windows updates in the uninstaller, startup boot impact, license verification, SBOM, privacy policy, signing tooling. Updates now also work from the project repo before a dedicated releases repo exists.",
   "windows": {
-    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.4.0.exe",
-    "size": 2320073,
-    "sha256": "71849b3561e6c9cdaee6fc3cedce5a50830f4174e4ef6c5852f9b1f518ddb2de"
+    "url": "https://raw.githubusercontent.com/akshsim1991/Application_Development/claude/new-session-ann5h4/FeatherSystemUtilities/releases-repo/FeatherSystemUtilities-Setup-3.5.0.exe",
+    "size": 2357390,
+    "sha256": "4be4a0defb3f9a2538104bf676bbaf05a5ab6af4a7b7aa76524cd3ec2caa3f27"
   }
 }

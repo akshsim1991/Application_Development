@@ -11,10 +11,11 @@
 namespace fsu {
 using std::wstring;
 
-static const wchar_t* kManifestUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/latest.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/latest.json"};
+// Primary: the dedicated public releases repo (like Feather PDF). Fallback: the project repo itself, so updates work before that repo exists.
+static const wchar_t* kManifestUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/latest.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/latest.json", L"https://raw.githubusercontent.com/akshsim1991/Application_Development/claude/new-session-ann5h4/FeatherSystemUtilities/releases-repo/latest.json"};
 static const wchar_t* kAllowedHosts[] = {L"raw.githubusercontent.com", L"cdn.jsdelivr.net", L"github.com", L"objects.githubusercontent.com", L"release-assets.githubusercontent.com"};
 
-static const wchar_t* kAdviceUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/advice.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/advice.json"};
+static const wchar_t* kAdviceUrls[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/advice.json", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/advice.json", L"https://raw.githubusercontent.com/akshsim1991/Application_Development/claude/new-session-ann5h4/FeatherSystemUtilities/releases-repo/advice.json"};
 static bool HostAllowed(const wstring& host) { for (auto h : kAllowedHosts) if (_wcsicmp(host.c_str(), h) == 0) return true; return false; }
 
 static bool HttpGet(const wstring& url, std::vector<char>& out, ULONGLONG maxBytes, std::atomic<bool>* cancel, const std::function<void(ULONGLONG, ULONGLONG)>& progress, wstring& err) {
@@ -29,7 +30,7 @@ static bool HttpGet(const wstring& url, std::vector<char>& out, ULONGLONG maxByt
         DWORD redir = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP; WinHttpSetOption(req, WINHTTP_OPTION_REDIRECT_POLICY, &redir, sizeof redir);
         if (WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) && WinHttpReceiveResponse(req, nullptr)) {
             DWORD code = 0, sz = sizeof code; WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, nullptr, &code, &sz, nullptr);
-            if (code != 200) err = L"The server answered HTTP " + std::to_wstring(code) + (code == 404 ? L" (no release published yet)." : L".");
+            if (code != 200) err = L"The server answered HTTP " + std::to_wstring(code) + (code == 404 ? L" (no release published yet; check that the releases page exists)." : L".");
             else {
                 DWORD64 total = 0; DWORD tl = sizeof total; WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER64, nullptr, &total, &tl, nullptr);
                 ok = true; DWORD avail = 0; while (WinHttpQueryDataAvailable(req, &avail) && avail) {
@@ -57,7 +58,7 @@ bool FetchLatestVersion(UpdateInfo& u) {
         std::vector<char> body; wstring e; if (!HttpGet(url, body, 256 * 1024, nullptr, nullptr, e)) { lastErr = e; continue; }
         std::string j(body.begin(), body.end()); u.version = JsonStr(j, "version"); u.date = JsonStr(j, "date"); u.notes = JsonStr(j, "notes"); size_t w = j.find("\"windows\"");
         if (u.version.empty() || w == std::string::npos) { lastErr = L"The update information is incomplete."; continue; }
-        u.url = JsonStr(j, "url", w); u.sha256 = Lower(JsonStr(j, "sha256", w)); u.size = JsonNum(j, "size", w);
+        u.signer = JsonStr(j, "signer"); u.url = JsonStr(j, "url", w); u.sha256 = Lower(JsonStr(j, "sha256", w)); u.size = JsonNum(j, "size", w);
         if (u.url.empty() || u.sha256.size() != 64) { lastErr = L"The update information is incomplete."; continue; } u.ok = true; return true;
     }
     u.error = lastErr.empty() ? L"No update information found." : lastErr; return false;
@@ -76,6 +77,9 @@ bool DownloadUpdate(const UpdateInfo& u, wstring& path, wstring& err, std::atomi
     if (u.size && body.size() != u.size) { err = L"The downloaded file has the wrong size; discarded."; return false; }
     wchar_t tmp[MAX_PATH]; GetTempPathW(MAX_PATH, tmp); path = wstring(tmp) + L"FeatherSystemUtilities-Setup-" + u.version + L".exe"; { std::ofstream f(std::filesystem::path(path), std::ios::binary | std::ios::trunc); if (!f) { err = L"Cannot write the installer to the temp folder."; return false; } f.write(body.data(), (std::streamsize)body.size()); }
     if (Sha256File(path) != u.sha256) { DeleteFileW(path.c_str()); err = L"The downloaded installer failed its SHA-256 check and was deleted. Nothing was installed."; return false; }   // integrity gate
+    if (!u.signer.empty()) {   // once the project's installers are code-signed, the manifest names the signer and an unsigned or differently-signed file is refused
+        FileInfo fi = InspectFile(path, true); wstring want = Lower(u.signer), got = Lower(fi.signer.empty() ? fi.publisher : fi.signer);
+        if (fi.sig != Sig::Valid || got.find(want) == wstring::npos) { DeleteFileW(path.c_str()); err = L"The installer is not signed by " + u.signer + L" (or its signature is invalid) and was deleted. Nothing was installed."; return false; } }
     return true;
 }
 

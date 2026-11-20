@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.4.0"
+#define FSU_VERSION L"3.5.0"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    bool liveMetrics = false;                                           // optional low-frequency CPU/RAM/network readout on Today (off by default)
     bool onlineAdvice = true; long long adviceCheck = 0;                // download newer startup/service recommendations when online
     std::vector<std::wstring> pendingVerify;                             // "hwid|title|time" drivers installed but not yet verified after restart
     int logRetentionDays = 0; bool quarantineLeftovers = true;           // 0 = keep the journal forever
@@ -177,6 +178,26 @@ struct EventRec { std::wstring time, log, provider, message; int level = 0; DWOR
 std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);
 std::wstring Redact(std::wstring s, bool maskPaths);
 
+// ---- phase 3 engine (phase3.cpp) ----
+struct OrgInfo { bool domain = false, azureAd = false, mdm = false, policies = false; std::wstring domainName; };
+OrgInfo GetOrgInfo();
+struct PerfSample { double cpu = 0; ULONGLONG memTotal = 0, memAvail = 0, netRx = 0, netTx = 0; };
+PerfSample SamplePerf();
+struct TrendPt { std::wstring date; ULONGLONG free = 0, total = 0; };
+void RecordStorageTrend();
+std::vector<TrendPt> StorageTrend(const std::wstring& drive);
+struct WuLast { std::wstring detect, install; };
+WuLast WuLastTimes();
+bool RunCapture(const std::wstring& cmd, std::string& out, DWORD timeoutMs, DWORD* exitCode = nullptr);
+struct ImpactRec { int boots = 0; ULONGLONG sumDeg = 0, maxTotal = 0; };
+std::map<std::wstring, ImpactRec> StartupImpact(std::wstring& err);
+struct Hotfix { std::wstring kb, desc, date, by; };
+std::vector<Hotfix> ListHotfixes(std::wstring& err);
+struct LicenseInfo { bool valid = false; std::wstring state, edition, name, expires, id; int devices = 0; };
+LicenseInfo LicenseStatus();
+bool LicenseActivate(const std::string& token, std::wstring& err);
+void LicenseRemove();
+
 // ---- recommendations (advice.cpp): "can this be disabled?" ----
 struct Advice { std::wstring verdict, reason, source; };   // verdict: safe | optional | caution | keep | unknown
 struct AdviceInfo { std::wstring version, updated, source; int startupRules = 0, serviceRules = 0; };
@@ -207,7 +228,7 @@ bool DeleteFilesPermanently(const std::vector<std::wstring>& paths, std::wstring
 std::wstring FileDateText(ULONGLONG ft);
 
 // ---- updates (update.cpp): the only network feature; reads one small manifest over HTTPS ----
-struct UpdateInfo { bool ok = false; std::wstring version, date, notes, url, sha256, error; ULONGLONG size = 0; };
+struct UpdateInfo { bool ok = false; std::wstring version, date, notes, url, sha256, signer, error; ULONGLONG size = 0; };
 bool FetchLatestVersion(UpdateInfo& u);                                     // manifest like Feather PDF's latest.json
 bool DownloadUpdate(const UpdateInfo& u, std::wstring& path, std::wstring& err, std::atomic<bool>* cancel, const std::function<void(ULONGLONG, ULONGLONG)>& progress);   // verifies size + SHA-256
 bool LaunchUpdateInstaller(const std::wstring& installerPath, std::wstring& err);   // elevated silent install, then relaunches this app

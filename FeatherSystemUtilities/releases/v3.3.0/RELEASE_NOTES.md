@@ -1,0 +1,6 @@
+# Feather System Utilities 3.3.0 — Phase 2: drivers, privacy, troubleshooting
+- Drivers: hardware ID, device instance ID and device status/problem codes (missing/failed drivers flagged); Windows Update driver updates compared with the installed driver (version/date/provider), higher-risk class warnings (graphics, storage, chipset, network, firmware), OEM trade-off notice, "not newer" warning; restore point step with an honest result; one driver at a time with per-driver review; post-restart verification; rollback guidance; maker support page; ignore list.
+- Privacy: browser profiles (Chrome, Edge, Brave, Firefox) with cache / cookies / history / site data cleared separately (passwords, autofill, bookmarks never touched; blocked while the browser runs); read-only Windows privacy checklist with links to the Settings pages; links to each browser's own controls.
+- Troubleshoot: health summary (problem devices, stopped automatic services, disk space, pending restart), Windows tool shortcuts, event-log collection by period/level/log, diagnostic report preview (names/paths redacted by default) saved only where you choose.
+- Files: Old downloads review (installers/archives older than N days) and a file preview (text / image / info).
+- NOT run on real Windows by the developer.

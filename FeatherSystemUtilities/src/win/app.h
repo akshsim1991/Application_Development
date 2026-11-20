@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.2.0"
+#define FSU_VERSION L"3.3.0"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    std::vector<std::wstring> pendingVerify;                             // "hwid|title|time" drivers installed but not yet verified after restart
     int logRetentionDays = 0; bool quarantineLeftovers = true;           // 0 = keep the journal forever
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
     std::map<std::wstring, std::vector<int>> colw;   // per page column widths (96-dpi units)
@@ -156,6 +157,25 @@ void PreviewClean(const CleanItem& it, bool keepRecent, size_t maxRows, std::vec
 std::vector<BackupInfo> ListRegBackups();
 bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring& summary);
 
+// ---- phase 2 engine (phase2.cpp): drivers, browsers, privacy checklist, event logs, redaction ----
+struct DriverRec { int i = 0; std::wstring name, maker, version, date, provider, inf, cls, devId, hwid, status; bool signed_ = true, missing = false; int problem = 0; };
+const wchar_t* ProblemText(int code);
+std::vector<DriverRec> ListDrivers(std::wstring& err);
+struct ComputerInfo { std::wstring maker, model, supportUrl; };
+ComputerInfo GetComputerInfo();
+struct BrowserCat { std::wstring id, label, note, base; std::vector<std::wstring> paths; ULONGLONG bytes = 0, files = 0; bool deletable = true; };
+struct BrowserProfile { std::wstring key, browser, profile, display, dir; std::vector<BrowserCat> cats; };
+std::vector<BrowserProfile> ScanBrowsers();
+bool BrowserRunning(const std::wstring& key);
+bool ClearBrowserCategory(const BrowserProfile& bp, const BrowserCat& c, ULONGLONG& bytes, std::wstring& err);
+struct PrivacyItem { std::wstring id, title, state, detail, why; bool good = true; };
+std::vector<PrivacyItem> PrivacyChecklist();
+bool OpenPrivacySetting(const std::wstring& id);
+bool OpenBrowserPrivacy(const std::wstring& key, std::wstring& err);
+struct EventRec { std::wstring time, log, provider, message; int level = 0; DWORD id = 0; ULONGLONG sort = 0; };
+std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);
+std::wstring Redact(std::wstring s, bool maskPaths);
+
 // ---- quarantine (quarantine.cpp): restorable holding area for leftovers and stray files ----
 struct QItem { std::wstring id, orig, stored, source, time; ULONGLONG bytes = 0; bool isDir = false; };
 bool QuarantinePath(const std::wstring& path, const std::wstring& source, std::wstring& err, bool journal = true);
@@ -166,7 +186,7 @@ bool QuarantinePurge(const std::wstring& id, std::wstring& err);
 // ---- large-file and duplicate finder (files.cpp) ----
 struct FileEntry { std::wstring path, name, folder, ext, hash; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; bool verified = false; };
 struct FileScan { std::vector<FileEntry> files; std::wstring coverage; ULONGLONG scanned = 0, totalBytes = 0, reclaimable = 0; int groups = 0; bool cancelled = false; };
-struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false, empty = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
+struct FileScanOpts { std::vector<std::wstring> roots; std::vector<std::wstring> exts; int minAgeDays = 0; ULONGLONG minSize = 0; bool dupes = false, empty = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
 std::vector<std::wstring> DefaultScanRoots();
 void ScanFiles(const FileScanOpts& o, FileScan& out);
 bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);

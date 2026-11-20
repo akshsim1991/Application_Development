@@ -19,3 +19,6 @@ UI list framework (ui/index.html: `LS()`, `table()`, `pickRow()`, filters/sort h
 
 ## 3.2 (Phase 1)
 New: src/win/quarantine.cpp (restorable quarantine, index.jsonl), Settings fields exclusions/ignored/skipVersion/deferUntil/logRetentionDays/quarantineLeftovers, PreviewClean (dry run), host commands ignore.*, exclusions.*, quarantine.*, recovery.*, clean.preview, update.skip/defer, journal.clear, app.startWithWindows, programs.openFolder. UI: Recovery page, update prompt, previews, ignore, protected-program rules. UI tests: 50 checks (tools/ui-preview/test.js).
+
+## 3.3 (Phase 2)
+src/win/phase2.cpp (WMI drivers + PnP problem codes, browser profiles, privacy checklist, event logs via EvtQuery, Redact). webui.cpp: drivers.* (support/verify/enriched check, IDispatch late-binding for IWindowsDriverUpdate because MinGW lacks it), privacy.*, trouble.status, events.query, report.build/save, help.open, files.preview, files.scan mode "downloads". UI: Privacy and Troubleshoot pages, richer Drivers. UI tests: 66 checks.

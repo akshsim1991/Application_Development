@@ -20,3 +20,5 @@
 - KI19: Not yet in the new UI: scheduler, privacy/browser-data cleaner, file shredder, Store apps, context-menu manager, services profiles/properties editors (use --classic).
 - KI20: Quarantine moves use SHFileOperation (works across drives) and are untested on Windows. Restore point creation uses srclient.dll SRSetRestorePointW and is verified by re-reading the restore point list; it needs administrator rights and Windows limits automatic creation to one per 24 h.
 - KI21: The launch update prompt needs the public releases repo to exist; until then the check fails silently at startup.
+- KI22: Driver update matching relies on IWindowsDriverUpdate properties read through IDispatch; if Windows does not expose a hardware ID the update is shown as "no matching installed device". Driver install runs through Windows Update Agent in the Feather process and can take minutes with no progress detail.
+- KI23: Browser clearing deletes files directly (not recoverable). Chromium history clearing removes the History file (also download history). Redaction (user/computer name, profile paths, SIDs; optional path masking) is best-effort text replacement, untested on Windows.

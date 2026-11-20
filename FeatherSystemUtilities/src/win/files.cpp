@@ -37,6 +37,9 @@ static void Walk(Ctx& c, const wstring& dir, int depth) {
         ULONGLONG size = ((ULONGLONG)fd.nFileSizeHigh << 32) | fd.nFileSizeLow; ++c.scanned;
         if (c.o.progress && c.scanned - c.lastReport >= 2000) { c.lastReport = c.scanned; c.o.progress(L"Scanning\u2026 " + std::to_wstring(c.scanned) + L" files checked \u00B7 " + dir); }
         if (size < c.o.minSize || size == 0) continue;
+        if (!c.o.exts.empty() || c.o.minAgeDays > 0) {   // old downloads / installers mode
+            size_t dp = n.find_last_of(L'.'); wstring ex = dp == wstring::npos ? L"" : Lower(n.substr(dp + 1)); bool okx = c.o.exts.empty(); for (auto& e : c.o.exts) if (e == ex) okx = true; if (!okx) continue;
+            if (c.o.minAgeDays > 0) { FILETIME nowf; GetSystemTimeAsFileTime(&nowf); ULONGLONG cut = FtU(nowf) - (ULONGLONG)c.o.minAgeDays * 864000000000ULL; if (FtU(fd.ftLastWriteTime) > cut) continue; } }
         FileEntry e; e.path = full; e.name = n; e.folder = dir; e.size = size; e.mtime = FtU(fd.ftLastWriteTime); size_t dot = n.find_last_of(L'.'); e.ext = dot == wstring::npos ? L"" : Lower(n.substr(dot + 1));
         c.hits.push_back(std::move(e));
         if (!c.o.dupes && c.hits.size() > c.o.maxResults * 8) {   // keep memory bounded: retain the biggest

@@ -1,10 +1,10 @@
 {
-  "version": "3.2.0",
+  "version": "3.3.0",
   "date": "20 November 2026",
-  "notes": "Update check at launch with Update now / Remind me later / Skip. Quarantine and Recovery page, dry-run previews, exclusions and ignored findings, safer uninstaller, startup warnings for security/device/backup software.",
+  "notes": "Drivers: problem codes, installed-vs-proposed comparison, one-at-a-time install with restore point and verification. Privacy: browser data by category and a Windows privacy checklist. Troubleshoot: event logs, redacted diagnostic report. Old downloads review and file preview.",
   "windows": {
-    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.2.0.exe",
-    "size": 2229477,
-    "sha256": "133137e7c990e0c9f518dc7aa5a87fcf9b7d2f6e954fc8d35d6dc03c3437c0e1"
+    "url": "https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/FeatherSystemUtilities-Setup-3.3.0.exe",
+    "size": 2298282,
+    "sha256": "971953b410598defad69efde23eda134cb80f3e27acbfd3de4769278a105ee5f"
   }
 }

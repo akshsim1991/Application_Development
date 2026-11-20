@@ -5,6 +5,7 @@
 #include <bcrypt.h>
 #include <shellapi.h>
 #include <shlobj.h>
+#include <shlwapi.h>
 #include <fstream>
 #include <filesystem>
 #include <algorithm>
@@ -31,8 +32,12 @@ void OpenFileLocation(const wstring& program) {
     AllowSetForegroundWindow(ASFW_ANY);
     bool launched = false;
     if (attr != INVALID_FILE_ATTRIBUTES) {   // 1) select the file in Explorer
-        PIDLIST_ABSOLUTE pidl = nullptr; if (SUCCEEDED(SHParseDisplayName(p.c_str(), nullptr, &pidl, 0, nullptr)) && pidl) { launched = SUCCEEDED(SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0)); CoTaskMemFree(pidl); }
-        if (!launched) { wstring args = L"/select,\"" + p + L"\""; launched = (INT_PTR)ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32; }
+        std::replace(p.begin(), p.end(), L'/', L'\\'); wchar_t canon[MAX_PATH * 2]; if (PathCanonicalizeW(canon, p.c_str())) p = canon;
+        if (PIDLIST_ABSOLUTE full = ILCreateFromPathW(p.c_str())) { launched = SUCCEEDED(SHOpenFolderAndSelectItems(full, 0, nullptr, 0)); ILFree(full); }
+        if (!launched) {   // exact command line: explorer.exe /select,"C:\\path\\file"
+            wstring cl = L"explorer.exe /select,\"" + p + L"\""; STARTUPINFOW si{sizeof si}; PROCESS_INFORMATION pi{};
+            if (CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) { CloseHandle(pi.hThread); CloseHandle(pi.hProcess); launched = true; }
+        }
     }
     if (!launched && !dir.empty() && GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) { launched = (INT_PTR)ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > 32; }   // 2) at least open the folder
     if (!launched) { DarkMsg(GetActiveWindow(), L"Open file location", L"The file or its folder was not found:\r\n" + p, 0); return; }

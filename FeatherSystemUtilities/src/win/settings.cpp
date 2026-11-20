@@ -28,8 +28,10 @@ void LoadSettings() {
         size_t eq = line.find('='); if (eq == std::string::npos) continue;
         std::string k = line.substr(0, eq), v = line.substr(eq + 1); int n = atoi(v.c_str());
         if (k == "theme") g_cfg.theme = (n >= 0 && n < 4) ? n : 0; else if (k == "density") g_cfg.density = n ? 1 : 0;
+        else if (k == "largeMinMB") g_cfg.largeMinMB = (n >= 1 && n <= 100000) ? n : 100; else if (k == "dupMinKB") g_cfg.dupMinKB = (n >= 1 && n <= 10000000) ? n : 1024;
+        else if (k.rfind("scan.", 0) == 0) { if (g_cfg.scanRoots.size() < 20 && !v.empty()) g_cfg.scanRoots.push_back(FromUtf8(v)); }
         else if (k == "keepRecent") g_cfg.keepRecent = n != 0; else if (k == "hideSystem") g_cfg.hideSystem = n != 0; else if (k == "confirmBatch") g_cfg.confirmBatch = n != 0;
-        else if (k == "startPage") g_cfg.startPage = (n >= 0 && n < 7) ? n : 0; else if (k == "maximized") g_cfg.maximized = n != 0;
+        else if (k == "startPage") g_cfg.startPage = (n >= 0 && n < 9) ? n : 0; else if (k == "maximized") g_cfg.maximized = n != 0;
         else if (k == "winX") g_cfg.winX = n; else if (k == "winY") g_cfg.winY = n;
         else if (k == "winW") g_cfg.winW = (n >= 600 && n < 10000) ? n : 1360; else if (k == "winH") g_cfg.winH = (n >= 400 && n < 10000) ? n : 780;
         else if (k.rfind("cols.", 0) == 0) {   // cols.<page>=w,w,w
@@ -40,8 +42,9 @@ void LoadSettings() {
 }
 void SaveSettings() {
     std::ostringstream o;
-    o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nkeepRecent=" << g_cfg.keepRecent << "\nstartPage=" << g_cfg.startPage
+    o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nkeepRecent=" << g_cfg.keepRecent << "\nlargeMinMB=" << g_cfg.largeMinMB << "\ndupMinKB=" << g_cfg.dupMinKB << "\nstartPage=" << g_cfg.startPage
       << "\nmaximized=" << g_cfg.maximized << "\nwinX=" << g_cfg.winX << "\nwinY=" << g_cfg.winY << "\nwinW=" << g_cfg.winW << "\nwinH=" << g_cfg.winH << "\n";
+    for (size_t i = 0; i < g_cfg.scanRoots.size(); ++i) o << "scan." << i << "=" << ToUtf8(g_cfg.scanRoots[i]) << "\n";
     for (auto& kv : g_cfg.colw) { o << "cols." << ToUtf8(kv.first) << "="; for (size_t i = 0; i < kv.second.size(); ++i) o << (i ? "," : "") << kv.second[i]; o << "\n"; }
     AtomicWrite(DataDir() + L"\\settings.ini", o.str());
 }

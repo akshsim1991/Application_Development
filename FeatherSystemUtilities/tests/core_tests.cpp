@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <fstream>
 #include <set>
+#include <algorithm>
 using namespace fsu;
 static int fails = 0, total = 0;
 #define CHECK(c) do { ++total; if (!(c)) { ++fails; std::printf("FAIL %s:%d %s\n", __FILE__, __LINE__, #c); } } while (0)
@@ -67,6 +68,12 @@ int main() {
     CHECK(!MuiCachePath(L"@%SystemRoot%\\system32\\foo.dll,-100", mp));
     CHECK(!MuiCachePath(L"LangID", mp));
     CHECK(IsDriveAbsolute(L"c:\\a\\b") && !IsDriveAbsolute(L"%windir%\\x") && !IsDriveAbsolute(L"\\\\srv\\share\\x"));
+    // Duplicate keeper selection: one record per group always survives
+    { std::vector<DupRec> d = {{1, 100, 20}, {1, 50, 30}, {1, 200, 10}, {2, 5, 8}, {2, 9, 8}, {3, 7, 4}};
+      auto o = SelectDuplicatesToRemove(d, 0); CHECK(o.size() == 3 && std::find(o.begin(), o.end(), 1) == o.end() && std::find(o.begin(), o.end(), 3) == o.end() && std::find(o.begin(), o.end(), 5) == o.end());   // keeps oldest
+      auto n = SelectDuplicatesToRemove(d, 1); CHECK(n.size() == 3 && std::find(n.begin(), n.end(), 2) == n.end() && std::find(n.begin(), n.end(), 4) == n.end());                                          // keeps newest
+      auto s = SelectDuplicatesToRemove(d, 2); CHECK(s.size() == 3 && std::find(s.begin(), s.end(), 2) == s.end());                                                                                           // shortest path
+      CHECK(SelectDuplicatesToRemove({}, 0).empty()); }
     std::printf("%d/%d passed\n", total - fails, total);
     return fails ? 1 : 0;
 }

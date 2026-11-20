@@ -36,14 +36,14 @@ static Pal P = PalFor(0);
 #define cRail (P.rail)
 #define cRailSel (P.railSel)
 
-enum Page { P_DASH, P_STARTUP, P_SERVICES, P_DRIVERS, P_CLEAN, P_HISTORY, P_SETTINGS, P_COUNT };
-static const wchar_t* kPageNames[P_COUNT] = {L"Dashboard", L"Startup", L"Services", L"Drivers", L"Cleaner", L"History", L"Settings"};
+enum Page { P_DASH, P_STARTUP, P_SERVICES, P_DRIVERS, P_CLEAN, P_LARGE, P_DUPES, P_HISTORY, P_SETTINGS, P_COUNT };
+static const wchar_t* kPageNames[P_COUNT] = {L"Dashboard", L"Startup", L"Services", L"Drivers", L"Cleaner", L"Large files", L"Duplicates", L"History", L"Settings"};
 enum Cmd { C_REFRESH = 1000, C_ENABLE, C_DISABLE, C_DELETE, C_STARTLATER, C_ADD, C_RESTORE, C_UNDO, C_FILTER, C_MORE, C_SVC_START, C_SVC_STOP, C_SVC_RESTART, C_SVC_PAUSE, C_SVC_RESUME, C_SVC_KILL,
     C_STARTTYPE, C_PROFILES, C_DETAILS, C_COPYNAME, C_COPYDETAILS, C_OPENLOC, C_REGEDIT, C_VT, C_SEARCHONLINE, C_SELALL, C_ADMIN, C_SETTINGS, C_ABOUT, C_EXIT, C_OPENBACKUPS, C_OPENDATA, C_EXPORT,
-    C_ST_AUTO, C_ST_AUTODELAY, C_ST_MANUAL, C_ST_DISABLED, C_PROF_SAVESEL, C_PROF_SNAPSHOT, C_PROF_OPENDIR, C_REMOVE_DELAY, C_CLEAN, C_CLEAN_SELALL, C_CLEAN_RESTORE,
-    C_FILTER_BASE = 1100, C_PROF_BASE = 1150, C_RESTORE_BASE = 1200, C_DELAY_BASE = 1300, C_REGRESTORE_BASE = 1400 };
+    C_ST_AUTO, C_ST_AUTODELAY, C_ST_MANUAL, C_ST_DISABLED, C_PROF_SAVESEL, C_PROF_SNAPSHOT, C_PROF_OPENDIR, C_REMOVE_DELAY, C_CLEAN, C_CLEAN_SELALL, C_CLEAN_RESTORE, C_FS_SCAN, C_FS_STOP, C_FS_FOLDERS, C_FS_MIN, C_FS_AUTO, C_FS_RECYCLE, C_FS_FOLDER_ADD, C_FS_FOLDER_DEFAULT,
+    C_FILTER_BASE = 1100, C_PROF_BASE = 1150, C_RESTORE_BASE = 1200, C_DELAY_BASE = 1300, C_REGRESTORE_BASE = 1400, C_FS_MIN_BASE = 1500, C_FS_AUTO_BASE = 1520, C_FS_RM_BASE = 1560 };
 enum { ID_NAV = 100, ID_SEARCH = 102, ID_LIST, ID_STATUS, ID_PANEL };
-enum { WM_SCAN_DONE = WM_APP + 1, WM_ACTIVATE_PAGE, WM_JOB_DONE };
+enum { WM_SCAN_DONE = WM_APP + 1, WM_ACTIVATE_PAGE, WM_JOB_DONE, WM_FILE_DONE, WM_FILE_PROGRESS };
 static const int kDelays[] = {15, 30, 60, 120, 300};
 
 // ---- state ----
@@ -51,11 +51,11 @@ static HINSTANCE g_inst; static HWND g_main, g_nav, g_search, g_list, g_hdr, g_s
 static HFONT g_font, g_fontBig, g_fontTitle; static UINT g_dpi = 96; static HANDLE g_mtx;
 static HBRUSH g_brBg, g_brBar, g_brRail;
 static Page g_page = P_DASH; static bool g_elevated = false; static wstring g_user;
-static StartupScan g_su; static ServiceScan g_sv, g_dv; static CleanScan g_cl;
+static StartupScan g_su; static ServiceScan g_sv, g_dv; static CleanScan g_cl; static FileScan g_large, g_dupes; static bool g_largeDone = false, g_dupesDone = false, g_fsBusy = false; static std::atomic<bool> g_fsCancel{false};
 static std::vector<std::vector<wstring>> g_cells[P_COUNT];
 static std::vector<int> g_view;
 static int g_filter[P_COUNT]; static wstring g_query[P_COUNT];
-static int g_sortCol[P_COUNT] = {0, 1, 0, 0, 2, 0, 0}; static bool g_sortAsc[P_COUNT] = {true, true, true, true, false, false, true};
+static int g_sortCol[P_COUNT] = {0, 1, 0, 0, 2, 1, 3, 0, 0}; static bool g_sortAsc[P_COUNT] = {true, true, true, true, false, false, true, false, true};
 static std::atomic<int> g_gen{0}; static bool g_scanning = false;
 static wstring g_stMsg; static std::set<wstring> g_keepSel;
 static int S(int v) { return MulDiv(v, g_dpi, 96); }
@@ -74,18 +74,29 @@ static const Col kServiceCols[] = {{L"Name", 250, false}, {L"Service name", 170,
 static const Col kDriverCols[] = {{L"Name", 250, false}, {L"Driver name", 170, false}, {L"Status", 80, false}, {L"Start type", 110, false}, {L"Class", 100, false}, {L"Type", 130, false},
     {L"Description", 360, false}, {L"Path", 460, false}, {L"Warnings", 160, false}};
 static const Col kCleanCols[] = {{L"Item", 300, false}, {L"Type", 230, false}, {L"Size", 90, true}, {L"Detail", 140, false}, {L"Location", 420, false}, {L"Why / note", 480, false}};
+static const Col kLargeCols[] = {{L"Name", 320, false}, {L"Size", 90, true}, {L"Modified", 130, false}, {L"Type", 80, false}, {L"Location", 620, false}};
+static const Col kDupCols[] = {{L"Name", 320, false}, {L"Size", 90, true}, {L"Modified", 130, false}, {L"Group", 150, false}, {L"Location", 620, false}};
 static const Col kHistCols[] = {{L"Time (UTC)", 160, false}, {L"Item", 260, false}, {L"Before", 160, false}, {L"After", 240, false}, {L"Result", 520, false}};
 static const Col* ColsFor(Page p, int& n) {
-    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } if (p == P_CLEAN) { n = 6; return kCleanCols; } n = 5; return kHistCols;
+    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } if (p == P_CLEAN) { n = 6; return kCleanCols; } if (p == P_LARGE) { n = 5; return kLargeCols; } if (p == P_DUPES) { n = 5; return kDupCols; } n = 5; return kHistCols;
 }
 static const wchar_t* kStartupFilters[] = {L"Everything", L"Enabled", L"Disabled", L"Needs attention (warnings)", L"New in the last 7 days", L"Not from Microsoft", L"Registry (Run keys)", L"Startup folders", L"Scheduled tasks", L"Explorer add-ons", L"Delayed by Feather", L"Windows system items only"};
 static const wchar_t* kServiceFilters[] = {L"All services", L"Running", L"Stopped", L"Automatic but not running", L"Disabled", L"Third-party only", L"Critical to Windows", L"Needs attention (warnings)"};
 static const wchar_t* kDriverFilters[] = {L"All drivers", L"Running", L"Stopped", L"Boot/System start", L"Third-party only", L"Needs attention (warnings)"};
 static const wchar_t* kCleanFilters[] = {L"Everything", L"Temporary files", L"Registry entries"};
-static int FilterCount(Page p) { return p == P_STARTUP ? 12 : p == P_SERVICES ? 8 : p == P_DRIVERS ? 6 : p == P_CLEAN ? 3 : 0; }
-static const wchar_t* FilterName(Page p) { return p == P_STARTUP ? kStartupFilters[g_filter[p]] : p == P_SERVICES ? kServiceFilters[g_filter[p]] : p == P_DRIVERS ? kDriverFilters[g_filter[p]] : p == P_CLEAN ? kCleanFilters[g_filter[p]] : L""; }
+static const wchar_t* kLargeFilters[] = {L"Everything", L"Videos", L"Archives and disk images", L"Installers and apps", L"Pictures", L"Audio", L"Documents", L"Other"};
+static int FilterCount(Page p) { return p == P_STARTUP ? 12 : p == P_SERVICES ? 8 : p == P_DRIVERS ? 6 : p == P_CLEAN ? 3 : p == P_LARGE ? 8 : 0; }
+static const wchar_t* FilterName(Page p) { return p == P_STARTUP ? kStartupFilters[g_filter[p]] : p == P_SERVICES ? kServiceFilters[g_filter[p]] : p == P_DRIVERS ? kDriverFilters[g_filter[p]] : p == P_CLEAN ? kCleanFilters[g_filter[p]] : p == P_LARGE ? kLargeFilters[g_filter[p]] : L""; }
 static bool IsSvcPage(Page p) { return p == P_SERVICES || p == P_DRIVERS; }
-static bool IsActionList(Page p) { return p == P_STARTUP || p == P_SERVICES || p == P_DRIVERS || p == P_CLEAN; }
+static bool IsFilePage(Page p) { return p == P_LARGE || p == P_DUPES; }
+static bool IsActionList(Page p) { return p == P_STARTUP || p == P_SERVICES || p == P_DRIVERS || p == P_CLEAN || IsFilePage(p); }
+static FileScan& FS(Page p) { return p == P_DUPES ? g_dupes : g_large; }
+static int ExtCat(const wstring& e) {
+    static const std::map<wstring, int> m = {{L"mp4",1},{L"mkv",1},{L"avi",1},{L"mov",1},{L"wmv",1},{L"flv",1},{L"webm",1},{L"m4v",1},{L"zip",2},{L"rar",2},{L"7z",2},{L"tar",2},{L"gz",2},{L"iso",2},{L"vhd",2},{L"vhdx",2},{L"img",2},{L"wim",2},{L"cab",2},
+        {L"exe",3},{L"msi",3},{L"msix",3},{L"appx",3},{L"jpg",4},{L"jpeg",4},{L"png",4},{L"gif",4},{L"bmp",4},{L"tif",4},{L"tiff",4},{L"heic",4},{L"psd",4},{L"raw",4},{L"mp3",5},{L"wav",5},{L"flac",5},{L"aac",5},{L"m4a",5},
+        {L"pdf",6},{L"doc",6},{L"docx",6},{L"xls",6},{L"xlsx",6},{L"ppt",6},{L"pptx",6},{L"txt",6}};
+    auto it = m.find(e); return it == m.end() ? 7 : it->second;
+}
 static std::vector<ServiceEntry>& SvcVec(Page p) { return p == P_DRIVERS ? g_dv.entries : g_sv.entries; }
 
 // ================= toolbar: native owner-drawn buttons (keyboard + screen-reader accessible) =================
@@ -144,7 +155,7 @@ static LRESULT CALLBACK StProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetTextColor(dc, g_elevated ? cDim : cAccent); DrawTextW(dc, link.c_str(), -1, &linkR, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_NOCLIP);
         SetTextColor(dc, cText); RECT lr{S(8), 0, cr.right / 2, cr.bottom}; DrawTextW(dc, left, -1, &lr, DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS);
         SetTextColor(dc, g_stMsg.empty() ? cDim : cText); RECT mr{cr.right / 2 - S(40), 0, linkR.left - S(12), cr.bottom};
-        wstring msg = g_stMsg.empty() ? (g_page == P_STARTUP ? L"Tip: right-click an entry. Every change is journaled; Ctrl+Z undoes it." : g_page == P_SERVICES ? L"Tip: select several services (Ctrl/Shift) to act on them together." : g_page == P_DRIVERS ? L"Drivers are shown read-only." : g_page == P_CLEAN ? L"Select items, then Clean selected. Temp files are deleted permanently; registry entries are backed up first." : L"") : g_stMsg;
+        wstring msg = g_stMsg.empty() ? (g_page == P_STARTUP ? L"Tip: right-click an entry. Every change is journaled; Ctrl+Z undoes it." : g_page == P_SERVICES ? L"Tip: select several services (Ctrl/Shift) to act on them together." : g_page == P_DRIVERS ? L"Drivers are shown read-only." : IsFilePage(g_page) ? L"Files go to the Recycle Bin (restorable). At least one copy per duplicate group is always kept." : g_page == P_CLEAN ? L"Select items, then Clean selected. Temp files are deleted permanently; registry entries are backed up first." : L"") : g_stMsg;
         DrawTextW(dc, msg.c_str(), -1, &mr, DT_RIGHT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
         EndPaint(h, &ps); return 0; }
     case WM_SETCURSOR: { POINT p; GetCursorPos(&p); ScreenToClient(h, &p); if (!g_elevated && PtInRect(&linkR, p)) { SetCursor(LoadCursorW(nullptr, IDC_HAND)); return TRUE; } break; }
@@ -174,17 +185,21 @@ static int Rank(Page p, const wstring& v) {
     if (p == P_STARTUP) return v == L"Enabled" ? 0 : v == L"One-time" ? 1 : v == L"Disabled" ? 2 : 3;
     return v == L"Running" ? 0 : v == L"Paused" ? 1 : v == L"Stopped" ? 3 : 2;
 }
-static wstring EntryName(Page p, int i) { return p == P_STARTUP ? g_su.entries[i].name : p == P_CLEAN ? g_cl.items[i].name : SvcVec(p)[i].display; }
+static wstring EntryName(Page p, int i) { return p == P_STARTUP ? g_su.entries[i].name : p == P_CLEAN ? g_cl.items[i].name : IsFilePage(p) ? FS(p).files[i].path : SvcVec(p)[i].display; }
 
 // ================= data -> rows =================
 static void BuildCells() {
     g_cells[P_STARTUP].clear(); for (auto& e : g_su.entries) g_cells[P_STARTUP].push_back({e.name, e.state, L"Not measured", e.warnings, e.publisher, e.type, e.starts, e.scope, e.command, e.location});
     g_cells[P_SERVICES].clear(); for (auto& e : g_sv.entries) g_cells[P_SERVICES].push_back({e.display, e.name, e.state, e.start, e.safety, e.pid ? std::to_wstring(e.pid) : L"", e.account, e.description, e.warnings});
     g_cells[P_CLEAN].clear(); for (auto& e : g_cl.items) g_cells[P_CLEAN].push_back({e.name, e.type, FormatBytes(e.bytes), e.detail, e.location, e.why});
+    g_cells[P_LARGE].clear(); for (auto& e : g_large.files) g_cells[P_LARGE].push_back({e.name, FormatBytes(e.size), FileDateText(e.mtime), e.ext.empty() ? wstring(L"(none)") : e.ext, e.folder});
+    g_cells[P_DUPES].clear(); for (auto& e : g_dupes.files) g_cells[P_DUPES].push_back({e.name, FormatBytes(e.size), FileDateText(e.mtime), L"Group " + std::to_wstring(e.group) + L" \u00B7 " + std::to_wstring(e.groupCount) + L" copies", e.folder});
     g_cells[P_DRIVERS].clear(); for (auto& e : g_dv.entries) g_cells[P_DRIVERS].push_back({e.display, e.name, e.state, e.start, e.safety, e.ptype, e.description, e.path, e.warnings});
 }
 static bool PassFilter(Page p, int idx) {
     int f = g_filter[p];
+    if (p == P_LARGE) { int c = ExtCat(g_large.files[idx].ext); return f == 0 || c == f; }
+    if (p == P_DUPES) return true;
     if (p == P_CLEAN) { auto& e = g_cl.items[idx]; return f == 0 || (f == 1 && e.kind <= 1) || (f == 2 && e.kind >= 2); }
     if (p == P_STARTUP) { auto& e = g_su.entries[idx];
         if (Cfg().hideSystem && e.isSystem && f != 11) return false;
@@ -197,13 +212,13 @@ static bool PassFilter(Page p, int idx) {
         switch (f) { case 1: return e.stateCode == SERVICE_RUNNING; case 2: return e.stateCode == SERVICE_STOPPED; case 3: return e.startType == SERVICE_BOOT_START || e.startType == SERVICE_SYSTEM_START; case 4: return e.safety == L"Third-party"; case 5: return !e.warnings.empty(); } }
     return true;
 }
-static wstring KeyOf(Page p, int idx) { return p == P_STARTUP ? g_su.entries[idx].key : p == P_HISTORY ? L"" : p == P_CLEAN ? g_cl.items[idx].id : SvcVec(p)[idx].name; }
+static wstring KeyOf(Page p, int idx) { return p == P_STARTUP ? g_su.entries[idx].key : p == P_HISTORY ? L"" : p == P_CLEAN ? g_cl.items[idx].id : IsFilePage(p) ? FS(p).files[idx].path : SvcVec(p)[idx].name; }
 static void UpdateStatus(); static void UpdateToolbar();
 static void ApplyView() {
     Page p = g_page; if (!IsActionList(p) && p != P_HISTORY) return;
     g_view.clear(); auto& cells = g_cells[p];
     for (size_t i = 0; i < cells.size(); ++i) if (PassFilter(p, (int)i) && MatchesQuery(cells[i], g_query[p])) g_view.push_back((int)i);
-    int col = g_sortCol[p]; bool asc = g_sortAsc[p]; bool statusCol = ((p == P_STARTUP && col == 1) || (IsSvcPage(p) && col == 2)); bool numCol = p == P_SERVICES && col == 5; bool sizeCol = p == P_CLEAN && col == 2;
+    int col = g_sortCol[p]; bool asc = g_sortAsc[p]; bool statusCol = ((p == P_STARTUP && col == 1) || (IsSvcPage(p) && col == 2)); bool numCol = p == P_SERVICES && col == 5; bool sizeCol = p == P_CLEAN && col == 2; bool fsSize = IsFilePage(p) && col == 1, fsDate = IsFilePage(p) && col == 2, grpCol = p == P_DUPES && col == 3;
     if (p == P_HISTORY && col == 0) { if (!asc) {} }   // journal is stored oldest->newest; cells are newest-first already
     std::stable_sort(g_view.begin(), g_view.end(), [&](int a, int b) {
         const wstring &x = cells[a][col], &y = cells[b][col];
@@ -211,6 +226,9 @@ static void ApplyView() {
         int c;
         if (statusCol) c = Rank(p, x) - Rank(p, y);
         else if (numCol) c = _wtoi(x.c_str()) - _wtoi(y.c_str());
+        else if (fsSize) { ULONGLONG bx = FS(p).files[a].size, by = FS(p).files[b].size; c = bx < by ? -1 : bx > by ? 1 : 0; }
+        else if (fsDate) { ULONGLONG bx = FS(p).files[a].mtime, by = FS(p).files[b].mtime; c = bx < by ? -1 : bx > by ? 1 : 0; }
+        else if (grpCol) c = FS(p).files[a].group - FS(p).files[b].group;
         else if (sizeCol) { ULONGLONG bx = g_cl.items[a].bytes, by = g_cl.items[b].bytes; c = bx < by ? -1 : bx > by ? 1 : 0; }
         else { wstring lx = Lower(x), ly = Lower(y); c = lx < ly ? -1 : lx > ly ? 1 : 0; }
         if (!c && col != 0) { wstring lx = Lower(cells[a][0]), ly = Lower(cells[b][0]); return lx < ly; }
@@ -243,11 +261,15 @@ static void UpdateStatus() {
     } else if (IsSvcPage(p)) {
         auto& v = SvcVec(p); size_t run = 0; for (auto& e : v) if (e.stateCode == SERVICE_RUNNING) ++run;
         s = std::to_wstring(v.size()) + (p == P_DRIVERS ? L" drivers · " : L" services · ") + std::to_wstring(run) + L" running"; if (g_view.size() != v.size()) s += L" · " + std::to_wstring(g_view.size()) + L" shown";
+    } else if (IsFilePage(p)) {
+        bool done = p == P_DUPES ? g_dupesDone : g_largeDone; if (g_fsBusy) s = L"Scanning\u2026 press Stop to cancel"; else if (!done) s = p == P_DUPES ? L"Not scanned yet \u00B7 press Scan to look for duplicate files" : L"Not scanned yet \u00B7 press Scan to find large files";
+        else if (p == P_LARGE) s = std::to_wstring(g_large.files.size()) + L" large files \u00B7 " + FormatBytes(g_large.totalBytes) + L" total"; else s = std::to_wstring(g_dupes.groups) + L" duplicate groups \u00B7 " + std::to_wstring(g_dupes.files.size()) + L" files \u00B7 " + FormatBytes(g_dupes.reclaimable) + L" reclaimable";
+        if (g_view.size() != FS(p).files.size() && done) s += L" \u00B7 " + std::to_wstring(g_view.size()) + L" shown";
     } else if (p == P_CLEAN) { s = std::to_wstring(g_cl.items.size()) + L" items \u00B7 " + FormatBytes(g_cl.totalBytes) + L" reclaimable \u00B7 " + std::to_wstring(g_cl.registryCount) + L" invalid registry entries"; if (g_view.size() != g_cl.items.size()) s += L" \u00B7 " + std::to_wstring(g_view.size()) + L" shown";
     } else if (p == P_HISTORY) s = std::to_wstring(g_cells[P_HISTORY].size()) + L" journal entries" + (g_view.size() != g_cells[P_HISTORY].size() ? L" · " + std::to_wstring(g_view.size()) + L" shown" : L"");
     else s = g_scanning ? L"Scanning…" : L"Ready";
     UINT sel = IsActionList(p) ? ListView_GetSelectedCount(g_list) : 0; if (sel > 1) s += L" · " + std::to_wstring(sel) + L" selected";
-    if (g_scanning && IsActionList(p)) s += L" · scanning…";
+    if (g_scanning && IsActionList(p) && !IsFilePage(p)) s += L" · scanning…";
     SetWindowTextW(g_status, s.c_str());
 }
 
@@ -259,6 +281,7 @@ static void BuildToolbar() {
     if (g_page == P_STARTUP) { add(C_REFRESH, L"Refresh"); sep(); add(C_ENABLE, L"Enable"); add(C_DISABLE, L"Disable"); add(C_DELETE, L"Delete"); add(C_STARTLATER, L"Start later", true); sep(); add(C_ADD, L"Add…"); add(C_RESTORE, L"Restore…"); add(C_UNDO, L"Undo"); }
     else if (g_page == P_SERVICES) { add(C_REFRESH, L"Refresh"); sep(); add(C_SVC_START, L"Start"); add(C_SVC_STOP, L"Stop"); add(C_SVC_RESTART, L"Restart"); add(C_SVC_PAUSE, L"Pause"); add(C_SVC_RESUME, L"Resume"); add(C_SVC_KILL, L"Kill"); sep(); add(C_STARTTYPE, L"Start type", true); add(C_PROFILES, L"Profiles", true); add(C_UNDO, L"Undo"); }
     else if (g_page == P_DRIVERS) { add(C_REFRESH, L"Refresh"); add(C_DETAILS, L"Properties"); }
+    else if (IsFilePage(g_page)) { add(C_FS_SCAN, L"Scan"); add(C_FS_STOP, L"Stop"); sep(); add(C_FS_FOLDERS, L"Folders\u2026", true); add(C_FS_MIN, L"Minimum size", true); sep(); if (g_page == P_DUPES) add(C_FS_AUTO, L"Auto-select", true); add(C_FS_RECYCLE, L"Move to Recycle Bin"); add(C_OPENLOC, L"Open location"); }
     else if (g_page == P_CLEAN) { add(C_REFRESH, L"Scan again"); sep(); add(C_CLEAN, L"Clean selected"); add(C_CLEAN_SELALL, L"Select all"); sep(); add(C_CLEAN_RESTORE, L"Restore registry\u2026", true); }
     else if (g_page == P_HISTORY) { add(C_REFRESH, L"Refresh"); add(C_EXPORT, L"Export…"); }
     else add(C_REFRESH, L"Refresh");
@@ -278,6 +301,7 @@ static void UpdateToolbar() {
         for (int i : sel) { auto& e = g_sv.entries[i]; if (e.stateCode == SERVICE_STOPPED) st = true; if (e.stateCode == SERVICE_RUNNING) { rs = true; if (e.controls & SERVICE_ACCEPT_STOP) sp = true; if (e.controls & SERVICE_ACCEPT_PAUSE_CONTINUE) pa = true; if (sel.size() == 1 && e.pid && (e.svcType & SERVICE_WIN32_OWN_PROCESS) && !e.critical) kl = true; } if (e.stateCode == SERVICE_PAUSED) re = true; }
         TbEnable(C_SVC_START, st); TbEnable(C_SVC_STOP, sp); TbEnable(C_SVC_RESTART, sp && rs); TbEnable(C_SVC_PAUSE, pa); TbEnable(C_SVC_RESUME, re); TbEnable(C_SVC_KILL, kl); TbEnable(C_STARTTYPE, any); TbEnable(C_PROFILES, true);
     } else if (g_page == P_DRIVERS) TbEnable(C_DETAILS, any);
+    else if (IsFilePage(g_page)) { TbEnable(C_FS_SCAN, !g_fsBusy); TbEnable(C_FS_STOP, g_fsBusy); TbEnable(C_FS_FOLDERS, !g_fsBusy); TbEnable(C_FS_MIN, !g_fsBusy); TbEnable(C_FS_AUTO, !g_fsBusy && !g_dupes.files.empty()); TbEnable(C_FS_RECYCLE, any && !g_fsBusy); TbEnable(C_OPENLOC, sel.size() == 1); }
     else if (g_page == P_CLEAN) { TbEnable(C_CLEAN, any && !g_scanning); TbEnable(C_CLEAN_SELALL, !g_cl.items.empty()); TbEnable(C_CLEAN_RESTORE, true); }
     TbEnable(C_UNDO, !g_undo.empty());
 }
@@ -327,6 +351,7 @@ static void BuildTiles(int panelW) {
          {{}, std::to_wstring(crit), L"critical to Windows", P_SERVICES, 6, cRed, 0}, {{}, std::to_wstring(sw), L"need attention", P_SERVICES, 7, sw ? cRed : cGreen, 0}});
     size_t drun = CountIf(g_dv.entries, [](const ServiceEntry& e) { return e.stateCode == SERVICE_RUNNING; }), dboot = CountIf(g_dv.entries, [](const ServiceEntry& e) { return e.startType == SERVICE_BOOT_START || e.startType == SERVICE_SYSTEM_START; });
     row({{{}, FormatBytes(g_cl.totalBytes), L"reclaimable temp files", P_CLEAN, 1, g_cl.totalBytes ? cAmber : cDim, 0}, {{}, std::to_wstring(g_cl.registryCount), L"invalid registry entries", P_CLEAN, 2, g_cl.registryCount ? cAmber : cGreen, 0}});
+    row({{{}, g_largeDone ? std::to_wstring(g_large.files.size()) : wstring(L"\u2014"), g_largeDone ? L"large files found" : L"large files: not scanned", P_LARGE, 0, g_largeDone ? cAmber : cDim, 0}, {{}, g_dupesDone ? std::to_wstring(g_dupes.groups) : wstring(L"\u2014"), g_dupesDone ? L"duplicate groups" : L"duplicates: not scanned", P_DUPES, 0, g_dupesDone && g_dupes.groups ? cAmber : cDim, 0}});
     row({{{}, std::to_wstring(g_dv.entries.size()), L"drivers (read-only)", P_DRIVERS, 0, cText, 0}, {{}, std::to_wstring(drun), L"loaded", P_DRIVERS, 1, cGreen, 0}, {{}, std::to_wstring(dboot), L"boot/system start", P_DRIVERS, 3, cAmber, 0}});
 }
 static const wchar_t* DensityName() { return Cfg().density ? L"Comfortable" : L"Compact"; }
@@ -383,8 +408,8 @@ static LRESULT CALLBACK PanelProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SelectObject(dc, g_font);
         if (g_page == P_DASH) {
             // section headings aligned to tile rows
-            const wchar_t* heads[] = {L"STARTUP", L"SERVICES", L"CLEANER", L"DRIVERS"}; int hi = 0, lastY = -1; SetTextColor(dc, cAccent);
-            for (auto& t : g_tiles) if (t.r.top != lastY) { lastY = t.r.top; if (hi < 4) TextOutW(dc, S(26), t.r.top - S(22), heads[hi], (int)wcslen(heads[hi])); ++hi; }
+            const wchar_t* heads[] = {L"STARTUP", L"SERVICES", L"CLEANER", L"FILES", L"DRIVERS"}; int hi = 0, lastY = -1; SetTextColor(dc, cAccent);
+            for (auto& t : g_tiles) if (t.r.top != lastY) { lastY = t.r.top; if (hi < 5) TextOutW(dc, S(26), t.r.top - S(22), heads[hi], (int)wcslen(heads[hi])); ++hi; }
             int y = g_tiles.empty() ? S(100) : g_tiles.back().r.bottom + S(20); RECT tr{S(26), y, cr.right - S(26), cr.bottom - S(8)}; SetTextColor(dc, cDim);
             wstring note = (g_elevated ? L"Running as administrator.\r\n" : L"Running with standard rights: reading works everywhere; all-users and service changes need \"Restart as administrator\" (bottom right).\r\n");
             note += L"Every change is journaled first, verified by reading it back, and can be undone where Windows allows (Ctrl+Z - configuration only).\r\n";
@@ -393,7 +418,7 @@ static LRESULT CALLBACK PanelProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         } else {
             int y = g_tiles.empty() ? S(100) : g_tiles.back().r.bottom + S(16); RECT tr{S(26), y, cr.right - S(26), cr.bottom - S(8)}; SetTextColor(dc, cDim);
             wstring note = L"Privacy: nothing leaves this PC. No telemetry, no automatic updates, no online advice. \"Check on VirusTotal\" and \"Search online\" only open your browser after you confirm.\r\n" + MigrationNote() +
-                           L"\r\nShortcuts: Ctrl+F search · F5 refresh · Enter details · Del delete · Ctrl+A select all · Ctrl+C copy name · Ctrl+Shift+C copy details · Ctrl+E export · Ctrl+Z undo · Ctrl+1..7 pages";
+                           L"\r\nShortcuts: Ctrl+F search · F5 refresh · Enter details · Del delete · Ctrl+A select all · Ctrl+C copy name · Ctrl+Shift+C copy details · Ctrl+E export · Ctrl+Z undo · Ctrl+1..9 pages";
             DrawTextW(dc, note.c_str(), -1, &tr, DT_LEFT | DT_WORDBREAK | DT_NOPREFIX);
         }
         EndPaint(h, &ps); return 0; }
@@ -423,15 +448,15 @@ static void ShowPage(Page p) {
     BuildToolbar();
     if (listy) {
         SetWindowTextW(g_search, g_query[p].c_str());
-        SendMessageW(g_search, EM_SETCUEBANNER, TRUE, (LPARAM)(p == P_SERVICES ? L"Search services (Ctrl+F)" : p == P_DRIVERS ? L"Search drivers (Ctrl+F)" : p == P_CLEAN ? L"Search items (Ctrl+F)" : p == P_HISTORY ? L"Search history (Ctrl+F)" : L"Search (Ctrl+F)"));
+        SendMessageW(g_search, EM_SETCUEBANNER, TRUE, (LPARAM)(p == P_SERVICES ? L"Search services (Ctrl+F)" : p == P_DRIVERS ? L"Search drivers (Ctrl+F)" : p == P_CLEAN ? L"Search items (Ctrl+F)" : IsFilePage(p) ? L"Search files (Ctrl+F)" : p == P_HISTORY ? L"Search history (Ctrl+F)" : L"Search (Ctrl+F)"));
         BuildColumns(); if (p == P_HISTORY) ReadHistory(); ApplyView(); InvalidateRect(g_search, nullptr, TRUE);
     } else { RebuildPanel(); UpdateStatus(); UpdateToolbar(); }
     RECT r; GetClientRect(g_main, &r); Layout(r.right, r.bottom);
 }
 
 // ================= actions =================
-static const StartupEntry* OneStartup() { auto s = Selected(); return s.empty() ? nullptr : &g_su.entries[s[0]]; }
-static const ServiceEntry* OneService() { auto s = Selected(); return s.empty() ? nullptr : &SvcVec(g_page)[s[0]]; }
+static const StartupEntry* OneStartup() { if (g_page != P_STARTUP) return nullptr; auto s = Selected(); return s.empty() ? nullptr : &g_su.entries[s[0]]; }
+static const ServiceEntry* OneService() { if (!IsSvcPage(g_page)) return nullptr; auto s = Selected(); return s.empty() ? nullptr : &SvcVec(g_page)[s[0]]; }
 
 static void ServiceEditors(std::vector<ReportBtn>& b, const ServiceEntry& c) {
     b.push_back({L"Name & description…", [c](const wstring&) {
@@ -453,7 +478,9 @@ static void ServiceEditors(std::vector<ReportBtn>& b, const ServiceEntry& c) {
         if (DarkMsg(ow, kApp, L"Change the account for '" + c.display + L"'?", 2) != IDYES) return;
         wstring err; if (SetServiceAccount(c, _wtoi(f[0].value.c_str()), err)) { SetMsg(L"Account changed for " + c.display + L" (applies at next start)."); StartScan(); } else DarkMsg(ow, kApp, err, 1); }});
 }
+static void ShowFileDetails();
 static void ShowDetails() {
+    if (IsFilePage(g_page)) { ShowFileDetails(); return; }
     if (g_page == P_CLEAN) { auto s = Selected(); if (s.empty()) return; auto& e = g_cl.items[s[0]];
         wstring t = e.name + L"\r\n\r\nTYPE\r\n" + e.type + L"\r\n\r\nSIZE\r\n" + FormatBytes(e.bytes) + (e.files ? L" in " + std::to_wstring(e.files) + L" files/items" : L"") + L"\r\n\r\nWHERE\r\n" + e.location + L"\r\n\r\nWHY IT IS LISTED\r\n" + e.why + L"\r\n\r\n" +
             (e.kind >= 2 ? L"WHAT HAPPENS\r\nThe entry is exported to a backup file, then removed. Use Restore registry... to put it back. Only entries whose file is missing on a fixed local drive are ever listed.\r\n" : L"WHAT HAPPENS\r\nFiles are deleted permanently (not moved to the Recycle Bin). Files in use are skipped.\r\n") + (e.needsAdmin ? L"\r\nNeeds administrator rights.\r\n" : L"");
@@ -475,7 +502,7 @@ static void ShowDetails() {
     }
 }
 static void CopyNames() { wstring o; for (int i : Selected()) o += EntryName(g_page, i) + L"\r\n"; SetClip(o); }
-static void CopyDetails() { wstring o; for (int i : Selected()) o += (g_page == P_STARTUP ? StartupDetailsText(g_su.entries[i]) : g_page == P_CLEAN ? g_cl.items[i].name + L"\r\n" + g_cl.items[i].location + L"\r\n" + g_cl.items[i].why : ServiceTabText(SvcVec(g_page)[i], 0)) + L"\r\n"; SetClip(o); }
+static void CopyDetails() { wstring o; for (int i : Selected()) o += (g_page == P_STARTUP ? StartupDetailsText(g_su.entries[i]) : IsFilePage(g_page) ? FS(g_page).files[i].path + L"  " + FormatBytes(FS(g_page).files[i].size) : g_page == P_CLEAN ? g_cl.items[i].name + L"\r\n" + g_cl.items[i].location + L"\r\n" + g_cl.items[i].why : ServiceTabText(SvcVec(g_page)[i], 0)) + L"\r\n"; SetClip(o); }
 static void SelectAll() { ListView_SetItemState(g_list, -1, LVIS_SELECTED, LVIS_SELECTED); UpdateStatus(); UpdateToolbar(); }
 static void ExportList() {
     if (!IsActionList(g_page) && g_page != P_HISTORY) return;
@@ -633,6 +660,59 @@ static void RestoreRegMenu(POINT pt) {
         wstring err, sum; if (RestoreRegBackup(b[id - C_REGRESTORE_BASE].path, err, sum)) { SetMsg(sum + L"."); StartScan(); } else Warn(err.empty() ? L"Nothing was restored." : err);
     }
 }
+// ---- large files / duplicates ----
+struct FsJob { FileScanOpts o; bool dupes; };
+struct FsDone { bool dupes; FileScan scan; };
+static DWORD WINAPI FsThread(LPVOID p) {
+    std::unique_ptr<FsJob> j((FsJob*)p); CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); auto* d = new FsDone{j->dupes, {}}; ScanFiles(j->o, d->scan);
+    PostMessageW(g_main, WM_FILE_DONE, 0, (LPARAM)d); CoUninitialize(); return 0;
+}
+static std::vector<wstring> ScanRoots() { return Cfg().scanRoots.empty() ? DefaultScanRoots() : Cfg().scanRoots; }
+static void StartFileScan(bool dupes) {
+    if (g_fsBusy) return; auto roots = ScanRoots(); if (roots.empty()) { Warn(L"No folders to scan. Use Folders… to add one."); return; }
+    auto* j = new FsJob{{}, dupes}; j->o.roots = roots; j->o.dupes = dupes; j->o.minSize = dupes ? (ULONGLONG)Cfg().dupMinKB * 1024 : (ULONGLONG)Cfg().largeMinMB * 1024 * 1024; j->o.maxResults = 1000;
+    g_fsCancel = false; j->o.cancel = &g_fsCancel; j->o.progress = [](const wstring& m) { PostMessageW(g_main, WM_FILE_PROGRESS, 0, (LPARAM) new wstring(m)); };
+    g_fsBusy = true; SetMsg(L"Scanning " + Plural(roots.size(), L"folder", L"folders") + L"…"); UpdateStatus(); UpdateToolbar();
+    HANDLE h = CreateThread(nullptr, 0, FsThread, j, 0, nullptr); if (h) CloseHandle(h); else { delete j; g_fsBusy = false; UpdateToolbar(); }
+}
+static void PruneDupes() {
+    std::map<int, int> cnt; for (auto& e : g_dupes.files) ++cnt[e.group]; std::vector<FileEntry> keep; g_dupes.reclaimable = 0; g_dupes.totalBytes = 0; std::set<int> groups; std::map<int, ULONGLONG> sz;
+    for (auto& e : g_dupes.files) if (cnt[e.group] > 1) { FileEntry x = e; x.groupCount = cnt[e.group]; keep.push_back(x); groups.insert(e.group); sz[e.group] = e.size; }
+    for (auto& g : groups) { g_dupes.reclaimable += sz[g] * (cnt[g] - 1); g_dupes.totalBytes += sz[g] * cnt[g]; } g_dupes.files = keep; g_dupes.groups = (int)groups.size();
+}
+static void RecycleSelected() {
+    if (!IsFilePage(g_page) || g_fsBusy) return; auto sel = Selected(); if (sel.empty()) return; auto& scan = FS(g_page);
+    if (g_page == P_DUPES) {   // never allow removing every copy of a file
+        std::map<int, int> chosen; for (int i : sel) ++chosen[scan.files[i].group];
+        for (auto& kv : chosen) { int total = 0; for (auto& e : scan.files) if (e.group == kv.first) ++total; if (kv.second >= total) { Warn(L"Group " + std::to_wstring(kv.first) + L" has all of its copies selected. At least one copy must be kept - deselect one and try again."); return; } }
+    }
+    std::vector<wstring> names, paths; ULONGLONG total = 0; for (int i : sel) { auto& e = scan.files[i]; names.push_back(e.path + L"  (" + FormatBytes(e.size) + L")"); paths.push_back(e.path); total += e.size; }
+    if (!Confirm(L"Move " + Plural(sel.size(), L"file", L"files") + L" (" + FormatBytes(total) + L") to the Recycle Bin? You can restore them from there.", names)) return;
+    wstring err; RecycleFiles(g_main, paths, err);
+    std::set<wstring> gone; ULONGLONG freed = 0; for (int i : sel) if (GetFileAttributesW(scan.files[i].path.c_str()) == INVALID_FILE_ATTRIBUTES) { gone.insert(scan.files[i].path); freed += scan.files[i].size; }
+    std::vector<FileEntry> rest; for (auto& e : scan.files) if (!gone.count(e.path)) rest.push_back(e); scan.files = rest;
+    if (g_page == P_DUPES) PruneDupes(); else { scan.totalBytes = 0; for (auto& e : scan.files) scan.totalBytes += e.size; }
+    WriteJournal(L"File finder", wstring(g_page == P_DUPES ? L"duplicates" : L"large files"), Plural(sel.size(), L"file", L"files") + L" selected", Plural(gone.size(), L"file", L"files") + L" moved to Recycle Bin (" + FormatBytes(freed) + L")", gone.size() == sel.size() ? L"ok (restorable from Recycle Bin)" : L"partial: " + err, true);
+    SetMsg(Plural(gone.size(), L"file", L"files") + L" moved to the Recycle Bin (" + FormatBytes(freed) + L")." + (gone.size() < sel.size() ? L" " + std::to_wstring(sel.size() - gone.size()) + L" could not be moved." : L""));
+    BuildCells(); ApplyView();
+}
+static void AutoSelect(int mode) {
+    if (g_page != P_DUPES || g_dupes.files.empty()) return; std::vector<DupRec> recs; for (auto& e : g_dupes.files) recs.push_back({e.group, e.mtime, e.path.size()});
+    auto rm = SelectDuplicatesToRemove(recs, mode); std::set<int> want(rm.begin(), rm.end()); ListView_SetItemState(g_list, -1, 0, LVIS_SELECTED);
+    for (size_t i = 0; i < g_view.size(); ++i) if (want.count(g_view[i])) ListView_SetItemState(g_list, (int)i, LVIS_SELECTED, LVIS_SELECTED);
+    UpdateStatus(); UpdateToolbar(); SetMsg(Plural(want.size(), L"file", L"files") + L" selected (one copy per group kept). Review, then Move to Recycle Bin.");
+}
+static void AddScanFolder() {
+    BROWSEINFOW bi{}; bi.hwndOwner = g_main; bi.lpszTitle = L"Choose a folder to include in the scan"; bi.ulFlags = BIF_RETURNONLYFSDIRS | BIF_NEWDIALOGSTYLE;
+    PIDLIST_ABSOLUTE pidl = SHBrowseForFolderW(&bi); if (!pidl) return; wchar_t path[MAX_PATH]; if (SHGetPathFromIDListW(pidl, path)) { auto& r = Cfg().scanRoots; if (r.empty()) r = DefaultScanRoots(); if (std::find(r.begin(), r.end(), wstring(path)) == r.end() && r.size() < 20) r.push_back(path); SaveSettings(); SetMsg(L"Folder added: " + wstring(path)); } CoTaskMemFree(pidl);
+}
+static void ShowFileDetails() {
+    auto s = Selected(); if (s.empty()) return; auto& e = FS(g_page).files[s[0]];
+    wstring t = e.name + L"\r\n\r\nPATH\r\n" + e.path + L"\r\n\r\nSIZE\r\n" + FormatBytes(e.size) + L" (" + std::to_wstring(e.size) + L" bytes)\r\n\r\nMODIFIED\r\n" + FileDateText(e.mtime) + L"\r\n";
+    if (g_page == P_DUPES) { t += L"\r\nIDENTICAL COPIES (same content, SHA-256)\r\n"; for (auto& o : g_dupes.files) if (o.group == e.group) t += (o.path == e.path ? L"  • (this one) " : L"  • ") + o.path + L"   " + FileDateText(o.mtime) + L"\r\n"; }
+    wstring path = e.path;
+    ShowReport(g_main, e.name + L" — Details", {{L"Details", t}}, {{L"Open file location", [path](const wstring&) { OpenFileLocation(path); }}, {L"Copy", [](const wstring& x) { SetClip(x); }}, {L"Close", nullptr}});
+}
 static void Undo() {
     if (g_undo.empty()) return; int grp = g_undo.back().group; int ok = 0, bad = 0; wstring firstErr;
     while (!g_undo.empty() && g_undo.back().group == grp) { auto u = g_undo.back(); g_undo.pop_back(); wstring err, before; bool r = u.kind == 1 ? SetStartupEnabled(u.se, u.wasEnabled, err) : SetServiceStartType(u.name, u.type, u.delayed, err, before);
@@ -673,6 +753,8 @@ static void ContextMenu(POINT pt) {
         AppendMenuW(m, MF_POPUP, (UINT_PTR)StartTypeMenu(), L"Start type"); Sep(m);
         AddItem(m, C_COPYNAME, L"Copy name\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C"); AddItem(m, C_OPENLOC, L"Open file location", one); AddItem(m, C_VT, L"Check on VirusTotal…", one); AddItem(m, C_SEARCHONLINE, L"Search online…", one); Sep(m);
         AddItem(m, C_PROF_SAVESEL, L"Save as a profile…"); 
+    } else if (IsFilePage(g_page)) {
+        AddItem(m, C_DETAILS, L"Details\tEnter", true, true); Sep(m); AddItem(m, C_OPENLOC, L"Open file location", one); AddItem(m, C_FS_RECYCLE, L"Move to Recycle Bin\tDel", TbOn(C_FS_RECYCLE)); Sep(m); AddItem(m, C_COPYNAME, L"Copy path\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C");
     } else if (g_page == P_CLEAN) {
         AddItem(m, C_DETAILS, L"Details\tEnter", true, true); Sep(m); AddItem(m, C_CLEAN, L"Clean selected\u2026"); Sep(m); AddItem(m, C_COPYNAME, L"Copy name\tCtrl+C"); AddItem(m, C_COPYDETAILS, L"Copy details\tCtrl+Shift+C");
     } else {
@@ -684,7 +766,7 @@ static void ContextMenu(POINT pt) {
 static void DropMenu(int cmd) {
     auto* it = TbFind(cmd); if (!it) return; RECT wr; GetWindowRect(it->h, &wr); POINT pt{wr.left, wr.bottom};
     if (cmd == C_FILTER) {
-        HMENU m = CreatePopupMenu(); int n = FilterCount(g_page); const wchar_t** names = g_page == P_STARTUP ? kStartupFilters : g_page == P_SERVICES ? kServiceFilters : g_page == P_CLEAN ? kCleanFilters : kDriverFilters;
+        HMENU m = CreatePopupMenu(); int n = FilterCount(g_page); const wchar_t** names = g_page == P_STARTUP ? kStartupFilters : g_page == P_SERVICES ? kServiceFilters : g_page == P_CLEAN ? kCleanFilters : g_page == P_LARGE ? kLargeFilters : kDriverFilters;
         for (int i = 0; i < n; ++i) { if ((g_page == P_STARTUP && (i == 3 || i == 6 || i == 10)) || (g_page == P_SERVICES && (i == 3 || i == 5 || i == 7)) || (g_page == P_DRIVERS && (i == 3 || i == 5))) Sep(m);
             AppendMenuW(m, MF_STRING | (i == g_filter[g_page] ? MF_CHECKED : 0), C_FILTER_BASE + i, names[i]); }
         int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_RIGHTALIGN | TPM_TOPALIGN, wr.right, wr.bottom, 0, g_main, nullptr); DestroyMenu(m);
@@ -702,6 +784,18 @@ static void DropMenu(int cmd) {
     else if (cmd == C_STARTLATER) { HMENU m = DelayMenu(); int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0); }
     else if (cmd == C_RESTORE) RestoreMenu(pt);
     else if (cmd == C_CLEAN_RESTORE) RestoreRegMenu(pt);
+    else if (cmd == C_FS_FOLDERS) {
+        HMENU m = CreatePopupMenu(); AddItem(m, C_FS_FOLDER_ADD, L"Add a folder\u2026"); AddItem(m, C_FS_FOLDER_DEFAULT, L"Use the default folders (Downloads, Documents, Desktop, Pictures, Videos, Music)"); Sep(m);
+        auto roots = ScanRoots(); bool custom = !Cfg().scanRoots.empty(); for (size_t i = 0; i < roots.size() && i < 20; ++i) AddItem(m, custom ? C_FS_RM_BASE + (UINT)i : 0, ((custom ? L"Remove: " : L"Scanning: ") + roots[i]).c_str(), custom);
+        int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0);
+    } else if (cmd == C_FS_MIN) {
+        HMENU m = CreatePopupMenu(); bool d = g_page == P_DUPES; static const int mb[] = {50, 100, 250, 500, 1024}, kb[] = {100, 1024, 10240, 102400}; int cur = d ? Cfg().dupMinKB : Cfg().largeMinMB;
+        for (int i = 0; i < (d ? 4 : 5); ++i) { int v = d ? kb[i] : mb[i]; wchar_t lab[48]; if (d) swprintf(lab, 48, v >= 1024 ? L"At least %d MB" : L"At least %d KB", v >= 1024 ? v / 1024 : v); else swprintf(lab, 48, v >= 1024 ? L"At least %d GB" : L"At least %d MB", v >= 1024 ? v / 1024 : v); AppendMenuW(m, MF_STRING | (v == cur ? MF_CHECKED : 0), C_FS_MIN_BASE + i, lab); }
+        int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0);
+    } else if (cmd == C_FS_AUTO) {
+        HMENU m = CreatePopupMenu(); AddItem(m, C_FS_AUTO_BASE, L"Keep the oldest copy, select the rest"); AddItem(m, C_FS_AUTO_BASE + 1, L"Keep the newest copy, select the rest"); AddItem(m, C_FS_AUTO_BASE + 2, L"Keep the copy with the shortest path, select the rest");
+        int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m); if (id) PostMessageW(g_main, WM_COMMAND, id, 0);
+    }
     else if (cmd == C_PROFILES) {
         g_profs = ListProfiles(); HMENU m = CreatePopupMenu(); AddItem(m, 0, L"Built-in profiles (you review every change first):", false);
         size_t nb = 0; for (auto& p : g_profs) if (p.builtin) ++nb;
@@ -720,6 +814,9 @@ static void DoCommand(int id) {
     case C_ENABLE: ToggleStartup(true); break; case C_DISABLE: ToggleStartup(false); break; case C_DELETE: DeleteStartup(); break; case C_ADD: AddEntry(); break;
     case C_RESTORE: case C_FILTER: case C_MORE: case C_STARTTYPE: case C_STARTLATER: case C_PROFILES: case C_CLEAN_RESTORE: DropMenu(id); break;
     case C_CLEAN: CleanSelected(); break; case C_CLEAN_SELALL: CleanSelectAll(); break;
+    case C_FS_SCAN: StartFileScan(g_page == P_DUPES); break; case C_FS_STOP: g_fsCancel = true; SetMsg(L"Stopping\u2026"); break;
+    case C_FS_FOLDERS: case C_FS_MIN: case C_FS_AUTO: DropMenu(id); break; case C_FS_RECYCLE: RecycleSelected(); break;
+    case C_FS_FOLDER_ADD: AddScanFolder(); break; case C_FS_FOLDER_DEFAULT: Cfg().scanRoots.clear(); SaveSettings(); SetMsg(L"Using the default folders."); break;
     case C_UNDO: Undo(); break; case C_REMOVE_DELAY: RemoveDelays(); break;
     case C_SVC_START: RunSvcOp(SvcOp::Start); break; case C_SVC_STOP: RunSvcOp(SvcOp::Stop); break; case C_SVC_RESTART: RunSvcOp(SvcOp::Restart); break;
     case C_SVC_PAUSE: RunSvcOp(SvcOp::Pause); break; case C_SVC_RESUME: RunSvcOp(SvcOp::Resume); break; case C_SVC_KILL: KillService(); break;
@@ -727,7 +824,7 @@ static void DoCommand(int id) {
     case C_ST_MANUAL: SetStartType(SERVICE_DEMAND_START, false, L"Manual"); break; case C_ST_DISABLED: SetStartType(SERVICE_DISABLED, false, L"Disabled"); break;
     case C_PROF_SAVESEL: SaveProfileFlow(false); break; case C_PROF_SNAPSHOT: SaveProfileFlow(true); break; case C_PROF_OPENDIR: ShellExecuteW(nullptr, L"open", SubDir(L"profiles").c_str(), nullptr, nullptr, SW_SHOWNORMAL); break;
     case C_DETAILS: ShowDetails(); break; case C_COPYNAME: CopyNames(); break; case C_COPYDETAILS: CopyDetails(); break; case C_SELALL: SelectAll(); break; case C_EXPORT: ExportList(); break;
-    case C_OPENLOC: if (g_page == P_STARTUP) { if (auto* e = OneStartup()) OpenFileLocation(e->program); } else if (auto* s = OneService()) OpenFileLocation(s->program); break;
+    case C_OPENLOC: if (IsFilePage(g_page)) { auto s = Selected(); if (!s.empty()) OpenFileLocation(FS(g_page).files[s[0]].path); } else if (g_page == P_STARTUP) { if (auto* e = OneStartup()) OpenFileLocation(e->program); } else if (auto* s = OneService()) OpenFileLocation(s->program); break;
     case C_REGEDIT: if (auto* e = OneStartup()) ShowInRegistryEditor(e->location); break;
     case C_VT: case C_SEARCHONLINE: { wstring prog, name; if (g_page == P_STARTUP) { if (auto* e = OneStartup()) { prog = e->program; name = e->name; } } else if (auto* s = OneService()) { prog = s->program; name = s->display; }
         if (!prog.empty() || !name.empty()) OnlineLookup(g_main, id == C_VT, prog, name); break; }
@@ -737,7 +834,10 @@ static void DoCommand(int id) {
     case C_EXIT: DestroyWindow(g_main); break;
     case 0xE001: ApplyTheme(Cfg().theme); break;
     default:
-        if (id >= C_DELAY_BASE && id < C_DELAY_BASE + 5) DelayEntries(kDelays[id - C_DELAY_BASE]);
+        if (id >= C_FS_MIN_BASE && id < C_FS_MIN_BASE + 8) { static const int mb[] = {50, 100, 250, 500, 1024}, kb[] = {100, 1024, 10240, 102400}; int i = id - C_FS_MIN_BASE; if (g_page == P_DUPES && i < 4) Cfg().dupMinKB = kb[i]; else if (g_page == P_LARGE && i < 5) Cfg().largeMinMB = mb[i]; SaveSettings(); SetMsg(L"Minimum size changed. Press Scan to apply it."); }
+        else if (id >= C_FS_AUTO_BASE && id < C_FS_AUTO_BASE + 3) AutoSelect(id - C_FS_AUTO_BASE);
+        else if (id >= C_FS_RM_BASE && id < C_FS_RM_BASE + 20) { auto& r = Cfg().scanRoots; size_t i = id - C_FS_RM_BASE; if (i < r.size()) { r.erase(r.begin() + i); SaveSettings(); SetMsg(L"Folder removed from the scan list."); } }
+        else if (id >= C_DELAY_BASE && id < C_DELAY_BASE + 5) DelayEntries(kDelays[id - C_DELAY_BASE]);
         else if (id >= C_PROF_BASE && id < C_PROF_BASE + 64 && (size_t)(id - C_PROF_BASE) < g_profs.size()) ApplyProfile(g_profs[id - C_PROF_BASE]);
     }
 }
@@ -748,6 +848,7 @@ static COLORREF CellColor(Page p, int row, int col, bool& dim) {
     if (p == P_STARTUP) { auto& e = g_su.entries[row]; if (e.state == L"Disabled") dim = true;
         switch (col) { case 1: return e.state == L"Enabled" ? cGreen : e.state == L"Disabled" ? cDim : cAmber; case 2: return cDim; case 3: return cRed; case 4: return e.microsoft ? cText : cLav; }
         return dim ? cDim : cText; }
+    if (IsFilePage(p)) { if (col == 1) return cGreen; if (col == 3 && p == P_DUPES) return (g_dupes.files[row].group & 1) ? cAmber : cLav; return col == 2 ? cDim : cText; }
     if (p == P_CLEAN) { auto& e = g_cl.items[row]; if (col == 1) return e.kind >= 2 ? cAmber : cText; if (col == 2) return e.bytes ? cGreen : cDim; if (col == 3) return e.needsAdmin && !g_elevated ? cAmber : cDim; return col == 5 ? cDim : cText; }
     if (p == P_SERVICES || p == P_DRIVERS) { auto& e = SvcVec(p)[row]; int wcol = p == P_SERVICES ? 8 : 8;
         if (col == 2) return e.stateCode == SERVICE_RUNNING ? cGreen : e.stateCode == SERVICE_STOPPED ? cDim : cAmber;
@@ -872,6 +973,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         BuildCells();
         if (IsActionList(g_page)) ApplyView(); else if (g_page == P_DASH) { RebuildPanel(); UpdateStatus(); } else UpdateStatus();
         return 0; }
+    case WM_FILE_PROGRESS: { std::unique_ptr<wstring> m2((wstring*)l); if (g_fsBusy) SetMsg(*m2); return 0; }
+    case WM_FILE_DONE: { std::unique_ptr<FsDone> d((FsDone*)l); g_fsBusy = false; if (d->dupes) { g_dupes = std::move(d->scan); g_dupesDone = true; } else { g_large = std::move(d->scan); g_largeDone = true; }
+        auto& sc = d->dupes ? g_dupes : g_large; SetMsg(d->dupes ? std::to_wstring(sc.groups) + L" duplicate groups found, " + FormatBytes(sc.reclaimable) + L" reclaimable. " + sc.coverage : std::to_wstring(sc.files.size()) + L" large files found. " + sc.coverage);
+        BuildCells(); if (IsActionList(g_page)) ApplyView(); else if (g_page == P_DASH) RebuildPanel(); UpdateStatus(); UpdateToolbar(); return 0; }
     case WM_JOB_DONE: { std::unique_ptr<JobDone> j((JobDone*)l); SetMsg(j->summary); g_scanning = false; StartScan(); return 0; }
     case WM_ACTIVATE_PAGE: { if (IsIconic(h)) ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); if (w < P_COUNT) ShowPage((Page)w); return 0; }
     case WM_NOTIFY: {
@@ -914,7 +1019,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     if (c.find(L"--cleanup") != wstring::npos) {   // used by the uninstaller: restore delayed entries, remove our tasks
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); wstring rep; CleanupManagedTasks(rep); return 0; }
     g_mtx = CreateMutexW(nullptr, TRUE, L"Local\\FeatherSystemUtilities.Instance");
-    Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else if (c.find(L"--cleaner") != wstring::npos) req = P_CLEAN; else haveReq = false;
+    Page req = P_DASH; bool haveReq = true; if (c.find(L"--services") != wstring::npos) req = P_SERVICES; else if (c.find(L"--startup") != wstring::npos) req = P_STARTUP; else if (c.find(L"--drivers") != wstring::npos) req = P_DRIVERS; else if (c.find(L"--cleaner") != wstring::npos) req = P_CLEAN; else if (c.find(L"--large") != wstring::npos) req = P_LARGE; else if (c.find(L"--duplicates") != wstring::npos) req = P_DUPES; else haveReq = false;
     if (GetLastError() == ERROR_ALREADY_EXISTS) { if (HWND e = FindWindowW(L"FeatherSystemUtilitiesWnd", nullptr)) PostMessageW(e, WM_ACTIVATE_PAGE, req, 0); return 0; }   // F004
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     LoadSettings(); MigrateLegacyData(); P = PalFor(Cfg().theme);
@@ -934,7 +1039,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
         if (m.message == WM_KEYDOWN && GetForegroundWindow() == w) {
             bool ctrl = GetKeyState(VK_CONTROL) < 0, shift = GetKeyState(VK_SHIFT) < 0; HWND f = GetFocus(); bool onList = f == g_list; bool listy = IsActionList(g_page) || g_page == P_HISTORY; bool inEdit = f == g_search;
             if (ctrl && m.wParam == 'F' && listy) { SetFocus(g_search); SendMessageW(g_search, EM_SETSEL, 0, -1); continue; }
-            if (ctrl && m.wParam >= '1' && m.wParam <= '7') { ShowPage((Page)(m.wParam - '1')); continue; }
+            if (ctrl && m.wParam >= '1' && m.wParam <= '9') { ShowPage((Page)(m.wParam - '1')); continue; }
             if (m.wParam == VK_F5) { DoCommand(C_REFRESH); continue; } if (m.wParam == VK_F1) { About(); continue; } if (ctrl && m.wParam == VK_OEM_COMMA) { ShowPage(P_SETTINGS); continue; }
             if (ctrl && !shift && m.wParam == 'Z' && !inEdit) { Undo(); continue; }
             if (ctrl && m.wParam == 'E' && listy) { ExportList(); continue; }
@@ -943,6 +1048,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
                 if (ctrl && shift && m.wParam == 'C') { CopyDetails(); continue; } if (ctrl && !shift && m.wParam == 'C' && onList) { CopyNames(); continue; }
                 if (ctrl && m.wParam == 'N' && g_page == P_STARTUP) { AddEntry(); continue; }
                 if (m.wParam == VK_DELETE && g_page == P_STARTUP && onList) { DeleteStartup(); continue; }
+                if (m.wParam == VK_DELETE && IsFilePage(g_page) && onList) { RecycleSelected(); continue; }
                 if (m.wParam == VK_RETURN && onList) { ShowDetails(); continue; }
                 if (g_page == P_SERVICES && ctrl && shift) { if (m.wParam == 'S') { RunSvcOp(SvcOp::Start); continue; } if (m.wParam == 'T') { RunSvcOp(SvcOp::Stop); continue; } if (m.wParam == 'R') { RunSvcOp(SvcOp::Restart); continue; } if (m.wParam == 'K') { KillService(); continue; } }
             }

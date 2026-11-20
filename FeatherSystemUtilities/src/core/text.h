@@ -50,6 +50,11 @@ bool MuiCachePath(const std::wstring& valueName, std::wstring& path);
 // True for "X:\..." paths (a drive-letter absolute path with no unresolved %vars%).
 bool IsDriveAbsolute(const std::wstring& p);
 
+// Duplicate-group keeper selection. For each group (all records sharing `group`) exactly one record is kept;
+// the returned indices are the records proposed for removal. mode: 0 keep oldest, 1 keep newest, 2 keep shortest path.
+struct DupRec { int group; unsigned long long mtime; size_t pathLen; };
+std::vector<size_t> SelectDuplicatesToRemove(const std::vector<DupRec>& recs, int mode);
+
 std::string ToUtf8(const std::wstring& w);
 std::wstring FromUtf8(const std::string& s);
 std::wstring Lower(const std::wstring& s);

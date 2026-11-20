@@ -11,8 +11,9 @@
 #include <vector>
 #include <map>
 #include <functional>
+#include <atomic>
 
-#define FSU_VERSION L"1.6.0"
+#define FSU_VERSION L"1.7.0"
 
 namespace fsu {
 
@@ -31,6 +32,7 @@ int ThemeCount();
 struct Settings {
     int theme = 0, density = 1, startPage = 0;
     bool hideSystem = true, confirmBatch = true, maximized = false, keepRecent = true;
+    int largeMinMB = 100, dupMinKB = 1024; std::vector<std::wstring> scanRoots;   // empty = default user folders
     int winX = CW_USEDEFAULT, winY = CW_USEDEFAULT, winW = 1360, winH = 780;
     std::map<std::wstring, std::vector<int>> colw;   // per page column widths (96-dpi units)
 };
@@ -119,6 +121,15 @@ struct CleanResult { ULONGLONG bytes = 0, files = 0; int ok = 0, skipped = 0, fa
 void RunClean(const std::vector<CleanItem>& items, bool keepRecent, CleanResult& r);   // temp files are permanently deleted; registry items are backed up first
 std::vector<BackupInfo> ListRegBackups();
 bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring& summary);
+
+// ---- large-file and duplicate finder (files.cpp) ----
+struct FileEntry { std::wstring path, name, folder, ext; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; };
+struct FileScan { std::vector<FileEntry> files; std::wstring coverage; ULONGLONG scanned = 0, totalBytes = 0, reclaimable = 0; int groups = 0; bool cancelled = false; };
+struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
+std::vector<std::wstring> DefaultScanRoots();
+void ScanFiles(const FileScanOpts& o, FileScan& out);
+bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);   // to the Recycle Bin (undoable from Explorer)
+std::wstring FileDateText(ULONGLONG ft);
 
 // ---- dialogs and shell actions (dialogs.cpp) ----
 struct ReportTab { std::wstring name, text; };

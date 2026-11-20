@@ -24,6 +24,16 @@ bool MuiCachePath(const std::wstring& n, std::wstring& path) {
     if (best == std::wstring::npos) return false; path = n.substr(0, best); return IsDriveAbsolute(path);
 }
 
+std::vector<size_t> SelectDuplicatesToRemove(const std::vector<DupRec>& r, int mode) {
+    std::map<int, size_t> keep;
+    for (size_t i = 0; i < r.size(); ++i) {
+        auto it = keep.find(r[i].group); if (it == keep.end()) { keep[r[i].group] = i; continue; }
+        const DupRec& k = r[it->second]; const DupRec& c = r[i]; bool better = mode == 0 ? c.mtime < k.mtime : mode == 1 ? c.mtime > k.mtime : c.pathLen < k.pathLen;
+        if (better) it->second = i;
+    }
+    std::vector<size_t> out; for (size_t i = 0; i < r.size(); ++i) if (keep[r[i].group] != i) out.push_back(i); return out;
+}
+
 std::string ToUtf8(const std::wstring& w) {
     std::string o;
     for (size_t i = 0; i < w.size(); ++i) {

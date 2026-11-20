@@ -330,12 +330,12 @@ void RunClean(const std::vector<CleanItem>& items, bool keep, CleanResult& r) {
             if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + err; }
             WriteJournal(it.name, L"service " + it.cmd, it.location, gone ? L"deleted" : L"unchanged", gone ? L"ok (not undoable)" : L"failed: " + err, false);
         } else if (it.kind == 9) {
-            if (!IsElevated()) { ++r.skipped; if (r.firstErr.empty()) r.firstErr = it.name + L": needs administrator rights"; continue; }
-            bool gone = false; wstring err; ITaskService* svc = nullptr;
+            bool gone = false; wstring err; ITaskService* svc = nullptr;   // per-user tasks need no elevation; protected tasks fail with a clear message
             if (SUCCEEDED(CoCreateInstance(CLSID_TaskScheduler, nullptr, CLSCTX_INPROC_SERVER, IID_ITaskService, (void**)&svc)) && svc) { VARIANT v; VariantInit(&v);
                 if (SUCCEEDED(svc->Connect(v, v, v, v))) { ITaskFolder* root = nullptr; BSTR rp = SysAllocString(L"\\"); if (SUCCEEDED(svc->GetFolder(rp, &root)) && root) { BSTR tp = SysAllocString(it.cmd.c_str()); IRegisteredTask* t = nullptr;
                         if (SUCCEEDED(root->GetTask(tp, &t)) && t) { BSTR xml = nullptr; if (SUCCEEDED(t->get_Xml(&xml)) && xml) { wstring bd = SubDir(L"taskbackups"); wstring fn = it.name; for (auto& c : fn) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_'; wstring bp = bd + L"\\" + fn + L"_" + std::to_wstring(GetTickCount() % 100000) + L".xml"; if (AtomicWrite(bp, "\xEF\xBB\xBF" + ToUtf8(wstring(xml)))) { gone = SUCCEEDED(root->DeleteTask(tp, 0)); if (!gone) err = L"Task Scheduler refused the deletion"; } else err = L"could not save the task XML backup; task kept"; SysFreeString(xml); } else err = L"could not read the task definition"; t->Release(); } else gone = true;
                         SysFreeString(tp); root->Release(); } SysFreeString(rp); } else err = L"cannot connect to Task Scheduler"; svc->Release(); } else err = L"Task Scheduler unavailable";
+            if (!gone && err == L"Task Scheduler refused the deletion" && !IsElevated()) err += L" (administrator rights are likely required: More > Restart as administrator)";
             if (gone) ++r.ok; else { ++r.failed; if (r.firstErr.empty()) r.firstErr = it.name + L": " + err; }
             WriteJournal(it.name, L"task " + it.cmd, L"present", gone ? L"deleted (XML saved in taskbackups)" : L"unchanged", gone ? L"ok" : L"failed: " + err, false);
         } else if (it.kind == 2 || it.kind == 3) reg.push_back(&it);

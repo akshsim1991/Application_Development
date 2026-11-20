@@ -1,0 +1,3 @@
+a51b734060935d9f3d306ef4c3e05de3d00516bfa5ca88b3328b75f136a7ff71  FeatherSystemUtilities-Setup-2.0.1.exe
+8aef344fdd3c5dc6a8b72e13ccb083371e2501efa972844287785a68200c73b5  FeatherSystemUtilities-x64.exe
+2d6ec7dfb557939fcb3eaf80c8ddf9a49eaa57c7d5e5268d7ce7df8d089d54a8  FeatherSystemUtilities-x86.exe

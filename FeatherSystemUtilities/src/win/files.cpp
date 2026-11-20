@@ -103,7 +103,7 @@ void ScanFiles(const FileScanOpts& o, FileScan& out) {
     std::map<wstring, std::vector<size_t>> byPart; size_t k = 0;
     for (size_t i : cand) { if (Cancelled(c)) break; if (o.progress && (++k % 25 == 0)) o.progress(L"Comparing\u2026 " + std::to_wstring(k) + L" of " + std::to_wstring(cand.size()) + L" candidates"); wstring hsh; if (HashFile(c.hits[i].path, 0, true, hsh, c, nullptr)) byPart[std::to_wstring(c.hits[i].size) + L"|" + hsh].push_back(i); }
     std::map<wstring, std::vector<size_t>> byFull; k = 0; std::vector<ULONGLONG> ids(c.hits.size(), 0);
-    for (auto& kv : byPart) { if (kv.second.size() < 2) continue; for (size_t i : kv.second) { if (Cancelled(c)) break; if (o.progress && (++k % 5 == 0)) o.progress(L"Verifying\u2026 " + c.hits[i].name); wstring hsh; ULONGLONG id = 0; if (HashFile(c.hits[i].path, 0, false, hsh, c, &id)) { byFull[hsh].push_back(i); ids[i] = id; } } }
+    for (auto& kv : byPart) { if (kv.second.size() < 2) continue; for (size_t i : kv.second) { if (Cancelled(c)) break; if (o.progress && (++k % 5 == 0)) o.progress(L"Verifying\u2026 " + c.hits[i].name); wstring hsh; ULONGLONG id = 0; if (HashFile(c.hits[i].path, 0, false, hsh, c, &id)) { byFull[hsh].push_back(i); ids[i] = id; c.hits[i].hash = hsh; } } }
     int g = 0; out.files.clear();
     for (auto& kv : byFull) {
         std::vector<size_t> uniq; std::set<ULONGLONG> seenId; for (size_t i : kv.second) { if (ids[i] && !seenId.insert(ids[i]).second) continue; uniq.push_back(i); }   // hard links to the same data are not duplicates
@@ -116,6 +116,13 @@ void ScanFiles(const FileScanOpts& o, FileScan& out) {
     out.coverage = L"Checked " + std::to_wstring(c.scanned) + L" files; " + std::to_wstring(cand.size()) + L" had a same-size twin. Duplicates are byte-for-byte identical (SHA-256), hard links are not counted, and at least one copy per group is always kept." + (out.cancelled ? L" Scan was stopped early; results may be incomplete." : L"");
 }
 
+bool VerifyIdentical(const wstring& a, const wstring& b) {
+    HANDLE fa = CreateFileW(a.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr); if (fa == INVALID_HANDLE_VALUE) return false;
+    HANDLE fb = CreateFileW(b.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, nullptr); if (fb == INVALID_HANDLE_VALUE) { CloseHandle(fa); return false; }
+    LARGE_INTEGER sa{}, sb{}; GetFileSizeEx(fa, &sa); GetFileSizeEx(fb, &sb); bool same = sa.QuadPart == sb.QuadPart; std::vector<char> x(1 << 20), y(1 << 20);
+    while (same) { DWORD na = 0, nb = 0; if (!ReadFile(fa, x.data(), (DWORD)x.size(), &na, nullptr) || !ReadFile(fb, y.data(), (DWORD)y.size(), &nb, nullptr)) { same = false; break; } if (na != nb || memcmp(x.data(), y.data(), na) != 0) { same = false; break; } if (na == 0) break; }
+    CloseHandle(fa); CloseHandle(fb); return same;
+}
 bool DeleteFilesPermanently(const std::vector<wstring>& paths, wstring& err) {
     int failed = 0; for (auto& p : paths) {
         DWORD a = GetFileAttributesW(p.c_str()); if (a == INVALID_FILE_ATTRIBUTES) continue; if (a & FILE_ATTRIBUTE_REPARSE_POINT) { ++failed; continue; }   // never follow links

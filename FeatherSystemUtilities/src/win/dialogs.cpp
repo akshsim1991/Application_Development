@@ -15,20 +15,28 @@ using std::wstring;
 void SetDarkTitleBar(HWND h, bool dark) { BOOL v = dark; DwmSetWindowAttribute(h, 20, &v, sizeof v); }
 
 // ---------- shell actions ----------
+static BOOL CALLBACK FindExplorerWnd(HWND h, LPARAM l) {   // bring the Explorer window we just opened to the front (it often opens behind a maximized/elevated app)
+    auto* want = (std::pair<std::wstring, HWND>*)l; wchar_t cls[64], title[512]; GetClassNameW(h, cls, 64); if (wcscmp(cls, L"CabinetWClass") != 0 || !IsWindowVisible(h)) return TRUE; GetWindowTextW(h, title, 512);
+    if (_wcsicmp(title, want->first.c_str()) == 0) { want->second = h; return FALSE; } return TRUE;
+}
+static void ShowExplorerFor(const wstring& folderLeaf) {
+    std::pair<std::wstring, HWND> w{folderLeaf, nullptr};
+    for (int i = 0; i < 25 && !w.second; ++i) { Sleep(100); EnumWindows(FindExplorerWnd, (LPARAM)&w); }
+    if (w.second) { if (IsIconic(w.second)) ShowWindow(w.second, SW_RESTORE); SetForegroundWindow(w.second); BringWindowToTop(w.second); FLASHWINFO fi{sizeof fi, w.second, FLASHW_ALL | FLASHW_TIMERNOFG, 3, 0}; FlashWindowEx(&fi); }
+}
 void OpenFileLocation(const wstring& program) {
     wstring p = program.find(L'%') != wstring::npos ? ExpandEnv(program) : program; while (p.size() > 3 && (p.back() == L'\\' || p.back() == L'"')) p.pop_back(); if (!p.empty() && p.front() == L'"') p.erase(p.begin());
-    DWORD attr = p.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(p.c_str());
-    if (attr == INVALID_FILE_ATTRIBUTES) {   // file gone: fall back to its folder if that still exists
-        size_t sl = p.find_last_of(L'\\'); wstring dir = sl == wstring::npos ? L"" : p.substr(0, sl);
-        if (!dir.empty() && GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) { ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL); return; }
-        DarkMsg(GetActiveWindow(), L"Open file location", L"The file was not found, so its location cannot be opened:\r\n" + p, 0); return; }
-    // Preferred: ask Explorer to select the item (handles commas, brackets, Unicode and long names reliably)
-    PIDLIST_ABSOLUTE pidl = nullptr; bool done = false;
-    if (SUCCEEDED(SHParseDisplayName(p.c_str(), nullptr, &pidl, 0, nullptr)) && pidl) { done = SUCCEEDED(SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0)); CoTaskMemFree(pidl); }
-    if (done) return;
-    wstring args = L"/select,\"" + p + L"\"";                                  // fallback: classic explorer command
-    if ((INT_PTR)ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32) return;
-    size_t sl = p.find_last_of(L'\\'); if (sl != wstring::npos) ShellExecuteW(nullptr, L"open", p.substr(0, sl).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    DWORD attr = p.empty() ? INVALID_FILE_ATTRIBUTES : GetFileAttributesW(p.c_str()); size_t sl = p.find_last_of(L'\\'); wstring dir = sl == wstring::npos ? L"" : p.substr(0, sl);
+    wstring leaf = dir.empty() ? L"" : dir.substr(dir.find_last_of(L'\\') == wstring::npos ? 0 : dir.find_last_of(L'\\') + 1); if (dir.size() == 2) leaf = dir + L"\\";
+    AllowSetForegroundWindow(ASFW_ANY);
+    bool launched = false;
+    if (attr != INVALID_FILE_ATTRIBUTES) {   // 1) select the file in Explorer
+        PIDLIST_ABSOLUTE pidl = nullptr; if (SUCCEEDED(SHParseDisplayName(p.c_str(), nullptr, &pidl, 0, nullptr)) && pidl) { launched = SUCCEEDED(SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0)); CoTaskMemFree(pidl); }
+        if (!launched) { wstring args = L"/select,\"" + p + L"\""; launched = (INT_PTR)ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL) > 32; }
+    }
+    if (!launched && !dir.empty() && GetFileAttributesW(dir.c_str()) != INVALID_FILE_ATTRIBUTES) { launched = (INT_PTR)ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > 32; }   // 2) at least open the folder
+    if (!launched) { DarkMsg(GetActiveWindow(), L"Open file location", L"The file or its folder was not found:\r\n" + p, 0); return; }
+    if (!leaf.empty()) ShowExplorerFor(leaf);
 }
 void ShowInRegistryEditor(const wstring& loc) {
     if (loc.rfind(L"Task Scheduler:", 0) == 0) { ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); return; }

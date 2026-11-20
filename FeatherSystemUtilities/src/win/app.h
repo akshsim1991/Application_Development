@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"2.0.0"
+#define FSU_VERSION L"2.0.1"
 
 namespace fsu {
 
@@ -150,12 +150,13 @@ std::vector<BackupInfo> ListRegBackups();
 bool RestoreRegBackup(const std::wstring& path, std::wstring& err, std::wstring& summary);
 
 // ---- large-file and duplicate finder (files.cpp) ----
-struct FileEntry { std::wstring path, name, folder, ext; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; };
+struct FileEntry { std::wstring path, name, folder, ext, hash; ULONGLONG size = 0, mtime = 0; int group = 0, groupCount = 0; };
 struct FileScan { std::vector<FileEntry> files; std::wstring coverage; ULONGLONG scanned = 0, totalBytes = 0, reclaimable = 0; int groups = 0; bool cancelled = false; };
 struct FileScanOpts { std::vector<std::wstring> roots; ULONGLONG minSize = 0; bool dupes = false, empty = false; size_t maxResults = 1000; std::atomic<bool>* cancel = nullptr; std::function<void(const std::wstring&)> progress; };
 std::vector<std::wstring> DefaultScanRoots();
 void ScanFiles(const FileScanOpts& o, FileScan& out);
 bool RecycleFiles(HWND owner, const std::vector<std::wstring>& paths, std::wstring& err);
+bool VerifyIdentical(const std::wstring& a, const std::wstring& b);   // byte-for-byte comparison right before deleting a duplicate
 bool DeleteFilesPermanently(const std::vector<std::wstring>& paths, std::wstring& err);   // not recoverable   // to the Recycle Bin (undoable from Explorer)
 std::wstring FileDateText(ULONGLONG ft);
 

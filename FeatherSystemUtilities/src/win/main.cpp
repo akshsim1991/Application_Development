@@ -81,10 +81,10 @@ static const Col kProgCols[] = {{L"Name", 300, false}, {L"Publisher", 190, false
 static const Col kCleanCols[] = {{L"", 36, false}, {L"Item", 290, false}, {L"Type", 200, false}, {L"Risk", 70, false}, {L"Size", 90, true}, {L"Detail", 150, false}, {L"Location", 400, false}, {L"Why / note", 480, false}};
 static const Col kEmptyCols[] = {{L"Folder", 300, false}, {L"Subfolders", 90, true}, {L"Modified", 130, false}, {L"Location", 700, false}};
 static const Col kLargeCols[] = {{L"Name", 320, false}, {L"Size", 90, true}, {L"Modified", 130, false}, {L"Type", 80, false}, {L"Location", 620, false}};
-static const Col kDupCols[] = {{L"Name", 320, false}, {L"Size", 90, true}, {L"Modified", 130, false}, {L"Group", 150, false}, {L"Location", 620, false}};
+static const Col kDupCols[] = {{L"Name", 300, false}, {L"Size", 90, true}, {L"Modified", 130, false}, {L"Group", 140, false}, {L"Content fingerprint (SHA-256)", 210, false}, {L"Location", 560, false}};
 static const Col kHistCols[] = {{L"Time (UTC)", 160, false}, {L"Item", 260, false}, {L"Before", 160, false}, {L"After", 240, false}, {L"Result", 520, false}};
 static const Col* ColsFor(Page p, int& n) {
-    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } if (p == P_PROGS) { n = 9; return kProgCols; } if (p == P_CLEAN) { n = 8; return kCleanCols; } if (p == P_EMPTY) { n = 4; return kEmptyCols; } if (p == P_LARGE) { n = 5; return kLargeCols; } if (p == P_DUPES) { n = 5; return kDupCols; } n = 5; return kHistCols;
+    if (p == P_STARTUP) { n = 10; return kStartupCols; } if (p == P_SERVICES) { n = 9; return kServiceCols; } if (p == P_DRIVERS) { n = 9; return kDriverCols; } if (p == P_PROGS) { n = 9; return kProgCols; } if (p == P_CLEAN) { n = 8; return kCleanCols; } if (p == P_EMPTY) { n = 4; return kEmptyCols; } if (p == P_LARGE) { n = 5; return kLargeCols; } if (p == P_DUPES) { n = 6; return kDupCols; } n = 5; return kHistCols;
 }
 static const wchar_t* kStartupFilters[] = {L"Everything", L"Enabled", L"Disabled", L"Needs attention (warnings)", L"New in the last 7 days", L"Not from Microsoft", L"Registry (Run keys)", L"Startup folders", L"Scheduled tasks", L"Explorer add-ons", L"Delayed by Feather", L"Windows system items only"};
 static const wchar_t* kServiceFilters[] = {L"All services", L"Running", L"Stopped", L"Automatic but not running", L"Disabled", L"Third-party only", L"Critical to Windows", L"Needs attention (warnings)"};
@@ -125,6 +125,7 @@ static bool g_kbd = false;
 static int g_subTop = 0, g_subH = 0, g_banTop = 0, g_banH = 0, g_tbTop = 0, g_tbH = 0, g_bodyTop = 0;
 static HWND g_banBtn = nullptr, g_banLink = nullptr, g_hotSub = nullptr; static std::vector<HWND> g_subBtns; static wstring g_banHead, g_banSub, g_banBtnText, g_banLinkText; static int g_banCmd = 0, g_banLinkCmd = 0;
 static void UpdateBanner();
+static bool CanDeleteEntry(const StartupEntry& e);
 static void ComputeLayout() {
     int y = 0; bool sub = Nav()[GroupOf(g_page)].pages.size() > 1; g_subTop = y; g_subH = sub ? S(52) : 0; y += g_subH;
     g_banTop = y; g_banH = HasBanner(g_page) ? S(78) : 0; y += g_banH; g_tbTop = y; g_tbH = IsPanelPage(g_page) ? 0 : S(44); y += g_tbH; g_bodyTop = y;
@@ -255,7 +256,7 @@ static void BuildCells() {
     g_cells[P_CLEAN].clear(); for (auto& e : g_cl.items) g_cells[P_CLEAN].push_back({g_checked.count(e.id) ? L"\u2611" : L"\u2610", e.name, e.type, RiskName(e.risk), FormatBytes(e.bytes), e.detail, e.location, e.why});
     g_cells[P_EMPTY].clear(); for (auto& e : g_empty.files) g_cells[P_EMPTY].push_back({e.name, std::to_wstring(e.groupCount), FileDateText(e.mtime), e.folder});
     g_cells[P_LARGE].clear(); for (auto& e : g_large.files) g_cells[P_LARGE].push_back({e.name, FormatBytes(e.size), FileDateText(e.mtime), e.ext.empty() ? wstring(L"(none)") : e.ext, e.folder});
-    g_cells[P_DUPES].clear(); for (auto& e : g_dupes.files) g_cells[P_DUPES].push_back({e.name, FormatBytes(e.size), FileDateText(e.mtime), L"Group " + std::to_wstring(e.group) + L" \u00B7 " + std::to_wstring(e.groupCount) + L" copies", e.folder});
+    g_cells[P_DUPES].clear(); for (auto& e : g_dupes.files) g_cells[P_DUPES].push_back({e.name, FormatBytes(e.size), FileDateText(e.mtime), L"Group " + std::to_wstring(e.group) + L" \u00B7 " + std::to_wstring(e.groupCount) + L" copies", e.hash.size() >= 16 ? e.hash.substr(0, 16) + L"…" : e.hash, e.folder});
     g_cells[P_DRIVERS].clear(); for (auto& e : g_dv.entries) g_cells[P_DRIVERS].push_back({e.display, e.name, e.state, e.start, e.safety, e.ptype, e.description, e.path, e.warnings});
 }
 static bool PassFilter(Page p, int idx) {
@@ -364,7 +365,7 @@ static void UpdateToolbar() {
     if (g_page == P_STARTUP) {
         bool canEn = false, canDis = false, canDel = false, canDelay = false, canUndelay = false;
         for (int i : sel) { auto& e = g_su.entries[i]; if (e.toggle != Toggle::None) { if (e.state == L"Disabled") canEn = true; if (e.state == L"Enabled") canDis = true; }
-            if (e.type == L"Registry" || e.type == L"Registry (RunOnce)") canDel = true; if (CanDelay(e)) canDelay = true; if (e.managedDelay) canUndelay = true; }
+            if (CanDeleteEntry(e)) canDel = true; if (CanDelay(e)) canDelay = true; if (e.managedDelay) canUndelay = true; }
         TbEnable(C_ENABLE, canEn); TbEnable(C_DISABLE, canDis); TbEnable(C_DELETE, canDel); TbEnable(C_STARTLATER, canDelay || canUndelay); TbEnable(C_ADD, true); TbEnable(C_RESTORE, true);
     } else if (g_page == P_SERVICES) {
         bool st = false, sp = false, rs = false, pa = false, re = false, kl = false;
@@ -383,7 +384,7 @@ static void UpdateBanner() {
         g_banHead = FormatBytes(g_cl.totalBytes) + L" can be cleaned, " + std::to_wstring(g_cl.registryCount) + L" invalid registry entries found."; g_banSub = std::to_wstring(chk) + L" item(s) ticked (" + FormatBytes(cb) + L"). Tick what you want, then press Clean."; g_banBtnText = L"Clean"; g_banCmd = C_CLEAN; enable = chk > 0 && !g_scanning; g_banLinkText = L"Scan again"; g_banLinkCmd = C_REFRESH; }
     else if (IsFilePage(p)) { bool done = p == P_DUPES ? g_dupesDone : p == P_EMPTY ? g_emptyDone : g_largeDone; auto& sc = FS(p);
         g_banHead = !done ? (p == P_DUPES ? L"Find identical files wasting space" : p == P_EMPTY ? L"Find folders with nothing in them" : L"Find your largest files") : p == P_DUPES ? std::to_wstring(sc.groups) + L" duplicate groups, " + FormatBytes(sc.reclaimable) + L" reclaimable" : p == P_EMPTY ? std::to_wstring(sc.files.size()) + L" empty folders" : std::to_wstring(sc.files.size()) + L" large files, " + FormatBytes(sc.totalBytes);
-        g_banSub = g_fsBusy ? L"Scanning… you can press Stop at any time." : done ? sc.coverage.substr(0, 130) : L"Choose folders and a minimum size in the toolbar, then press Scan."; g_banBtnText = g_fsBusy ? L"Scanning…" : L"Scan"; g_banCmd = C_FS_SCAN; enable = !g_fsBusy; g_banLinkText = g_fsBusy ? L"Stop" : L""; g_banLinkCmd = C_FS_STOP; linkOn = g_fsBusy; }
+        g_banSub = g_fsBusy ? L"Scanning… you can press Stop at any time." : done ? (p == P_DUPES ? wstring(L"Matched by file CONTENT (SHA-256), never by size alone; verified byte-for-byte again before any deletion.") : sc.coverage.substr(0, 130)) : L"Choose folders and a minimum size in the toolbar, then press Scan."; g_banBtnText = g_fsBusy ? L"Scanning…" : L"Scan"; g_banCmd = C_FS_SCAN; enable = !g_fsBusy; g_banLinkText = g_fsBusy ? L"Stop" : L""; g_banLinkCmd = C_FS_STOP; linkOn = g_fsBusy; }
     else if (p == P_PROGS) { auto sel = Selected(); g_banHead = std::to_wstring(g_pg.entries.size()) + L" programs installed"; g_banSub = L"Select programs, then uninstall them. Leftover files and registry entries are searched for afterwards."; g_banBtnText = L"Uninstall"; g_banCmd = C_PG_UNINSTALL; enable = !sel.empty() && !g_unBusy; g_banLinkText = L"Uninstall silently"; g_banLinkCmd = C_PG_SILENT; linkOn = !sel.empty() && !g_unBusy; }
     bool show = HasBanner(p); ShowWindow(g_banBtn, show ? SW_SHOW : SW_HIDE); ShowWindow(g_banLink, show && !g_banLinkText.empty() ? SW_SHOW : SW_HIDE);
     if (show) { SetWindowTextW(g_banBtn, g_banBtnText.c_str()); SetWindowTextW(g_banLink, g_banLinkText.c_str()); EnableWindow(g_banBtn, enable); EnableWindow(g_banLink, linkOn); InvalidateRect(g_banBtn, nullptr, TRUE); InvalidateRect(g_banLink, nullptr, TRUE); }
@@ -681,14 +682,23 @@ static void ToggleStartup(bool enable) {
     if (bad) msg += (msg.empty() ? L"" : L" ") + std::to_wstring(bad) + L" failed: " + firstName + L" — " + firstErr;
     SetMsg(msg); StartScan();
 }
+static bool CanDeleteEntry(const StartupEntry& e) {
+    if (e.managedDelay) return false;                                   // use "Remove delay" so the original entry is restored
+    return e.type == L"Registry" || e.type == L"Registry (RunOnce)" || e.type.rfind(L"Scheduled task", 0) == 0 || e.type.rfind(L"Explorer add-on", 0) == 0 || e.type == L"Startup folder";
+}
 static void DeleteStartup() {
     auto sel = Selected(); std::vector<int> todo; std::vector<wstring> names;
-    for (int i : sel) { auto& e = g_su.entries[i]; if (e.type == L"Registry" || e.type == L"Registry (RunOnce)") { todo.push_back(i); names.push_back(e.name + L"  —  " + e.command); } }
-    if (todo.empty()) return;
-    if (!Confirm(L"Delete " + Plural(todo.size(), L"startup entry", L"startup entries") + L"? Only the startup registration is removed (the program is not uninstalled). A backup is saved and you can restore it.", names)) return;
+    for (int i : sel) { auto& e = g_su.entries[i]; if (CanDeleteEntry(e)) { todo.push_back(i); names.push_back(e.name + L"  (" + e.type + L")  —  " + e.command + (e.warnings.empty() ? wstring() : L"  [" + e.warnings + L"]")); } }
+    if (todo.empty()) { Warn(L"None of the selected entries can be deleted here. Delayed entries made by this app use Start later > Remove delay."); return; }
+    if (!Confirm(L"Delete " + Plural(todo.size(), L"startup entry", L"startup entries") + L"? Only the startup registration is removed (the program is not uninstalled). Registry entries and scheduled tasks are backed up so you can restore them (Restore…); startup shortcuts go to the Recycle Bin. This also works when the program file is missing.", names)) return;
     int ok = 0, bad = 0; wstring firstErr, firstName;
-    for (int i : todo) { wstring err; if (DeleteStartupEntry(g_su.entries[i], err)) ++ok; else { ++bad; if (firstErr.empty()) { firstErr = err; firstName = g_su.entries[i].name; } } }
-    wstring msg = ok ? std::to_wstring(ok) + L" deleted (backup saved; use Restore…)." : L""; if (bad) msg += (msg.empty() ? L"" : L" ") + std::to_wstring(bad) + L" failed: " + firstName + L" — " + firstErr;
+    for (int i : todo) { StartupEntry e = g_su.entries[i]; wstring err; bool done = false;
+        if (e.type == L"Registry" || e.type == L"Registry (RunOnce)") done = DeleteStartupEntry(e, err);
+        else if (e.type == L"Startup folder") { wstring path = e.key.size() > 7 ? e.key.substr(7) : L""; done = !path.empty() && RecycleFiles(g_main, {path}, err) && GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES; if (!done && err.empty()) err = L"The shortcut could not be moved to the Recycle Bin."; WriteJournal(e.name, e.location, L"present", done ? L"moved to Recycle Bin" : L"unchanged", done ? L"ok (restorable from Recycle Bin)" : L"failed: " + err, true); }
+        else { CleanItem it; it.name = e.name; it.location = e.location; it.risk = 1; if (e.type.rfind(L"Scheduled task", 0) == 0) { it.kind = 9; it.cmd = e.taskPath; } else { it.kind = 2; it.root = e.root; it.view = e.view; it.subKey = e.subKey; it.detail = L"key"; it.why = L"Explorer add-on registration"; it.needsAdmin = e.root == HKEY_LOCAL_MACHINE; }
+            CleanResult r; RunClean({it}, false, r); done = r.ok == 1 && r.failed == 0 && r.skipped == 0; err = r.firstErr.empty() ? L"Windows refused the change (administrator rights may be required)." : r.firstErr; }
+        if (done) ++ok; else { ++bad; if (firstErr.empty()) { firstErr = err; firstName = e.name; } } }
+    wstring msg = ok ? std::to_wstring(ok) + L" deleted (backups saved; use Restore… or the Recycle Bin)." : L""; if (bad) msg += (msg.empty() ? L"" : L" ") + std::to_wstring(bad) + L" failed: " + firstName + L" — " + firstErr;
     SetMsg(msg); StartScan();
 }
 static void AddEntry() {
@@ -713,13 +723,16 @@ static void RemoveDelays() {
     SetMsg(std::to_wstring(ok) + L" delay(s) removed; originals restored." + (bad ? L" " + std::to_wstring(bad) + L" failed — " + firstErr : L"")); StartScan();
 }
 static void RestoreMenu(POINT pt) {
-    auto b = ListBackups(); HMENU m = CreatePopupMenu();
-    if (b.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 1, L"No deleted entries to restore"); else for (size_t i = 0; i < b.size(); ++i) AppendMenuW(m, MF_STRING, C_RESTORE_BASE + i, b[i].label.c_str());
+    auto b = ListBackups(); auto rb = ListRegBackups(); HMENU m = CreatePopupMenu(); const int kRegOff = 40;
+    if (b.empty() && rb.empty()) AppendMenuW(m, MF_STRING | MF_GRAYED, 1, L"No deleted entries to restore");
+    for (size_t i = 0; i < b.size() && i < 30; ++i) AppendMenuW(m, MF_STRING, C_RESTORE_BASE + i, b[i].label.c_str());
+    if (!rb.empty() && !b.empty()) AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    for (size_t i = 0; i < rb.size() && i < 30; ++i) AppendMenuW(m, MF_STRING, C_RESTORE_BASE + kRegOff + i, rb[i].label.c_str());
     int id = TrackPopupMenu(m, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, g_main, nullptr); DestroyMenu(m);
-    if (id >= C_RESTORE_BASE && id < C_RESTORE_BASE + (int)b.size()) {
-        wstring err, name; if (DarkMsg(g_main, kApp, L"Restore this entry?\r\n\r\n" + b[id - C_RESTORE_BASE].label, 2) != IDYES) return;
-        if (RestoreBackup(b[id - C_RESTORE_BASE].path, err, name)) { SetMsg(L"Restored \"" + name + L"\"."); StartScan(); } else Warn(err);
-    }
+    bool isReg = id >= C_RESTORE_BASE + kRegOff && id < C_RESTORE_BASE + kRegOff + (int)rb.size(); bool isRun = id >= C_RESTORE_BASE && id < C_RESTORE_BASE + (int)b.size();
+    if (isRun || isReg) { const BackupInfo& bi = isReg ? rb[id - C_RESTORE_BASE - kRegOff] : b[id - C_RESTORE_BASE]; wstring err, name;
+        if (DarkMsg(g_main, kApp, L"Restore this entry?\r\n\r\n" + bi.label + L"\r\n\r\nExisting values are never overwritten.", 2) != IDYES) return;
+        bool ok = isReg ? RestoreRegBackup(bi.path, err, name) : RestoreBackup(bi.path, err, name); if (ok) { SetMsg(isReg ? name + L"." : L"Restored \"" + name + L"\"."); StartScan(); } else Warn(err.empty() ? L"Nothing was restored." : err); }
 }
 
 // ---- services ----
@@ -897,6 +910,13 @@ static void RemoveSelected(bool permanent) {
     wstring what = Plural(sel.size(), g_page == P_EMPTY ? L"empty folder" : L"file", g_page == P_EMPTY ? L"empty folders" : L"files") + (g_page == P_EMPTY ? wstring() : L" (" + FormatBytes(total) + L")");
     if (permanent) { if (DarkMsg(g_main, kApp, L"PERMANENTLY DELETE " + what + L"?\r\n\r\nThis does NOT use the Recycle Bin. The " + (sel.size() == 1 ? wstring(L"item") : L"items") + L" cannot be restored afterwards.\r\n" + BulletList(names), 2) != IDYES) return; }
     else if (!Confirm(L"Move " + what + L" to the Recycle Bin? You can restore them from there.", names)) return;
+    if (g_page == P_DUPES) {   // re-verify byte-for-byte against a copy that stays, right before deleting
+        std::set<int> sel2(sel.begin(), sel.end()); std::vector<wstring> okPaths; int mism = 0;
+        for (int i : sel) { const FileEntry* keeper = nullptr; for (size_t k = 0; k < scan.files.size(); ++k) if (scan.files[k].group == scan.files[i].group && !sel2.count((int)k)) { keeper = &scan.files[k]; break; }
+            if (keeper && VerifyIdentical(scan.files[i].path, keeper->path)) okPaths.push_back(scan.files[i].path); else ++mism; }
+        if (mism) Warn(std::to_wstring(mism) + L" selected file(s) are no longer identical to the copy you keep (they changed since the scan, or cannot be read). They were NOT deleted; the others proceed.");
+        paths = okPaths; if (paths.empty()) return;
+    }
     wstring err; if (permanent) DeleteFilesPermanently(paths, err); else RecycleFiles(g_main, paths, err);
     std::set<wstring> gone; ULONGLONG freed = 0; for (int i : sel) if (GetFileAttributesW(scan.files[i].path.c_str()) == INVALID_FILE_ATTRIBUTES) { gone.insert(scan.files[i].path); freed += scan.files[i].size; }
     std::vector<FileEntry> rest; for (auto& e : scan.files) if (!gone.count(e.path)) rest.push_back(e); scan.files = rest;
@@ -1113,7 +1133,7 @@ static COLORREF CellColor(Page p, int row, int col, bool& dim) {
         return dim ? cDim : cText; }
     if (p == P_PROGS) { auto& e = g_pg.entries[row]; if (col == 1) return Lower(e.publisher).find(L"microsoft") != wstring::npos ? cText : cLav; if (col == 4) return cGreen; if (col == 3 || col == 6 || col == 8) return cDim; return cText; }
     if (p == P_EMPTY) return col == 2 ? cDim : col == 1 ? cDim : cText;
-    if (IsFilePage(p)) { if (col == 1) return cGreen; if (col == 3 && p == P_DUPES) return (g_dupes.files[row].group & 1) ? cAmber : cLav; return col == 2 ? cDim : cText; }
+    if (IsFilePage(p)) { if (col == 1) return cGreen; if (col == 3 && p == P_DUPES) return (g_dupes.files[row].group & 1) ? cAmber : cLav; if (col == 4 && p == P_DUPES) return cDim; return col == 2 ? cDim : cText; }
     if (p == P_CLEAN) { auto& e = g_cl.items[row]; if (col == 0) return g_checked.count(e.id) ? cAccent : cDim; if (col == 2) return IsRegItem(e) ? cAmber : cText; if (col == 3) return e.risk == 2 ? cRed : e.risk == 1 ? cAmber : cGreen; if (col == 4) return e.bytes ? cGreen : cDim; if (col == 5) return e.needsAdmin && !g_elevated ? cAmber : cDim; return col == 7 ? cDim : cText; }
     if (p == P_SERVICES || p == P_DRIVERS) { auto& e = SvcVec(p)[row]; int wcol = p == P_SERVICES ? 8 : 8;
         if (col == 2) return e.stateCode == SERVICE_RUNNING ? cGreen : e.stateCode == SERVICE_STOPPED ? cDim : cAmber;

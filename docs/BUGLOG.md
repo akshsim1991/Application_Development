@@ -1286,3 +1286,17 @@ below it down", then "The paragraph could not be changed", and the page's backgr
   published and 2.22.0 arriving, 2.20.4 goes and 2.21.0 and 2.22.0 stay.
 - **Published:** 2.22.0 on 17 November (Windows, Mac and Android; all three downloads checked against latest.json: size
   and SHA-256; the Windows app's own update check reads 2.22.0 once GitHub's servers have the new file).
+
+## Version 2.22.1
+
+- B-090 (Android, Android 15): the page went under the title bar and the tools under the gesture bar (the system draws
+  apps under its bars). The app keeps its bars clear of them on every version; measured by the emulator check. Found
+  by a user's screenshot.
+- B-091 (Android): the title bar said "Document" instead of the file's name. Fixed; the emulator check looks for the name.
+- B-092 (builds): an Android build could not commit its files when an earlier build had committed the same pictures and
+  APKs (git cannot merge them); the newer build's files are kept now (both workflows).
+- B-093 (Android downloads): the APK for all phones was 22.7 MB, over the 20 MB the download mirror serves; one APK for
+  each kind of phone now (8.9 MB, 6.2 MB).
+- **Published:** 2.22.1 on 21 November (Windows, Mac, Android 64-bit and 32-bit; downloads checked against
+  latest.json). The Windows suites could not run on this machine that day (Wine itself failed to start); the Windows
+  app is 2.22.0 with a new version number.

@@ -666,6 +666,9 @@ check "a click in a cell edits the whole cell, in its own font (Microsoft's CIDF
 run --tables "$W/qp.pdf" "$W/qp0t.txt"
 run --tables "$W/qp1.pdf" "$W/qp1t.txt"
 check "the cell is set again justified, with m³ and the new words; the table still has its rows and columns" "grep -q '|A 1:4 scale.*1.1m³/s.*specific speed.<j>' '$W/qp1t.txt' && [ \"\$(grep -o 'rows [0-9]* cols [0-9]*' '$W/qp0t.txt')\" = \"\$(grep -o 'rows [0-9]* cols [0-9]*' '$W/qp1t.txt')\" ]"
+# what the engine read, shown when either check above fails (fonts differ by system: Liberation Sans, Apple's Arial)
+grep -q '<j>' "$W/qp1t.txt" && grep -q 'align=3' "$W/qp1.txt" || { echo "    the edit read:"; sed 's/^/      /' "$W/qp1.txt" | head -12
+  echo "    the table before and after:"; grep -h -E '^table|rows|\|1<' "$W/qp0t.txt" "$W/qp1t.txt" | sed 's/^/      /'; }
 check "the other row is not set again" "[ \"\$(grep '|2<' '$W/qp0t.txt')\" = \"\$(grep '|2<' '$W/qp1t.txt')\" ]"
 hy="$(python3 -c "
 b=[l for l in open('$W/qpblocks.txt') if 'DEPARTMENT' in l][0].split();print((float(b[1])+float(b[3]))/2, (float(b[2])+float(b[4]))/2)" 2>/dev/null)"

@@ -1470,3 +1470,7 @@ kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user
   within 15% of the size, so 11 pt lines below a 12 pt paragraph made its first line look short.
 - **Fix:** the column's edge is taken from lines of the same size (within 4%).
 - **Also:** the Mac's 2.23.2 disk image built but was not committed (the branch had moved on); 2.23.3 is built again.
+
+**Published:** 2.23.3 for Windows, Mac and Android (21 November), all three from commit 710cff8; Windows went out first
+as 2.23.0 to 2.23.3 at the user's request. The three downloads match latest.json (size and SHA-256); the 2.22.2 Mac and
+Android files stay one release longer.

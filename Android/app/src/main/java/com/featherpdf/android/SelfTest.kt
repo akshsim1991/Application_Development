@@ -59,6 +59,7 @@ class SelfTest(private val a: ViewerActivity, private val out: File) {
         step("open") {
             check("the document opened with ${Engine.pageCount(doc)} pages", Engine.pageCount(doc) > 0)
             check("its pages are drawn", a.documentView.settled)
+            check("the title bar shows the file's name (${a.titleShown})", a.titleShown.endsWith("in.pdf"))
             shot("01-open")
         }
         // Nothing under the system bars (Android 15 draws apps under them): the title bar below the status bar, the page

@@ -175,12 +175,20 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     private lateinit var header: LinearLayout
     private lateinit var frame: FrameLayout
     private lateinit var toolScroll: HorizontalScrollView
+    private var titleBar: android.widget.Toolbar? = null
+
+    /** The document's name in the title bar (a dot before it while there are unsaved changes). */
+    override fun onTitleChanged(t: CharSequence?, color: Int) {
+        super.onTitleChanged(t, color)
+        titleBar?.title = t
+    }
 
     private fun buildScreen() {
         root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         // the title bar, the find row and (unless Settings puts it at the bottom) the tools, all under the status bar
         header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Chrome.barColour(this@ViewerActivity)) }
-        header.addView(Chrome.toolbar(this, name))
+        titleBar = Chrome.toolbar(this, name)
+        header.addView(titleBar)
         searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -684,6 +692,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     val documentHandle: Long get() = doc
     val headerView: View get() = header
+    val titleShown: String get() = titleBar?.title?.toString() ?: ""
     val toolsView: View get() = toolScroll
     val documentView: DocumentView get() = view
 

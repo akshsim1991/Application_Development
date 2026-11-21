@@ -90,6 +90,12 @@ struct ParagraphHit {
     std::vector<int> charObject;    // for each character of `text`, the page object it was drawn by (-1: a space between)
     // Text recognised on a scanned page (invisible, over the page's picture): edited, it is set visibly in the colour and
     // size of the words in the picture, over a patch of the picture's background (scanL..scanT) that hides the old words.
+    // A line of an equation (set in a math font): edited on one line, never wrapped. Over or under a fraction's bar: the bar
+    // (fracBar, a page object) stretches to the wider of the line and the other side (fracOther), both centred over it.
+    bool equation = false;
+    int fracBar = -1;
+    std::vector<int> fracOther;
+    double eqLeft = 0, eqRight = 0;   // the line's extent as it was
     double markerGap = 0;           // a list item's text starts this far from originX, apart from its number (a tab): 0 none
     bool overScan = false;
     COLORREF scanBg = RGB(255, 255, 255);

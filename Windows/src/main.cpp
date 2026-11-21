@@ -161,6 +161,8 @@ struct App {
     std::vector<int> navBack, navFwd;
     bool navBusy = false;
     int layout = 1; bool cover = false;
+    int defaultZoom = 0;      // a document opened without a remembered place: 0 fit width, 1 fit page, 2.. kDefaultZooms
+    int defaultLayout = 1;    // a new window's pages: 0 single page, 1 continuous, 2 two pages, 3 two pages with the cover alone
     pageobj::TableSpec pendingTable;
     struct { int page = -1; std::vector<int> objects; } sel;   // the selected picture, paragraph or table
     struct { int page = -1, obj = -1; } cropPic;                // the picture the PicCrop tool trims
@@ -200,6 +202,13 @@ void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int 
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
 void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
+// The zoom a document opens at when no place is remembered for it (Settings > PDF Viewing > Default zoom).
+const double kDefaultZooms[] = {0, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
+void applyDefaultZoom() {
+    if (app.defaultZoom == 0) app.viewer.fitWidth();
+    else if (app.defaultZoom == 1) app.viewer.fitPage();
+    else app.viewer.setZoom(kDefaultZooms[std::clamp(app.defaultZoom, 2, 7)]);
+}
 std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title); void accessibilityCheck(Document& d); void reviewDialog(Document& d); void formCalcDialog(Document& d); void formCommitted(Document* d); void formStarting(Document* d); void afterPagesChanged(); void repairPdf(); void saveForWeb(Document& d); void attachmentsDialog(); void layersDialog(); void navBack(); void navForward(); void reloadFromDisk(); void geometryAction(int cmd); void compareDocs(); void sideBySideAction(int cmd); void endSideBySide();
 void commandPalette(); void combineOpenPdfs(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
@@ -808,6 +817,8 @@ void forEachPref(const std::function<void(const wchar_t*, const std::wstring&)>&
     n(L"recoveryCopy", app.autosaveIdx);
     n(L"afterConvert", app.afterConvert);
     n(L"layout", app.layout);
+    n(L"defaultZoom", app.defaultZoom);
+    n(L"defaultLayout", app.defaultLayout);
     n(L"cover", app.cover);
     n(L"units", app.units);
     n(L"sideBySideLinked", app.sbsLinked);
@@ -849,6 +860,11 @@ void loadSettings() {
     app.viewer2.setCacheLimit(app.cacheIdx == 0 ? 3 : app.cacheIdx == 1 ? 6 : 12);
     app.layout = std::clamp(num(L"layout", 1), 0, 2);
     app.cover = num(L"cover", 0) != 0;
+    app.defaultZoom = std::clamp(num(L"defaultZoom", 0), 0, 7);
+    // the page layout a window starts with (before there was a setting: the one last chosen in the View menu)
+    app.defaultLayout = std::clamp(num(L"defaultLayout", app.layout == 2 && app.cover ? 3 : app.layout), 0, 3);
+    app.layout = app.defaultLayout == 3 ? 2 : app.defaultLayout;
+    app.cover = app.defaultLayout == 3;
     app.units = std::clamp(num(L"units", 0), 0, 3);
     app.sbsLinked = num(L"sideBySideLinked", 1) != 0;
     app.sbsStacked = num(L"sideBySideStacked", 0) != 0;
@@ -1006,11 +1022,13 @@ void openFile(const std::wstring& pathIn) {
     addRecent(path);
     const bool badSig = std::any_of(doc->signatures().begin(), doc->signatures().end(),
                                     [](const sign::Status& s) { return s.kind == sign::Status::Changed || s.kind == sign::Status::Unreadable; });
+    bool remembered = false;
     if (app.restorePositions)
         for (const auto& ps : app.positions)
-            if (_wcsicmp(ps.path.c_str(), path.c_str()) == 0) { doc->zoom = ps.zoom; doc->scrollY = ps.scrollY; doc->fitWidth = ps.fit; break; }
+            if (_wcsicmp(ps.path.c_str(), path.c_str()) == 0) { doc->zoom = ps.zoom; doc->scrollY = ps.scrollY; doc->fitWidth = ps.fit; remembered = true; break; }
     app.tabs.push_back(std::move(doc));
     switchTab(static_cast<int>(app.tabs.size()) - 1);
+    if (!remembered) applyDefaultZoom();
     if (badSig) MessageBoxW(app.wnd, L"A digital signature in this document does not match: the document was changed after it was signed (or the signature is damaged). "
                                      L"Do not trust its content. Edit PDF > Digital signatures > Show the signatures gives the details.", kAppName, MB_OK | MB_ICONWARNING);
 }
@@ -4050,6 +4068,20 @@ void showSettings(int first) {
                {L"Normal", L"Dark (night mode)", L"Dimmed (softer white)", L"Blackboard: inverted", L"Blackboard: original colours"},
                [] { return static_cast<int>(app.viewer.colours()); },
                [](int i) { app.viewer.setColours(static_cast<Viewer::Colours>(i)); app.viewer2.setColours(static_cast<Viewer::Colours>(i)); }),
+        choice(L"Default zoom", L"How large pages are shown when a document is opened (a document opened before opens at its own zoom, when Open documents where they were last read is on).",
+               {L"Fit width", L"Fit page", L"50%", L"75%", L"100% (actual size)", L"125%", L"150%", L"200%"},
+               [] { return app.defaultZoom; },
+               [](int i) { app.defaultZoom = std::clamp(i, 0, 7); }),
+        choice(L"Default page layout", L"How pages follow each other in a new window. View > Page layout changes it for the window open now.",
+               {L"Single page", L"Continuous", L"Two pages", L"Two pages, cover page alone"},
+               [] { return app.defaultLayout; },
+               [](int i) {
+                   app.defaultLayout = std::clamp(i, 0, 3);
+                   app.layout = app.defaultLayout == 3 ? 2 : app.defaultLayout;
+                   app.cover = app.defaultLayout == 3;
+                   app.viewer.setLayout(app.layout, app.cover);
+                   if (app.sbs) app.viewer2.setLayout(app.layout, app.cover);
+               }),
         toggle(L"Open documents where they were last read", L"The page and zoom of the last 100 documents are remembered.", app.restorePositions),
         choice(L"Reading speed", L"How fast Read aloud speaks.", {L"Slow", L"Normal", L"Fast", L"Very fast"},
                [] { return app.readRate <= -4 ? 0 : app.readRate == 0 ? 1 : app.readRate <= 3 ? 2 : 3; },
@@ -4097,6 +4129,7 @@ void showSettings(int first) {
         button(L"Reset settings", L"Puts every setting on this page and the others back as it was when Feather PDF was installed.", L"Reset all\x2026", [] {
             if (MessageBoxW(GetActiveWindow(), L"Put every setting back to its default? Recent files and reading positions are kept.", L"Settings", MB_YESNO | MB_ICONQUESTION | MB_DEFBUTTON2) != IDYES) return;
             app.theme = ThemeSystem; app.colourIcons = true; app.tabColours = false; app.tabNumbers = false; app.dupMode = 0; app.ownWindows = false; app.restorePositions = true;
+            app.defaultZoom = 0; app.defaultLayout = 1; app.layout = 1; app.cover = false; app.viewer.setLayout(1, false);
             app.viewer.setColours(Viewer::Colours::Normal); app.viewer2.setColours(Viewer::Colours::Normal);
             app.readRate = 0; app.hlColour = 0; app.drawColour = 5; app.widthIdx = 1; app.cacheIdx = 1; app.autosaveIdx = 0; app.afterConvert = 0;
             app.viewer.setCacheLimit(6); app.viewer2.setCacheLimit(6);

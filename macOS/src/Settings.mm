@@ -144,6 +144,8 @@ static NSButton* button(NSString* title, void (^act)(void)) {
         row(@"Page colours", @"Dark turns pages dark for reading at night; Dimmed softens bright white. Blackboard makes the page pure black (for OLED screens) with white text: Inverted turns everything into a negative, pictures included; Original colours keeps pictures, coloured text and highlights in their own colours.",
             choice(FPPageColoursKey, 0, @[ @"Normal", @"Dark (night mode)", @"Dimmed (softer white)", @"Blackboard: inverted", @"Blackboard: original colours" ], ^{
                 [[NSNotificationCenter defaultCenter] postNotificationName:FPPageColoursChanged object:nil]; })),
+        row(@"Default zoom", @"How large pages are shown when a document is opened (a document opened before opens at its own zoom, when Open documents where they were last read is on).",
+            choice(@"defaultZoom", 0, @[ @"Fit width", @"Fit page", @"50%", @"75%", @"100% (actual size)", @"125%", @"150%", @"200%" ], nil)),
         row(@"Open documents where they were last read", @"The page and zoom of the last 100 documents are remembered.", toggle(@"restorePositions", YES, nil)),
         row(@"Reading speed (read aloud)", @"How fast the Mac's voice reads.", choice(@"readingSpeed", 1, @[ @"Slow", @"Normal", @"Fast", @"Very fast" ], nil)) ]]];
     [_tabs addTabViewItem:[self group:@"Editing" rows:@[
@@ -167,7 +169,7 @@ static NSButton* button(NSString* title, void (^act)(void)) {
             [a addButtonWithTitle:@"Reset"];
             [a addButtonWithTitle:@"Cancel"];
             if ([a runModal] != NSAlertFirstButtonReturn) return;
-            for (NSString* k in @[ @"theme", @"colourIcons", @"tabColours", @"tabNumbers", @"duplicateOpen", @"ownWindows", @"restorePositions", FPPageColoursKey, @"readingSpeed",
+            for (NSString* k in @[ @"theme", @"colourIcons", @"tabColours", @"tabNumbers", @"duplicateOpen", @"ownWindows", @"restorePositions", @"defaultZoom", FPPageColoursKey, @"readingSpeed",
                                    @"highlightColour", @"drawingColour", @"lineWidth", @"pageCache", @"recoveryCopy", FPCheckUpdatesKey ])
                 [defaults() removeObjectForKey:k];
             FPApplyTheme();

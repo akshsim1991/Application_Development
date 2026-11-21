@@ -1454,3 +1454,12 @@ kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user
 - **Fix (2.23.1):** a fourth source asks jsDelivr which commit the branch is at (data.jsdelivr.com) and reads the version
   file at that commit, which is never an old copy; it counts as a fresh answer. Copies older than 2.23.1 still read the old
   mirror copy until it refreshes, so 2.23.1 is installed once from the download page.
+
+### B-114 A fraction's bottom wrapped onto two lines when edited; its bar stayed - High (all apps)
+- **Found:** the user changed s(s + 2)(s + 4)(s + 6) to ...(s + 4d)... under a fraction bar: "6)" went to a second line.
+- **Cause:** the line was taken as a centred line limited to the free width beside "G(s)H(s) =", and nothing tied it to
+  the fraction's bar or its other side.
+- **Fix:** a line in a math font is an equation's: edited on one line (the editor's box is as wide as the page allows).
+  When a bar lies just above or below it, the bar is set to the longer of the line and the other side (keeping its left
+  end and overhang) and both are centred over it; a standalone equation keeps its centre.
+- **Tests:** realworld.sh: the user's edit, and the top and bottom edited together (26 checks).

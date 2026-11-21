@@ -2,6 +2,14 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.23.2 (21 November 2026)
+
+- Fixed: editing the top or bottom of a fraction in an equation wrapped it onto a second line and left the fraction bar
+  as it was. A line of an equation now stays on one line; the bar stretches or shrinks to the longer of its top and
+  bottom, keeping its place after "=", and the other side stays centred over it.
+- New: Settings > PDF Viewing > Default zoom (fit width, fit page, 50% to 200%) for documents opened without a remembered
+  place, and (Windows) Default page layout (single page, continuous, two pages, two pages with the cover alone).
+
 ## 2.23.1 (21 November 2026)
 
 - Fixed: Help > Update to new version said "you have the newest version" where raw.githubusercontent.com is blocked and

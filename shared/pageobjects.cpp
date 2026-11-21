@@ -1922,6 +1922,53 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
             }
         }
     }
+    // A line of an equation: one line in a math font (Cambria Math, STIX Math ...), its fraction if it is the top or bottom of one
+    if (!lineOnly && last == first && hit.upright) {
+        bool math = hit.fontName.find("Math") != std::string::npos;
+        for (int ix : lines[first].idx) {
+            if (math) break;
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, ix);
+            if (o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT && baseFontName(api.FPDFTextObj_GetFont(o)).find("Math") != std::string::npos) math = true;
+        }
+        if (math) {
+            const Line& ln = lines[first];
+            const double size = ln.size;
+            hit.equation = true;
+            hit.eqLeft = ln.l; hit.eqRight = ln.r;
+            // the fraction's bar: a thin line right above or below, about as wide as this line or wider
+            const int no = api.FPDFPage_CountObjects(pg);
+            double barL = 0, barR = 0, barY = 0;
+            for (int i = 0; i < no && hit.fracBar < 0; ++i) {
+                FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+                float l, b, r, t;
+                if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_PATH || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) || t - b > 2.5) continue;
+                const double ov = std::min<double>(r, ln.r) - std::max<double>(l, ln.l);
+                if (ov < 0.6 * std::min<double>(r - l, ln.r - ln.l) || r - l < 0.5 * (ln.r - ln.l)) continue;
+                const double y = (b + t) / 2;
+                const bool above = y >= ln.t - 0.3 * size && y <= ln.t + 0.8 * size;   // this line is the bottom
+                const bool below = y <= ln.b + 0.3 * size && y >= ln.b - 0.8 * size;   // this line is the top
+                if (!above && !below) continue;
+                hit.fracBar = i; barL = l; barR = r; barY = y;
+            }
+            if (hit.fracBar >= 0) {
+                // the other side: text over the bar, beyond it from this line, within about a line
+                // (only text within the bar's width, the line nearest the bar: not the sentence above the equation)
+                const bool lineBelow = barY > ln.b;
+                const Line* nearest = nullptr;
+                double best = 1e9;
+                for (const Line& o : lines) {
+                    if (&o == &lines[first] || o.l < barL - 0.5 * size || o.r > barR + 0.5 * size) continue;
+                    const double gap = lineBelow ? o.b - barY : barY - o.t;
+                    if (gap > -0.3 * size && gap < 1.0 * size && gap < best) { best = gap; nearest = &o; }
+                }
+                if (nearest) hit.fracOther = nearest->idx;
+            }
+            // edited on one line, in a box as wide as the page lets it be
+            const double pageW = d.pageSize(page).w;
+            hit.align = Align::Left;
+            hit.wrapWidth = std::max(hit.wrapWidth, pageW - 36 - hit.originX);
+        }
+    }
     {   // recognised text on a scanned page: its look in the picture
         double l = 1e9, b = 1e9, r = -1e9, t = -1e9;
         for (int i = first; i <= last; ++i) { l = std::min(l, lines[i].l); b = std::min(b, lines[i].b); r = std::max(r, lines[i].r); t = std::max(t, lines[i].t); }
@@ -2445,6 +2492,7 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         }
     }
     std::wstring text = textIn;
+    if (hit.equation) oneLine = true;   // an equation's line never wraps
     if (oneLine) for (auto& ch : text) if (ch == L'\r' || ch == L'\n') ch = L' ';
     const auto& api = pdfium::api();
     Fonts f;
@@ -2743,6 +2791,38 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         if (!patch) return fail(nullptr);
         api.FPDFPage_InsertObject(pg, patch);
     }
+    // An equation's line: where it starts, and its fraction's bar and other side set to the new width
+    double eqAlong = -1;
+    if (hit.equation && !lines.empty()) {
+        const double lw = lines[0].indent + widthOfRuns(lines[0].runs);
+        const double oldCentre = (hit.eqLeft + hit.eqRight) / 2;
+        double start = oldCentre - lw / 2;
+        FPDF_PAGEOBJECT bar = hit.fracBar >= 0 ? api.FPDFPage_GetObject(pg, hit.fracBar) : nullptr;
+        float bl, bb, br, bt;
+        if (bar && api.FPDFPageObj_GetBounds(bar, &bl, &bb, &br, &bt) && br > bl) {
+            double ol = 1e9, orr = -1e9;
+            std::vector<FPDF_PAGEOBJECT> other;
+            for (int ix : hit.fracOther)
+                if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, ix)) {
+                    float l, b, r, t;
+                    if (api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) { ol = std::min<double>(ol, l); orr = std::max<double>(orr, r); other.push_back(o); }
+                }
+            const double otherW = other.empty() ? 0 : orr - ol;
+            // the bar reaches past the wider side by as much as it did; it keeps its left end (after "=")
+            const double pad = std::max(0.0, std::min(hit.eqLeft, other.empty() ? hit.eqLeft : ol) - bl);
+            const double newW = std::max(lw, otherW) + 2 * pad;
+            if (std::getenv("FEATHER_TRACE_EQ")) std::fprintf(stderr, "eq: bar %.1f-%.1f line %.1f-%.1f (lw %.1f) other %.1f-%.1f (%zu) pad %.1f origin %.1f\n", bl, br, hit.eqLeft, hit.eqRight, lw, ol, orr, other.size(), pad, hit.originX);
+            const double cx = bl + newW / 2;
+            const double sx = newW / (br - bl);
+            api.FPDFPageObj_Transform(bar, sx, 0, 0, 1, bl - bl * sx, 0);
+            if (!other.empty()) {
+                const double dx = cx - (ol + orr) / 2;
+                for (FPDF_PAGEOBJECT o : other) api.FPDFPageObj_Transform(o, 1, 0, 0, 1, dx, 0);
+            }
+            start = cx - lw / 2;
+        }
+        eqAlong = start - hit.originX;
+    }
     // remove the old lines (last object first so the indices stay valid), then set the new ones
     std::vector<int> idx = hit.objects;
     std::sort(idx.begin(), idx.end(), std::greater<int>());
@@ -2798,7 +2878,8 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         }
         double along = ln.indent;
         const double lw = widthOfRuns(ln.runs);
-        if (align == Align::Right) along += room - lw;
+        if (eqAlong >= -1e8 && hit.equation) along = eqAlong + ln.indent;   // an equation's line: placed as worked out above
+        else if (align == Align::Right) along += room - lw;
         else if (align == Align::Centre) along += (room - lw) / 2;
         for (size_t ri = 0; ri < ln.runs.size(); ++ri) {
             const auto& r = ln.runs[ri];

@@ -60,6 +60,8 @@ ia: a row deleted|ia.pdf|table 1 260 470 delrow 3|table ok|Define Compounding|
 ia: find and replace in table cells|ia.pdf|find turbine TURBINE|find 4|Delaval TURBINE|
 bme: an exponent changed|bme.pdf|para 1 300 80 replace "b. The steady-state error when the input is r(t) = 40 + 2t + 7t³"|para ok|40 \+ 2t \+ 7t|
 bme: a fraction's numerator alone|bme.pdf|para 1 317 138 replace "50(1 + 2s)"|para ok lines=1|50\(1 \+ 2s\)|
+bme: a fraction's bottom made longer stays on one line, the bar stretched|bme.pdf|para 2 330 494 replace "s(s + 2)(s + 4d)(s + 6)"|para ok lines=1|s\(s \+ 2\)\(s \+ 4d\)\(s \+ 6\)|
+bme: a fraction's top and bottom edited, the top centred over the longer bar|bme.pdf|para 2 330 512 replace "2K" para 2 330 494 replace "s(s + 2)(s + 4)(s + 6)(s + 10)"|para ok|2K.*s\(s \+ 2\)\(s \+ 4\)\(s \+ 6\)\(s \+ 10\)|
 bme: a polynomial with exponents|bme.pdf|para 2 300 539 same|para ok.*s⁷ \+ 9s⁶|23s \+ 15 = 0|
 m3d: scanned slide: recognised text edited visibly|m3d.pdf|para 1 2000 343 replace "LASER POWDER BED FUSION"|para ok.*scan=1|LASER POWDER BED FUSION|
 EOF

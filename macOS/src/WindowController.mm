@@ -484,11 +484,19 @@ static NSImage* symbol(NSString* name, NSString* description) {
 // ---- reading positions: each file opens where it was last read (the last 100 files), as on Windows ----
 
 - (void)restorePosition {
-    if (!FPRestorePositions()) return;
     NSString* path = [(NSDocument*)self.document fileURL].path;
-    NSDictionary* all = [NSUserDefaults.standardUserDefaults dictionaryForKey:@"positions"];
+    NSDictionary* all = FPRestorePositions() ? [NSUserDefaults.standardUserDefaults dictionaryForKey:@"positions"] : nil;
     NSArray* pos = path ? all[path] : nil;
-    if (pos.count < 2) return;
+    if (pos.count < 2) {   // no place remembered: the zoom chosen in Settings > PDF Viewing > Default zoom
+        const NSInteger z = [NSUserDefaults.standardUserDefaults integerForKey:@"defaultZoom"];
+        static const double zooms[] = {0, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
+        if (z <= 0 || z > 7) return;   // fit width, as always
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (z == 1) [self->_view fitPage];
+            else [self->_view setZoom:zooms[z]];
+        });
+        return;
+    }
     const int page = [pos[0] intValue];
     const double zoom = [pos[1] doubleValue];
     dispatch_async(dispatch_get_main_queue(), ^{   // after the window has its size

@@ -25,7 +25,8 @@ with Microsoft Print to PDF. All three apps (the engine is shared).
 - Fixed: changing one cell set other rows of the table again (their text sharing a text object with another cell), which
   lost their superscripts and alignment. Cells that did not change are now left exactly as they were.
 - New: justified text in table cells: read from the page (a question paper's questions), kept when a cell is changed,
-  and offered in the table editor (Align: Justified).
+  and offered in the table editor (Align: Justified). Justified lines are recognised whatever the
+  font's letter shapes (Apple's Arial was read as left-aligned).
 - Fixed: superscripts in a changed cell became plain letters ("1.1m3 /s", "20 0"). They now become ³, ², ¹ and ° (m³,
   20°), letters every font has.
 - Fixed (WPS tables, found with the same file): a list drawn as a one-column table was not found as a table; letters of

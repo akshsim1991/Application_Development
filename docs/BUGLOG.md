@@ -1370,3 +1370,15 @@ on them after.
   flags, a ruled table with justified cells and m³): no outline crosses a cell's line, a cell edits whole in its own font,
   stays justified with m³, the other row is not set again, a heading grows on its line, a wrapping heading moves the
   whole table. All suites pass (cli_check 164, engine matches Windows 47, Android bridge 50).
+
+### B-104 A justified cell read as left-aligned on the Mac - Medium (all apps; seen in the Mac build)
+- **Found:** the Mac build check failed: the question paper's cell, set in Apple's Arial, was read as left-aligned, so
+  an edit lost its justification. On Linux, with Liberation Sans, it passed.
+- **Cause:** a line's ends were measured by its letters' ink. Fonts with the same widths place a letter's ink
+  differently inside its width (Arial and Liberation Sans do), so lines that end together where they are set ended a
+  point or two apart by ink, beyond the tolerance.
+- **Fix:** lines are measured where their letters are set (PDFium's typeset box: origin to advance), which is the same
+  for every line of a justified paragraph in any font.
+- **Tests:** cli_check.sh makes a copy of the font with every letter's ink moved by up to 12% of an em, the widths kept;
+  the old engine read the cell as centred, the new one as justified. The same cell checked in Liberation Sans, DejaVu
+  Sans, FreeSans, Carlito and Liberation Serif. All suites pass (cli_check 165, engine matches Windows, Android bridge).

@@ -153,6 +153,7 @@
     X(FPDF_GetFileVersion)       \
     X(FPDFText_GetUnicode)       \
     X(FPDFText_GetCharBox)       \
+    X(FPDFText_GetLooseCharBox)  \
     X(FPDFText_GetFontSize)      \
     X(FPDFText_GetFontWeight)    \
     X(FPDFPageObj_GetType)       \

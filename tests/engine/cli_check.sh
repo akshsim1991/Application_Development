@@ -625,7 +625,7 @@ f=[l for l in L if 'Fillet' in l[2]][0]; m=[l for l in L if l[2]=='Module 2'][0]
 sys.exit(0 if f[0] < 225 and abs(m[0]-8.0)<3 else 1)\""
 
 echo "== a question paper printed from Word (fonts named CIDFont+F1, a ruled table with justified cells and m³)"
-python3 - "$W/qp.pdf" <<'PY'
+qpmake() { python3 - "$@" <<'PY'
 import sys, os, pikepdf
 from reportlab.lib.pagesizes import A4
 from reportlab.pdfbase import pdfmetrics
@@ -634,7 +634,7 @@ from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, 
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
 from reportlab.lib import colors
-for f in ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf', 'C:/Windows/Fonts/arial.ttf']:
+for f in sys.argv[2:] + ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf', 'C:/Windows/Fonts/arial.ttf']:
     if os.path.exists(f): pdfmetrics.registerFont(TTFont('QS', f)); break
 head = ParagraphStyle('h', fontName='QS', fontSize=14, alignment=TA_CENTER)
 body = ParagraphStyle('b', fontName='QS', fontSize=11.5, leading=14, alignment=TA_JUSTIFY)
@@ -657,6 +657,8 @@ for k, f in p.pages[0].Resources.Font.items():
     f.BaseFont = pikepdf.Name('/CIDFont+F1'); fd.FontName = pikepdf.Name('/CIDFont+F1'); fd.Flags = 6; fd.StemV = 889
 p.save(sys.argv[1])
 PY
+}
+qpmake "$W/qp.pdf"
 run --blocks "$W/qp.pdf" "$W/qpblocks.txt"
 check "edit mode: no outline runs across a cell's line (question, CO and marks apart)" "! grep -E 'turbine.*CO1|^text [0-9 ]+ same 1 A 1:4' '$W/qpblocks.txt' && grep -q 'same A 1:4 scale' '$W/qpblocks.txt'"
 qx="$(python3 -c "
@@ -681,6 +683,27 @@ import re,sys
 a=[float(x) for x in re.search(r'table ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)', open('$W/qp0t.txt').read()).groups()]
 b=[float(x) for x in re.search(r'table ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)', open('$W/qp3t.txt').read()).groups()]
 d=a[1]-b[1]; sys.exit(0 if d > 5 and abs((a[3]-b[3])-d) < 0.5 and abs(a[0]-b[0]) < 0.5 else 1)\""
+
+# The same cell in a font whose letters' ink sits off where they are set (as Apple's Arial's does, unlike Liberation
+# Sans's): justified lines end together where they are set, not where their ink ends.
+python3 - "$W/shifted.ttf" <<'PY'
+import sys, os
+from fontTools.ttLib import TTFont
+from fontTools.pens.transformPen import TransformPen
+from fontTools.pens.ttGlyphPen import TTGlyphPen
+src = next(f for f in ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf', 'C:/Windows/Fonts/arial.ttf'] if os.path.exists(f))
+f = TTFont(src); gs = f.getGlyphSet(); glyf = f['glyf']; hmtx = f['hmtx']
+for i, name in enumerate(f.getGlyphOrder()):
+    g = glyf[name]
+    if g.isComposite() or g.numberOfContours <= 0: continue
+    dx = ((i * 37) % 9 - 4) * f['head'].unitsPerEm // 34   # up to 12% of an em either way; the advance kept
+    pen = TTGlyphPen(gs); gs[name].draw(TransformPen(pen, (1, 0, 0, 1, dx, 0)))
+    ng = pen.glyph(); ng.recalcBounds(glyf); glyf[name] = ng; hmtx[name] = (hmtx[name][0], ng.xMin)
+f.save(sys.argv[1])
+PY
+qpmake "$W/qps.pdf" "$W/shifted.ttf"
+run --tables "$W/qps.pdf" "$W/qpst.txt"
+check "a justified cell is read as justified whatever its font's letters' side spacing" "grep -q '|A 1:4 scale.*type of turbine<j>' '$W/qpst.txt'"
 
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

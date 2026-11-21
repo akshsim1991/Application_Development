@@ -200,6 +200,7 @@ double coverage(const std::vector<Seg>& lines, double at, double a, double b, do
 struct Char {
     wchar_t ch;
     double l, r, b, t, ox, oy, size;   // box, origin, font size
+    double al, ar;                     // where it is set: from its origin to its advance (the box is its ink)
     int obj;                           // page object index
     bool generated;
     bool spaceAfter;                   // PDFium puts a space after it (one in the text, or one it inferred from the gap)
@@ -234,6 +235,9 @@ PageText readText(Document& d, int page) {
         if (c.ch == L' ' || c.ch == L'\r' || c.ch == L'\n' || c.generated) { if (!pt.chars.empty()) pt.chars.back().spaceAfter = true; continue; }
         if (!api().FPDFText_GetCharBox(tp, i, &c.l, &c.r, &c.b, &c.t)) continue;
         api().FPDFText_GetCharOrigin(tp, i, &c.ox, &c.oy);
+        c.al = c.l; c.ar = c.r;
+        FS_RECTF lb{};
+        if (api().FPDFText_GetLooseCharBox(tp, i, &lb) && lb.right > lb.left) { c.al = lb.left; c.ar = lb.right; }
         c.size = api().FPDFText_GetFontSize(tp, i);
         FPDF_PAGEOBJECT o = api().FPDFText_GetTextObject(tp, i);
         auto it = index.find(o);
@@ -258,6 +262,7 @@ struct TLine {
     double l, r, b, t, base, size;
     std::vector<int> chars;                                  // indices into PageText::chars
     std::vector<std::pair<double, double>> chunks;           // horizontal extents of the pieces
+    double sl = 0, sr = 0;                                   // where its letters are set (origins to advances), not their ink
 };
 
 std::vector<TLine> linesOf(const PageText& pt, const std::vector<int>& idx) {
@@ -314,6 +319,8 @@ std::vector<TLine> linesOf(const PageText& pt, const std::vector<int>& idx) {
             e = std::max(e, c.r);
         }
         if (open) L.chunks.push_back({s, e});
+        L.sl = 1e9; L.sr = -1e9;
+        for (int i : L.chars) { L.sl = std::min(L.sl, pt.chars[i].al); L.sr = std::max(L.sr, pt.chars[i].ar); }
     }
     return lines;
 }
@@ -461,21 +468,21 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
                 for (const TLine& ln : lines)
                     if (ln.size >= 0.8 * big && (ln.l - left < 2 * big || ln.r - ln.l > 4 * big)) body.push_back(&ln);
                 if (body.size() >= 2) {
-                    const double sz = big, tol = std::max(1.0, 0.12 * sz);   // letters' own side spacing differs ("T", "a")
+                    const double sz = big, tol = std::max(1.0, 0.12 * sz);   // lines measured where their letters are set, not by their ink, which differs by font (Apple's Arial)
                     bool sameLeft = true, sameRight = true;
                     for (size_t li = 0; li < body.size(); ++li) {
-                        if (std::fabs(body[li]->l - body.front()->l) > tol) sameLeft = false;
-                        if (li + 1 < body.size() && std::fabs(body[li]->r - body.front()->r) > tol) sameRight = false;
+                        if (std::fabs(body[li]->sl - body.front()->sl) > tol) sameLeft = false;
+                        if (li + 1 < body.size() && std::fabs(body[li]->sr - body.front()->sr) > tol) sameRight = false;
                     }
                     // (and they end as far from the cell's right line as they start from its left one: a line only wrapped ends a
                     // word's width short of it, or less)
-                    if (sameLeft && sameRight && body.back()->r < body.front()->r - sz &&
-                        std::fabs((Rr - body.front()->r) - (body.front()->l - L)) < std::max(2 * tol, 0.25 * (body.front()->l - L))) cell.align = 3;
+                    if (sameLeft && sameRight && body.back()->sr < body.front()->sr - sz &&
+                        std::fabs((Rr - body.front()->sr) - (body.front()->sl - L)) < std::max(2 * tol, 0.25 * (body.front()->sl - L))) cell.align = 3;
                     // lines that start at one edge and end at different places are set from the left, however even the
                     // gaps around the longest one are
                     else if (sameLeft && cell.align == 1) {
                         double lo = 1e9, hi = -1e9;
-                        for (const TLine* ln : body) { lo = std::min(lo, ln->r); hi = std::max(hi, ln->r); }
+                        for (const TLine* ln : body) { lo = std::min(lo, ln->sr); hi = std::max(hi, ln->sr); }
                         if (hi - lo > sz) cell.align = 0;
                     }
                 }

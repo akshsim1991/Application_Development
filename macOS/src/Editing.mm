@@ -224,8 +224,8 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
                 // a picture is picked (drag it to move it, its corner to resize it); text is edited where it was clicked
                 const pageobj::GroupHit g = pageobj::groupAt(*d, e.page, p.x, p.y);
                 pageobj::ParagraphHit hit;
-                if (!g.found || g.kind != pageobj::GroupHit::Picture) hit = pageobj::paragraphAt(*d, e.page, p.x, p.y);
-                if (g.found && g.kind == pageobj::GroupHit::Picture && !hit.found) {
+                hit = pageobj::paragraphAt(*d, e.page, p.x, p.y);   // text is edited; where there is none, a picture or shape is picked
+                if (g.found && (g.kind == pageobj::GroupHit::Picture || g.kind == pageobj::GroupHit::Shape) && !hit.found) {
                     g_sel.page = e.page;
                     g_sel.group = g;
                     [self.pageView setObjectBox:e.page rect:annot::RectD{g.left, g.bottom, g.right, g.top}];

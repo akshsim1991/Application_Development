@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.22.2"
+VERSION = "2.23.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -452,6 +452,15 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.23 \u201cExplorer\u201d", "h2")]
+story += bullets([
+    "<b>Edit scanned pages</b>: click the text of a scan in edit mode. If the page has no recognised text yet, Feather PDF offers to recognise it first. The new words are set in the colour, weight and size of the old ones, over a patch of the page's own background, so the page keeps its look.",
+    "<b>Equations and exponents</b>: powers and indices (s\u00b2, 5t\u00b3, H\u2082O) stay raised or lowered when a line is edited, and can be typed (\u00b2, \u00b3 ... \u2079). Equations from Word keep their italic letters; a fraction's top and bottom are edited separately.",
+    "<b>PDFs from other programs</b> edit as they should: Google Docs (pages with emoji or flags), two-column papers from LaTeX (a whole paragraph is edited, words broken across lines joined), journals' stamped pages, centred headings (they stay centred), numbered items (the number stays apart from the text).",
+    "<b>Tables</b>: inserting or deleting a row in a table made by Word keeps every row's text in its place; a footer below stays where it is when the table still fits.",
+    "<b>Find and replace</b> sets each changed paragraph again as editing does: its own fonts, wrapped in its column or cell, words drawn a letter at a time found too; one Undo takes it all back.",
+    "<b>Drawn shapes</b> (boxes, lines) can be picked in edit mode to move or delete them.",
+])
 story += [P("New in 2.22 \u201cKuga\u201d", "h2")]
 story += bullets([
     "<b>Convert to PDF and combine all the selected file(s)</b> (File Explorer, right-click): select pictures, text, Word, PowerPoint or Excel files, and PDFs, together; they become one PDF in the order of their names, with a bookmark for each file, next to the first file (\u201c&lt;its name&gt; (combined).pdf\u201d). On Windows 11 the entry is under Show more options.",

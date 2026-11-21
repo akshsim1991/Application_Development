@@ -43,7 +43,14 @@ static void guessFontStyle(FPDF_FONT font, const std::string& name, Family& fam,
                             "libertine", "constantia", "sabon", "mincho", "sylfaen", "book"}) || starts({"cmr", "cmbx", "cmti", "cmsl", "cmb", "sfrm", "sfbx", "sfti"}) || (flags & 2);
     fam = mono ? Family::Mono : sans ? Family::Sans : serif ? Family::Serif : Family::Sans;
     const int weight = font ? api.FPDFFont_GetWeight(font) : -1;
-    bold = any({"bold", "black", "heavy", "semibold", "demi", "-medi", "-bd", "extrabold"}) || starts({"cmbx", "cmb10", "sfbx"}) || (flags & 262144) || weight >= 600;
+    // A name with a style part ("Arial-ItalicMT", "Calibri-Regular") says whether it is bold; the weight and flags a PDF
+    // gives are only taken for names without one (Google Docs marks its Arial Italic heavy)
+    const size_t dash = lo.find_last_of('-');
+    const bool namedStyle = dash != std::string::npos && dash + 1 < lo.size() &&
+                            (lo.find("italic", dash) != std::string::npos || lo.find("oblique", dash) != std::string::npos || lo.find("regular", dash) != std::string::npos ||
+                             lo.find("roman", dash) != std::string::npos || lo.find("light", dash) != std::string::npos || lo.find("book", dash) != std::string::npos);
+    bold = any({"bold", "black", "heavy", "semibold", "demi", "-medi", "-bd", "extrabold"}) || starts({"cmbx", "cmb10", "sfbx"}) ||
+           (!namedStyle && ((flags & 262144) || weight >= 600));
     int angle = 0;
     if (font) api.FPDFFont_GetItalicAngle(font, &angle);
     italic = any({"italic", "oblique", "ital", "slanted"}) || starts({"cmti", "cmsl", "sfti", "sfsl"}) || (flags & 64) || angle != 0;
@@ -680,6 +687,7 @@ struct Line {
     std::vector<int> src;      // for each character of `text`, the page object it comes from (-1: a space put between two)
     double base = 0;           // its baseline (page y)
     bool ocr = false;          // recognised text (invisible, over a scan): its sizes are as loose as the recognition
+    FPDF_PAGEOBJECT baseObj = nullptr;   // the first object on the line's own baseline (not a raised footnote number)
 };
 
 // A horizontal line drawn on the page (a table's rule, a separator, a box's top or bottom edge): text above and below it
@@ -1123,6 +1131,7 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
             }
         }
         text = plainHyphens(text);
+        for (wchar_t& ch : text) if (ch == L'\t') ch = L' ';   // a tab in the text is a space between words
         if (text.find_first_not_of(L" \t\r\n") == std::wstring::npos) continue;
         float fs = 0;
         api.FPDFTextObj_GetFontSize(o, &fs);
@@ -1244,6 +1253,8 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         ln.rgb = objs[oi].rgb;
         ln.base = objs[m0].base;
         ln.ocr = objs[m0].ocr;
+        ln.baseObj = objs[m0].o;
+        for (size_t k : members) if (!scriptKind[k]) { ln.baseObj = objs[k].o; ln.base = objs[k].base; break; }
         if (ln.ocr) for (size_t k : members) ln.size = std::max(ln.size, objs[k].size);   // the line's tallest recognised word
         for (size_t k = 0; k < members.size(); ++k) {
             const auto& o = objs[members[k]];
@@ -1666,7 +1677,11 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
             if (dy < 0.9 * ln.size && dy < nearest) { nearest = dy; hitLine = static_cast<int>(i); }
         }
     }
-    if (hitLine < 0) return hit;
+    if (hitLine < 0) {
+        // text inside a form object (a stamped or merged page): put on the page itself, then found as any text
+        if (!lineOnly && unwrapFormAt(d, page, x, y)) return paragraphAt(d, page, x, y, lineOnly);
+        return hit;
+    }
     // 4. neighbouring lines of the same paragraph
     // (the paragraph's lines are put first, in order: below, lines[first..last] are the paragraph and the rest of the
     // page's lines follow)
@@ -1713,7 +1728,9 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     if (un > 1e-6) { ux /= un; uy /= un; } else { ux = 1; uy = 0; }
     if (vn > 1e-6) { vx /= vn; vy /= vn; } else { vx = -uy; vy = ux; }
     hit.upright = ux > 0.999 && std::fabs(vy - 1) < 0.001;
-    const Vec o0 = origin(lines[first].first);
+    Vec o0 = origin(lines[first].first);
+    // on the line's own baseline (its first object may be a raised footnote number)
+    if (lines[first].baseObj && lines[first].baseObj != lines[first].first && std::fabs(uy) < 0.001) o0.y = origin(lines[first].baseObj).y;
     double s0 = 0;
     for (int i = first; i <= last; ++i) { const Vec o = origin(lines[i].first); s0 = std::min(s0, (o.x - o0.x) * ux + (o.y - o0.y) * uy); }
     hit.originX = o0.x + s0 * ux;   // the paragraph's left edge, on the first line's baseline
@@ -1883,6 +1900,28 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     }
     styleOfObject(styleObj, lines[first].size, hit.style, hit.fontName);
     hit.sizeExact = lines[first].size;
+    {   // a numbered or bulleted item whose text starts a tab's width after its number ("b.     The steady-state ...")
+        const size_t sp = hit.text.find(L' ');
+        if (sp != std::wstring::npos && sp > 0 && isListMarker(hit.text.substr(0, sp)) && hit.upright) {
+            std::set<FPDF_PAGEOBJECT> firstLine;
+            for (int ix : lines[first].idx) if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, ix)) firstLine.insert(o);
+            std::vector<std::pair<double, double>> boxes;   // left, right of the first line's letters, in order
+            const int nc = api.FPDFText_CountChars(tp);
+            for (int c = 0; c < nc; ++c) {
+                const unsigned u = api.FPDFText_GetUnicode(tp, c);
+                if (u <= L' ' || api.FPDFText_IsGenerated(tp, c) == 1 || !firstLine.count(api.FPDFText_GetTextObject(tp, c))) continue;
+                double l, r, b, t;
+                if (api.FPDFText_GetCharBox(tp, c, &l, &r, &b, &t)) boxes.push_back({l, r});
+            }
+            std::sort(boxes.begin(), boxes.end());
+            size_t markerLetters = 0;
+            for (size_t k = 0; k < sp; ++k) if (hit.text[k] > L' ') ++markerLetters;
+            if (boxes.size() > markerLetters && markerLetters > 0) {
+                const double markerEnd = boxes[markerLetters - 1].second, textStart = boxes[markerLetters].first;
+                if (textStart - markerEnd > 0.6 * lines[first].size) hit.markerGap = textStart - hit.originX;
+            }
+        }
+    }
     {   // recognised text on a scanned page: its look in the picture
         double l = 1e9, b = 1e9, r = -1e9, t = -1e9;
         for (int i = first; i <= last; ++i) { l = std::min(l, lines[i].l); b = std::min(b, lines[i].b); r = std::max(r, lines[i].r); t = std::max(t, lines[i].t); }
@@ -2104,7 +2143,16 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
     FPDF_PAGE pg = d.page(hit.page);
     if (!pg || hit.objects.empty()) return false;
     const auto& api = pdfium::api();
-    FPDF_PAGEOBJECT firstObj = api.FPDFPage_GetObject(pg, hit.objects.front());
+    // the paragraph's font is that of most of its text (its first object may be a footnote's small raised number)
+    int mainIdx = hit.objects.front();
+    {
+        std::map<int, size_t> count;
+        for (int o : hit.charObject) if (o >= 0) ++count[o];
+        size_t best = 0;
+        for (const auto& [o, c] : count) if (c > best && std::find(hit.objects.begin(), hit.objects.end(), o) != hit.objects.end()) { best = c; mainIdx = o; }
+    }
+    FPDF_PAGEOBJECT firstObj = api.FPDFPage_GetObject(pg, mainIdx);
+    if (!firstObj || api.FPDFPageObj_GetType(firstObj) != FPDF_PAGEOBJ_TEXT) firstObj = api.FPDFPage_GetObject(pg, hit.objects.front());
     if (!firstObj || api.FPDFPageObj_GetType(firstObj) != FPDF_PAGEOBJ_TEXT) return false;
     f.d = &d;
     f.pg = pg;
@@ -2420,8 +2468,13 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             size_t pre = 0, suf = 0;
             while (pre < on && pre < nn && old[pre] == text[pre]) ++pre;
             while (suf < on - pre && suf < nn - pre && old[on - 1 - suf] == text[nn - 1 - suf]) ++suf;
-            auto sourceOfOld = [&](size_t i, bool back) {   // the nearest character drawn by an object
-                for (long j = static_cast<long>(i); j >= 0 && j < static_cast<long>(on); j += back ? -1 : 1) if (hit.charObject[static_cast<size_t>(j)] >= 0) return hit.charObject[static_cast<size_t>(j)];
+            auto sourceOfOld = [&](size_t i, bool back) {   // the nearest character drawn by an object (not a raised or lowered one:
+                                                             // a footnote's small number is not the style of its text)
+                wchar_t base;
+                for (long j = static_cast<long>(i); j >= 0 && j < static_cast<long>(on); j += back ? -1 : 1)
+                    if (hit.charObject[static_cast<size_t>(j)] >= 0 && !script::of(old[static_cast<size_t>(j)], base)) return hit.charObject[static_cast<size_t>(j)];
+                for (long j = static_cast<long>(i); j >= 0 && j < static_cast<long>(on); j += back ? -1 : 1)
+                    if (hit.charObject[static_cast<size_t>(j)] >= 0) return hit.charObject[static_cast<size_t>(j)];
                 return -1;
             };
             auto sourceOfNew = [&](size_t i) {
@@ -2438,7 +2491,12 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             for (size_t i = 0; i < nn; ++i) {
                 const wchar_t c = text[i];
                 const bool sp = c == L' ' || c == L'\n' || c == L'\r';
-                if (!sp && !inWord) wordObject.push_back(sourceOfNew(i));
+                if (!sp && !inWord) {   // the style of the word's first letter (not of punctuation around it: *right*)
+                    size_t k = i;
+                    wchar_t sb;
+                    while (k < nn && text[k] != L' ' && text[k] != L'\n' && text[k] != L'\r' && (!iswalnum(text[k]) || script::of(text[k], sb))) ++k;
+                    wordObject.push_back(sourceOfNew(k < nn && text[k] != L' ' && text[k] != L'\n' && text[k] != L'\r' ? k : i));
+                }
                 inWord = !sp;
             }
             for (int& o : wordObject) {
@@ -2472,11 +2530,27 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         return false;
     };
     const double W = oneLine ? 1e9 : hit.wrapWidth;   // the column keeps its width when the size changes
-    const double first = hit.firstIndent;
+    double first = hit.firstIndent;
     double rest = hit.restIndent;
+    // A list item whose text starts a tab's width after its number: the number stays where it was, on its own; the text
+    // starts where it started, its next lines under it (a typed space after the number would have moved the text left).
+    std::wstring markerWord;
+    if (hit.markerGap > 0 && !oneLine) {
+        const std::vector<std::wstring> ws = wordsOf(text);
+        const size_t lead = text.find_first_not_of(L' ');
+        if (ws.size() > 1 && isListMarker(ws[0]) && lead != std::wstring::npos && text.compare(lead, ws[0].size(), ws[0]) == 0) {
+            markerWord = ws[0];
+            size_t after = lead + ws[0].size();
+            while (after < text.size() && text[after] == L' ') ++after;
+            text = text.substr(after);
+            first = hit.markerGap;
+            rest = hit.lines > 1 ? std::max(hit.restIndent, 0.0) : hit.markerGap;
+            wordAt = 1;
+        }
+    }
     // A one-line list item that now wraps: its next lines start under its text, not under the bullet or number (as a
     // word processor sets a list). A paragraph of several lines keeps the indent its lines had.
-    if (hit.lines == 1 && !oneLine) {
+    if (hit.lines == 1 && !oneLine && markerWord.empty()) {
         const std::vector<std::wstring> ws = wordsOf(text);
         auto marker = [](const std::wstring& w) {
             static const std::wstring bullets = L"\u2022\u25E6\u25AA\u25AB\u25CF\u25CB\u2023\u2043\u2013\u2014-*\u00B7\u27A2\u2192";
@@ -2681,6 +2755,11 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         const double ex = hit.originX + along * ux - row * step * vx, ey = hit.baseline + along * uy - row * step * vy;
         for (FPDF_PAGEOBJECT o : s.makeAll(t, ex, ey)) { api.FPDFPage_InsertObject(pg, o); any = true; }
     };
+    if (!markerWord.empty()) {   // the item's number, where it was
+        bool ok = true;
+        const auto r = runsOf({fontsOfWord(0)}, {markerWord}, ok);
+        if (ok && !r.empty()) put(*r[0].set, markerWord, hit.firstIndent, 0);
+    }
     for (size_t row = 0; row < lines.size(); ++row) {
         const Out& ln = lines[row];
         if (ln.words.empty()) continue;
@@ -2776,8 +2855,100 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
         }
         g.found = !g.objects.empty(); g.kind = GroupHit::Table;
         bounds(g.objects);
+        if (g.found) return g;
+    }
+    // A drawn shape (a box, a line, an arrow): the topmost one under the point, not a background as large as the page nor
+    // the lines of a table found on the page (a table is edited as a table). A thin line is picked within a few points.
+    {
+        std::set<int> tableParts;
+        for (const tables::Table& t : tables::detect(d, page)) {
+            bool text = false;   // (overlapping boxes read as a table with nothing in it are shapes)
+            for (const auto& c : t.cells) if (!c.text.empty()) { text = true; break; }
+            if (text) tableParts.insert(t.objects.begin(), t.objects.end());
+        }
+        const auto sz = d.pageSize(page);
+        for (int i = n - 1; i >= 0; --i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            float l, b, r, t;
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_PATH || tableParts.count(i) || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+            if ((r - l) * (t - b) > 0.8 * sz.w * sz.h) continue;
+            const double reach = 3;
+            if (x < l - reach || x > r + reach || y < b - reach || y > t + reach) continue;
+            g = GroupHit{};
+            g.found = true; g.kind = GroupHit::Shape; g.objects = {i};
+            bounds(g.objects);
+            return g;
+        }
     }
     return g;
+}
+
+// A form object under the point that holds text (a page a program stamped or merged keeps its whole content in one): its
+// contents are put on the page itself, in the same places and order, so its text can be edited. One undo step; the page
+// looks the same (checked as every change is), or nothing is changed.
+bool unwrapFormAt(Document& d, int page, double x, double y) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    std::function<bool(FPDF_PAGEOBJECT, int)> hasText = [&](FPDF_PAGEOBJECT o, int depth) {
+        if (!o || depth > 8) return false;
+        const int type = api.FPDFPageObj_GetType(o);
+        if (type == FPDF_PAGEOBJ_TEXT) return true;
+        if (type != FPDF_PAGEOBJ_FORM) return false;
+        for (int i = 0, n = api.FPDFFormObj_CountObjects(o); i < n; ++i) if (hasText(api.FPDFFormObj_GetObject(o, static_cast<unsigned long>(i)), depth + 1)) return true;
+        return false;
+    };
+    int formIndex = -1;
+    for (int i = api.FPDFPage_CountObjects(pg) - 1; i >= 0 && formIndex < 0; --i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float l, b, r, t;
+        if (o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_FORM && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && x >= l && x <= r && y >= b && y <= t && hasText(o, 0))
+            formIndex = i;
+    }
+    if (formIndex < 0) return false;
+    d.beginChange(L"Make the text of a page editable");
+    // forms inside it are opened too, a level at a time, until no form with text is left under the point
+    for (int round = 0; round < 8 && formIndex >= 0; ++round) {
+        FPDF_PAGEOBJECT form = api.FPDFPage_GetObject(pg, formIndex);
+        FS_MATRIX m{1, 0, 0, 1, 0, 0};
+        api.FPDFPageObj_GetMatrix(form, &m);
+        std::vector<FPDF_PAGEOBJECT> kids;
+        for (int i = 0, n = api.FPDFFormObj_CountObjects(form); i < n; ++i) kids.push_back(api.FPDFFormObj_GetObject(form, static_cast<unsigned long>(i)));
+        size_t at = static_cast<size_t>(formIndex);
+        bool ok = true;
+        for (FPDF_PAGEOBJECT k : kids) {
+            if (!api.FPDFFormObj_RemoveObject(form, k)) { ok = false; break; }
+            api.FPDFPageObj_Transform(k, m.a, m.b, m.c, m.d, m.e, m.f);
+            // colours given in a colour space of the form's own (ICC, separation): set again as plain RGB, the only kind the
+            // page is written with (white boxes came out black)
+            unsigned R, G, B, A;
+            if (api.FPDFPageObj_GetFillColor(k, &R, &G, &B, &A)) api.FPDFPageObj_SetFillColor(k, R, G, B, A);
+            if (api.FPDFPageObj_GetStrokeColor(k, &R, &G, &B, &A)) api.FPDFPageObj_SetStrokeColor(k, R, G, B, A);
+            if (!api.FPDFPage_InsertObjectAtIndex(pg, k, ++at)) { api.FPDFPageObj_Destroy(k); ok = false; break; }
+        }
+        if (!ok) { d.rollbackChange(); return false; }
+        if (api.FPDFPage_RemoveObject(pg, form)) api.FPDFPageObj_Destroy(form);
+        formIndex = -1;
+        for (int i = api.FPDFPage_CountObjects(pg) - 1; i >= 0 && formIndex < 0; --i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            float l, b, r, t;
+            if (o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_FORM && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && x >= l && x <= r && y >= b && y <= t && hasText(o, 0))
+                formIndex = i;
+        }
+    }
+    // Text that could only be kept by drawing it as a picture (letters spaced in a way PDFium cannot write) would no longer
+    // be text, and a paragraph with such lines would be edited only in part: then the page is left as it was.
+    auto textObjects = [&] {
+        int count = 0;
+        for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n; ++i)
+            if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i)) count += api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT;
+        return count;
+    };
+    contentgen::prepare(d.handle(), pg);
+    const int before = textObjects();
+    if (!contentgen::generate(d, pg) || textObjects() < before) { d.rollbackChange(); return false; }
+    d.resetText(page);
+    return true;
 }
 
 bool transformGroup(Document& d, int page, const std::vector<int>& objects, double fl, double fb, double fr, double ft, double tl, double tb, double tr, double tt) {

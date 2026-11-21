@@ -2,6 +2,20 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.23.0 "Explorer" (21 November 2026)
+
+Editing that holds up on PDFs from other programs, found by editing real files from six programs.
+
+- New: scanned pages can be edited: the new words take the colour, weight and size of the old ones, over the page's own
+  background. Windows offers to recognise the text of a scan first.
+- New: exponents and indices (x², H₂O) stay raised or lowered and can be typed; equations from Word keep their italic
+  letters; a fraction's top and bottom are edited apart.
+- New: drawn shapes can be picked to move or delete; text inside stamped or merged pages can be edited where the page can
+  be written back exactly.
+- Fixed: edits were refused on Google Docs and journal PDFs; LaTeX paragraphs were edited a line at a time; inserting a row
+  in a Word table scrambled it; find and replace broke layouts and missed words; centred headings, list numbers, italic
+  words, titles and apostrophes lost their look when edited.
+
 ## 2.22.2 (21 November 2026)
 
 Editing fixes for two PDFs a user sent: a name list made with WPS Office, and a question paper made in Word and printed

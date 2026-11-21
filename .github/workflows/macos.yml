@@ -40,6 +40,9 @@ jobs:
           python3 -m pip install --quiet --only-binary=:all: reportlab pillow numpy pikepdf python-docx openpyxl pdfminer.six cryptography fonttools
           bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
 
+      - name: Real PDFs from other programs are edited correctly (Google Docs, LaTeX, htmldoc, TCPDF)
+        run: bash tests/engine/realworld.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
+
       - name: Pages are drawn (normal, night and blackboard colours)
         run: |
           app="build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"

@@ -201,7 +201,8 @@ std::wstring baseName(Document& d) {
             if (e.selected) found += L"  - " + std::wstring(e.band == headfoot::Band::Header ? L"Header: " : L"Footer: ") + e.label + L"\n";
         const headfoot::Plan plan = headfoot::plan(*d, det, pages);
         if (plan.objects == 0 && plan.areas == 0) {
-            [self notice:L"No repeating header or footer of that kind was found on those pages. Nothing was changed."];
+            [self notice:d->pageCount() < 2 ? L"With one page nothing can be seen to repeat, so no header or footer was found. Nothing was changed."
+                                            : L"No repeating header or footer of that kind was found on those pages. Nothing was changed."];
             return;
         }
         if (!headfoot::apply(*d, plan, &why)) { [self warn:L"Nothing was deleted. " + why]; return; }

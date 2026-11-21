@@ -5216,7 +5216,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
                     return true;
                 }
             }
-            if (g.found && g.kind == pageobj::GroupHit::Picture && !hit.found) {
+            if (g.found && (g.kind == pageobj::GroupHit::Picture || g.kind == pageobj::GroupHit::Shape) && !hit.found) {   // a picture or a drawn shape
                 app.sel.page = e.page; app.sel.objects = g.objects;
                 std::vector<double> gx, gy;
                 pageobj::snapGuides(d, e.page, g.objects, gx, gy);

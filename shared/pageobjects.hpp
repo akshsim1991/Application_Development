@@ -90,6 +90,7 @@ struct ParagraphHit {
     std::vector<int> charObject;    // for each character of `text`, the page object it was drawn by (-1: a space between)
     // Text recognised on a scanned page (invisible, over the page's picture): edited, it is set visibly in the colour and
     // size of the words in the picture, over a patch of the picture's background (scanL..scanT) that hides the old words.
+    double markerGap = 0;           // a list item's text starts this far from originX, apart from its number (a tab): 0 none
     bool overScan = false;
     COLORREF scanBg = RGB(255, 255, 255);
     double scanL = 0, scanB = 0, scanR = 0, scanT = 0;
@@ -135,12 +136,16 @@ bool addBackground(Document& d, const std::vector<int>& pages, COLORREF color);
 // ---- picking up and moving page objects ----
 struct GroupHit {
     bool found = false;
-    enum Kind { Picture, Paragraph, Table } kind = Picture;
+    enum Kind { Picture, Paragraph, Table, Shape } kind = Picture;   // Shape: a drawn line, box or other path
     std::vector<int> objects;
     double left = 0, bottom = 0, right = 0, top = 0;
 };
 // The picture, paragraph or table at a page point (a picture wins over text, text over a table).
 GroupHit groupAt(Document& d, int page, double x, double y);
+// When the text under a point is inside a form object (a page another program stamped or merged): its contents are put on
+// the page itself so the text can be edited. True when that was done (one undo step); false when there is none or it could
+// not be done exactly.
+bool unwrapFormAt(Document& d, int page, double x, double y);
 // Moves and scales the objects so the rectangle `from` becomes `to` (page coordinates). One undo step.
 bool transformGroup(Document& d, int page, const std::vector<int>& objects, double fl, double fb, double fr, double ft, double tl, double tb, double tr, double tt);
 bool deleteGroup(Document& d, int page, std::vector<int> objects);

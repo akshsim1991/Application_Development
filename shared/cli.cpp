@@ -41,6 +41,7 @@
 #include "selftest.hpp"
 #include "sign.hpp"
 #include "textpdf.hpp"
+#include "tables.hpp"
 #include "topdf.hpp"
 #include "visualdiff.hpp"
 #include "pagecolours.hpp"
@@ -827,6 +828,85 @@ int run(std::vector<std::wstring> files) {
             rep += line;
         }
         return Document::writeFile(files[2], std::vector<unsigned char>(rep.begin(), rep.end())) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--edit") {
+        // --edit in.pdf out.pdf OP ... : edits as the app's clicks do, one after another; a line for each in out.pdf.txt.
+        // OPs (pages from 1, page coordinates in points): para P X Y same|append|replace [TEXT] | del P X Y |
+        // move P X Y DX DY | scale P X Y F | find FIND WITH | table P X Y cell R C TEXT | table P X Y insrow|delrow R |
+        // blocks P. Used by tests/engine/realworld.
+        if (files.size() < 3) return 2;
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::string rep;
+        auto line = [&](const std::string& t) { rep += t + "\n"; };
+        auto u8 = [](const std::wstring& w) { return platform::utf8(w); };
+        auto num = [&](size_t i) { return i < files.size() ? wnum(files[i].c_str()) : 0.0; };
+        size_t i = 3;
+        while (i < files.size()) {
+            const std::wstring op = files[i];
+            if (op == L"para" && i + 4 < files.size()) {
+                const int p = static_cast<int>(num(i + 1)) - 1;
+                const pageobj::ParagraphHit h = pageobj::paragraphAt(doc, p, num(i + 2), num(i + 3));
+                const std::wstring how = files[i + 4];
+                std::wstring text = h.text;
+                size_t used = 5;
+                if (how == L"append" && i + 5 < files.size()) { text += L" " + files[i + 5]; used = 6; }
+                else if (how == L"replace" && i + 5 < files.size()) { text = files[i + 5]; used = 6; }
+                std::wstring why;
+                const bool ok = h.found && pageobj::replaceParagraph(doc, h, text, h.style, h.align, &why);
+                line("para " + std::string(ok ? "ok" : "refused") + " lines=" + std::to_string(h.lines) + " align=" + std::to_string(static_cast<int>(h.align)) +
+                     " scan=" + std::to_string(h.overScan) + " | " + u8(why) + " | was: " + u8(h.text));
+                i += used;
+            } else if ((op == L"del" || op == L"move" || op == L"scale") && i + 3 < files.size()) {
+                const int p = static_cast<int>(num(i + 1)) - 1;
+                const pageobj::GroupHit g = pageobj::groupAt(doc, p, num(i + 2), num(i + 3));
+                bool ok = false;
+                size_t used = 4;
+                if (g.found && op == L"del") ok = pageobj::deleteGroup(doc, p, g.objects);
+                if (op == L"move") {
+                    used = 6;
+                    if (g.found) ok = pageobj::transformGroup(doc, p, g.objects, g.left, g.bottom, g.right, g.top, g.left + num(i + 4), g.bottom + num(i + 5), g.right + num(i + 4), g.top + num(i + 5));
+                }
+                if (op == L"scale") {
+                    used = 5;
+                    const double f = num(i + 4);
+                    if (g.found) ok = pageobj::transformGroup(doc, p, g.objects, g.left, g.bottom, g.right, g.top, g.left, g.top - (g.top - g.bottom) * f, g.left + (g.right - g.left) * f, g.top);
+                }
+                static const char* kinds[] = {"picture", "paragraph", "table", "shape"};
+                line(u8(op) + " " + (ok ? "ok" : "failed") + " " + (g.found ? kinds[static_cast<int>(g.kind)] : "nothing"));
+                i += used;
+            } else if (op == L"find" && i + 2 < files.size()) {
+                std::vector<int> pages;
+                const int n = pageobj::replaceAll(doc, files[i + 1], files[i + 2], true, pages);
+                line("find " + std::to_string(n));
+                i += 3;
+            } else if (op == L"table" && i + 5 < files.size()) {
+                const int p = static_cast<int>(num(i + 1)) - 1;
+                tables::Table t;
+                std::wstring why;
+                const bool found = tables::tableAt(doc, p, num(i + 2), num(i + 3), t, &why);
+                const std::wstring what = files[i + 4];
+                size_t used = what == L"cell" ? 8 : 6;
+                if (found) {
+                    if (what == L"cell" && i + 7 < files.size()) t.at(static_cast<int>(num(i + 5)), static_cast<int>(num(i + 6))).text = files[i + 7];
+                    else if (what == L"insrow") tables::insertRow(t, static_cast<int>(num(i + 5)));
+                    else if (what == L"delrow") tables::deleteRow(t, static_cast<int>(num(i + 5)));
+                }
+                const bool ok = found && tables::write(doc, t, &why);
+                line("table " + std::string(ok ? "ok" : "failed") + " " + u8(why));
+                i += used;
+            } else if (op == L"blocks" && i + 1 < files.size()) {
+                const int p = static_cast<int>(num(i + 1)) - 1;
+                for (const auto& b : pageobj::editableBlocks(doc, p)) {
+                    char buf[160];
+                    snprintf(buf, sizeof buf, "%s %.0f %.0f %.0f %.0f", b.kind == pageobj::EditBlock::Text ? "text" : "pict", b.left, b.bottom, b.right, b.top);
+                    line(buf);
+                }
+                i += 2;
+            } else { line("unknown " + u8(op)); return 2; }
+        }
+        Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
+        return doc.saveAs(files[2]) == SaveResult::Ok ? 0 : 4;
     }
     if (!files.empty() && files[0] == L"--paratest") {   // --paratest in.pdf out.pdf report.txt x y same|append [text] : edits the paragraph at (x, y) on page 1
         if (files.size() < 7) return 2;

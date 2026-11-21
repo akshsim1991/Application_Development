@@ -1386,3 +1386,63 @@ on them after.
 **Published:** 2.22.2 for Windows and Android first (21 November, at the user's request, while the Mac build ran), then
 the Mac version from the same commit (1a9f25e) a few minutes later. The three downloads match latest.json (size and
 SHA-256); the 2.22.1 files stay one release longer.
+
+## Version 2.23.0 "Explorer": an editing evaluation on real PDFs, and its findings fixed
+
+An evaluation edited six real PDFs from six programs (Word via Microsoft Print to PDF, WPS, Google Docs, TCPDF, htmldoc
+stamped by a journal site, pdfTeX) with 49 checks, each looked at before and after (report: claude.ai artifact
+"Feather PDF Editing Evaluation"): 24 worked, 6 had flaws, 18 failed, 1 was not supported. The user then sent two more:
+a Word assignment with equations, and slides saved as pictures with recognised text. All findings below are fixed and
+kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user's own files only where present).
+
+### B-105 Edits refused on Google Docs and htmldoc PDFs - Critical (all apps)
+- **Cause:** PDFium does not write text set in Type3 fonts (Google Docs' flag and emoji letters; it also leaves an open
+  "q"), and the write-back check drew a copy of the page that lost resources only fonts refer to. Objects PDFium cannot
+  write were made pictures, but the pictures were judged pixel by pixel and differed by smoothing; htmldoc's inline
+  images likewise.
+- **Fix:** the check is confirmed on the document as saved; areas of objects made pictures of themselves are judged by
+  their look (mean difference and amount of ink).
+
+### B-106 LaTeX paragraphs edited a line at a time; two-line titles split - High (all apps)
+- **Cause:** a page's lines are listed across the page, so in two columns the line before one was the other column's.
+- **Fix:** a line's neighbours are the nearest lines in its column. A line that stops short of its column (the next
+  line's first word would have fitted) ends its paragraph; short lines that each end a sentence stay apart; centred lines
+  at ordinary spacing join. TeX's line-end hyphen (character 2) joins its word.
+
+### B-107 Inserting or deleting a row scrambled Word tables; the footer moved - High (all apps)
+- **Cause:** Word prints a row's line across its cells as one object; it moved once per cell. Everything below the table
+  moved by the full growth, footers included.
+- **Fix:** each object moves once; what touches the table's bottom moves with it, text just under it keeps its distance,
+  the rest moves only as far as it must.
+
+### B-108 Find and replace broke layouts and missed words - High (all apps)
+- **Cause:** it replaced inside each text object: no font for letters a subset lacked (bold serif in her paper), lines
+  ran over their column and across table cells, words drawn a letter at a time were never found.
+- **Fix:** each match's paragraph is set again as editing sets it; one undo step; a replaced word keeps its own style.
+
+### B-109 Scanned pages could not be edited - High (all apps; offer to recognise: Windows)
+- **Fix:** recognised (invisible) text over a picture is edited visibly, in the colour, weight and size of its words in
+  the picture, over a patch blended from the picture around it; nothing below moves (a picture cannot). Recognised words
+  are grouped into lines by their shared height, and OCR now gives a line's words one baseline and size. Windows: editing
+  a scan without text offers to recognise it first.
+
+### B-110 Equations and exponents broken by editing - High (all apps)
+- **Cause:** Word's Cambria Math letters (U+1D400 on) came apart into two halves; exponents were blocks of their own;
+  a fraction's numerator and denominator were one paragraph; Word's hyphen objects were left out of their line.
+- **Fix:** mathematical letters read as plain letters, set in italic beside the equation font's digits; exponents and
+  indices join their line as superscript and subscript characters and are set raised or lowered in any font; a fraction
+  bar separates; objects on one baseline make one line.
+
+### B-111 Smaller editing flaws found by the evaluation - Medium (all apps)
+- Centred headings wrapped left-aligned (now centred, as wide as the free space, not onto a logo); a title wrapped though
+  the page had room (it may reach the mirrored margin); a click between two lines found nothing (the nearest line); list
+  numbers lost their tab (kept apart); a word in *italics* lost its style (the style of its first letter); Google Docs'
+  Arial Italic read as bold (a font name's style part wins over its flags); apostrophes split from their words.
+
+### B-112 Text inside a form object could not be edited; shapes could not be picked - Medium (all apps)
+- **Fix:** a click on text inside a form object (a stamped or merged page) puts the form's contents on the page, colours
+  as plain RGB (white boxes came out black); when that would turn text into pictures the page is left as it was. Drawn
+  shapes are picked for moving and deleting.
+
+- **Tests:** tests/engine/realworld.sh, 24 checks (15 on public files run in the Mac build); cli_check 165, engine matches
+  Windows, Android bridge: all pass.

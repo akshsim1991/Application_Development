@@ -26,6 +26,7 @@ for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/Fea
 done
 cp "$root/releases/$win" "$root/releases/$mac" "$root/releases/$apk" "$dest/"
 [ -f "$root/releases/$apk32" ] && cp "$root/releases/$apk32" "$dest/"
+cp "$root/docs/PRIVACY.md" "$dest/PRIVACY.md"   # the privacy policy Google Play and the apps link to
 python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" <<'PY'
 import hashlib, json, os, sys, datetime
 dest, version, notes, base, win, mac, apk = sys.argv[1:]
@@ -52,6 +53,8 @@ no cloud service, no tracking. Free to use and share, always.
   downloaded file; Android asks once whether your browser or file app may install apps. For an older phone that says
   the app is not compatible, take the 32-bit one: [$apk32]($base/$apk32) (mirror: [$apk32]($mirror/$apk32)). The first
   Android version reads, finds, edits text, highlights, draws, adds notes, turns and deletes pages, and saves.
+
+Privacy: nothing is collected; see [PRIVACY.md](PRIVACY.md).
 
 If a download does not start, your network may block raw.githubusercontent.com (some providers do at times): use the
 mirror link beside it, which serves the same file (its SHA-256 is in latest.json).

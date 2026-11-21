@@ -1,0 +1,6 @@
+libc++ (the C++ standard library of the Android NDK, shipped as libc++_shared.so)
+
+Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+See https://llvm.org/LICENSE.txt for the full licence text.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception

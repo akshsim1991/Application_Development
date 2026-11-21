@@ -23,6 +23,14 @@ val copyPdfium by tasks.registering(Copy::class) {
     into(pdfiumLibs)
 }
 
+// The open-source licences shown in About (the PDFium package's texts, and the NDK's C++ library's).
+val licenceAssets = layout.buildDirectory.dir("licenceAssets")
+val copyLicences by tasks.registering(Copy::class) {
+    from(File(repoRoot, "third_party/pdfium-android/arm64-v8a/licenses"))
+    from(File(rootDir, "app/src/licences"))
+    into(licenceAssets.map { it.dir("licenses") })
+}
+
 android {
     namespace = "com.featherpdf.android"
     compileSdk = 35
@@ -73,6 +81,7 @@ android {
         }
     }
     sourceSets["main"].jniLibs.srcDir(pdfiumLibs)
+    sourceSets["main"].assets.srcDir(licenceAssets)
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
@@ -81,4 +90,4 @@ android {
     packaging { jniLibs { useLegacyPackaging = false } }
 }
 
-tasks.named("preBuild") { dependsOn(copyPdfium) }
+tasks.named("preBuild") { dependsOn(copyPdfium, copyLicences) }

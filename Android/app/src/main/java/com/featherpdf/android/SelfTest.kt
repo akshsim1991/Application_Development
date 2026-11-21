@@ -61,6 +61,38 @@ class SelfTest(private val a: ViewerActivity, private val out: File) {
             check("its pages are drawn", a.documentView.settled)
             shot("01-open")
         }
+        // Nothing under the system bars (Android 15 draws apps under them): the title bar below the status bar, the page
+        // below the title bar and the tools, and above the navigation bar; then with the tools at the bottom.
+        fun bars(): Pair<Int, Int> {
+            val ins = a.window.decorView.rootWindowInsets ?: return Pair(0, 0)
+            return if (android.os.Build.VERSION.SDK_INT >= 30) {
+                val i = ins.getInsets(android.view.WindowInsets.Type.systemBars())
+                Pair(i.top, i.bottom)
+            } else @Suppress("DEPRECATION") Pair(ins.systemWindowInsetTop, ins.systemWindowInsetBottom)
+        }
+        fun top(v: android.view.View) = IntArray(2).also { v.getLocationOnScreen(it) }[1]
+        fun bottom(v: android.view.View) = top(v) + v.height
+        step("clear of the system bars") {
+            val (statusBar, navBar) = bars()
+            val screen = a.window.decorView.height
+            val title = (a.headerView as android.view.ViewGroup).getChildAt(0)
+            lines.add("note status bar $statusBar, navigation bar $navBar, screen $screen; title ${top(title)}-${bottom(title)}, " +
+                      "page ${top(a.documentView)}-${bottom(a.documentView)}, tools ${top(a.toolsView)}-${bottom(a.toolsView)}")
+            check("the system reports its bars (status bar $statusBar px)", statusBar > 0)
+            check("the title bar is below the status bar", top(title) + title.paddingTop >= statusBar && title.height > title.paddingTop)
+            check("the tools are at the top, under the title bar", top(a.toolsView) >= bottom(title) && bottom(a.toolsView) <= top(a.documentView))
+            check("the page starts below the title bar and the tools", top(a.documentView) >= bottom(a.headerView))
+            check("the page ends above the navigation bar", bottom(a.documentView) <= screen - navBar)
+            a.placeTools(false)
+        }
+        step("tools at the bottom") {
+            val (_, navBar) = bars()
+            val screen = a.window.decorView.height
+            check("tools at the bottom: above the navigation bar", bottom(a.toolsView) - a.toolsView.paddingBottom <= screen - navBar && top(a.toolsView) >= bottom(a.documentView))
+            check("tools at the bottom: the page still starts below the title bar", top(a.documentView) >= bottom(a.headerView))
+            shot("07-tools-at-bottom")
+            a.placeTools(true)
+        }
         step("edit mode") {
             a.chooseTool(DocumentView.Tool.EDIT_TEXT)
             check("edit mode outlines the text", Engine.editableBlocks(doc, 0).isNotEmpty())

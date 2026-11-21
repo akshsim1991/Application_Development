@@ -1,0 +1,8 @@
+Feather PDF for Android
+Created by Akshaya Simha. Free to use and share.
+
+It contains PDFium (https://pdfium.googlesource.com/pdfium/), built by the pdfium-binaries project
+(https://github.com/bblanchon/pdfium-binaries, release chromium/8066), with the libraries PDFium includes
+(FreeType, libjpeg-turbo, libpng, zlib, OpenJPEG, Little CMS, Anti-Grain Geometry, ICU, Abseil, fast_float,
+simdutf); and libc++ from the Android NDK. Their licence texts are listed beside this notice. All of them
+are permissive licences.

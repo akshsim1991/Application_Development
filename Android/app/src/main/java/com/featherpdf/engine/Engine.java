@@ -95,6 +95,9 @@ public final class Engine {
     public static native boolean canUndo(long doc);
     public static native boolean canRedo(long doc);
     public static native boolean isModified(long doc);
+    /** Who made Feather PDF, its history, credits and how to write to the developer (shared with the desktop apps). */
+    public static native String aboutCredits();
+    public static native String feedbackAddress();
     public static native byte[] bytesToSave(long doc);
     public static native void markSaved(long doc);
 }

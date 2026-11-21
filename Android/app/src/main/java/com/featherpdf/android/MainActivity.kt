@@ -3,7 +3,6 @@ package com.featherpdf.android
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.res.Configuration
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -25,7 +24,6 @@ class MainActivity : Activity() {
     private lateinit var empty: TextView
     private var items: List<Recents.Entry> = emptyList()
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
-    private fun isNight() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +51,12 @@ class MainActivity : Activity() {
             setOnItemLongClickListener { _, _, pos, _ -> forget(items[pos]); true }
         }
         root.addView(list, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(root)
+        val outer = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val bar = Chrome.toolbar(this, "Feather PDF")
+        outer.addView(bar)
+        outer.addView(root, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        setContentView(outer)
+        Chrome.fitSystemBars(this, outer, bar, root)
         FeatherApp.startError?.let { AlertDialog.Builder(this).setTitle("Feather PDF").setMessage(it).setPositiveButton("OK", null).show() }
     }
 
@@ -83,19 +86,16 @@ class MainActivity : Activity() {
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menu.add(0, 1, 0, "Clear the recent list")
-        menu.add(0, 2, 1, "About Feather PDF")
+        menu.add(0, 3, 1, "Settings…")
+        menu.add(0, 2, 2, "About Feather PDF")
         return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             1 -> { Recents.clear(this); onResume() }
-            2 -> {
-                val v = packageManager.getPackageInfo(packageName, 0).versionName
-                AlertDialog.Builder(this).setTitle("Feather PDF $v")
-                    .setMessage("Free, for ever. Reads, finds, edits text, highlights, draws, adds notes, turns and deletes pages, and saves.")
-                    .setPositiveButton("OK", null).show()
-            }
+            2 -> About.show(this)
+            3 -> Settings.show(this)
             else -> return super.onOptionsItemSelected(item)
         }
         return true

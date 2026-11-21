@@ -167,12 +167,21 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     // ---------------------------------------------------------------------------------------------------------------
     // The screen
 
+    private lateinit var root: LinearLayout
+    private lateinit var header: LinearLayout
+    private lateinit var frame: FrameLayout
+    private lateinit var toolScroll: HorizontalScrollView
+
     private fun buildScreen() {
-        val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        // the title bar, the find row and (unless Settings puts it at the bottom) the tools, all under the status bar
+        header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Chrome.barColour(this@ViewerActivity)) }
+        header.addView(Chrome.toolbar(this, name))
         searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(8), dp(4), dp(4), dp(4))
+            setBackgroundColor(Chrome.bottomColour(this@ViewerActivity))
             visibility = View.GONE
         }
         searchField = EditText(this).apply {
@@ -189,9 +198,10 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         searchRow.addView(iconButton(android.R.drawable.arrow_up_float, "Previous") { stepHit(-1) })
         searchRow.addView(iconButton(android.R.drawable.arrow_down_float, "Next") { stepHit(1) })
         searchRow.addView(iconButton(android.R.drawable.ic_menu_close_clear_cancel, "Close") { closeSearch() })
-        root.addView(searchRow)
+        header.addView(searchRow)
+        root.addView(header)
 
-        val frame = FrameLayout(this)
+        frame = FrameLayout(this).apply { setBackgroundColor(if (isNight()) 0xFF0B0C0E.toInt() else 0xFFCFD8DC.toInt()) }
         view = DocumentView(this).also { it.listener = this }
         view.colours = getPreferences(MODE_PRIVATE).getInt("colours", Engine.COLOURS_NORMAL)
         frame.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -216,17 +226,35 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             val b = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
                 text = label
                 isAllCaps = false
+                minWidth = 0
+                minimumWidth = 0
+                setPadding(dp(12), paddingTop, dp(12), paddingBottom)
                 setOnClickListener { chooseTool(t) }
                 if (t == DocumentView.Tool.DRAW) setOnLongClickListener { choosePen(); true }
             }
             toolButtons[t] = b
-            toolRow.addView(b)
+            // a wide screen shares its width among the tools; a narrow one scrolls them, fading at the edge
+            toolRow.addView(b, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
-        val scroll = HorizontalScrollView(this).apply { isHorizontalScrollBarEnabled = false; addView(toolRow) }
-        scroll.setBackgroundColor(if (isNight()) 0xFF1E2124.toInt() else Color.WHITE)
-        root.addView(scroll)
+        toolScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            isFillViewport = true
+            isHorizontalFadingEdgeEnabled = true
+            setFadingEdgeLength(dp(40))
+            addView(toolRow)
+            setBackgroundColor(Chrome.bottomColour(this@ViewerActivity))
+        }
         setContentView(root)
+        placeTools(Settings.toolsOnTop(this))
         chooseTool(DocumentView.Tool.READ)
+    }
+
+    /** The tools under the title bar (onTop) or at the bottom of the screen, clear of the system bars either way. */
+    fun placeTools(onTop: Boolean) {
+        (toolScroll.parent as? ViewGroup)?.removeView(toolScroll)
+        if (onTop) header.addView(toolScroll) else root.addView(toolScroll)
+        for (v in listOf<View>(header, frame, toolScroll)) v.setPadding(0, 0, 0, 0)
+        Chrome.fitSystemBars(this, root, header, if (onTop) frame else toolScroll)
     }
 
     private fun isNight() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
@@ -291,7 +319,8 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         menu.add(0, M_COLOURS, 8, "Page colours…")
         menu.add(0, M_ROTATE, 9, "Turn this page")
         menu.add(0, M_DELETE, 10, "Delete this page…")
-        menu.add(0, M_ABOUT, 11, "About Feather PDF")
+        menu.add(0, M_SETTINGS, 11, "Settings…")
+        menu.add(0, M_ABOUT, 12, "About Feather PDF")
         updateMenus()
         return true
     }
@@ -318,7 +347,8 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             M_COLOURS -> chooseColours()
             M_ROTATE -> if (Engine.rotatePages(doc, intArrayOf(view.currentPage), 1)) changedDocument()
             M_DELETE -> deletePage()
-            M_ABOUT -> about()
+            M_SETTINGS -> Settings.show(this)
+            M_ABOUT -> About.show(this)
             else -> return super.onOptionsItemSelected(item)
         }
         return true
@@ -346,7 +376,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         AlertDialog.Builder(this).setTitle("Bookmarks").setItems(labels) { _, i -> if (parsed[i].second >= 0) view.goToPage(parsed[i].second) }.show()
     }
 
-    private fun chooseColours() {
+    fun chooseColours() {
         val names = arrayOf("Normal", "Night (soft)", "Dimmed (warm)", "Blackboard (all inverted)", "Blackboard (pictures as they are)")
         val values = intArrayOf(Engine.COLOURS_NORMAL, Engine.COLOURS_NIGHT, Engine.COLOURS_DIMMED, Engine.COLOURS_BLACKBOARD, Engine.COLOURS_BLACKBOARD_ORIGINAL)
         AlertDialog.Builder(this).setTitle("Page colours").setSingleChoiceItems(names, values.indexOf(view.colours).coerceAtLeast(0)) { d, i ->
@@ -362,18 +392,6 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         AlertDialog.Builder(this).setTitle("Delete page ${p + 1}?").setMessage("Undo brings it back.")
             .setPositiveButton("Delete") { _, _ -> if (Engine.deletePages(doc, intArrayOf(p))) changedDocument() }
             .setNegativeButton("Cancel", null).show()
-    }
-
-    private fun about() {
-        val info = packageManager.getPackageInfo(packageName, 0)
-        val codename = runCatching {
-            @Suppress("DEPRECATION")
-            packageManager.getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA).metaData?.getString("com.featherpdf.codename")
-        }.getOrNull().orEmpty()
-        AlertDialog.Builder(this).setTitle("Feather PDF ${info.versionName} “$codename”")
-            .setMessage("Free, for ever. The same PDF engine as Feather PDF for Windows and Mac.\n\nThis first Android version reads, finds, " +
-                        "edits text, highlights, draws, adds notes, turns and deletes pages, and saves.")
-            .setPositiveButton("OK", null).show()
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -635,6 +653,8 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     // For the build check (SelfTest)
 
     val documentHandle: Long get() = doc
+    val headerView: View get() = header
+    val toolsView: View get() = toolScroll
     val documentView: DocumentView get() = view
 
     fun screenshot(): Bitmap {
@@ -652,5 +672,6 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         private const val M_FIND = 1; private const val M_UNDO = 2; private const val M_REDO = 3; private const val M_SAVE = 4
         private const val M_SAVE_AS = 5; private const val M_SHARE = 6; private const val M_GOTO = 7; private const val M_BOOKMARKS = 8
         private const val M_COLOURS = 9; private const val M_ROTATE = 10; private const val M_DELETE = 11; private const val M_ABOUT = 12
+        private const val M_SETTINGS = 13
     }
 }

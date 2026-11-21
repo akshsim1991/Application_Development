@@ -77,6 +77,9 @@ public class BridgeCheck {
         check("the engine starts (" + err + ")", err == null);
         if (err != null) System.exit(1);
 
+        String credits = Engine.aboutCredits();
+        check("the About text is the desktop apps' (who made it, how to write)", credits.startsWith("Created by: Akshaya Simha")
+              && credits.contains("akshsimha@gmail.com") && credits.contains("Courtesy") && "akshsimha@gmail.com".equals(Engine.feedbackAddress()));
         System.out.println("opening");
         int[] r = new int[1];
         long d = Engine.open(w + "/doc.pdf", "", r);

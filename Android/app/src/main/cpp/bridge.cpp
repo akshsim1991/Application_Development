@@ -10,6 +10,7 @@
 #include <mutex>
 #include <string>
 #include <vector>
+#include "about.hpp"
 #include "annot.hpp"
 #include "crypto.hpp"
 #include "document.hpp"
@@ -578,5 +579,15 @@ JNIEXPORT void FN(markSaved)(JNIEnv*, jclass, jlong h) {
     LOCK;
     if (h) docOf(h)->d.savedAs(docOf(h)->d.path());
 }
+
+// The About text the desktop apps show, from "Created by" on (who made it, its history, credits, feedback): the same
+// words on every system (shared/about.hpp). The app adds what the Android version does.
+JNIEXPORT jstring FN(aboutCredits)(JNIEnv* env, jclass) {
+    const std::wstring body = about::body(L"Android", L"your phone");
+    const size_t at = body.find(L"Created by:");
+    return jstr(env, at == std::wstring::npos ? body : body.substr(at));
+}
+
+JNIEXPORT jstring FN(feedbackAddress)(JNIEnv* env, jclass) { return jstr(env, about::kFeedbackAddress); }
 
 } // extern "C"

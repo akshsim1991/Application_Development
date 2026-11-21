@@ -2,6 +2,20 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.22.1 (21 November 2026)
+
+- Fixed (Android): on Android 15 the page went under the title bar (its first lines hidden) and the tools under the
+  gesture bar. The app now keeps its title bar below the status bar and everything clear of the navigation bar, on
+  every Android version; the emulator check measures it.
+- New (Android): the tools (Read, Edit text, Highlight ...) are under the title bar; Settings (in the menu) can put them
+  at the bottom. They share the width when they fit, else scroll with a fading edge.
+- New (Android): About shows who made Feather PDF (the same text as the desktop apps), how to write to the developer,
+  privacy, and the open-source licences (now inside the app).
+- Android: one APK for each kind of phone (about 7 MB: `-android.apk` for nearly all phones, `-android-32bit.apk` for
+  older ones), and an app bundle for Google Play; store texts, graphics, screenshots and a privacy policy
+  (Android/store, docs/PRIVACY.md).
+- Windows and Mac: no change except the version.
+
 ## 2.22.0 "Kuga" (17 November 2026)
 
 - New (Windows): **Convert to PDF and combine all the selected file(s)** in File Explorer's right-click menu. Select

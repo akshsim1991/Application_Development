@@ -7,8 +7,12 @@ Free forever. Windows and macOS. Newest first.
 - Fixed (Android): on Android 15 the page went under the title bar (its first lines hidden) and the tools under the
   gesture bar. The app now keeps its title bar below the status bar and everything clear of the navigation bar, on
   every Android version; the emulator check measures it.
-- New (Android): the tools (Read, Edit text, Highlight ...) are under the title bar; Settings (in the menu) can put them
-  at the bottom. They share the width when they fit, else scroll with a fading edge.
+- New (Android): **Settings**, as in Feather PDF for Windows (menu > Settings): Appearance (theme: light, dark, AMOLED
+  black, like the phone; where the tools are), PDF Viewing (page colours, open where last read, keep the screen on),
+  Editing (highlight colour, drawing colour, line width), Performance (pages kept ready), Advanced (default PDF app,
+  clear recent files, releases page, About, reset). Changes apply at once and are kept.
+- New (Android): the tools (Read, Edit text, Highlight ...) are under the title bar (Settings can put them at the
+  bottom). They share the width when they fit, else scroll with a fading edge.
 - New (Android): About shows who made Feather PDF (the same text as the desktop apps), how to write to the developer,
   privacy, and the open-source licences (now inside the app).
 - Android: one APK for each kind of phone (about 7 MB: `-android.apk` for nearly all phones, `-android-32bit.apk` for

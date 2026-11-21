@@ -49,5 +49,17 @@ ok = "Edited on Android." in text and {"/Highlight", "/Text", "/Ink"} <= set(kin
 print(("  ok   " if ok else "  FAIL ") + f"the saved file, read by other tools: {len(p.pages)} pages, annotations {kinds}, edit {'found' if 'Edited on Android.' in text else 'missing'}")
 sys.exit(0 if ok else 1)
 PY
+echo "Settings (each group's page, settings changed and kept, reset)"
+adb shell rm -rf "$dir/settings"
+adb shell am start -W -n $pkg/.SettingsActivity --es com.featherpdf.settings.selftest "$dir/settings" >/dev/null
+sdone=0
+for i in $(seq 1 40); do
+  if adb shell cat "$dir/settings/settings-report.txt" 2>/dev/null | grep -q DONE; then sdone=1; break; fi
+  sleep 2
+done
+adb pull "$dir/settings" "$out/" >/dev/null 2>&1
+adb logcat -d > "$out/logcat.txt" 2>/dev/null
+if [ $sdone = 1 ]; then sed 's/^/  /' "$out/settings/settings-report.txt" | grep -v DONE; grep -q "^ALL PASSED" "$out/settings/settings-report.txt" || fail=1
+else echo "  FAIL the Settings check did not finish"; fail=1; fi
 if grep -q "FATAL EXCEPTION" "$out/logcat.txt"; then echo "  FAIL the app crashed"; grep -A20 "FATAL EXCEPTION" "$out/logcat.txt" | head -40; fail=1; fi
 [ $fail = 0 ] && echo "EMULATOR CHECK PASSED" || { echo "EMULATOR CHECK FAILED"; exit 1; }

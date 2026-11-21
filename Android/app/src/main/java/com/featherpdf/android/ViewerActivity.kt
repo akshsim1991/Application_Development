@@ -69,7 +69,11 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     // ---------------------------------------------------------------------------------------------------------------
     // Opening
 
+    private var themeAtStart = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyTheme(this)
+        themeAtStart = Settings.theme(this)
         super.onCreate(savedInstanceState)
         buildScreen()
         FeatherApp.startError?.let { fail(it); return }
@@ -137,7 +141,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         doc = h
         title = name
         uri?.let { Recents.add(this, it.toString(), name) }
-        view.setDocument(doc, uri?.let { Recents.pageOf(this, it.toString()) } ?: 0)
+        view.setDocument(doc, if (Settings.restorePositions(this)) uri?.let { Recents.pageOf(this, it.toString()) } ?: 0 else 0)
         updateMenus()
         selfTest?.start()
     }
@@ -201,9 +205,9 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         header.addView(searchRow)
         root.addView(header)
 
-        frame = FrameLayout(this).apply { setBackgroundColor(if (isNight()) 0xFF0B0C0E.toInt() else 0xFFCFD8DC.toInt()) }
+        frame = FrameLayout(this).apply { setBackgroundColor(if (Settings.isAmoled(this@ViewerActivity)) Color.BLACK else if (isNight()) 0xFF0B0C0E.toInt() else 0xFFCFD8DC.toInt()) }
         view = DocumentView(this).also { it.listener = this }
-        view.colours = getPreferences(MODE_PRIVATE).getInt("colours", Engine.COLOURS_NORMAL)
+        applySettings()
         frame.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         pageLabel = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -251,13 +255,38 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     /** The tools under the title bar (onTop) or at the bottom of the screen, clear of the system bars either way. */
     fun placeTools(onTop: Boolean) {
+        toolsOnTopNow = onTop
         (toolScroll.parent as? ViewGroup)?.removeView(toolScroll)
         if (onTop) header.addView(toolScroll) else root.addView(toolScroll)
         for (v in listOf<View>(header, frame, toolScroll)) v.setPadding(0, 0, 0, 0)
         Chrome.fitSystemBars(this, root, header, if (onTop) frame else toolScroll)
     }
 
-    private fun isNight() = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    private fun isNight() = Chrome.isNight(this)
+
+    /** Settings (page colours, pen, highlight colour, keeping the screen on, memory, where the tools are), applied now. */
+    private fun applySettings() {
+        view.colours = Settings.pageColours(this)
+        view.penColor = Settings.drawColour(this)
+        view.penWidthPt = Settings.lineWidth(this)
+        view.budget = Settings.cacheBytes(this)
+        if (Settings.keepScreenOn(this)) window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        else window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private var toolsOnTopNow = true
+    private var toldTheme = false
+
+    override fun onResume() {
+        super.onResume()
+        applySettings()
+        if (::toolScroll.isInitialized && Settings.toolsOnTop(this) != toolsOnTopNow) placeTools(Settings.toolsOnTop(this))
+        if (Settings.theme(this) != themeAtStart) {
+            // the screens are drawn again in the new colours; a document with unsaved changes keeps its screen until it is closed
+            if (doc == 0L || !Engine.isModified(doc)) recreate()
+            else if (!toldTheme) { toldTheme = true; Toast.makeText(this, "The new theme shows when this document is next opened.", Toast.LENGTH_LONG).show() }
+        }
+    }
 
     private fun iconButton(icon: Int, label: String, action: () -> Unit) = ImageButton(this, null, android.R.attr.borderlessButtonStyle).apply {
         setImageResource(icon)
@@ -286,13 +315,12 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         hints[t]?.let { if (selfTest == null) Toast.makeText(this, it, Toast.LENGTH_SHORT).show() }
     }
 
+    /** The pen's colour and width (also in Settings > Editing; kept). */
     private fun choosePen() {
-        val colours = listOf("Red" to 0xFFD32F2F.toInt(), "Blue" to 0xFF1565C0.toInt(), "Green" to 0xFF2E7D32.toInt(),
-                              "Black" to 0xFF212121.toInt(), "Yellow" to 0xFFFBC02D.toInt())
-        val widths = listOf("Fine" to 1f, "Medium" to 2.5f, "Thick" to 5f)
-        val labels = (colours.map { "Colour: ${it.first}" } + widths.map { "Width: ${it.first}" }).toTypedArray()
+        val labels = (Settings.colourNames.map { "Colour: $it" } + Settings.widthNames.map { "Width: $it" }).toTypedArray()
         AlertDialog.Builder(this).setTitle("Pen").setItems(labels) { _, i ->
-            if (i < colours.size) view.penColor = colours[i].second else view.penWidthPt = widths[i - colours.size].second
+            if (i < Settings.colourNames.size) Settings.setDrawIndex(this, i) else Settings.setWidthIndex(this, i - Settings.colourNames.size)
+            applySettings()
             view.tool = DocumentView.Tool.DRAW
         }.show()
     }
@@ -381,7 +409,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         val values = intArrayOf(Engine.COLOURS_NORMAL, Engine.COLOURS_NIGHT, Engine.COLOURS_DIMMED, Engine.COLOURS_BLACKBOARD, Engine.COLOURS_BLACKBOARD_ORIGINAL)
         AlertDialog.Builder(this).setTitle("Page colours").setSingleChoiceItems(names, values.indexOf(view.colours).coerceAtLeast(0)) { d, i ->
             view.colours = values[i]
-            getPreferences(MODE_PRIVATE).edit().putInt("colours", values[i]).apply()
+            Settings.setPageColours(this, values[i])
             d.dismiss()
         }.show()
     }
@@ -497,7 +525,9 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         AlertDialog.Builder(this).setTitle("Add text").setView(padded(body))
             .setPositiveButton("Add") { _, _ ->
                 val t = body.text.toString()
-                if (t.isNotBlank() && Engine.addTextBox(doc, page, x.toDouble(), y.toDouble(), t, 12.0, 0xFF202020.toInt())) changedDocument()
+                // in the drawing colour (Settings > Editing), as on Windows; yellow would not be read on white paper, so it is dark grey then
+                val colour = if (Settings.drawIndex(this) == 0) 0xFF202020.toInt() else Settings.drawColour(this)
+                if (t.isNotBlank() && Engine.addTextBox(doc, page, x.toDouble(), y.toDouble(), t, 12.0, colour)) changedDocument()
                 else if (t.isNotBlank()) Toast.makeText(this, "The text could not be added (letters of Western languages only).", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Cancel", null).show()
@@ -535,7 +565,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         val rects = Engine.selectionRects(doc, page, x1, y1, x2, y2)
         if (rects.isEmpty()) return
         if (view.tool == DocumentView.Tool.HIGHLIGHT) {
-            if (Engine.addMarkup(doc, page, Engine.MARKUP_HIGHLIGHT, rects, 0xFFFFEB3B.toInt())) changedDocument()
+            if (Engine.addMarkup(doc, page, Engine.MARKUP_HIGHLIGHT, rects, Settings.highlightColour(this))) changedDocument()
             return
         }
         val text = Engine.selectionText(doc, page, x1, y1, x2, y2)
@@ -549,7 +579,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
                     }
                     else -> {
                         val kind = intArrayOf(Engine.MARKUP_HIGHLIGHT, Engine.MARKUP_UNDERLINE, Engine.MARKUP_STRIKEOUT)[i - 1]
-                        val colour = intArrayOf(0xFFFFEB3B.toInt(), 0xFF1E88E5.toInt(), 0xFFE53935.toInt())[i - 1]
+                        val colour = intArrayOf(Settings.highlightColour(this), 0xFF1E88E5.toInt(), 0xFFE53935.toInt())[i - 1]
                         if (Engine.addMarkup(doc, page, kind, rects, colour)) changedDocument()
                     }
                 }

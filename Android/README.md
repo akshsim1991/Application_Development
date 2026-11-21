@@ -15,6 +15,7 @@ the Windows and Mac apps (`shared/`): a page looks the same, and a paragraph is 
 | Removing | Erase: tap a highlight, drawing or note to remove it; a note's comment can be read, changed or removed by tapping it |
 | Pages | Turn the page on screen, delete it |
 | History | Undo and redo every change |
+| Settings | As on Windows: Appearance (theme, where the tools are), PDF Viewing (page colours, last page read, screen on), Editing (highlight and drawing colours, line width), Performance (pages kept ready), Advanced (default app, recent files, versions, About, reset) |
 | Saving | Save (back to the file it came from, when that place allows it), save a copy (anywhere the system offers), share; leaving with unsaved changes asks first |
 
 Not yet on Android (to come): forms, signatures, tables, pictures (insert, move), page thumbnails, combining and

@@ -25,7 +25,11 @@ class MainActivity : Activity() {
     private var items: List<Recents.Entry> = emptyList()
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
 
+    private var themeAtStart = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        Settings.applyTheme(this)
+        themeAtStart = Settings.theme(this)
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(16), dp(16), dp(16), 0) }
         val open = Button(this).apply {
@@ -62,6 +66,7 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        if (Settings.theme(this) != themeAtStart) { recreate(); return }
         items = Recents.list(this)
         empty.visibility = if (items.isEmpty()) View.VISIBLE else View.GONE
         list.adapter = object : BaseAdapter() {

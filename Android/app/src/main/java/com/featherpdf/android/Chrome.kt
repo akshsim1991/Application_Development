@@ -1,7 +1,6 @@
 package com.featherpdf.android
 
 import android.app.Activity
-import android.content.res.Configuration
 import android.graphics.Color
 import android.os.Build
 import android.view.ContextThemeWrapper
@@ -16,9 +15,11 @@ import android.widget.Toolbar
  * is hidden behind them.
  */
 object Chrome {
-    fun isNight(a: Activity) = (a.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+    fun isNight(a: Activity) = Settings.isDark(a)   // the theme chosen in Settings, or the phone's
     fun barColour(a: Activity) = if (isNight(a)) 0xFF8E1B1B.toInt() else 0xFFC62828.toInt()
-    fun bottomColour(a: Activity) = if (isNight(a)) 0xFF1E2124.toInt() else Color.WHITE
+    fun bottomColour(a: Activity) = if (Settings.isAmoled(a)) Color.BLACK else if (isNight(a)) 0xFF1E2124.toInt() else Color.WHITE
+    fun backColour(a: Activity) = if (Settings.isAmoled(a)) Color.BLACK else if (isNight(a)) 0xFF121417.toInt() else 0xFFECEFF1.toInt()
+    fun textColour(a: Activity) = if (isNight(a)) 0xFFE8EAED.toInt() else 0xFF202124.toInt()
 
     /** The app's own title bar (white text on red), set as the activity's action bar so its menu works as before. */
     fun toolbar(a: Activity, title: CharSequence): Toolbar {

@@ -45,6 +45,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Settings, as in Feather PDF for Windows. Exported for the build check (its test pictures go only to the app's
+             own folder). -->
+        <activity
+            android:name="com.featherpdf.android.SettingsActivity"
+            android:exported="true"
+            android:label="Settings" />
+
         <!-- Hands a copy of the document to the app it is shared with. -->
         <provider
             android:name="com.featherpdf.android.ShareProvider"

@@ -1,9 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Like the phone: light here, dark in values-night -->
     <style name="FeatherTheme" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:colorPrimary">#C62828</item>
         <item name="android:colorPrimaryDark">#8E0000</item>
         <item name="android:colorAccent">#D84315</item>
         <item name="android:windowBackground">#ECEFF1</item>
+    </style>
+    <!-- Settings > Appearance > Theme -->
+    <style name="FeatherTheme.Light" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#C62828</item>
+        <item name="android:colorPrimaryDark">#8E0000</item>
+        <item name="android:colorAccent">#D84315</item>
+        <item name="android:windowBackground">#ECEFF1</item>
+    </style>
+    <style name="FeatherTheme.Dark" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#B71C1C</item>
+        <item name="android:colorPrimaryDark">#7F0000</item>
+        <item name="android:colorAccent">#FF7043</item>
+        <item name="android:windowBackground">#121417</item>
+    </style>
+    <style name="FeatherTheme.Amoled" parent="android:Theme.Material.NoActionBar">
+        <item name="android:colorPrimary">#B71C1C</item>
+        <item name="android:colorPrimaryDark">#000000</item>
+        <item name="android:colorAccent">#FF7043</item>
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:colorBackground">#000000</item>
     </style>
 </resources>

@@ -78,7 +78,9 @@ class DocumentView(context: Context) : View(context) {
     private val detailAsk = Runnable { askDetails() }
     private var buffer: ByteBuffer? = null      // reused by the background thread
 
-    private val budget: Long = min(Runtime.getRuntime().maxMemory() / 5, 96L shl 20)
+    /** Bytes of drawn pages kept ready (Settings > Performance). */
+    var budget: Long = min(Runtime.getRuntime().maxMemory() / 5, 96L shl 20)
+        set(v) { field = v; trimBase() }
 
     // ---- tools
     private var selection: FloatArray? = null    // page, x1, y1, x2, y2 (page points) while selecting

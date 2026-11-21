@@ -1,4 +1,6 @@
 #include "ocr.hpp"
+#include <algorithm>
+#include <cwchar>
 #include "contentgen.hpp"
 #include <algorithm>
 #include <cmath>
@@ -64,18 +66,55 @@ int placeWords(Document& d, int p, const std::vector<Word>& words, double dpi) {
     const double wpt = d.pageSize(p).w, hpt = d.pageSize(p).h;
     const double k = 72.0 / dpi;   // pixels -> points
     int added = 0;
-    for (const Word& wd : words) {
-        const double boxW = (wd.x1 - wd.x0) * k, boxH = (wd.y1 - wd.y0) * k;
-        const double size = std::max(4.0, boxH * 0.85);
-        FPDF_PAGEOBJECT o = pageobj::newText(d, "Helvetica", size, wd.text, 0, 100);
-        if (!o) continue;
-        float l, b, r, t;
-        if (!pd.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) || r - l < 0.1f) { pd.FPDFPageObj_Destroy(o); continue; }
-        const double sx = std::clamp(boxW / (r - l), 0.15, 6.0);
-        pd.FPDFTextObj_SetTextRenderMode(o, FPDF_TEXTRENDERMODE_INVISIBLE);
-        pageobj::placeScaled(pg, o, wpt, hpt, wd.x0 * k, wd.y1 * k - boxH * 0.2, sx);
-        pd.FPDFPage_InsertObject(pg, o);
-        ++added;
+    // The words of one line (boxes sharing most of their height) get one baseline and one size: a recognised box is as
+    // tall as the word's letters (taller with descenders or capitals), and words set at their own box's size and bottom
+    // made a line of steps that selects and edits badly. The baseline is where words without descenders end; the size
+    // is from the line's tallest letters (capitals and ascenders reach about 0.72 of it, descenders 0.21 below).
+    std::vector<int> lineOf(words.size(), -1);
+    std::vector<std::vector<size_t>> lines;
+    std::vector<size_t> order(words.size());
+    for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::sort(order.begin(), order.end(), [&](size_t a, size_t b) { return words[a].x0 < words[b].x0; });
+    for (size_t i : order) {
+        const Word& w = words[i];
+        int best = -1;
+        for (size_t li = 0; li < lines.size() && best < 0; ++li) {
+            const Word& last = words[lines[li].back()];
+            const int ov = std::min(w.y1, last.y1) - std::max(w.y0, last.y0);
+            const int hmin = std::min(w.y1 - w.y0, last.y1 - last.y0);
+            if (ov > 0.6 * hmin && w.x0 >= last.x0 && w.x0 - last.x1 < 3 * std::max(w.y1 - w.y0, last.y1 - last.y0)) best = static_cast<int>(li);
+        }
+        if (best < 0) { best = static_cast<int>(lines.size()); lines.push_back({}); }
+        lines[static_cast<size_t>(best)].push_back(i);
+        lineOf[i] = best;
+    }
+    auto hasDescender = [](const std::wstring& t) { for (wchar_t c : t) if (std::wcschr(L"gjpqy,;()[]{}|", c)) return true; return false; };
+    for (const auto& ln : lines) {
+        std::vector<int> bottoms, all;
+        int top = 1 << 30;
+        for (size_t i : ln) {
+            all.push_back(words[i].y1);
+            if (!hasDescender(words[i].text)) bottoms.push_back(words[i].y1);
+            top = std::min(top, words[i].y0);
+        }
+        auto median = [](std::vector<int> v) { std::nth_element(v.begin(), v.begin() + v.size() / 2, v.end()); return v[v.size() / 2]; };
+        int base;
+        if (!bottoms.empty()) base = median(bottoms);
+        else { int h = 0; for (size_t i : ln) h = std::max(h, words[i].y1 - words[i].y0); base = median(all) - static_cast<int>(0.21 * h / 0.93); }
+        const double size = std::max(4.0, (base - top) * k / 0.72);
+        for (size_t i : ln) {
+            const Word& wd = words[i];
+            const double boxW = (wd.x1 - wd.x0) * k;
+            FPDF_PAGEOBJECT o = pageobj::newText(d, "Helvetica", size, wd.text, 0, 100);
+            if (!o) continue;
+            float l, b, r, t;
+            if (!pd.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) || r - l < 0.1f) { pd.FPDFPageObj_Destroy(o); continue; }
+            const double sx = std::clamp(boxW / (r - l), 0.15, 6.0);
+            pd.FPDFTextObj_SetTextRenderMode(o, FPDF_TEXTRENDERMODE_INVISIBLE);
+            pageobj::placeScaled(pg, o, wpt, hpt, wd.x0 * k, base * k, sx);
+            pd.FPDFPage_InsertObject(pg, o);
+            ++added;
+        }
     }
     contentgen::generate(d, pg);
     d.resetText(p);

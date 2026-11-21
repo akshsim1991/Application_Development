@@ -689,6 +689,8 @@ static bool ruledApart(const std::vector<Rule>& rules, double aboveBase, double 
         if (u.y >= aboveBase - 0.05 * size || u.y <= belowBase + 0.5 * size) continue;
         if (u.r < l || u.l > r) continue;
         if (u.l < l - 0.4 * size || u.r > r + 0.4 * size) return true;
+        // a fraction's bar: well down in the gap (an underline is just under the letters above) and as wide as the lines
+        if (u.y < aboveBase - 0.3 * size && std::min(u.r, r) - std::max(u.l, l) >= 0.6 * (r - l)) return true;
     }
     return false;
 }
@@ -721,13 +723,44 @@ std::wstring plainHyphens(std::wstring t) {
     return t;
 }
 
+// The plain letter or digit of a character from the Mathematical Alphanumeric Symbols (bold, italic, script ... A-Z a-z,
+// Greek, digits), or 0.
+wchar_t mathLetter(unsigned cp) {
+    if (cp >= 0x1D400 && cp <= 0x1D6A3) { const unsigned i = (cp - 0x1D400) % 52; return static_cast<wchar_t>(i < 26 ? L'A' + i : L'a' + (i - 26)); }
+    if (cp >= 0x1D6A8 && cp <= 0x1D7C9) {
+        const unsigned i = (cp - 0x1D6A8) % 58;
+        if (i < 25) return static_cast<wchar_t>(0x391 + i + (i >= 17 ? 1 : 0));   // capital Alpha .. Omega (no final-sigma slot)
+        if (i >= 26 && i < 51) return static_cast<wchar_t>(0x3B1 + (i - 26));     // small alpha .. omega
+        return 0;
+    }
+    if (cp >= 0x1D7CE && cp <= 0x1D7FF) return static_cast<wchar_t>(L'0' + (cp - 0x1D7CE) % 10);
+    return 0;
+}
+
 std::wstring textOfObject(FPDF_TEXTPAGE tp, FPDF_PAGEOBJECT o) {
     const auto& api = pdfium::api();
     unsigned long bytes = api.FPDFTextObj_GetText(o, tp, nullptr, 0);
     if (bytes < 2) return {};
     std::vector<unsigned short> buf(bytes / 2 + 1);
     api.FPDFTextObj_GetText(o, tp, buf.data(), bytes);
-    return std::wstring(buf.begin(), buf.begin() + (bytes / 2 - 1));
+    // Letters from the mathematical alphabets (an equation's italic s, t, G set in Cambria Math, U+1D400 on) are read as
+    // the letters they are: outside the basic plane they came apart into two halves that no font draws.
+    std::wstring out;
+    const size_t n = bytes / 2 - 1;
+    for (size_t i = 0; i < n; ++i) {
+        const unsigned u = buf[i];
+        if (u >= 0xD800 && u <= 0xDBFF && i + 1 < n && buf[i + 1] >= 0xDC00 && buf[i + 1] <= 0xDFFF) {
+            const unsigned cp = 0x10000 + ((u - 0xD800) << 10) + (buf[i + 1] - 0xDC00);
+            ++i;
+            if (const wchar_t m = mathLetter(cp)) { out += m; continue; }
+            if (sizeof(wchar_t) == 2) { out += static_cast<wchar_t>(u); out += static_cast<wchar_t>(buf[i]); }
+            else out += static_cast<wchar_t>(cp);
+            continue;
+        }
+        if (u == 0x210E) { out += L'h'; continue; }   // the italic h of the mathematical alphabet (Planck's constant)
+        out += static_cast<wchar_t>(u);
+    }
+    return out;
 }
 
 std::string baseFontName(FPDF_FONT font) {
@@ -797,6 +830,32 @@ static bool placeholderFontName(const std::string& name) {
     return true;
 }
 
+// Superscripts and subscripts (m³, x², H₂O, eⁿ): kept in the text as the Unicode characters for them, which the editor
+// shows and can be typed; set as the plain character, smaller, raised or lowered (so any font draws them).
+namespace script {
+const wchar_t kSupBase[] = L"0123456789+-=()niabcdefghjklmoprstuvwxyz";
+const wchar_t kSup[] = L"⁰¹²³⁴⁵⁶⁷⁸⁹⁺⁻⁼⁽⁾ⁿⁱ"
+                       L"ᵃᵇᶜᵈᵉᶠᵍʰʲᵏˡᵐᵒᵖʳˢᵗᵘᵛʷˣʸᶻ";
+const wchar_t kSubBase[] = L"0123456789+-=()aeoxhklmnpst";
+const wchar_t kSub[] = L"₀₁₂₃₄₅₆₇₈₉₊₋₌₍₎ₐₑₒₓₕₖₗₘₙₚₛₜ";
+// 1 superscript, -1 subscript, 0 neither; `base` the plain character
+inline int of(wchar_t c, wchar_t& base) {
+    base = c;
+    if (c < 0xB0) return 0;
+    if (const wchar_t* p = std::wcschr(kSup, c)) { base = kSupBase[p - kSup]; return 1; }
+    if (const wchar_t* p = std::wcschr(kSub, c)) { base = kSubBase[p - kSub]; return -1; }
+    return 0;
+}
+inline wchar_t make(wchar_t c, int kind) {
+    const wchar_t* from = kind > 0 ? kSupBase : kSubBase;
+    const wchar_t* to = kind > 0 ? kSup : kSub;
+    if (const wchar_t* p = std::wcschr(from, c)) return to[p - from];
+    return c;
+}
+inline bool any(const std::wstring& t) { wchar_t b; for (wchar_t c : t) if (of(c, b)) return true; return false; }
+inline std::wstring plain(std::wstring t) { for (wchar_t& c : t) { wchar_t b; of(c, b); c = b; } return t; }
+} // namespace script
+
 // Makes text objects in one font, size and direction: either a font of the document (the paragraph's own) or a standard font.
 struct Setter {
     Document* d;
@@ -807,12 +866,50 @@ struct Setter {
     COLORREF color = 0;
     unsigned alpha = 255;
     int renderMode = -1;            // -1: as new text objects are made
+    bool mathItalic = false;        // an equation font: letters are its mathematical italic ones (U+1D434 on)
 
+    // The text objects for `t` starting at (e, f): superscripts and subscripts in it are set smaller, raised or lowered.
+    std::vector<FPDF_PAGEOBJECT> makeAll(const std::wstring& t, double e, double f) const {
+        std::vector<FPDF_PAGEOBJECT> out;
+        if (!script::any(t)) { if (FPDF_PAGEOBJECT o = make(t, e, f)) out.push_back(o); return out; }
+        const double un = std::hypot(a, b), vn = std::hypot(c, dd);
+        const double ux = un > 0 ? a / un : 1, uy = un > 0 ? b / un : 0, vx = vn > 0 ? c / vn : 0, vy = vn > 0 ? dd / vn : 1;
+        const double em = fontSize * vn;   // the size as drawn
+        double along = 0;
+        for (const auto& [seg, kind] : segments(t)) {
+            Setter s2 = *this;
+            double off = 0;
+            if (kind != 0) { s2.fontSize = static_cast<float>(fontSize * 0.62); off = kind > 0 ? 0.36 * em : -0.14 * em; }
+            FPDF_PAGEOBJECT o = s2.make(seg, e + along * ux + off * vx, f + along * uy + off * vy);
+            if (!o) { for (auto x : out) pdfium::api().FPDFPageObj_Destroy(x); out.clear(); return out; }
+            out.push_back(o);
+            along += s2.plainWidth(seg) + (kind != 0 ? 0.04 * em : 0);
+        }
+        return out;
+    }
+    // `t` in runs of plain text, superscript (1) and subscript (-1), each as its plain characters
+    static std::vector<std::pair<std::wstring, int>> segments(const std::wstring& t) {
+        std::vector<std::pair<std::wstring, int>> v;
+        for (wchar_t ch : t) {
+            wchar_t base;
+            const int k = script::of(ch, base);
+            if (v.empty() || v.back().second != k) v.push_back({std::wstring(), k});
+            v.back().first += base;
+        }
+        return v;
+    }
     FPDF_PAGEOBJECT make(const std::wstring& t, double e, double f) const {
         const auto& api = pdfium::api();
         FPDF_PAGEOBJECT o = font ? api.FPDFPageObj_CreateTextObj(d->handle(), font, fontSize) : api.FPDFPageObj_NewTextObj(d->handle(), standard, fontSize);
         if (!o) return nullptr;
-        std::vector<unsigned short> w(t.begin(), t.end());
+        std::vector<unsigned short> w;
+        for (wchar_t ch : t) {
+            unsigned cp = static_cast<unsigned>(ch);
+            if (mathItalic && ch >= L'A' && ch <= L'Z') cp = 0x1D434 + (ch - L'A');
+            else if (mathItalic && ch >= L'a' && ch <= L'z') cp = ch == L'h' ? 0x210E : 0x1D44E + (ch - L'a');
+            if (cp > 0xFFFF) { cp -= 0x10000; w.push_back(static_cast<unsigned short>(0xD800 + (cp >> 10))); w.push_back(static_cast<unsigned short>(0xDC00 + (cp & 0x3FF))); }
+            else w.push_back(static_cast<unsigned short>(cp));
+        }
         w.push_back(0);
         if (!api.FPDFText_SetText(o, w.data())) { api.FPDFPageObj_Destroy(o); return nullptr; }
         api.FPDFPageObj_SetFillColor(o, GetRValue(color), GetGValue(color), GetBValue(color), alpha);
@@ -823,6 +920,20 @@ struct Setter {
     }
     // From the start of the line (the origin) to the right edge of the last letter, along the line. -1 when the text cannot be set.
     double width(const std::wstring& t) const {
+        if (!script::any(t)) return plainWidth(t);
+        const double em = fontSize * std::hypot(c, dd);
+        double along = 0, last = 0;
+        for (const auto& [seg, kind] : segments(t)) {
+            Setter s2 = *this;
+            if (kind != 0) s2.fontSize = static_cast<float>(fontSize * 0.62);
+            const double w = s2.plainWidth(seg);
+            if (w < 0) return -1;
+            last = along + w;
+            along = last + (kind != 0 ? 0.04 * em : 0);
+        }
+        return last;
+    }
+    double plainWidth(const std::wstring& t) const {
         if (t.empty()) return 0;
         FPDF_PAGEOBJECT o = make(t, 0, 0);
         if (!o) return -1;
@@ -848,6 +959,9 @@ void styleOfObject(FPDF_PAGEOBJECT o, double size, TextStyle& st, std::string& f
         fontName = own;
         guessFontStyle(nullptr, own, st.family, st.bold, st.italic);
     } else guessFontStyle(font, fontName, st.family, st.bold, st.italic);
+    // an equation's font (Cambria Math, STIX Math ...): its letters are italic serif ones; a standard font that stands in
+    // for it is Times Italic
+    if (fontName.find("Math") != std::string::npos) { st.family = Family::Serif; st.italic = true; }
     st.sizePt = std::round(size * 2) / 2;
     unsigned R = 0, G = 0, B = 0, A = 255;
     api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
@@ -1033,8 +1147,27 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
     std::sort(order.begin(), order.end(), [&](size_t a, size_t b) {
         return objs[a].t != objs[b].t ? objs[a].t > objs[b].t : objs[a].l != objs[b].l ? objs[a].l < objs[b].l : a < b;
     });
+    // Exponents and indices (x², H₂O): smaller letters raised or lowered beside a bigger one. They join that line as
+    // superscript or subscript characters, and do not start a line of their own while there is such a line for them.
+    auto scriptRise = [&](size_t small, size_t big) {   // 1 raised, -1 lowered, 0 neither
+        const Obj& a = objs[small]; const Obj& bo = objs[big];
+        if (a.ocr || bo.ocr || a.size > 0.85 * bo.size || a.size < 0.3 * bo.size) return 0;
+        const double rise = a.base - bo.base;
+        if (rise > 0.18 * bo.size && rise < 0.7 * bo.size) return 1;
+        if (rise < -0.06 * bo.size && rise > -0.4 * bo.size) return -1;
+        return 0;
+    };
+    std::vector<char> scriptCandidate(objs.size(), 0);
+    for (size_t a = 0; a < objs.size(); ++a)
+        for (size_t bi = 0; bi < objs.size() && !scriptCandidate[a]; ++bi) {
+            if (a == bi || !scriptRise(a, bi)) continue;
+            const double gap = std::max(objs[a].l - objs[bi].r, objs[bi].l - objs[a].r);
+            if (gap < 0.6 * objs[bi].size && gap > -0.3 * objs[bi].size) scriptCandidate[a] = 1;
+        }
+    std::vector<int> scriptKind(objs.size(), 0);
+    for (int pass = 0; pass < 2; ++pass)
     for (size_t oi : order) {
-        if (used[oi]) continue;
+        if (used[oi] || (pass == 0 && scriptCandidate[oi])) continue;
         // the objects of this line: on the same baseline and of the same size, joined left or right of what is already in
         // it (a bold label before the rest of the line may come second here: its top is lower), not another column
         const double size = objs[oi].size;
@@ -1045,13 +1178,31 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
             grew = false;
             for (size_t oj : order) {
                 if (used[oj]) continue;
+                if (const int k = scriptCandidate[oj] ? scriptRise(oj, oi) : 0) {
+                    // an exponent or index right beside the line's letters
+                    double gap = 1e18;
+                    for (size_t m : members) gap = std::min(gap, std::max(objs[oj].l - objs[m].r, objs[m].l - objs[oj].r));
+                    if (gap < 0.6 * size && gap > -0.3 * size) {
+                        members.push_back(oj);
+                        used[oj] = 1;
+                        scriptKind[oj] = k;
+                        L = std::min(L, objs[oj].l); R = std::max(R, objs[oj].r);
+                        grew = true;
+                    }
+                    continue;
+                }
                 if (objs[oj].ocr && objs[oi].ocr) {
                     // recognised words: boxes as recognised (taller with descenders or capitals): one line when they share
                     // most of their height
                     const double ov = std::min(objs[oj].t, objs[oi].t) - std::max(objs[oj].b, objs[oi].b);
                     const double hmin = std::min(objs[oj].t - objs[oj].b, objs[oi].t - objs[oi].b);
                     if (ov < 0.6 * hmin || std::max(objs[oj].size, size) > 3.2 * std::min(objs[oj].size, size)) continue;
-                } else if (std::fabs(objs[oj].b - objs[oi].b) >= 0.4 * size || std::fabs(objs[oj].size - size) >= 0.15 * size) continue;
+                } else {
+                    // on the line: the same baseline (a hyphen's box is a sliver in the middle of the line's height), or,
+                    // when the baselines cannot be compared, about the same bottom
+                    const bool sameBase = std::fabs(objs[oj].base - objs[oi].base) < 0.15 * size;
+                    if ((!sameBase && std::fabs(objs[oj].b - objs[oi].b) >= 0.4 * size) || std::fabs(objs[oj].size - size) >= 0.15 * size) continue;
+                }
                 double gap = 1e18;   // to the nearest object of the line (negative: overlapping it)
                 size_t closest = members.front();
                 for (size_t m : members) {
@@ -1078,14 +1229,21 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         if (ln.ocr) for (size_t k : members) ln.size = std::max(ln.size, objs[k].size);   // the line's tallest recognised word
         for (size_t k = 0; k < members.size(); ++k) {
             const auto& o = objs[members[k]];
-            if (k > 0) {
+            const int sk = scriptKind[members[k]];
+            if (k > 0 && sk == 0) {   // (no space before an exponent or index)
                 const double gap = o.l - ln.r;
                 const int sp = spaceBetween(objs[members[k - 1]].o, o.o);
                 const bool space = sp > 0 || (sp == 0 && gap > 0.15 * size);
                 if (space && !ln.text.empty() && ln.text.back() != L' ' && !o.text.empty() && o.text.front() != L' ') { ln.text += L' '; ln.src.push_back(-1); }
             }
-            ln.text += o.text;
-            ln.src.insert(ln.src.end(), o.text.size(), o.idx);
+            std::wstring t = o.text;
+            if (sk != 0) {   // as superscript or subscript characters
+                while (!t.empty() && t.back() == L' ') t.pop_back();
+                while (!t.empty() && t.front() == L' ') t.erase(0, 1);
+                for (wchar_t& ch : t) ch = script::make(ch, sk);
+            }
+            ln.text += t;
+            ln.src.insert(ln.src.end(), t.size(), o.idx);
             ln.l = std::min(ln.l, o.l); ln.r = std::max(ln.r, o.r); ln.t = std::max(ln.t, o.t); ln.b = std::min(ln.b, o.b);
             ln.idx.push_back(o.idx);
         }
@@ -1899,8 +2057,9 @@ struct Fonts {
     const Setter* forWord(const std::wstring& w) {
         if (own) {
             bool ok = true;
-            if (limited) { for (wchar_t ch : w) if (have.find(ch) == std::wstring::npos) { ok = false; break; } }
-            else ok = isLatin(w);
+            const std::wstring pw = script::plain(w);   // a superscript is drawn as its plain character
+            if (limited) { for (wchar_t ch : pw) if (have.find(ch) == std::wstring::npos) { ok = false; break; } }
+            else ok = isLatin(pw);
             if (ok) return &main;
             if (limited && mayLoad && fullState == 0) {
                 bool fresh = false;
@@ -1919,7 +2078,7 @@ struct Fonts {
             }
             if (fullState == 1) return &full;
         }
-        return isLatin(w) ? &fallback : nullptr;
+        return isLatin(script::plain(w)) ? &fallback : nullptr;
     }
 };
 
@@ -1936,6 +2095,7 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
     f.italic = st.italic;
     const double k = std::fabs(st.sizePt - hit.style.sizePt) < 0.05 || hit.sizeExact <= 0 ? 1.0 : st.sizePt / hit.sizeExact;   // the change of size
     const Setter own = ownFont(d, firstObj);
+    bool mathLetters = false;
     // the standard font: same direction as the paragraph, new size, style and colour
     const double un = std::hypot(own.a, own.b), vn = std::hypot(own.c, own.dd);
     Setter s{&d};
@@ -1960,7 +2120,13 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
                 if (api.FPDFText_IsGenerated(tp, c) == 1) continue;
                 FPDF_PAGEOBJECT o = api.FPDFText_GetTextObject(tp, c);
                 if (!o || api.FPDFTextObj_GetFont(o) != own.font) continue;
-                const unsigned u = api.FPDFText_GetUnicode(tp, c);
+                unsigned u = api.FPDFText_GetUnicode(tp, c);
+                if (u >= 0xD800 && u <= 0xDBFF && c + 1 < nc) {   // a letter beyond the basic plane, as its two halves
+                    const unsigned lo = api.FPDFText_GetUnicode(tp, c + 1);
+                    if (lo >= 0xDC00 && lo <= 0xDFFF) { u = 0x10000 + ((u - 0xD800) << 10) + (lo - 0xDC00); ++c; }
+                }
+                // an equation font's mathematical italic letters: the font has those, not the plain letters they are read as
+                if (u > 0xFFFF || u == 0x210E) { mathLetters = true; continue; }
                 if (u == L'\r' || u == L'\n' || u == 0 || u > 0xFFFF) continue;
                 if (f.have.find(static_cast<wchar_t>(u)) == std::wstring::npos) f.have += static_cast<wchar_t>(u);
             }
@@ -1969,6 +2135,8 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
     }
     if (f.own) {
         f.main = own;
+        (void)mathLetters;   // (the font's mathematical italics cannot be set again: PDFium finds no glyph for them; the
+                             // letters are set in the standard italic font that stands in for it, the rest in the font)
         f.main.a *= k; f.main.b *= k; f.main.c *= k; f.main.dd *= k;
         if (st.color != hit.style.color) { f.main.color = st.color; f.main.alpha = 255; }
     }
@@ -1995,7 +2163,7 @@ std::vector<std::wstring> wordsOf(const std::wstring& s) {
 
 // Words of a line grouped into runs that share a font; each run becomes one text object. `width` reaches the right edge of
 // the run's last letter; `advance` is where the next letter would start.
-struct Run { std::wstring text; const Setter* set; double width, advance; Fonts* fonts; };
+struct Run { std::wstring text; const Setter* set; double width, advance; Fonts* fonts; bool glued = false; };   // glued: the rest of the word before it (no space)
 // `wf` gives each word its fonts (a paragraph whose words keep their own fonts, a bold label before regular text ...).
 std::vector<Run> runsOf(const std::vector<Fonts*>& wf, const std::vector<std::wstring>& words, bool& ok) {
     std::vector<Run> runs;
@@ -2004,11 +2172,31 @@ std::vector<Run> runsOf(const std::vector<Fonts*>& wf, const std::vector<std::ws
         const auto& w = words[i];
         Fonts& f = *wf[std::min(i, wf.size() - 1)];
         const Setter* s = f.forWord(w);
+        // An equation font has the digits and signs of a word, not its plain letters: the word is set in pieces. Other fonts
+        // set a word they lack letters of wholly in the stand-in (pieces in two fonts read back as several words).
+        const bool mathFont = f.pdfName.find("Math") != std::string::npos;
+        bool partly = false;
+        if (mathFont && s == &f.fallback && f.own && f.limited) for (wchar_t ch : script::plain(w)) if (ch > L' ' && f.have.find(ch) != std::wstring::npos) { partly = true; break; }
+        if ((partly || (!s && mathFont)) && f.own && f.limited) {
+            // a word the paragraph's font has only some letters of (an equation's "2s)": the font has the digits and the
+            // brackets, not the plain letter): its letters in pieces, each in the font that has it, with no space between
+            std::vector<Run> parts;
+            for (wchar_t ch : w) {
+                wchar_t base;
+                script::of(ch, base);
+                const Setter* cs = f.have.find(base) != std::wstring::npos ? &f.main : isLatin(std::wstring(1, base)) ? &f.fallback : nullptr;
+                if (!cs) { ok = false; return {}; }
+                if (!parts.empty() && parts.back().set == cs) parts.back().text += ch;
+                else parts.push_back({std::wstring(1, ch), cs, 0, 0, &f, !parts.empty()});
+            }
+            runs.insert(runs.end(), parts.begin(), parts.end());
+            continue;
+        }
         if (!s) { ok = false; return {}; }
         // words share a run only when the font draws a space; one WPS embeds may not (the space was drawn as a box), and then
         // each word is its own run, a space's width apart
         const bool spaces = !(s == &f.main && f.limited && f.have.find(L' ') == std::wstring::npos);
-        if (!runs.empty() && runs.back().set == s && spaces) runs.back().text += L" " + w;
+        if (!runs.empty() && runs.back().set == s && spaces && !runs.back().glued) runs.back().text += L" " + w;
         else runs.push_back({w, s, 0, 0, &f});
     }
     for (auto& r : runs) {
@@ -2025,7 +2213,7 @@ std::vector<Run> runsOf(const std::vector<Fonts*>& wf, const std::vector<std::ws
 
 double widthOfRuns(const std::vector<Run>& runs) {
     double w = 0;
-    for (size_t i = 0; i < runs.size(); ++i) w += (i + 1 < runs.size() ? runs[i].advance : runs[i].width) + (i ? runs[i - 1].fonts->space : 0);
+    for (size_t i = 0; i < runs.size(); ++i) w += (i + 1 < runs.size() ? runs[i].advance : runs[i].width) + (i && !runs[i].glued ? runs[i - 1].fonts->space : 0);
     return w;
 }
 } // namespace
@@ -2112,9 +2300,9 @@ std::vector<FPDF_PAGEOBJECT> TextSetter::make(const std::wstring& line, double x
     double at = x;
     for (size_t i = 0; i < runs.size(); ++i) {
         if (i) at += impl_->fonts.space;
-        FPDF_PAGEOBJECT o = runs[i].set->make(runs[i].text, at, y);
-        if (!o) { for (FPDF_PAGEOBJECT p : out) pdfium::api().FPDFPageObj_Destroy(p); return {}; }
-        out.push_back(o);
+        const std::vector<FPDF_PAGEOBJECT> os = runs[i].set->makeAll(runs[i].text, at, y);
+        if (os.empty()) { for (FPDF_PAGEOBJECT p : out) pdfium::api().FPDFPageObj_Destroy(p); return {}; }
+        out.insert(out.end(), os.begin(), os.end());
         at += runs[i].advance;
     }
     return out;
@@ -2470,10 +2658,7 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     bool any = false;
     auto put = [&](const Setter& s, const std::wstring& t, double along, int row) {
         const double ex = hit.originX + along * ux - row * step * vx, ey = hit.baseline + along * uy - row * step * vy;
-        FPDF_PAGEOBJECT o = s.make(t, ex, ey);
-        if (!o) return;
-        api.FPDFPage_InsertObject(pg, o);
-        any = true;
+        for (FPDF_PAGEOBJECT o : s.makeAll(t, ex, ey)) { api.FPDFPage_InsertObject(pg, o); any = true; }
     };
     for (size_t row = 0; row < lines.size(); ++row) {
         const Out& ln = lines[row];
@@ -2483,31 +2668,43 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             // Spread the words over the full width, one object per word, as word spacing does: every gap gets the same
             // extra, after each word's advance, and the last word's last letter ends at the right edge.
             bool ok = true;
-            std::vector<Run> ws;
-            std::vector<double> adv;
+            std::vector<std::vector<Run>> ws;   // each word's pieces (one, or several in different fonts)
+            std::vector<double> adv, wid;
             for (size_t wi = 0; wi < ln.words.size(); ++wi) {
                 const auto& w = ln.words[wi];
                 auto r = runsOf({ln.wf[std::min(wi, ln.wf.size() - 1)]}, {w}, ok);
                 if (!ok || r.empty()) continue;
-                const Setter& s = *r[0].set;
-                const Fonts& rf = *r[0].fonts;
+                double a = 0;
+                for (size_t k = 0; k + 1 < r.size(); ++k) a += r[k].advance;
+                const Run& lastPiece = r.back();
+                const Setter& s = *lastPiece.set;
+                const Fonts& rf = *lastPiece.fonts;
                 const std::wstring probe = &s == &rf.main && rf.limited ? std::wstring(1, rf.probe) : L"x";
-                const double a = s.width(w + probe), b = s.width(probe);
-                ws.push_back(r[0]);
-                adv.push_back(a > 0 && b > 0 && a > b ? a - b : r[0].width);
+                const double pa = s.width(lastPiece.text + probe), pb = s.width(probe);
+                wid.push_back(a + lastPiece.width);
+                adv.push_back(a + (pa > 0 && pb > 0 && pa > pb ? pa - pb : lastPiece.width));
+                ws.push_back(r);
             }
             double total = 0;
-            for (size_t i = 0; i < ws.size(); ++i) total += i + 1 < ws.size() ? adv[i] : ws[i].width;
+            for (size_t i = 0; i < ws.size(); ++i) total += i + 1 < ws.size() ? adv[i] : wid[i];
             const double gap = ws.size() > 1 ? (room - total) / (ws.size() - 1) : 0;
             double along = ln.indent;
-            for (size_t i = 0; i < ws.size(); ++i) { put(*ws[i].set, ws[i].text, along, static_cast<int>(row)); along += adv[i] + gap; }
+            for (size_t i = 0; i < ws.size(); ++i) {
+                double at = along;
+                for (const Run& piece : ws[i]) { put(*piece.set, piece.text, at, static_cast<int>(row)); at += piece.advance; }
+                along += adv[i] + gap;
+            }
             continue;
         }
         double along = ln.indent;
         const double lw = widthOfRuns(ln.runs);
         if (align == Align::Right) along += room - lw;
         else if (align == Align::Centre) along += (room - lw) / 2;
-        for (const auto& r : ln.runs) { put(*r.set, r.text, along, static_cast<int>(row)); along += r.advance + r.fonts->space; }
+        for (size_t ri = 0; ri < ln.runs.size(); ++ri) {
+            const auto& r = ln.runs[ri];
+            put(*r.set, r.text, along, static_cast<int>(row));
+            along += r.advance + (ri + 1 < ln.runs.size() && ln.runs[ri + 1].glued ? 0 : r.fonts->space);
+        }
     }
     if (!any && !text.empty()) return fail(nullptr);   // nothing could be placed: put the old lines back
     if (!contentgen::generate(d, pg)) return fail(L"This page uses drawing that could not be written back exactly, so it was left as it was.");

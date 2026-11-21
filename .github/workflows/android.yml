@@ -45,18 +45,21 @@ jobs:
           ./gradlew --no-daemon --stacktrace assembleRelease
           ls -la app/build/outputs/apk/release/
 
-      - name: The APK holds every ABI, is signed with the release key, and is aligned for 16 KB pages
+      - name: Each APK holds its kind of phone's libraries, is signed with the release key, aligned for 16 KB pages, under 20 MB
         run: |
-          apk=Android/app/build/outputs/apk/release/app-release.apk
           bt=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          unzip -l "$apk" | grep -E "lib/.*\.so"
           for abi in arm64-v8a armeabi-v7a x86_64; do
+            apk=Android/app/build/outputs/apk/release/app-$abi-release.apk
+            echo "== $abi: $(stat -c %s "$apk") bytes"
             for lib in libpdfium.so libfeatherpdf.so libc++_shared.so; do unzip -l "$apk" | grep -q "lib/$abi/$lib" || { echo "missing lib/$abi/$lib"; exit 1; }; done
+            if unzip -l "$apk" | grep "lib/" | grep -v "lib/$abi/" | grep -q "\.so"; then echo "other phones' libraries in the $abi APK"; exit 1; fi
+            # the download mirror (jsDelivr) serves files up to 20 MB
+            [ "$(stat -c %s "$apk")" -lt 20000000 ] || { echo "the $abi APK is 20 MB or more"; exit 1; }
+            "$bt/apksigner" verify --print-certs "$apk" > certs.txt
+            grep -qi "5ece1a1bb33b104247f9bffd5069a2946b8f7de37ccb51176e751f0b5ebbee12" certs.txt || { echo "not signed with the Feather PDF release key"; exit 1; }
+            "$bt/zipalign" -c -P 16 4 "$apk" && echo "aligned for 16 KB pages"
           done
-          "$bt/apksigner" verify --print-certs "$apk" | tee certs.txt
-          grep -qi "5ece1a1bb33b104247f9bffd5069a2946b8f7de37ccb51176e751f0b5ebbee12" certs.txt || { echo "not signed with the Feather PDF release key"; exit 1; }
-          "$bt/zipalign" -c -P 16 4 "$apk" && echo "aligned for 16 KB pages"
-          "$bt/aapt2" dump badging "$apk" | head -3
+          "$bt/aapt2" dump badging Android/app/build/outputs/apk/release/app-arm64-v8a-release.apk | head -3
 
       - name: Let the emulator use KVM
         run: |
@@ -72,22 +75,24 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash tests/android/emulator_check.sh Android/app/build/outputs/apk/release/app-release.apk emulator-check
+          script: bash tests/android/emulator_check.sh Android/app/build/outputs/apk/release/app-x86_64-release.apk emulator-check
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: FeatherPDF-android
           path: |
-            Android/app/build/outputs/apk/release/app-release.apk
+            Android/app/build/outputs/apk/release/*.apk
             emulator-check/
 
       - name: Put the APK in releases/
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
           ver=$(grep -oP 'project\(FeatherPDF VERSION \K[0-9.]+' CMakeLists.txt)
-          rm -f releases/*-android.apk
-          cp Android/app/build/outputs/apk/release/app-release.apk "releases/FeatherPDF-$ver-android.apk"
+          rm -f releases/*-android.apk releases/*-android-32bit.apk
+          # the download for phones (64-bit, nearly all), and one for older 32-bit phones
+          cp Android/app/build/outputs/apk/release/app-arm64-v8a-release.apk "releases/FeatherPDF-$ver-android.apk"
+          cp Android/app/build/outputs/apk/release/app-armeabi-v7a-release.apk "releases/FeatherPDF-$ver-android-32bit.apk"
           git config user.name "Feather PDF Android build"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           # the emulator's pictures of the app, small, for the README and for checking the screen by eye

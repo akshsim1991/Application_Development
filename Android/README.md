@@ -31,7 +31,10 @@ splitting, redaction, OCR, printing, and the many other tools of the desktop app
 - The cryptography (protected files) and pictures come from Android's own classes through `Engine.SystemHooks`.
 
 Build (needs the Android SDK and NDK 27): `bash scripts/fetch-pdfium.sh android`, then in `Android/`:
-`./gradlew assembleRelease`. GitHub builds it on every push (`.github/workflows/android.yml`).
+`./gradlew assembleRelease`, which makes one APK for each kind of phone (`app-arm64-v8a-release.apk` for nearly all
+phones, `app-armeabi-v7a-release.apk` for older 32-bit ones, `app-x86_64-release.apk` for emulators and Chromebooks),
+each about a third of one APK for all. GitHub builds it on every push (`.github/workflows/android.yml`) and puts the
+first two in `releases/` as `FeatherPDF-<version>-android.apk` and `FeatherPDF-<version>-android-32bit.apk`.
 
 ## Checks
 

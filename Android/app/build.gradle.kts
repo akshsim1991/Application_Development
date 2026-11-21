@@ -35,7 +35,6 @@ android {
         versionCode = parts[0] * 10000 + parts[1] * 100 + parts[2]
         versionName = featherVersion
         manifestPlaceholders["codename"] = featherCodename   // the release's name, read by the About box
-        ndk { abiFilters += abis }
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_shared") } }
     }
 
@@ -53,6 +52,17 @@ android {
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")
+        }
+    }
+
+    // One APK for each kind of phone, so a download carries only its own libraries (about a third of one APK for all):
+    // arm64-v8a (phones since about 2017), armeabi-v7a (older 32-bit phones), x86_64 (emulators, Chromebooks).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include(*abis.toTypedArray())
+            isUniversalApk = false
         }
     }
 

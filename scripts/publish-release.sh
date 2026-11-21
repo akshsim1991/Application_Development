@@ -10,12 +10,13 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 dest="$1"; notes="${2:-}"
 version="$(sed -n 's/^project(FeatherPDF VERSION \([0-9.]*\).*/\1/p' "$root/CMakeLists.txt")"
 win="FeatherPDF-Setup-$version.exe"; mac="FeatherPDF-$version-mac.dmg"; apk="FeatherPDF-$version-android.apk"
+apk32="FeatherPDF-$version-android-32bit.apk"   # older 32-bit phones (optional)
 for f in "$win" "$mac" "$apk"; do [ -f "$root/releases/$f" ] || { echo "missing releases/$f"; exit 1; }; done
 base="https://raw.githubusercontent.com/akshsim1991/FeatherPDF-releases/main"
 # The previous release's files stay one release longer: GitHub's servers go on handing out the old latest.json for a few
 # minutes after this is pushed, and an update started then fetches the old installer. Older ones go.
 previous="$(sed -n 's/.*"version": "\([0-9.]*\)".*/\1/p' "$dest/latest.json" 2>/dev/null | head -1)"
-for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/FeatherPDF-*-android.apk; do
+for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/FeatherPDF-*-android.apk "$dest"/FeatherPDF-*-android-32bit.apk; do
   [ -e "$f" ] || continue
   case "$(basename "$f")" in *"-$version"[.-]*|*"-$version-"*) continue ;; esac
   if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
@@ -24,6 +25,7 @@ for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/Fea
   rm -f "$f"
 done
 cp "$root/releases/$win" "$root/releases/$mac" "$root/releases/$apk" "$dest/"
+[ -f "$root/releases/$apk32" ] && cp "$root/releases/$apk32" "$dest/"
 python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" <<'PY'
 import hashlib, json, os, sys, datetime
 dest, version, notes, base, win, mac, apk = sys.argv[1:]
@@ -47,8 +49,9 @@ no cloud service, no tracking. Free to use and share, always.
 - Windows 7 SP1, 8.1, 10 and 11 (64-bit): [$win]($base/$win) (or from the mirror: [$win]($mirror/$win))
 - macOS 11 or later (Apple silicon and Intel): [$mac]($base/$mac) (or from the mirror: [$mac]($mirror/$mac))
 - Android 7 or later (phones and tablets): [$apk]($base/$apk) (or from the mirror: [$apk]($mirror/$apk)). Open the
-  downloaded file; Android asks once whether your browser or file app may install apps. The first Android version reads,
-  finds, edits text, highlights, draws, adds notes, turns and deletes pages, and saves.
+  downloaded file; Android asks once whether your browser or file app may install apps. For an older phone that says
+  the app is not compatible, take the 32-bit one: [$apk32]($base/$apk32) (mirror: [$apk32]($mirror/$apk32)). The first
+  Android version reads, finds, edits text, highlights, draws, adds notes, turns and deletes pages, and saves.
 
 If a download does not start, your network may block raw.githubusercontent.com (some providers do at times): use the
 mirror link beside it, which serves the same file (its SHA-256 is in latest.json).

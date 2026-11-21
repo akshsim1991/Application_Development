@@ -1463,3 +1463,10 @@ kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user
   When a bar lies just above or below it, the bar is set to the longer of the line and the other side (keeping its left
   end and overhang) and both are centred over it; a standalone equation keeps its centre.
 - **Tests:** realworld.sh: the user's edit, and the top and bottom edited together (26 checks).
+
+### B-115 A paragraph's lines edited apart since 2.23.0 - Medium (all apps; found by the Android build check)
+- **Found:** the Android emulator check: words added to a two-line paragraph went onto a line of their own.
+- **Cause:** the rule that ends a paragraph at a line stopping short of its column took the column's edge from lines
+  within 15% of the size, so 11 pt lines below a 12 pt paragraph made its first line look short.
+- **Fix:** the column's edge is taken from lines of the same size (within 4%).
+- **Also:** the Mac's 2.23.2 disk image built but was not committed (the branch had moved on); 2.23.3 is built again.

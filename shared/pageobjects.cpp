@@ -1050,7 +1050,7 @@ static std::vector<int> paragraphSpan(const std::vector<Line>& lines, const std:
     auto columnRight = [&](const Line& ln) {
         double right = ln.r;
         for (const Line& o : lines)
-            if (std::fabs(o.l - ln.l) < 3.6 * ln.size && std::fabs(o.size - ln.size) < 0.15 * ln.size && std::fabs(o.b - ln.b) < 30 * ln.size && overlap(o, ln) > 0)
+            if (std::fabs(o.l - ln.l) < 3.6 * ln.size && std::fabs(o.size - ln.size) < 0.04 * ln.size && std::fabs(o.b - ln.b) < 30 * ln.size && overlap(o, ln) > 0)
                 right = std::max(right, o.r);
         return right;
     };

@@ -2,6 +2,11 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.23.3 (21 November 2026)
+
+- Fixed (since 2.23.0): two lines of one paragraph were edited apart when lines in a slightly smaller size below them
+  reached further right (the column's edge was taken from them).
+
 ## 2.23.2 (21 November 2026)
 
 - Fixed: editing the top or bottom of a fraction in an equation wrapped it onto a second line and left the fraction bar

@@ -238,6 +238,15 @@ PageText readText(Document& d, int page) {
         FPDF_PAGEOBJECT o = api().FPDFText_GetTextObject(tp, i);
         auto it = index.find(o);
         c.obj = it == index.end() ? -1 : it->second;
+        // The size as drawn: some programs (WPS) set a large font size and scale the text down (319 x 0.05); the text
+        // page gives the font size unscaled. Of it and it scaled by the object's matrix, the one nearer the height the
+        // object takes is the size: with 319, every line of a column read as one line, its letters shuffled.
+        if (o && c.obj >= 0) {
+            FS_MATRIX m{1, 0, 0, 1, 0, 0};
+            const auto& ob = pt.objBounds[static_cast<size_t>(c.obj)];
+            const double h = ob[3] - ob[1], sc = api().FPDFPageObj_GetMatrix(o, &m) ? std::hypot(m.c, m.d) : 1.0;
+            if (h > 0 && sc > 0 && std::fabs(sc - 1) > 0.01 && std::fabs(c.size * sc - h) < std::fabs(c.size - h)) c.size *= sc;
+        }
         if (c.size <= 0) c.size = std::max(1.0, c.t - c.b);
         pt.chars.push_back(c);
     }
@@ -267,6 +276,27 @@ std::vector<TLine> linesOf(const PageText& pt, const std::vector<int>& idx) {
             L.l = std::min(L.l, c.l); L.r = std::max(L.r, c.r); L.b = std::min(L.b, c.b); L.t = std::max(L.t, c.t);
             L.size = std::max(L.size, c.size);
         } else lines.push_back({c.l, c.r, c.b, c.t, c.oy, c.size, {i}, {}});
+    }
+    // A superscript or subscript raised or lowered far enough to make a line of its own (m³, H₂O) belongs to the line
+    // whose letters it sits beside: smaller letters, within that line's height and its width.
+    for (size_t k = 0; k < lines.size(); ++k) {
+        TLine& sm = lines[k];
+        int into = -1;
+        for (size_t j : {k - 1, k + 1}) {
+            if (j >= lines.size() || j == k) continue;
+            const TLine& big = lines[j];
+            if (sm.size >= 0.88 * big.size || sm.chars.size() > 4) continue;
+            if (std::fabs(sm.base - big.base) < 0.25 * big.size || sm.base < big.base - 0.5 * big.size || sm.base > big.base + 0.75 * big.size) continue;
+            if (sm.r < big.l - 0.2 * big.size || sm.l > big.r + 0.5 * big.size) continue;
+            into = static_cast<int>(j);
+            break;
+        }
+        if (into < 0) continue;
+        TLine& L = lines[static_cast<size_t>(into)];
+        L.chars.insert(L.chars.end(), sm.chars.begin(), sm.chars.end());
+        L.l = std::min(L.l, sm.l); L.r = std::max(L.r, sm.r); L.b = std::min(L.b, sm.b); L.t = std::max(L.t, sm.t);
+        lines.erase(lines.begin() + static_cast<long>(k));
+        --k;
     }
     for (TLine& L : lines) {
         // Left to right; letters drawn at the same place (the two letters of a ligature such as "ti") keep the PDF's
@@ -362,10 +392,31 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
             for (size_t li = 0; li < lines.size(); ++li) {
                 const TLine& ln = lines[li];
                 std::wstring s;
+                // the line's own baseline: where most of its full-size letters sit (not a superscript's)
+                double lineBase = ln.base;
+                {
+                    std::map<long, int> votes;
+                    for (int ci : ln.chars) if (pt.chars[ci].size >= 0.88 * ln.size) ++votes[std::lround(pt.chars[ci].oy * 4)];
+                    int most = 0;
+                    for (const auto& [k, v] : votes) if (v > most) { most = v; lineBase = k / 4.0; }
+                }
                 for (size_t k = 0; k < ln.chars.size(); ++k) {
                     const Char& ch = pt.chars[ln.chars[k]];
-                    s += ch.ch;
-                    if (ch.spaceAfter && k + 1 < ln.chars.size()) s += L' ';
+                    // a raised, smaller letter (m³, 29°): as the superscript letter every font has, joined to its word; the
+                    // gap PDFium sees around it is not a space
+                    const bool raised = ch.size < 0.88 * ln.size && ch.oy > lineBase + 0.25 * ln.size;
+                    wchar_t c = ch.ch;
+                    if (raised) {
+                        if (c == L'1') c = 0xB9; else if (c == L'2') c = 0xB2; else if (c == L'3') c = 0xB3;
+                        else if (c == L'o' || c == L'0' || c == 0xBA) c = 0xB0;
+                        if (!s.empty() && s.back() == L' ' && k > 0 && !pt.chars[ln.chars[k - 1]].spaceAfter) s.pop_back();
+                        if (!s.empty() && s.back() == L' ' && k > 0 && pt.chars[ln.chars[k - 1]].r > ch.l - 0.5 * ln.size) s.pop_back();
+                    }
+                    s += c;
+                    const bool nextRaised = k + 1 < ln.chars.size() && pt.chars[ln.chars[k + 1]].size < 0.88 * ln.size &&
+                                            pt.chars[ln.chars[k + 1]].oy > lineBase + 0.25 * ln.size;
+                    const bool tight = k + 1 < ln.chars.size() && pt.chars[ln.chars[k + 1]].l - ch.r < 0.15 * ln.size;
+                    if (ch.spaceAfter && k + 1 < ln.chars.size() && !((raised || nextRaised) && tight)) s += L' ';
                 }
                 while (!s.empty() && s.back() == L' ') s.pop_back();
                 if (li) {
@@ -398,9 +449,40 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
             const double lg = minL - L, rg = Rr - maxR, tg = T - maxT, bg = minB - B;
             if (std::fabs(lg - rg) < std::max(2.0, 0.12 * (lg + rg)) && lg > 4) cell.align = 1;
             else cell.align = rg + 2 < lg ? 2 : 0;
+            // justified: two lines or more, starting at one edge, and all but the last ending at one edge (a word's width
+            // short of the cell's right line at most); the last one shorter
+            {
+                // the text's own lines: not a superscript's or subscript's (smaller letters raised off the line)
+                double big = 0;
+                for (const TLine& ln : lines) big = std::max(big, ln.size);
+                double left = 1e9;
+                for (const TLine& ln : lines) left = std::min(left, ln.l);
+                std::vector<const TLine*> body;
+                for (const TLine& ln : lines)
+                    if (ln.size >= 0.8 * big && (ln.l - left < 2 * big || ln.r - ln.l > 4 * big)) body.push_back(&ln);
+                if (body.size() >= 2) {
+                    const double sz = big, tol = std::max(1.0, 0.12 * sz);   // letters' own side spacing differs ("T", "a")
+                    bool sameLeft = true, sameRight = true;
+                    for (size_t li = 0; li < body.size(); ++li) {
+                        if (std::fabs(body[li]->l - body.front()->l) > tol) sameLeft = false;
+                        if (li + 1 < body.size() && std::fabs(body[li]->r - body.front()->r) > tol) sameRight = false;
+                    }
+                    // (and they end as far from the cell's right line as they start from its left one: a line only wrapped ends a
+                    // word's width short of it, or less)
+                    if (sameLeft && sameRight && body.back()->r < body.front()->r - sz &&
+                        std::fabs((Rr - body.front()->r) - (body.front()->l - L)) < std::max(2 * tol, 0.25 * (body.front()->l - L))) cell.align = 3;
+                    // lines that start at one edge and end at different places are set from the left, however even the
+                    // gaps around the longest one are
+                    else if (sameLeft && cell.align == 1) {
+                        double lo = 1e9, hi = -1e9;
+                        for (const TLine* ln : body) { lo = std::min(lo, ln->r); hi = std::max(hi, ln->r); }
+                        if (hi - lo > sz) cell.align = 0;
+                    }
+                }
+            }
             if (std::fabs(tg - bg) < std::max(2.0, 0.2 * (tg + bg))) cell.valign = 1;
             else cell.valign = tg < bg ? 0 : 2;
-            if (cell.align == 0 && lg > 0) { padSum += lg; ++padN; }
+            if ((cell.align == 0 || cell.align == 3) && lg > 0) { padSum += lg; ++padN; }
         }
     if (padN) t.pad = std::clamp(padSum / padN, 1.5, 8.0);
     // Without lines between the columns, their edges are only the middles of the gaps: a column's alignment is the edge
@@ -438,7 +520,7 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
             const double colLeft = *std::min_element(ls.begin(), ls.end());
             for (int r = 0; r < R; ++r) {
                 Cell& cell = t.at(r, c);
-                if (cell.covered || cell.colSpan != 1) continue;
+                if (cell.covered || cell.colSpan != 1 || cell.align == 3) continue;
                 cell.align = align;
                 // a cell that starts where the column starts while the others line up elsewhere (a heading over
                 // figures) stays on the left
@@ -692,7 +774,9 @@ std::vector<Table> detect(Document& d, int page) {
         if (!colsFromLines && lines.size() >= 2) t.colX = columnsFromText(lines, t.left(), t.right());
         if (!rowsFromLines && lines.size() >= 2) t.rowY = rowsFromText(lines, t.top(), t.bottom());
         if (t.rows() * t.cols() < 2) return;   // one box: a frame, not a table
-        if (!colsFromLines && t.cols() < 2) return;   // a box around a paragraph (one column of text lines)
+        // A box around a paragraph (one column of text lines, no lines between them) is not a table; one column with
+        // ruled rows is (a list drawn as a table: names, items, one per row).
+        if (!colsFromLines && t.cols() < 2 && !rowsFromLines) return;
         t.cells.assign(static_cast<size_t>(t.rows()) * t.cols(), Cell{});
         markMerges(t, ch, cv, colsFromLines, rowsFromLines);
         initRules(t, true);
@@ -1212,8 +1296,10 @@ void moveTo(Table& t, double left, double top) {
 namespace {
 
 // Breaks a cell's text into lines that fit `width`: its own line breaks, then between words.
-std::vector<std::wstring> wrap(pageobj::TextSetter& ts, const std::wstring& text, double width, bool& ok) {
+std::vector<std::wstring> wrap(pageobj::TextSetter& ts, const std::wstring& text, double width, bool& ok, std::vector<char>* ends = nullptr) {
     std::vector<std::wstring> out;
+    if (ends) ends->clear();
+    auto put = [&](const std::wstring& l, bool end) { out.push_back(l); if (ends) ends->push_back(end ? 1 : 0); };
     ok = true;
     size_t p = 0;
     while (p <= text.size()) {
@@ -1229,18 +1315,18 @@ std::vector<std::wstring> wrap(pageobj::TextSetter& ts, const std::wstring& text
                 const std::wstring cand = line.empty() ? word : line + L" " + word;
                 const double w = ts.width(cand);
                 if (w < 0) { ok = false; return {}; }
-                if (w > width && !line.empty()) { out.push_back(line); line = word; }
+                if (w > width && !line.empty()) { put(line, false); line = word; }
                 else line = cand;
                 any = true;
             }
             if (sp == std::wstring::npos) break;
             q = sp + 1;
         }
-        if (any || !line.empty() || para.empty()) out.push_back(line);
+        if (any || !line.empty() || para.empty()) put(line, true);
         if (e == std::wstring::npos) break;
         p = e + 1;
     }
-    while (!out.empty() && out.back().empty()) out.pop_back();
+    while (!out.empty() && out.back().empty()) { out.pop_back(); if (ends) ends->pop_back(); }
     return out;
 }
 
@@ -1369,14 +1455,47 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
     // 0. cells that keep their own text objects: not changed, and their text still fits across the cell
     std::vector<char> keep(static_cast<size_t>(R) * C, 0);
     std::set<int> keptObjs;
+    // Cells whose text objects are shared (Word prints a row's cells in one text object) are kept or set again together:
+    // kept when none of them changed, so an edit in one row does not set the other rows again (losing their superscripts,
+    // spacing and alignment as found).
+    std::vector<char> unchanged(static_cast<size_t>(R) * C, 0);
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < C; ++c) {
             const Cell& x = t0.at(r, c);
-            if (x.covered || !x.found || x.sharedObjs || x.objs.empty() || t0.scanned) continue;
+            if (x.covered || !x.found || x.objs.empty() || t0.scanned) continue;
             const bool same = x.text == x.origText && std::fabs(x.size - x.origSize) < 0.01 && x.family == x.origFamily && x.bold == x.origBold &&
                               x.italic == x.origItalic && x.color == x.origColor && x.align == x.origAlign && x.valign == x.origValign;
             const double w = t0.colX[c + x.colSpan] - t0.colX[c];
             if (!same || w + 0.5 < x.textW + std::min(x.fR - x.fL - x.textW, 2.0)) continue;
+            unchanged[static_cast<size_t>(r) * C + c] = 1;
+        }
+    std::vector<int> group(static_cast<size_t>(R) * C);
+    for (size_t k = 0; k < group.size(); ++k) group[k] = static_cast<int>(k);
+    std::function<int(int)> root = [&](int k) { return group[size_t(k)] == k ? k : group[size_t(k)] = root(group[size_t(k)]); };
+    {
+        std::map<int, int> ownerOf;   // text object -> a cell holding it
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c) {
+                const Cell& x = t0.at(r, c);
+                if (x.covered) continue;
+                for (int o : x.objs) {
+                    auto it = ownerOf.find(o);
+                    if (it == ownerOf.end()) ownerOf[o] = r * C + c;
+                    else group[size_t(root(r * C + c))] = root(it->second);
+                }
+            }
+    }
+    std::vector<char> groupOk(group.size(), 1);
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            const Cell& x = t0.at(r, c);
+            if (x.covered) continue;
+            if (!unchanged[size_t(r) * C + c] && !x.objs.empty()) groupOk[size_t(root(r * C + c))] = 0;
+        }
+    for (int r = 0; r < R; ++r)
+        for (int c = 0; c < C; ++c) {
+            const Cell& x = t0.at(r, c);
+            if (!unchanged[size_t(r) * C + c] || !groupOk[size_t(root(r * C + c))]) continue;
             keep[static_cast<size_t>(r) * C + c] = 1;
             keptObjs.insert(x.objs.begin(), x.objs.end());
         }
@@ -1384,7 +1503,7 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
     d.beginChange(L"Edit a table");
     pg = d.page(t0.page);
     std::vector<FPDF_PAGEOBJECT> text, graphics;
-    struct Laid { int r, c; std::vector<std::wstring> lines; std::unique_ptr<pageobj::TextSetter> ts; double lineStep, size; };
+    struct Laid { int r, c; std::vector<std::wstring> lines; std::unique_ptr<pageobj::TextSetter> ts; double lineStep, size; std::vector<char> ends; };
     std::vector<Laid> laid;
     auto fail = [&](const std::wstring& reason) {
         destroyAll(text); destroyAll(graphics);
@@ -1440,7 +1559,8 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
                 if (!ts->ok()) return fail(L"The text of a cell could not be set in its font.");
                 const double w = t.colX[c + cell.colSpan] - t.colX[c] - 2 * t.pad;
                 bool ok = true;
-                std::vector<std::wstring> lines = wrap(*ts, cellText, std::max(4.0, w), ok);
+                std::vector<char> ends;
+                std::vector<std::wstring> lines = wrap(*ts, cellText, std::max(4.0, w), ok, &ends);
                 if (!ok) return fail(L"A cell holds letters that cannot be set (only letters, numbers and symbols of Western languages can be typed).");
                 const double step = size * 1.2;
                 const int last = r + cell.rowSpan - 1;
@@ -1454,7 +1574,7 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
                     h = have + std::max(0.0, body - before);
                 } else h = body + 2;   // a new or empty cell: its text and a little room
                 if (h > have + 0.01) need[last] = std::max(need[last], (t.rowY[last] - t.rowY[last + 1]) + (h - have));
-                laid.push_back({r, c, std::move(lines), std::move(ts), step, size});
+                laid.push_back({r, c, std::move(lines), std::move(ts), step, size, std::move(ends)});
             }
         grew = 0;
         for (int r = 0; r < R; ++r) {
@@ -1483,13 +1603,16 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
         // a cell whose text still takes the lines it had sits where it was found
         const double rowTop = t.rowY[L.r], rowsH = rowTop - t.rowY[L.r + cell.rowSpan];
         if (cell.baseOff > 0 && static_cast<int>(L.lines.size()) == cell.lines && cell.baseOff < rowsH) y = rowTop - cell.baseOff;
-        for (const std::wstring& line : L.lines) {
+        for (size_t li = 0; li < L.lines.size(); ++li) {
+            const std::wstring& line = L.lines[li];
             if (!line.empty()) {
                 const double w = L.ts->width(line);
                 double x = cl;
                 if (cell.align == 1) x = (cl + cr) / 2 - w / 2;
                 else if (cell.align == 2) x = cr - w;
-                std::vector<FPDF_PAGEOBJECT> objs = L.ts->make(line, x, y);
+                // justified: every line but a paragraph's last reaches both edges
+                const bool spread = cell.align == 3 && li < L.ends.size() && !L.ends[li];
+                std::vector<FPDF_PAGEOBJECT> objs = spread ? L.ts->make(line, x, y, cr - cl) : L.ts->make(line, x, y);
                 if (objs.empty()) return fail(L"The text of a cell could not be set.");
                 text.insert(text.end(), objs.begin(), objs.end());
             }

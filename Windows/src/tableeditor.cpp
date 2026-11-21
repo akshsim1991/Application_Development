@@ -417,7 +417,7 @@ void build(State& s) {
         x += w + 10;
         return c;
     };
-    label(L"Align", 40); s.align = combo(ID_ALIGN, 80, {L"Left", L"Centre", L"Right"});
+    label(L"Align", 40); s.align = combo(ID_ALIGN, 80, {L"Left", L"Centre", L"Right", L"Justified"});
     label(L"Vertical", 52); s.valign = combo(ID_VALIGN, 80, {L"Top", L"Middle", L"Bottom"});
     s.bold = make(s, L"BUTTON", L"Bold", WS_TABSTOP | BS_AUTOCHECKBOX, x, 46, 54, 26, ID_BOLD); x += 60;
     label(L"Size", 32); s.size = make(s, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL, x, 48, 44, 22, ID_SIZE, WS_EX_CLIENTEDGE); x += 54;

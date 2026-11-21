@@ -1300,3 +1300,73 @@ below it down", then "The paragraph could not be changed", and the page's backgr
 - **Published:** 2.22.1 on 21 November (Windows, Mac, Android 64-bit and 32-bit; downloads checked against
   latest.json). The Windows suites could not run on this machine that day (Wine itself failed to start); the Windows
   app is 2.22.0 with a new version number.
+
+## Version 2.22.2: editing PDFs made by WPS Office and by Word through Microsoft Print to PDF
+
+Reported 21 November by a user (Mamatha), with two files and screenshots: a list of names in a table (WPS Office), and
+an internal assessment question paper (Word, printed with Microsoft Print to PDF). "In the edit mode you cannot delete
+the image", "the text is going in the next line", "editing the table is a huge blunder", "when you click, the texts are
+not at all formatted". Every case below was reproduced with the engine on her files before it was fixed, and checked
+on them after.
+
+### B-094 A typed space drawn as a box - High (all apps)
+- **Root cause:** an embedded font may hold only the letters the document uses. Which ones it holds was read from the
+  page's text, which includes the spaces PDFium infers between words; the WPS fonts have no space, so a space was set in
+  the font and drawn as its empty glyph (a box; "SHAHID^@MAHMADRAFIQ" when read back).
+- **Fix:** the font's letters are taken only from characters really drawn in it; words in a font without a space are set
+  as separate pieces a space's width apart.
+
+### B-095 A WPS list drawn as a table: not found, letters interleaved, one paragraph per column, "SHAH I D" - High (all apps)
+- **Root cause:** a one-column table was not taken as a table; WPS draws each letter as its own object at a large size
+  scaled down by its matrix, so sizes and gaps were read 20 times too large; ruled rows were not paragraph breaks.
+- **Fix:** a ruled one-column list is a table; letter sizes include the matrix; a line drawn between two lines ends a
+  paragraph; spaces between letters come from the text page.
+
+### B-096 Delete did nothing on a picture picked in edit mode - High (Windows)
+- **Root cause:** edit mode picks pictures (frame and handles), but Delete, the picture menu and the picture actions
+  checked for the Move tool only.
+- **Fix:** one rule for "a tool that picks objects" (Move and edit mode) used by all of them. Not run under Wine (Wine
+  fails to start on this machine); the Windows build compiles.
+
+### B-097 A heading wrapped after a few letters were added - High (all apps)
+- **Root cause:** a line on its own could grow only as far as other lines starting at its left edge reach; a centred
+  heading has none, so its width was its own.
+- **Fix:** it grows into the free space to its right, up to the right edge of the page's content, not onto anything
+  overlapping its letters. Verified: "DEPARTMENT OF MECHANICAL ENGINEERING asd" stays on one line.
+
+### B-098 A longer paragraph tore apart the table below it - Critical (all apps)
+- **Root cause:** only objects under the paragraph's own column moved down; a wider table had half its cells moved
+  ("Course" stayed, "Name:" moved; rules broken).
+- **Fix:** everything below is considered; a table moves whole (refused, with a reason, when the table starts beside
+  the paragraph); objects on one line a few points apart move together (the footer's page number).
+
+### B-099 Every font of a Microsoft Print to PDF file shown as Serif and bold - High (all apps)
+- **Root cause:** that printer names fonts "CIDFont+F1" ... and gives them serif flags and a heavy stem width.
+- **Fix:** for such placeholder names the font's own name is read from its embedded file's name table (Calibri,
+  TimesNewRoman-Bold ...) and the style taken from it.
+
+### B-100 Table text edited as page lines, across cells and rows - Critical (all apps)
+- **Root cause:** edit mode grouped the page's lines, and a line ran across the cells of a row ("1 Define ... CO1 L2");
+  a cell's lines were split at a superscript, and joined with the next row.
+- **Fix:** in a table found on the page, each cell is one block: its outline, its whole text, wrapped at its lines, set
+  again by the table engine (the row grows, the table moves what is below it).
+
+### B-101 Changing a cell set other rows again, losing superscripts and alignment - High (all apps)
+- **Root cause:** a cell whose text object it shares with another cell (Word prints a row in one object) was always set
+  again.
+- **Fix:** cells sharing objects are kept together when none of them changed.
+
+### B-102 Justified cells read as centred, set again centred - High (all apps)
+- **Root cause:** a cell's alignment came from the gaps beside its text; full lines have equal gaps, so "centred". The
+  table engine had no justified text.
+- **Fix:** justified cells are recognised (lines starting and ending at the same places, as far from both lines, the
+  last shorter; superscripts left out) and set justified; the table editors offer Justified.
+
+### B-103 Superscripts flattened in a changed cell - Medium (all apps)
+- **Fix:** a raised, smaller 1, 2, 3, o or 0 becomes ¹ ² ³ ° (in every font); a superscript raised far enough to make a
+  line of its own is joined to its line first.
+
+- **Tests:** tests/engine/cli_check.sh has a question paper made like hers (fonts renamed CIDFont+F1 with serif and bold
+  flags, a ruled table with justified cells and m³): no outline crosses a cell's line, a cell edits whole in its own font,
+  stays justified with m³, the other row is not set again, a heading grows on its line, a wrapping heading moves the
+  whole table. All suites pass (cli_check 164, engine matches Windows 47, Android bridge 50).

@@ -77,7 +77,7 @@ int run(const std::vector<std::wstring>& files) {
                         std::wstring x = cell.covered ? L"^" : cell.text;
                         for (auto& ch : x) if (ch == L'\n') ch = L'/';
                         if (!cell.covered && (cell.rowSpan > 1 || cell.colSpan > 1)) x += L"{" + std::to_wstring(cell.rowSpan) + L"x" + std::to_wstring(cell.colSpan) + L"}";
-                        if (!cell.covered && cell.align) x += cell.align == 1 ? L"<c>" : L"<r>";
+                        if (!cell.covered && cell.align) x += cell.align == 1 ? L"<c>" : cell.align == 3 ? L"<j>" : L"<r>";
                         if (!cell.covered && cell.bold) x += L"<b>";
                         if (!cell.covered && cell.fill != tables::kNoFill) x += L"<f>";
                         if (!cell.covered && !cell.text.empty()) { wchar_t sz[16]; swprintf(sz, 16, L"<%.1f>", cell.size); x += sz; }

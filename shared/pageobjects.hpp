@@ -171,6 +171,8 @@ public:
     // The text objects for one line, its baseline starting at (x, y) in page coordinates; not yet on the page. Empty when
     // the line cannot be set.
     std::vector<FPDF_PAGEOBJECT> make(const std::wstring& line, double x, double y);
+    // The same, justified: the words spread so that the line ends `width` from x.
+    std::vector<FPDF_PAGEOBJECT> make(const std::wstring& line, double x, double y, double width);
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;

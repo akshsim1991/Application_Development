@@ -174,6 +174,8 @@ struct App {
 } app;
 
 Document* activeDoc() { return app.active >= 0 ? app.tabs[app.active].get() : nullptr; }
+// The tools that pick pictures and other page objects: the Move tool, and edit mode (a click on a picture picks it there).
+bool picksObjects() { return app.tool == Viewer::Tool::Select || app.tool == Viewer::Tool::EditAll; }
 
 // Sizes are designed at 96 dots per inch and scaled to the window's screen.
 int px(int v) { return MulDiv(v, app.dpi, 96); }
@@ -1583,7 +1585,7 @@ void setTool(Viewer::Tool t) {
     if (editRowShown() != rowWas) { rowWas = editRowShown(); relayoutChildren(); }
     InvalidateRect(app.wnd, nullptr, FALSE);   // the toolbar group of the tool and the status bar show it
     if (const wchar_t* hint = toolHint(app.tool)) notice(hint);
-    if (app.tool != Viewer::Tool::Select) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
+    if (!picksObjects()) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); }
     applyStyle();
 }
 
@@ -1977,7 +1979,7 @@ void onViewerEvent(const Viewer::Event& e) {
                     if (mk.page == e.page && e.pts[0].x >= mk.left && e.pts[0].x <= mk.right && e.pts[0].y >= mk.bottom && e.pts[0].y <= mk.top) markIdx = static_cast<int>(i);
                 }
             if (markIdx >= 0) { AppendMenuW(m, MF_STRING, M_RED_REMOVE, L"Remove this redaction mark"); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
-            if (app.tool == Viewer::Tool::Select && app.sel.page >= 0) { addPictureItems(m); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
+            if (picksObjects() && app.sel.page >= 0) { addPictureItems(m); AppendMenuW(m, MF_SEPARATOR, 0, nullptr); }
             const bool hasSel = app.viewer.hasSelection();
             auto add = [&](UINT id, const wchar_t* t, bool on = true) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
             auto sep = [&] { AppendMenuW(m, MF_SEPARATOR, 0, nullptr); };
@@ -4903,7 +4905,7 @@ void measureDraw(const Viewer::Event& e) {
 // ---- picture tools (on the object picked with the Move tool) ----
 void addPictureItems(HMENU m) {
     Document* d = activeDoc();
-    const bool any = d && app.tool == Viewer::Tool::Select && app.sel.page >= 0 && !app.sel.objects.empty();
+    const bool any = d && picksObjects() && app.sel.page >= 0 && !app.sel.objects.empty();
     const bool pic = any && pageobj::isPicture(*d, app.sel.page, app.sel.objects);
     auto add = [&](UINT id, const wchar_t* t, bool on) { AppendMenuW(m, MF_STRING | (on ? 0 : MF_GRAYED), id, t); };
     add(PX_ROT_R, L"Turn right (clockwise)", any);
@@ -4955,8 +4957,8 @@ void pictureAction(int cmd) {
         showSelection();
         return;
     }
-    if (app.tool != Viewer::Tool::Select || app.sel.page < 0 || app.sel.objects.empty()) {
-        if (app.tool != Viewer::Tool::Select) setTool(Viewer::Tool::Select);
+    if (!picksObjects() || app.sel.page < 0 || app.sel.objects.empty()) {
+        if (!picksObjects()) setTool(Viewer::Tool::Select);
         MessageBoxW(app.wnd, L"First click the picture (or paragraph or table) to pick it. The Move tool is now on.", kAppName, MB_OK | MB_ICONINFORMATION);
         return;
     }
@@ -7528,7 +7530,7 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case VK_F2: setTool(Viewer::Tool::EditAll); return 0;
                 case VK_F3: stepMatch(shift ? -1 : 1); return 0;
                 case VK_DELETE:
-                    if (app.tool == Viewer::Tool::Select && app.sel.page >= 0) {
+                    if (picksObjects() && app.sel.page >= 0) {   // the picture picked (Move tool or edit mode)
                         if (pageobj::deleteGroup(*d, app.sel.page, app.sel.objects)) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); app.viewer.documentChanged(); app.sidebar.refresh(); refresh(); }
                         return 0;
                     }

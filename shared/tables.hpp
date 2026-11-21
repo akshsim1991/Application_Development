@@ -27,7 +27,7 @@ struct Cell {
     bool bold = false, italic = false;
     COLORREF color = RGB(0, 0, 0);
     COLORREF fill = kNoFill;          // background
-    int align = 0;                    // 0 left, 1 centre, 2 right
+    int align = 0;                    // 0 left, 1 centre, 2 right, 3 justified
     int valign = 1;                   // 0 top, 1 middle, 2 bottom
     int like = -1;                    // a text object of the cell when found (its font is used again), else -1
     double baseOff = -1;              // from the cell's top to its first baseline as found (kept while the text fits as it did)

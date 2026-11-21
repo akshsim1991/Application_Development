@@ -2,6 +2,35 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.22.2 (21 November 2026)
+
+Editing fixes for two PDFs a user sent: a name list made with WPS Office, and a question paper made in Word and printed
+with Microsoft Print to PDF. All three apps (the engine is shared).
+
+- Fixed: a space typed into text set in a font the PDF holds only some letters of (WPS embeds fonts without a space)
+  was drawn as a box. Words are now set apart by the space's width instead.
+- Fixed: in edit mode a picture could be picked but Delete (and the picture menu: turn, flip, bring to front) did nothing
+  (Windows); they worked only with the Move tool.
+- Fixed: a heading on a line of its own wrapped onto a second line as soon as a few letters were added. It now grows
+  into the free space to its right, as far as the page's content goes and not onto anything beside it.
+- Fixed: when a paragraph got longer, only what was under it in its own column moved down, so a wider table below was
+  torn apart ("Course" left behind, "Name:" moved). A table now moves whole, and what is on the same line as something
+  that moves (a footer's page number) moves with it.
+- Fixed: text in a table was outlined and edited by lines of the page, which ran across the cells' lines ("1 Define
+  turbo machine ... CO1 L2") and on into the next row. A click in a cell now edits that cell: all its text, wrapped at its
+  lines, its row growing when needed.
+- Fixed: the text editor showed "Serif" and bold for every font of a PDF printed with Microsoft Print to PDF (it names
+  them all "CIDFont+F1" ... and describes them as serif and heavy). The font's real name (Calibri, Times New Roman
+  Bold ...) is now read from the font file inside the PDF.
+- Fixed: changing one cell set other rows of the table again (their text sharing a text object with another cell), which
+  lost their superscripts and alignment. Cells that did not change are now left exactly as they were.
+- New: justified text in table cells: read from the page (a question paper's questions), kept when a cell is changed,
+  and offered in the table editor (Align: Justified).
+- Fixed: superscripts in a changed cell became plain letters ("1.1m3 /s", "20 0"). They now become ³, ², ¹ and ° (m³,
+  20°), letters every font has.
+- Fixed (WPS tables, found with the same file): a list drawn as a one-column table was not found as a table; letters of
+  neighbouring words were interleaved; a whole column was taken as one paragraph; "SHAHID" was read as "SHAH I D".
+
 ## 2.22.1 (21 November 2026)
 
 - Fixed (Android): on Android 15 the page went under the title bar (its first lines hidden) and the tools under the

@@ -624,5 +624,60 @@ L=[ast.literal_eval(l) for l in open('$W/ps2pos.txt') if l.startswith('(')]
 f=[l for l in L if 'Fillet' in l[2]][0]; m=[l for l in L if l[2]=='Module 2'][0]
 sys.exit(0 if f[0] < 225 and abs(m[0]-8.0)<3 else 1)\""
 
+echo "== a question paper printed from Word (fonts named CIDFont+F1, a ruled table with justified cells and m³)"
+python3 - "$W/qp.pdf" <<'PY'
+import sys, os, pikepdf
+from reportlab.lib.pagesizes import A4
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Table, TableStyle, Spacer
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_JUSTIFY, TA_CENTER
+from reportlab.lib import colors
+for f in ['/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf', '/System/Library/Fonts/Supplemental/Arial.ttf', 'C:/Windows/Fonts/arial.ttf']:
+    if os.path.exists(f): pdfmetrics.registerFont(TTFont('QS', f)); break
+head = ParagraphStyle('h', fontName='QS', fontSize=14, alignment=TA_CENTER)
+body = ParagraphStyle('b', fontName='QS', fontSize=11.5, leading=14, alignment=TA_JUSTIFY)
+mid = ParagraphStyle('m', fontName='QS', fontSize=11.5, leading=14, alignment=TA_CENTER)
+q1 = 'A 1:4 scale turbine model is tested under a head of 10m. The prototype is required to work under a head of 30m and to run at 425rpm. Estimate the speed if it uses 1.1m<super>3</super>/s of water at this speed and suggest the type of turbine'
+q2 = 'Derive an expression for maximum blade efficiency for a single stage impulse turbine with the help of a velocity diagram drawn to scale'
+rows = [[Paragraph('Sl. No.', mid), Paragraph('Question', mid), Paragraph('CO', mid), Paragraph('Marks', mid)],
+        [Paragraph('1', mid), Paragraph(q1, body), Paragraph('CO1', mid), Paragraph('5', mid)],
+        [Paragraph('2', mid), Paragraph(q2, body), Paragraph('CO3', mid), Paragraph('5', mid)]]
+t = Table(rows, colWidths=[40, 300, 50, 60])
+t.setStyle(TableStyle([('GRID', (0, 0), (-1, -1), 0.5, colors.black), ('VALIGN', (0, 0), (-1, -1), 'TOP')]))
+doc = SimpleDocTemplate(sys.argv[1] + '.tmp', pagesize=A4, topMargin=60)
+doc.build([Paragraph('DEPARTMENT OF MECHANICAL ENGINEERING', head), Spacer(1, 6), t, Spacer(1, 30), Paragraph('End of paper', mid)])
+# as Microsoft Print to PDF names and describes its fonts: no name, "serif", stems that read as bold
+p = pikepdf.open(sys.argv[1] + '.tmp')
+for k, f in p.pages[0].Resources.Font.items():
+    fd = f.get('/FontDescriptor')
+    if fd is None and '/DescendantFonts' in f: fd = f.DescendantFonts[0].FontDescriptor
+    if fd is None: continue   # a standard font reportlab adds
+    f.BaseFont = pikepdf.Name('/CIDFont+F1'); fd.FontName = pikepdf.Name('/CIDFont+F1'); fd.Flags = 6; fd.StemV = 889
+p.save(sys.argv[1])
+PY
+run --blocks "$W/qp.pdf" "$W/qpblocks.txt"
+check "edit mode: no outline runs across a cell's line (question, CO and marks apart)" "! grep -E 'turbine.*CO1|^text [0-9 ]+ same 1 A 1:4' '$W/qpblocks.txt' && grep -q 'same A 1:4 scale' '$W/qpblocks.txt'"
+qx="$(python3 -c "
+b=[l for l in open('$W/qpblocks.txt') if 'same A 1:4' in l][0].split();print((float(b[1])+float(b[3]))/2, (float(b[2])+float(b[4]))/2)" 2>/dev/null)"
+run --paratest "$W/qp.pdf" "$W/qp1.pdf" "$W/qp1.txt" $qx append "Also find the specific speed."
+check "a click in a cell edits the whole cell, in its own font (Microsoft's CIDFont+F1 named from the font inside, not serif and bold)" "grep -q 'align=3' '$W/qp1.txt' && grep -q 'family=0 bold=0 italic=0' '$W/qp1.txt' && grep -Eq 'font=(LiberationSans|Arial)' '$W/qp1.txt' && grep -q 'text=A 1:4 scale.*1.1m³/s of water.*type of turbine$' '$W/qp1.txt'"
+run --tables "$W/qp.pdf" "$W/qp0t.txt"
+run --tables "$W/qp1.pdf" "$W/qp1t.txt"
+check "the cell is set again justified, with m³ and the new words; the table still has its rows and columns" "grep -q '|A 1:4 scale.*1.1m³/s.*specific speed.<j>' '$W/qp1t.txt' && [ \"\$(grep -o 'rows [0-9]* cols [0-9]*' '$W/qp0t.txt')\" = \"\$(grep -o 'rows [0-9]* cols [0-9]*' '$W/qp1t.txt')\" ]"
+check "the other row is not set again" "[ \"\$(grep '|2<' '$W/qp0t.txt')\" = \"\$(grep '|2<' '$W/qp1t.txt')\" ]"
+hy="$(python3 -c "
+b=[l for l in open('$W/qpblocks.txt') if 'DEPARTMENT' in l][0].split();print((float(b[1])+float(b[3]))/2, (float(b[2])+float(b[4]))/2)" 2>/dev/null)"
+run --paratest "$W/qp.pdf" "$W/qp2.pdf" "$W/qp2.txt" $hy append "asd"
+check "a heading a few letters longer stays on one line" "text '$W/qp2.pdf' | grep -q 'DEPARTMENT OF MECHANICAL ENGINEERING asd'"
+run --paratest "$W/qp.pdf" "$W/qp3.pdf" "$W/qp3.txt" $hy append "AND AEROSPACE ENGINEERING AND MANUFACTURING TECHNOLOGY"
+run --tables "$W/qp3.pdf" "$W/qp3t.txt"
+check "a heading that wraps moves the whole table below it down (not only the part under the heading)" "[ \"\$(grep '^  |' '$W/qp0t.txt')\" = \"\$(grep '^  |' '$W/qp3t.txt')\" ] && python3 -c \"
+import re,sys
+a=[float(x) for x in re.search(r'table ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)', open('$W/qp0t.txt').read()).groups()]
+b=[float(x) for x in re.search(r'table ([\d.]+) ([\d.]+) ([\d.]+) ([\d.]+)', open('$W/qp3t.txt').read()).groups()]
+d=a[1]-b[1]; sys.exit(0 if d > 5 and abs((a[3]-b[3])-d) < 0.5 and abs(a[0]-b[0]) < 0.5 else 1)\""
+
 rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

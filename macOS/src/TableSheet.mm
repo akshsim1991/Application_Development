@@ -106,7 +106,7 @@ using form::ws;
     addButton(@"Split", ^{ tables::split(*t, rowIndex(), colIndex()); [grid rebuild]; });
     addButton(@"Bold", ^{ int ar, ac; tables::anchorOf(*t, rowIndex(), colIndex(), ar, ac); t->at(ar, ac).bold = !t->at(ar, ac).bold; [grid rebuild]; });
     NSPopUpButton* align = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:YES];
-    [align addItemsWithTitles:@[ @"Align", @"Left", @"Centre", @"Right" ]];
+    [align addItemsWithTitles:@[ @"Align", @"Left", @"Centre", @"Right", @"Justified" ]];
     NSPopUpButton* borders = [[NSPopUpButton alloc] initWithFrame:NSZeroRect pullsDown:YES];
     [borders addItemsWithTitles:@[ @"Borders", @"All lines", @"Outside only", @"Rows only", @"No lines" ]];
     for (NSPopUpButton* p in @[ align, borders ]) { p.target = p; p.action = @selector(featherRun:); }

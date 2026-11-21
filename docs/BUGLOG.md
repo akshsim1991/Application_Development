@@ -1382,3 +1382,7 @@ on them after.
 - **Tests:** cli_check.sh makes a copy of the font with every letter's ink moved by up to 12% of an em, the widths kept;
   the old engine read the cell as centred, the new one as justified. The same cell checked in Liberation Sans, DejaVu
   Sans, FreeSans, Carlito and Liberation Serif. All suites pass (cli_check 165, engine matches Windows, Android bridge).
+
+**Published:** 2.22.2 for Windows and Android first (21 November, at the user's request, while the Mac build ran), then
+the Mac version from the same commit (1a9f25e) a few minutes later. The three downloads match latest.json (size and
+SHA-256); the 2.22.1 files stay one release longer.

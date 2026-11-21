@@ -106,7 +106,37 @@ std::vector<Source> sources(const std::string& url) {
     out.push_back({"https://cdn.jsdelivr.net/gh/" + part[0] + "/" + part[1] + "@" + part[2] + "/" + rest, "", "cdn.jsdelivr.net"});
     out.push_back({"https://api.github.com/repos/" + part[0] + "/" + part[1] + "/contents/" + rest + "?ref=" + part[2],
                    "application/vnd.github.raw", "api.github.com"});
+    // Where raw.githubusercontent.com is blocked and GitHub's API has run out of requests (many people behind one address),
+    // only jsDelivr answers, and its copy of the branch may be hours old ("you have the newest version" though a newer one
+    // is out). Asking it which commit the branch is at, then for the file at that commit, is always fresh.
+    // GitHub's own feed of the branch's commits (github.com: reachable where raw.githubusercontent.com is blocked, and not
+    // counted against the API's limit) names the newest commit; the file at that commit comes from jsDelivr, unchanged
+    // forever once published. jsDelivr's own answer to which commit is newest is asked too.
+    out.push_back({"https://github.com/" + part[0] + "/" + part[1] + "/commits/" + part[2] + ".atom", "", "github.com",
+                   part[0] + "/" + part[1] + "|" + rest});
+    out.push_back({"https://data.jsdelivr.com/v1/packages/gh/" + part[0] + "/" + part[1] + "/resolved?specifier=" + part[2], "",
+                   "data.jsdelivr.com", part[0] + "/" + part[1] + "|" + rest});
     return out;
+}
+
+std::string pinnedUrl(const Source& s, const std::string& resolved) {
+    const size_t bar = s.pinnedPath.find('|');
+    if (bar == std::string::npos) return "";
+    std::string sha;
+    if (const size_t c = resolved.find("Commit/"); c != std::string::npos) {   // the commit feed: its first (newest) entry
+        size_t e = c + 7;
+        while (e < resolved.size() && std::isxdigit(static_cast<unsigned char>(resolved[e]))) ++e;
+        sha = resolved.substr(c + 7, e - c - 7);
+    } else {   // jsDelivr: {"version": "<commit>"}
+        const size_t k = resolved.find("\"version\"");
+        if (k == std::string::npos) return "";
+        const size_t q1 = resolved.find('"', resolved.find(':', k) + 1);
+        const size_t q2 = q1 == std::string::npos ? q1 : resolved.find('"', q1 + 1);
+        if (q2 == std::string::npos) return "";
+        sha = resolved.substr(q1 + 1, q2 - q1 - 1);
+    }
+    if (sha.size() < 7 || sha.find_first_not_of("0123456789abcdef") != std::string::npos) return "";
+    return "https://cdn.jsdelivr.net/gh/" + s.pinnedPath.substr(0, bar) + "@" + sha + "/" + s.pinnedPath.substr(bar + 1);
 }
 
 int compareVersions(const std::string& a, const std::string& b) {

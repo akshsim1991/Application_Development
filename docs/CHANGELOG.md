@@ -2,6 +2,12 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.23.1 (21 November 2026)
+
+- Fixed: Help > Update to new version said "you have the newest version" where raw.githubusercontent.com is blocked and
+  GitHub's API has run out of requests (many people share one address), because the jsDelivr mirror's copy of the version
+  file can be hours old. The app now also asks jsDelivr which commit is the newest and reads the file at that commit.
+
 ## 2.23.0 "Explorer" (21 November 2026)
 
 Editing that holds up on PDFs from other programs, found by editing real files from six programs.

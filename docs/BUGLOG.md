@@ -1446,3 +1446,11 @@ kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user
 
 - **Tests:** tests/engine/realworld.sh, 24 checks (15 on public files run in the Mac build); cli_check 165, engine matches
   Windows, Android bridge: all pass.
+
+### B-113 "You have the newest version" though 2.23.0 was out - High (Windows and Mac)
+- **Found:** the user's PC (India) kept saying 2.22.2 was the newest after 2.23.0 was published.
+- **Cause:** raw.githubusercontent.com did not answer there and GitHub's API refused (60 requests an hour per address,
+  shared by many people), so the only answer was jsDelivr's copy of the branch, which may be up to 12 hours old.
+- **Fix (2.23.1):** a fourth source asks jsDelivr which commit the branch is at (data.jsdelivr.com) and reads the version
+  file at that commit, which is never an old copy; it counts as a fresh answer. Copies older than 2.23.1 still read the old
+  mirror copy until it refreshes, so 2.23.1 is installed once from the download page.

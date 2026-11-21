@@ -34,8 +34,13 @@ struct Source {
     std::string url;
     std::string accept;   // the Accept header to send ("" for none)
     std::string host;     // for messages
+    // "data.jsdelivr.com": `url` asks jsDelivr which commit the branch is at; the file is then fetched from that commit
+    // (pinnedUrl), which is never an old copy. jsDelivr's copy of the branch itself may be hours old.
+    std::string pinnedPath;   // owner/repo and the file's path, for pinnedUrl
 };
 std::vector<Source> sources(const std::string& url);
+// The file at the commit jsDelivr's answer (`resolved`, its JSON) names, or "" when it names none.
+std::string pinnedUrl(const Source& s, const std::string& resolved);
 
 // Reads latest.json. False when it is not a version file.
 bool parse(const std::string& json, Release& out);

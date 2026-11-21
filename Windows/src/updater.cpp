@@ -122,20 +122,38 @@ bool fetchFastest(const std::string& url, std::vector<unsigned char>& out, std::
             if (late) Sleep(20000);
             std::vector<unsigned char> d;
             std::wstring e;
-            const bool ok = fetch(src.url, src.accept, d, e, nullptr);
+            bool ok = fetch(src.url, src.accept, d, e, nullptr);
+            if (ok && !src.pinnedPath.empty()) {   // jsDelivr named the branch's commit: the file at that commit
+                const std::string at = update::pinnedUrl(src, std::string(d.begin(), d.end()));
+                d.clear();
+                ok = !at.empty() && fetch(at, "", d, e, nullptr);
+                if (at.empty()) e = L"jsDelivr did not say which commit is the newest";
+            }
             std::lock_guard<std::mutex> l(sh->m);
             sh->state[i] = ok ? 1 : 2;
             if (ok) sh->data[i] = std::move(d); else sh->why[i] = e;
             sh->cv.notify_all();
         }).detach();
     }
-    auto isJsDelivr = [&](size_t i) { return sources[i].host == "cdn.jsdelivr.net"; };
+    // jsDelivr's answers may be behind (its copy of the branch, its idea of the newest commit): taken only when no fresh
+    // server answers, and then the newest version any of them gives
+    auto isJsDelivr = [&](size_t i) { return sources[i].host.find("jsdelivr") != std::string::npos; };
     std::unique_lock<std::mutex> l(sh->m);
     auto best = [&]() -> int {   // a fresh server that answered, else -1
         for (size_t i = 0; i < sources.size(); ++i) if (sh->state[i] == 1 && !isJsDelivr(i)) return static_cast<int>(i);
         return -1;
     };
-    auto any = [&]() -> int { for (size_t i = 0; i < sources.size(); ++i) if (sh->state[i] == 1) return static_cast<int>(i); return -1; };
+    auto any = [&]() -> int {
+        int pick = -1;
+        std::string top;
+        for (size_t i = 0; i < sources.size(); ++i) {
+            if (sh->state[i] != 1) continue;
+            update::Release r;
+            const std::string v = update::parse(std::string(sh->data[i].begin(), sh->data[i].end()), r) ? r.version : "";
+            if (pick < 0 || (!v.empty() && (top.empty() || update::compareVersions(v, top) > 0))) { pick = static_cast<int>(i); top = v; }
+        }
+        return pick;
+    };
     auto allDone = [&]() { for (int s2 : sh->state) if (s2 == 0) return false; return true; };
     sh->cv.wait(l, [&] { return best() >= 0 || any() >= 0 || allDone(); });
     if (best() < 0 && any() >= 0) sh->cv.wait_for(l, std::chrono::seconds(2), [&] { return best() >= 0 || allDone(); });
@@ -158,6 +176,14 @@ bool download(const std::string& url, std::vector<unsigned char>& out, std::wstr
     for (const update::Source& s : list) {
         std::wstring e;
         if (*skip && std::wstring(skip).find(platform::wide(s.host)) != std::wstring::npos) { tried += L"\n  " + platform::wide(s.host) + L": skipped (test)"; continue; }
+        if (!s.pinnedPath.empty()) {   // which commit is the newest, then the file at that commit
+            std::vector<unsigned char> feed;
+            const std::string at = fetch(s.url, s.accept, feed, e, nullptr) ? update::pinnedUrl(s, std::string(feed.begin(), feed.end())) : std::string();
+            if (!at.empty() && fetch(at, "", out, e, progress)) { error = L"from " + platform::wide(s.host) + L" (jsDelivr)"; return true; }
+            if (e == L"stopped") { error = L"The download was stopped."; return false; }
+            tried += L"\n  " + platform::wide(s.host) + L": " + (at.empty() && e.empty() ? std::wstring(L"no commit named") : e);
+            continue;
+        }
         if (fetch(s.url, s.accept, out, e, progress)) { error = L"from " + platform::wide(s.host); return true; }
         if (e == L"stopped") { error = L"The download was stopped."; return false; }
         if (e.find(L"(404)") != std::wstring::npos && s.url == url) { error = L"The update server answered with an error (404)."; return false; }   // nothing there

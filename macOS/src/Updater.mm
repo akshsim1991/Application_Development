@@ -66,7 +66,18 @@ static void fetchFastest(std::vector<update::Source> list, void (^done)(NSData*,
         for (size_t i = 0; i < n; ++i) {
             id r = results[i];
             if (r == [NSNull null]) waiting = YES;
-            else if ([r isKindOfClass:[NSData class]]) { if (any < 0) any = static_cast<int>(i); if (fresh < 0 && list[i].host != "cdn.jsdelivr.net") fresh = static_cast<int>(i); }
+            else if ([r isKindOfClass:[NSData class]]) {
+                // jsDelivr's answers may be behind: the newest version among them, only when no fresh server answered
+                const bool lagging = list[i].host.find("jsdelivr") != std::string::npos;
+                if (fresh < 0 && !lagging) fresh = static_cast<int>(i);
+                if (any < 0) any = static_cast<int>(i);
+                else {
+                    NSData* a = results[any]; NSData* b = r;
+                    update::Release ra, rb;
+                    if (update::parse(std::string(static_cast<const char*>(b.bytes), b.length), rb) &&
+                        (!update::parse(std::string(static_cast<const char*>(a.bytes), a.length), ra) || update::compareVersions(rb.version, ra.version) > 0)) any = static_cast<int>(i);
+                }
+            }
         }
         const int pick = fresh >= 0 ? fresh : (any >= 0 && (timeUp || !waiting) ? any : -1);
         if (pick >= 0) { finished = YES; done(results[pick], @"", 200, ns(list[pick].host)); return; }
@@ -78,15 +89,26 @@ static void fetchFastest(std::vector<update::Source> list, void (^done)(NSData*,
     };
     for (size_t i = 0; i < n; ++i) {
         const update::Source src = list[i];
-        [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
+        void (^answered)(NSData*, NSURLResponse*, NSError*) = ^(NSData* data, NSURLResponse* resp, NSError* err) {
             const NSInteger status = [resp isKindOfClass:[NSHTTPURLResponse class]] ? [(NSHTTPURLResponse*)resp statusCode] : 0;
             dispatch_async(dispatch_get_main_queue(), ^{
                 if (i == 0) firstStatus = status;
                 results[i] = data && !err && status == 200 ? data : (id)(err ? err.localizedDescription : [NSString stringWithFormat:@"the server answered with an error (%ld)", (long)status]);
-                const BOOL gotStale = [results[i] isKindOfClass:[NSData class]] && src.host == "cdn.jsdelivr.net";
+                const BOOL gotStale = [results[i] isKindOfClass:[NSData class]] && src.host.find("jsdelivr") != std::string::npos;
                 decide(NO);
                 if (gotStale) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, 2 * NSEC_PER_SEC), dispatch_get_main_queue(), ^{ decide(YES); });
             });
+        };
+        if (src.pinnedPath.empty()) { [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:answered] resume]; continue; }
+        // jsDelivr is asked which commit the branch is at, then for the file at that commit (never an old copy)
+        [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(src) completionHandler:^(NSData* data, NSURLResponse* resp, NSError* err) {
+            const std::string json = data ? std::string(static_cast<const char*>(data.bytes), data.length) : std::string();
+            const std::string at = err ? std::string() : update::pinnedUrl(src, json);
+            if (at.empty()) { answered(nil, resp, err ? err : [NSError errorWithDomain:@"FeatherPDF" code:1 userInfo:@{NSLocalizedDescriptionKey: @"jsDelivr did not say which commit is the newest"}]); return; }
+            update::Source pinned = src;
+            pinned.url = at;
+            pinned.pinnedPath.clear();
+            [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(pinned) completionHandler:answered] resume];
         }] resume];
     }
 }
@@ -137,13 +159,34 @@ static void downloadAndInstall(const update::Release& r, NSString* via) {
     FPUpdateProgress* progress = [[FPUpdateProgress alloc] initWithText:[NSString stringWithFormat:@"Downloading Feather PDF %@…", ns(r.version)]];
     [progress showWindow:nil];
     const std::string sha = r.mac.sha256, version = r.version;
-    std::vector<update::Source> list = update::sources(r.mac.url);
+    __block std::vector<update::Source> list = update::sources(r.mac.url);
     const std::string prefer = via ? std::string(via.UTF8String) : std::string();   // the server that gave the version file first
     std::stable_partition(list.begin(), list.end(), [&](const update::Source& x) { return !prefer.empty() && x.host == prefer; });
     __block size_t at = 0;
     __block NSString* tried = @"";
     __block void (^attempt)(void) = nil;
     void (^tryOne)(void) = ^{
+    if (!list[at].pinnedPath.empty()) {   // which commit is the newest, then the file at that commit (jsDelivr)
+        const update::Source ask = list[at];
+        [[NSURLSession.sharedSession dataTaskWithRequest:requestFor(ask) completionHandler:^(NSData* data, NSURLResponse*, NSError* err) {
+            const std::string feed = data && !err ? std::string(static_cast<const char*>(data.bytes), data.length) : std::string();
+            const std::string pinned = update::pinnedUrl(ask, feed);
+            dispatch_async(dispatch_get_main_queue(), ^{
+                if (pinned.empty()) {
+                    tried = [tried stringByAppendingFormat:@"\n  %@: %@", ns(ask.host), err ? err.localizedDescription : @"no commit named"];
+                    if (++at < list.size()) { attempt(); return; }
+                    [progress close];
+                    tell([@"The new version could not be downloaded:" stringByAppendingString:tried], YES);
+                    attempt = nil;
+                    return;
+                }
+                list[at].url = pinned;
+                list[at].pinnedPath.clear();
+                attempt();
+            });
+        }] resume];
+        return;
+    }
     const update::Source src = list[at];
     NSURLSessionDownloadTask* task = [NSURLSession.sharedSession downloadTaskWithRequest:requestFor(src)
                                                                        completionHandler:^(NSURL* file, NSURLResponse* resp, NSError* err) {

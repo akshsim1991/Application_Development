@@ -114,6 +114,9 @@ public:
     void markModified() { dirty_ = true; ++revision_; }   // for documents restored with changes that were never saved
     void beginChange(const std::wstring& what = L"Change");   // `what`: the step's name in the undo history
     void cancelChange();
+    // The undo steps taken since there were `depth` of them become one, named `what` (several edits made as one command).
+    size_t undoDepth() const { return undo_.size(); }
+    void mergeChangesSince(size_t depth, const std::wstring& what);
     // Puts the document back as it was at the last beginChange() and forgets that step (for a change that failed half-way).
     bool rollbackChange();
     bool canUndo() const { return !undo_.empty(); }

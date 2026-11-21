@@ -451,46 +451,64 @@ bool addStamp(Document& d, int page, double cx, double cy, const std::wstring& t
 }
 
 
+// Each match is replaced in its paragraph, which is set again as editing it sets it: in its own fonts, wrapped in its
+// column or table cell, what is below moved down when it gets longer. (Replacing inside each text object kept no font for
+// letters a subset lacked, ran over its column and across a table's cells, and missed words drawn a letter at a time.)
 int replaceAll(Document& d, const std::wstring& find, const std::wstring& with, bool matchCase, std::vector<int>& pages) {
     pages.clear();
     if (find.empty()) return 0;
     const auto& api = pdfium::api();
     auto lower = [](std::wstring s) { for (auto& c : s) c = static_cast<wchar_t>(towlower(c)); return s; };
     const std::wstring needle = matchCase ? find : lower(find);
-    d.beginChange(L"Find and replace");
+    const size_t depth = d.undoDepth();
     int total = 0;
     for (int p = 0; p < d.pageCount(); ++p) {
-        FPDF_PAGE pg = d.page(p);
         FPDF_TEXTPAGE tp = d.text(p);
-        if (!pg || !tp) continue;
-        struct Job { int idx; std::wstring text; };
-        std::vector<Job> jobs;
-        const int n = api.FPDFPage_CountObjects(pg);
-        for (int i = 0; i < n; ++i) {
-            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
-            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
-            unsigned long bytes = api.FPDFTextObj_GetText(o, tp, nullptr, 0);
-            if (bytes < 2) continue;
-            std::vector<unsigned short> buf(bytes / 2 + 1);
-            api.FPDFTextObj_GetText(o, tp, buf.data(), bytes);
-            std::wstring text(buf.begin(), buf.begin() + (bytes / 2 - 1));
-            const std::wstring hay = matchCase ? text : lower(text);
-            if (hay.find(needle) == std::wstring::npos) continue;
-            std::wstring out;
-            size_t pos = 0, hit;
-            int count = 0;
-            while ((hit = hay.find(needle, pos)) != std::wstring::npos) { out += text.substr(pos, hit - pos) + with; pos = hit + needle.size(); ++count; }
-            out += text.substr(pos);
-            total += count;
-            jobs.push_back({i, out});
+        if (!d.page(p) || !tp) continue;
+        // where the matches are: a point on each one's first letter
+        struct At { double x, y; };
+        std::vector<At> found;
+        {
+            std::vector<unsigned short> w(find.begin(), find.end());
+            w.push_back(0);
+            FPDF_SCHHANDLE sh = api.FPDFText_FindStart(tp, w.data(), matchCase ? FPDF_MATCHCASE : 0, 0);
+            while (sh && api.FPDFText_FindNext(sh)) {
+                const int ci = api.FPDFText_GetSchResultIndex(sh);
+                double l, r, b, t;
+                for (int k = ci; k < ci + static_cast<int>(find.size()); ++k)
+                    if (api.FPDFText_GetCharBox(tp, k, &l, &r, &b, &t) && r > l) { found.push_back({(l + r) / 2, (b + t) / 2}); break; }
+            }
+            if (sh) api.FPDFText_FindClose(sh);
         }
+        // the paragraphs they are in, each once; set again from the bottom of the page up, so the places above stay
+        struct Para { At at; double top; std::vector<int> objects; };
+        std::vector<Para> paras;
+        for (const At& at : found) {
+            const ParagraphHit h = paragraphAt(d, p, at.x, at.y);
+            if (!h.found) continue;
+            std::vector<int> key = h.objects;
+            std::sort(key.begin(), key.end());
+            bool seen = false;
+            for (const Para& q : paras) if (q.objects == key) { seen = true; break; }
+            if (!seen) paras.push_back({at, h.top, key});
+        }
+        std::sort(paras.begin(), paras.end(), [](const Para& a, const Para& b) { return a.top < b.top; });
         bool changed = false;
-        for (auto it = jobs.rbegin(); it != jobs.rend(); ++it)   // last object first: deleting one must not shift the others
-            if (replaceText(d, p, it->idx, it->text, false)) changed = true; else --total;
+        for (const Para& q : paras) {
+            const ParagraphHit h = paragraphAt(d, p, q.at.x, q.at.y);
+            if (!h.found) continue;
+            const std::wstring hay = matchCase ? h.text : lower(h.text);
+            std::wstring out;
+            size_t pos = 0, hitAt;
+            int count = 0;
+            while ((hitAt = hay.find(needle, pos)) != std::wstring::npos) { out += h.text.substr(pos, hitAt - pos) + with; pos = hitAt + needle.size(); ++count; }
+            if (!count) continue;
+            out += h.text.substr(pos);
+            if (replaceParagraph(d, h, out, h.style, h.align)) { total += count; changed = true; }
+        }
         if (changed) pages.push_back(p);
-        d.resetText(p);
     }
-    if (total <= 0) { d.cancelChange(); return 0; }
+    if (total > 0) d.mergeChangesSince(depth, L"Find and replace");
     return total;
 }
 
@@ -2409,7 +2427,10 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             auto sourceOfNew = [&](size_t i) {
                 if (i < pre) return sourceOfOld(i, true);
                 if (i >= nn - suf) return sourceOfOld(on - (nn - i), true);
-                int s2 = pre > 0 ? sourceOfOld(pre - 1, true) : -1;   // typed: as the text before it
+                // what replaces old text takes that text's style (a word replaced after a bold label stays as it was);
+                // what is only typed in takes the style of the text before it
+                if (on - suf > pre) { const int r = sourceOfOld(pre, false); if (r >= 0) return r; }
+                int s2 = pre > 0 ? sourceOfOld(pre - 1, true) : -1;
                 return s2 >= 0 ? s2 : sourceOfOld(pre, false);
             };
             // the words in the order the layout below meets them

@@ -565,6 +565,13 @@ void Document::cancelChange() {
     if (undo_.empty() && redo_.empty()) dirty_ = false;   // nothing else was changed in this session
 }
 
+void Document::mergeChangesSince(size_t depth, const std::wstring& what) {
+    if (undo_.size() <= depth) return;
+    // the first snapshot is the document before all of them; the later ones go
+    while (undo_.size() > depth + 1) { undoBytes_ -= undo_.back().bytes.size(); undo_.pop_back(); }
+    undo_.back().what = what;
+}
+
 bool Document::rollbackChange() {
     if (undo_.empty()) return false;
     Snapshot snap = std::move(undo_.back());

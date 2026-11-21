@@ -1697,8 +1697,26 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
     // 3. the page: what is below moves down by as much as the table grew; the cells kept move with their rows and
     // columns; drawings shared with the rest of the page keep their part outside; the rest of the old table goes
     const double extra = oldB - t.bottom();
-    if (extra > 0.01 && !t.scanned && !below.empty() && lowest - extra >= floor)
-        for (FPDF_PAGEOBJECT o : below) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
+    // What touches the table's bottom edge (a border drawn on its own) moves with it. Text right under the table (within
+    // two lines) keeps its distance; what is farther down (a footer, the next block) moves only as far as it must to stay
+    // clear of the longer table.
+    if (extra > 0.01 && !t.scanned && !below.empty() && lowest - extra >= floor) {
+        std::vector<FPDF_PAGEOBJECT> touching, apart;
+        double apartTop = -1e9;
+        for (FPDF_PAGEOBJECT o : below) {
+            float l, b, r, tp;
+            if (api().FPDFPageObj_GetBounds(o, &l, &b, &r, &tp) && tp >= oldB - 1.5) touching.push_back(o);
+            else { apart.push_back(o); apartTop = std::max(apartTop, static_cast<double>(tp)); }
+        }
+        for (FPDF_PAGEOBJECT o : touching) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -extra);
+        const double gapBefore = oldB - apartTop;
+        const double shift = apart.empty() ? 0 : gapBefore <= 24 ? extra : std::max(0.0, apartTop - (t.bottom() - 4));
+        if (std::getenv("FEATHER_TRACE_TABLE")) std::fprintf(stderr, "table: oldB %.1f newB %.1f extra %.1f touching %zu apart %zu top %.1f shift %.1f\n", oldB, t.bottom(), extra, touching.size(), apart.size(), apartTop, shift);
+        if (shift > 0.01)
+            for (FPDF_PAGEOBJECT o : apart) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, 0, -shift);
+    }
+    // (an object several cells share, as Word prints a row's line across its cells, moves once, with its row)
+    std::set<int> moved;
     for (int r = 0; r < R; ++r)
         for (int c = 0; c < C; ++c) {
             if (!keep[static_cast<size_t>(r) * C + c]) continue;
@@ -1707,7 +1725,10 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
             const double dx = x.origAlign == 0 ? nl - x.fL : x.origAlign == 2 ? nr - x.fR : ((nl + nr) - (x.fL + x.fR)) / 2;
             const double dy = x.origValign == 0 ? nt - x.fT : x.origValign == 2 ? nb - x.fB : ((nt + nb) - (x.fT + x.fB)) / 2;
             if (std::fabs(dx) < 0.01 && std::fabs(dy) < 0.01) continue;
-            for (int i : x.objs) if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, dx, dy);
+            for (int i : x.objs) {
+                if (!moved.insert(i).second) continue;
+                if (FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i)) api().FPDFPageObj_Transform(o, 1, 0, 0, 1, x.sharedObjs ? 0 : dx, dy);
+            }
         }
     std::vector<FPDF_PAGEOBJECT> gone;
     for (int i : t0.objects) {

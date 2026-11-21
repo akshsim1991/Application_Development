@@ -88,6 +88,11 @@ struct ParagraphHit {
     bool upright = true;            // the text runs left to right, not turned
     std::string fontName;           // the PDF's name for that font
     std::vector<int> charObject;    // for each character of `text`, the page object it was drawn by (-1: a space between)
+    // Text recognised on a scanned page (invisible, over the page's picture): edited, it is set visibly in the colour and
+    // size of the words in the picture, over a patch of the picture's background (scanL..scanT) that hides the old words.
+    bool overScan = false;
+    COLORREF scanBg = RGB(255, 255, 255);
+    double scanL = 0, scanB = 0, scanR = 0, scanT = 0;
 };
 // What can be edited on a page, for the outlines of edit mode: each paragraph (grouped as paragraphAt groups lines, so the
 // outline is what a click there edits) and each picture. Page coordinates.

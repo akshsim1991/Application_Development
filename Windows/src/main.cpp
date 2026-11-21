@@ -3228,6 +3228,26 @@ void doOcr(Document& d) {
 }
 
 
+// A click in edit mode on a scanned page that has no text yet: offers to recognise the page's text (OCR) so it can be
+// edited there. True when text was recognised.
+bool recogniseForEditing(Document& d, int page) {
+    std::wstring why;
+    if (!ocr::available(why)) { MessageBoxW(app.wnd, (L"This page is a scan (a picture of text). " + why).c_str(), kAppName, MB_OK | MB_ICONINFORMATION); return false; }
+    if (MessageBoxW(app.wnd, L"This page is a scan: its text is part of a picture.\n\nRecognise the text on this page now (OCR), so you can click it and edit it?",
+                    L"Edit a scanned page", MB_YESNO | MB_ICONQUESTION) != IDYES) return false;
+    const auto langs = ocr::languages();
+    std::wstring lang = langs.empty() ? L"eng" : langs.front();
+    for (const auto& l : langs) if (l == L"eng") lang = l;
+    ocr::Result r;
+    {
+        Progress progress(L"Recognising the text on this page...");
+        r = ocr::run(d, {page}, lang, true, [&](int, int) { return !progress.stopRequested(); });
+    }
+    if (r.words > 0) { afterPagesChanged(); return true; }
+    MessageBoxW(app.wnd, (r.error.empty() ? std::wstring(L"No text was found on this page.") : r.error).c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+    return false;
+}
+
 // A recent file in a menu: its name, with its folder when another recent file has the same name. "&" is doubled, or the
 // menu would show it as an underlined access key.
 std::wstring recentLabel(size_t i, bool withFolder) {
@@ -5184,8 +5204,18 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             // edit mode: a picture is picked (handles to move and resize it); text is edited where it was clicked
             const double x = e.pts.front().x, y = e.pts.front().y;
             pageobj::GroupHit g = pageobj::groupAt(d, e.page, x, y);
-            pageobj::ParagraphHit hit;
-            if (!g.found || g.kind != pageobj::GroupHit::Picture) hit = pageobj::paragraphAt(d, e.page, x, y);
+            // text under the click is edited (recognised text over a scan too); a picture is picked where there is none
+            pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, x, y);
+            // a scanned page without text: the picture is the whole page; its text can be recognised and then edited
+            if (!hit.found && g.found && g.kind == pageobj::GroupHit::Picture && d.charCount(e.page) == 0) {
+                const auto sz = d.pageSize(e.page);
+                if ((g.right - g.left) * (g.top - g.bottom) > 0.6 * sz.w * sz.h && recogniseForEditing(d, e.page)) {
+                    hit = pageobj::paragraphAt(d, e.page, x, y);
+                    if (hit.found) { editParagraphInPlace(d, hit, clickPoint(e.page, e.pts.front())); return true; }
+                    notice(L"The text was recognised. Click on a line of it to edit it.");
+                    return true;
+                }
+            }
             if (g.found && g.kind == pageobj::GroupHit::Picture && !hit.found) {
                 app.sel.page = e.page; app.sel.objects = g.objects;
                 std::vector<double> gx, gy;

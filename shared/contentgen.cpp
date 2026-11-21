@@ -287,6 +287,22 @@ Shot drawWritten(Document& d, int index, double scale) {
     return s;
 }
 
+// The page as it is saved: the whole document written to memory and read again. Slower than drawWritten, but exact:
+// copying a page into another document loses resources that only fonts refer to (the pictures that Type3 glyphs draw:
+// Google Docs' flag and emoji letters), which then read as missing although the saved file has them.
+Shot drawSaved(Document& d, int index, double scale) {
+    const auto& api = pdfium::api();
+    Shot s;
+    std::vector<unsigned char> bytes;
+    // as saved; a password-protected document is read back without its protection
+    FPDF_DOCUMENT tmp = d.serialize(bytes) ? api.FPDF_LoadMemDocument64(bytes.data(), bytes.size(), nullptr) : nullptr;
+    if (!tmp && d.serialize(bytes, FPDF_REMOVE_SECURITY)) tmp = api.FPDF_LoadMemDocument64(bytes.data(), bytes.size(), nullptr);
+    if (!tmp) return s;
+    if (FPDF_PAGE tp = api.FPDF_LoadPage(tmp, index)) { s = draw(tp, scale); api.FPDF_ClosePage(tp); }
+    api.FPDF_CloseDocument(tmp);
+    return s;
+}
+
 struct DevBox { int l, t, r, b; };
 
 DevBox deviceBox(FPDF_PAGE pg, const Shot& s, double l, double b, double r, double t) {
@@ -303,6 +319,36 @@ bool touches(const std::vector<uint8_t>& mask, const Shot& s, DevBox bx) {
     for (int y = bx.t; y <= bx.b; ++y)
         for (int x = bx.l; x <= bx.r; ++x) if (mask[static_cast<size_t>(y) * s.w + x]) return true;
     return false;
+}
+
+// Drops the differences inside `boxes` (objects just made into pictures of themselves) when the area as a whole looks
+// the same: a picture of an object differs from the object only by smoothing along sharp edges (a flag's stripes), a
+// few pixels apart; a missing or wrong picture changes the area's average.
+int forgiveBoxes(std::vector<uint8_t>& mask, const Shot& a, const Shot& b, const std::vector<DevBox>& boxes) {
+    int count = 0;
+    for (DevBox bx : boxes) {
+        bx.l = std::max(0, bx.l - 1); bx.t = std::max(0, bx.t - 1); bx.r = std::min(a.w, bx.r + 1); bx.b = std::min(a.h, bx.b + 1);
+        // the same on average, with about as much drawn: a missing picture leaves the area blank, a misplaced one moves
+        // its colour elsewhere; smoothing along sharp edges (a flag's stripes) changes neither much
+        double sum = 0;
+        int n = 0, inkA = 0, inkB = 0;
+        for (int y = bx.t; y < bx.b; ++y)
+            for (int x = bx.l; x < bx.r; ++x) {
+                const size_t i = (static_cast<size_t>(y) * a.w + x) * 4;
+                for (int k = 0; k < 3; ++k) sum += std::abs(int(a.px[i + k]) - int(b.px[i + k]));
+                inkA += a.px[i] + a.px[i + 1] + a.px[i + 2] < 720;
+                inkB += b.px[i] + b.px[i + 1] + b.px[i + 2] < 720;
+                ++n;
+            }
+        const double mean = n ? sum / (3.0 * n) : 255;
+        const bool sameInk = std::abs(inkA - inkB) <= std::max(4, (std::max(inkA, inkB) + 3) / 4);
+        if (std::getenv("FEATHER_TRACE_WRITE")) std::fprintf(stderr, "contentgen: pictured box %d,%d-%d,%d mean %.1f ink %d/%d\n", bx.l, bx.t, bx.r, bx.b, mean, inkA, inkB);
+        if (mean > 24 || !sameInk) continue;
+        for (int y = bx.t; y < bx.b; ++y)
+            for (int x = bx.l; x < bx.r; ++x) mask[static_cast<size_t>(y) * a.w + x] = 0;
+    }
+    for (uint8_t v : mask) count += v;
+    return count;
 }
 
 // Replaces the object at `index` by a picture of it alone, at about 300 dots per inch, in the same place and depth.
@@ -461,11 +507,21 @@ bool generate(Document& d, FPDF_PAGE page) {
     if (index < 0) return api.FPDFPage_GenerateContent(page) != 0;   // not one of the document's pages: unchecked
     const double scale = checkScale(page);
     const Shot want = draw(page, scale);   // the page as it should be: its objects as held in memory
+    std::vector<DevBox> pictured;          // where objects PDFium cannot write were made pictures of themselves
     for (int round = 0; round < 2; ++round) {
         if (!api.FPDFPage_GenerateContent(page)) return false;
         int count = 0;
-        const Shot got = drawWritten(d, index, scale);
-        const std::vector<uint8_t> mask = differences(want, got, count);
+        Shot got = drawWritten(d, index, scale);
+        std::vector<uint8_t> mask = differences(want, got, count);
+        if (count > 4 && !pictured.empty()) count = forgiveBoxes(mask, want, got, pictured);
+        if (count > 4) {   // confirmed on the document as saved before anything is changed or refused
+            Shot saved = drawSaved(d, index, scale);
+            int c2 = 0;
+            std::vector<uint8_t> m2 = differences(want, saved, c2);
+            if (std::getenv("FEATHER_TRACE_WRITE")) std::fprintf(stderr, "contentgen: page %d round %d as saved differs %d\n", index, round, c2);
+            if (c2 > 4 && !pictured.empty()) c2 = forgiveBoxes(m2, want, saved, pictured);
+            if (c2 >= 0) { got = std::move(saved); mask = std::move(m2); count = c2; }
+        }
         if (const char* f = std::getenv("FEATHER_TRACE_DIFF")) {
             for (int k = 0; k < 2; ++k) {
                 const Shot& sh = k ? got : want;
@@ -509,7 +565,11 @@ bool generate(Document& d, FPDF_PAGE page) {
         if (std::getenv("FEATHER_TRACE_WRITE")) std::fprintf(stderr, "contentgen: page %d: %zu of %zu objects there become pictures\n", index, bad.size(), there.size());
         if (bad.empty()) return false;
         for (int i = api.FPDFPage_CountObjects(page) - 1; i >= 0; --i)   // topmost first: the indices below stay valid
-            if (std::find(bad.begin(), bad.end(), api.FPDFPage_GetObject(page, i)) != bad.end()) asPicture(d.handle(), page, i);
+            if (std::find(bad.begin(), bad.end(), api.FPDFPage_GetObject(page, i)) != bad.end()) {
+                float l, b, r, t;
+                if (api.FPDFPageObj_GetBounds(api.FPDFPage_GetObject(page, i), &l, &b, &r, &t)) pictured.push_back(deviceBox(page, want, l, b, r, t));
+                asPicture(d.handle(), page, i);
+            }
     }
     return false;
 }

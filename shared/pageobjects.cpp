@@ -11,6 +11,7 @@
 #include <chrono>
 #include <ctime>
 #include <cmath>
+#include <array>
 #include <cstring>
 #include <cstdio>
 #include <map>
@@ -660,6 +661,7 @@ struct Line {
     unsigned rgb = 0;          // the colour of its text: a line in another colour is another paragraph
     std::vector<int> src;      // for each character of `text`, the page object it comes from (-1: a space put between two)
     double base = 0;           // its baseline (page y)
+    bool ocr = false;          // recognised text (invisible, over a scan): its sizes are as loose as the recognition
 };
 
 // A horizontal line drawn on the page (a table's rule, a separator, a box's top or bottom edge): text above and below it
@@ -714,7 +716,8 @@ bool isListMarker(const std::wstring& raw) {
 // The same text with the hyphen look-alikes made plain hyphens (a hyphen that must not break the line, a soft hyphen in
 // the middle of a word): the editor shows them, and the paragraph's own font, or a standard one, can draw them.
 std::wstring plainHyphens(std::wstring t) {
-    for (wchar_t& c : t) if (c == 0x2010 || c == 0x2011 || c == 0x00AD || c == 0x2012) c = L'-';
+    // (PDFium reads the hyphen that breaks a word at the end of a line, as TeX sets it, as character 2)
+    for (wchar_t& c : t) if (c == 0x2010 || c == 0x2011 || c == 0x00AD || c == 0x2012 || c == 0x0002) c = L'-';
     return t;
 }
 
@@ -885,30 +888,91 @@ Setter ownFont(Document& d, FPDF_PAGEOBJECT first) {
 }
 } // namespace
 
-// The paragraph around line `hitLine`: its first and last line (neighbouring lines of the same size, spacing and column).
-static void paragraphSpan(const std::vector<Line>& lines, const std::vector<Rule>& rules, int hitLine, bool lineOnly, int& first, int& last) {
+// The paragraph around line `hitLine`: its lines, top to bottom (neighbouring lines of the same size, spacing and column).
+// A line's neighbours are the nearest lines above and below it in its own column (the lines of a page are listed across
+// the page, so in two columns the line listed before one is often the other column's).
+static std::vector<int> paragraphSpan(const std::vector<Line>& lines, const std::vector<Rule>& rules, int hitLine, bool lineOnly) {
+    std::vector<int> span{hitLine};
+    if (lineOnly) return span;
+    const int n = static_cast<int>(lines.size());
+    auto overlap = [](const Line& a, const Line& b) { return std::min(a.r, b.r) - std::max(a.l, b.l); };
+    auto centre = [](const Line& a) { return (a.l + a.r) / 2; };
+    // the nearest line above (dir -1) or below (+1) that shares some width with line k
+    auto neighbour = [&](int k, int dir) {
+        for (int j = k + dir; j >= 0 && j < n; j += dir) {
+            const Line& o = lines[static_cast<size_t>(j)];
+            if (dir < 0 ? o.b <= lines[k].b + 0.3 * lines[k].size : o.b >= lines[k].b - 0.3 * lines[k].size) continue;   // same height: beside it
+            if (overlap(o, lines[k]) > 0) return j;
+        }
+        return -1;
+    };
+    // how far lines of this size starting at this left edge reach nearby: the column's right edge
+    auto columnRight = [&](const Line& ln) {
+        double right = ln.r;
+        for (const Line& o : lines)
+            if (std::fabs(o.l - ln.l) < 3.6 * ln.size && std::fabs(o.size - ln.size) < 0.15 * ln.size && std::fabs(o.b - ln.b) < 30 * ln.size && overlap(o, ln) > 0)
+                right = std::max(right, o.r);
+        return right;
+    };
+    // the width of the first word of a line, as drawn
+    auto firstWord = [](const Line& ln) {
+        const size_t len = ln.text.size();
+        size_t w = ln.text.find(L' ');
+        if (w == std::wstring::npos) w = len;
+        return len ? (ln.r - ln.l) * static_cast<double>(w) / static_cast<double>(len) : 0.0;
+    };
+    double pageL = 1e9, pageR = -1e9;   // how wide the page's text runs
+    for (const Line& o : lines) { pageL = std::min(pageL, o.l); pageR = std::max(pageR, o.r); }
+    const double pageSpan = pageR - pageL;
+    auto centred = [&](const Line& a, const Line& b) {   // set centred: the same middle, different edges
+        return std::fabs(centre(a) - centre(b)) < 0.6 * a.size && std::fabs(a.l - b.l) > 0.6 * a.size;
+    };
     auto joins = [&](const Line& above, const Line& below) {
         const double size = above.size;
+        if (below.startsItem) return false;
         // a line drawn between them (table rows, a separator) makes them two
         if (ruledApart(rules, above.base, below.base, size, std::min(above.l, below.l), std::max(above.r, below.r))) return false;
-        if (std::fabs(above.size - below.size) > 0.1 * size) return false;
+        if (std::fabs(above.size - below.size) > (above.ocr && below.ocr ? 0.3 : 0.1) * size) return false;
         if (above.rgb != below.rgb) return false;   // a red line under a black one is not the same paragraph
         const double step = above.b - below.b;
         if (step < 0.8 * size || step > 2.1 * size) return false;
+        if (centred(above, below)) return step <= 1.5 * size;   // a heading or title set centred on two lines or more
         const double indent = below.l - above.l;
         if (std::fabs(indent) > 0.6 * size && !(indent > 0 && indent < 3.5 * size) && !(indent < 0 && indent > -3.5 * size)) return false;
-        return below.r >= above.l && below.l <= above.r;
+        if (!(below.r >= above.l && below.l <= above.r)) return false;
+        // A line that ends short of its column, though the next line's first word would have fitted, ends its paragraph:
+        // a heading over its text, a line broken on purpose (an address, a poem, a list without bullets).
+        const double colR = columnRight(above);
+        if (above.r + 0.3 * size + firstWord(below) < colR - 0.5 * size) return false;
+        // Short lines that each end a sentence or a label (“Red: stroke=1, fill=1.” over “Green: …”), in a narrow block that
+        // does not reach its column's edge: lines set one under another, not wrapped text.
+        auto ends = [](const std::wstring& t) { size_t e = t.find_last_not_of(L' '); return e != std::wstring::npos && std::wcschr(L".:;!?", t[e]) != nullptr; };
+        auto starts = [](const std::wstring& t) { size_t f = t.find_first_not_of(L' '); return f != std::wstring::npos && (iswupper(t[f]) || iswdigit(t[f])); };
+        if (ends(above.text) && starts(below.text) && above.r < colR - 1.0 * size && colR - above.l < pageSpan / 2) return false;
+        return true;
     };
-    first = hitLine; last = hitLine;
-    while (!lineOnly && first > 0 && !lines[first].startsItem && joins(lines[first - 1], lines[first]) && std::fabs(lines[first - 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) --first;
-    while (!lineOnly && last + 1 < static_cast<int>(lines.size()) && !lines[last + 1].startsItem && joins(lines[last], lines[last + 1]) && std::fabs(lines[last + 1].l - lines[hitLine].l) <= 3.6 * lines[hitLine].size) ++last;
+    for (int k = hitLine;;) {
+        const int j = neighbour(k, -1);
+        if (j < 0 || lines[static_cast<size_t>(k)].startsItem || !joins(lines[static_cast<size_t>(j)], lines[static_cast<size_t>(k)])) break;
+        if (!centred(lines[static_cast<size_t>(j)], lines[static_cast<size_t>(k)]) && std::fabs(lines[static_cast<size_t>(j)].l - lines[hitLine].l) > 3.6 * lines[hitLine].size) break;
+        span.insert(span.begin(), j);
+        k = j;
+    }
+    for (int k = hitLine;;) {
+        const int j = neighbour(k, 1);
+        if (j < 0 || !joins(lines[static_cast<size_t>(k)], lines[static_cast<size_t>(j)])) break;
+        if (!centred(lines[static_cast<size_t>(k)], lines[static_cast<size_t>(j)]) && std::fabs(lines[static_cast<size_t>(j)].l - lines[hitLine].l) > 3.6 * lines[hitLine].size) break;
+        span.push_back(j);
+        k = j;
+    }
+    return span;
 }
 
 // The text lines of a page, top to bottom (list numbers and bullets left out, the lines they start marked).
 static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vector<Line>& lines) {
     const auto& api = pdfium::api();
     // 1. every text object, with its size taken from the font size and the text matrix
-    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; unsigned rgb; double base; };
+    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; unsigned rgb; double base; bool ocr = false; };
     std::vector<Obj> objs;
     const int n = api.FPDFPage_CountObjects(pg);
     for (int i = 0; i < n; ++i) {
@@ -935,7 +999,8 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         const double scale = std::sqrt(static_cast<double>(m.b) * m.b + static_cast<double>(m.d) * m.d);
         unsigned cr = 0, cg = 0, cb = 0, ca = 255;
         api.FPDFPageObj_GetFillColor(o, &cr, &cg, &cb, &ca);
-        objs.push_back({i, l, b, r, t, sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0), text, o, (cr << 16) | (cg << 8) | cb, m.f});
+        objs.push_back({i, l, b, r, t, sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0), text, o, (cr << 16) | (cg << 8) | cb, m.f,
+                        api.FPDFTextObj_GetTextRenderMode(o) == FPDF_TEXTRENDERMODE_INVISIBLE});
     }
     // Where each object's letters are in the text page: between two objects a space is wherever PDFium's text puts one
     // (it measures with the fonts' real advances). Measuring the gap between the objects' boxes cannot tell a word space
@@ -979,7 +1044,14 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         for (bool grew = true; grew;) {
             grew = false;
             for (size_t oj : order) {
-                if (used[oj] || std::fabs(objs[oj].b - objs[oi].b) >= 0.4 * size || std::fabs(objs[oj].size - size) >= 0.15 * size) continue;
+                if (used[oj]) continue;
+                if (objs[oj].ocr && objs[oi].ocr) {
+                    // recognised words: boxes as recognised (taller with descenders or capitals): one line when they share
+                    // most of their height
+                    const double ov = std::min(objs[oj].t, objs[oi].t) - std::max(objs[oj].b, objs[oi].b);
+                    const double hmin = std::min(objs[oj].t - objs[oj].b, objs[oi].t - objs[oi].b);
+                    if (ov < 0.6 * hmin || std::max(objs[oj].size, size) > 3.2 * std::min(objs[oj].size, size)) continue;
+                } else if (std::fabs(objs[oj].b - objs[oi].b) >= 0.4 * size || std::fabs(objs[oj].size - size) >= 0.15 * size) continue;
                 double gap = 1e18;   // to the nearest object of the line (negative: overlapping it)
                 size_t closest = members.front();
                 for (size_t m : members) {
@@ -1002,6 +1074,8 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         Line ln{objs[m0].l, objs[m0].b, objs[m0].r, objs[m0].t, size, L"", {}, objs[m0].o};
         ln.rgb = objs[oi].rgb;
         ln.base = objs[m0].base;
+        ln.ocr = objs[m0].ocr;
+        if (ln.ocr) for (size_t k : members) ln.size = std::max(ln.size, objs[k].size);   // the line's tallest recognised word
         for (size_t k = 0; k < members.size(); ++k) {
             const auto& o = objs[members[k]];
             if (k > 0) {
@@ -1152,10 +1226,8 @@ std::vector<EditBlock> editableBlocks(Document& d, int page) {
         for (int ix : lines[i].idx) if (inCells.count(ix)) { done[i] = 1; break; }
     for (size_t i = 0; i < lines.size(); ++i) {
         if (done[i]) continue;
-        int first = static_cast<int>(i), last = first;
-        paragraphSpan(lines, rules, first, false, first, last);
         EditBlock b{EditBlock::Text, 1e9, 1e9, -1e9, -1e9};
-        for (int k = first; k <= last; ++k) {
+        for (int k : paragraphSpan(lines, rules, static_cast<int>(i), false)) {
             done[static_cast<size_t>(k)] = 1;
             b.left = std::min(b.left, lines[k].l); b.bottom = std::min(b.bottom, lines[k].b);
             b.right = std::max(b.right, lines[k].r); b.top = std::max(b.top, lines[k].t);
@@ -1169,6 +1241,227 @@ namespace {
 bool cellOf(Document& d, const ParagraphHit& hit, std::vector<tables::Table>& found, int& ti, int& row, int& col);
 
 }
+
+namespace {
+// A part of the page as drawn (page coordinates l..t), at up to `maxPx` pixels on its longer side: BGRA, rows top down.
+struct Area { int w = 0, h = 0; std::vector<uint8_t> px; };
+Area drawArea(FPDF_PAGE pg, double l, double b, double r, double t, double maxPx) {
+    const auto& api = pdfium::api();
+    Area a;
+    const double pw = api.FPDF_GetPageWidthF(pg), ph = api.FPDF_GetPageHeightF(pg);
+    if (r <= l || t <= b || pw <= 0 || ph <= 0) return a;
+    const double scale = std::min(4.0, maxPx / std::max(r - l, t - b));
+    const int fw = std::max(1, static_cast<int>(std::lround(pw * scale))), fh = std::max(1, static_cast<int>(std::lround(ph * scale)));
+    int x0, y0, x1, y1;
+    api.FPDF_PageToDevice(pg, 0, 0, fw, fh, 0, l, t, &x0, &y0);
+    api.FPDF_PageToDevice(pg, 0, 0, fw, fh, 0, r, b, &x1, &y1);
+    if (x1 < x0) std::swap(x0, x1);
+    if (y1 < y0) std::swap(y0, y1);
+    a.w = x1 - x0; a.h = y1 - y0;
+    if (a.w <= 0 || a.h <= 0 || 1LL * a.w * a.h > 16000000LL) { a.w = a.h = 0; return a; }
+    FPDF_BITMAP bmp = api.FPDFBitmap_CreateEx(a.w, a.h, FPDFBitmap_BGRA, nullptr, 0);
+    if (!bmp) { a.w = a.h = 0; return a; }
+    api.FPDFBitmap_FillRect(bmp, 0, 0, a.w, a.h, 0xFFFFFFFF);
+    api.FPDF_RenderPageBitmap(bmp, pg, -x0, -y0, fw, fh, 0, 0);
+    const auto* buf = static_cast<const uint8_t*>(api.FPDFBitmap_GetBuffer(bmp));
+    const int stride = api.FPDFBitmap_GetStride(bmp);
+    a.px.resize(static_cast<size_t>(a.w) * a.h * 4);
+    for (int y = 0; y < a.h; ++y) std::memcpy(&a.px[static_cast<size_t>(y) * a.w * 4], buf + static_cast<size_t>(y) * stride, static_cast<size_t>(a.w) * 4);
+    api.FPDFBitmap_Destroy(bmp);
+    return a;
+}
+int colourDistance(const uint8_t* p, COLORREF c) {
+    return std::abs(p[2] - GetRValue(c)) + std::abs(p[1] - GetGValue(c)) + std::abs(p[0] - GetBValue(c));
+}
+// The most common colour of the pixels `want` picks (colours grouped in steps of 16), averaged within its group.
+template <class Pick> bool commonColour(const Area& a, Pick want, COLORREF& out) {
+    std::map<int, std::array<long long, 4>> bins;
+    for (int y = 0; y < a.h; ++y)
+        for (int x = 0; x < a.w; ++x) {
+            if (!want(x, y)) continue;
+            const uint8_t* p = &a.px[(static_cast<size_t>(y) * a.w + x) * 4];
+            auto& v = bins[(p[2] >> 4) << 8 | (p[1] >> 4) << 4 | (p[0] >> 4)];
+            v[0] += p[2]; v[1] += p[1]; v[2] += p[0]; ++v[3];
+        }
+    long long best = 0;
+    for (const auto& [k, v] : bins)
+        if (v[3] > best) { best = v[3]; out = RGB(static_cast<int>(v[0] / v[3]), static_cast<int>(v[1] / v[3]), static_cast<int>(v[2] / v[3])); }
+    return best > 0;
+}
+
+// A paragraph of recognised (invisible) text over a picture: the colour, weight and size of its words in the picture, and
+// the patch of background that will hide them when it is set again.
+void readScannedLook(Document& d, FPDF_PAGE pg, ParagraphHit& hit, double l, double b, double r, double t, double size) {
+    const auto& api = pdfium::api();
+    for (int o : hit.objects) {
+        FPDF_PAGEOBJECT po = api.FPDFPage_GetObject(pg, o);
+        if (!po || api.FPDFPageObj_GetType(po) != FPDF_PAGEOBJ_TEXT || api.FPDFTextObj_GetTextRenderMode(po) != FPDF_TEXTRENDERMODE_INVISIBLE) return;
+    }
+    bool onPicture = false;
+    const double cx = (l + r) / 2, cy = (b + t) / 2;
+    for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n && !onPicture; ++i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float bl, bb, br, bt;
+        onPicture = o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE && api.FPDFPageObj_GetBounds(o, &bl, &bb, &br, &bt) && cx > bl && cx < br && cy > bb && cy < bt;
+    }
+    if (!onPicture) return;
+    // the words' boxes are recognised loosely: the patch reaches a little past them
+    const double m = 0.3 * size;
+    const double L = l - m, B = b - m, R = r + m, T = t + m;
+    const Area a = drawArea(pg, L - m, B - m, R + m, T + m, 1600);
+    if (a.w < 8 || a.h < 8) return;
+    const double kx = a.w / (R - L + 2 * m), ky = a.h / (T - B + 2 * m);
+    const int ix0 = static_cast<int>(2 * m * kx), iy0 = static_cast<int>(2 * m * ky), ix1 = a.w - ix0, iy1 = a.h - iy0;   // the words
+    COLORREF bg = RGB(255, 255, 255), ink = RGB(0, 0, 0);
+    // the background: the ring around the words; the ink: what is isInk from it, among the words
+    if (!commonColour(a, [&](int x, int y) { return x < ix0 / 2 || y < iy0 / 2 || x >= a.w - ix0 / 2 || y >= a.h - iy0 / 2; }, bg)) return;
+    auto isInk = [&](int x, int y) { return x >= ix0 && x < ix1 && y >= iy0 && y < iy1 && colourDistance(&a.px[(static_cast<size_t>(y) * a.w + x) * 4], bg) > 150; };
+    if (!commonColour(a, isInk, ink)) ink = GetRValue(bg) + GetGValue(bg) + GetBValue(bg) > 384 ? RGB(0, 0, 0) : RGB(255, 255, 255);
+    // weight: how thick the strokes are, from the runs of ink along the rows
+    long long inkPx = 0, runs = 0;
+    for (int y = iy0; y < iy1; ++y) {
+        bool in = false;
+        for (int x = ix0; x < ix1; ++x) {
+            const bool f = isInk(x, y);
+            if (f) { ++inkPx; if (!in) ++runs; }
+            in = f;
+        }
+    }
+    const double stroke = runs ? static_cast<double>(inkPx) / runs / kx : 0;   // points
+    hit.style.bold = stroke > 0.115 * size;
+    hit.style.italic = false;
+    hit.style.family = Family::Sans;
+    hit.style.color = ink;
+    // the size that makes the words as wide as they are in the picture, in the standard font they will be set in
+    {
+        FPDF_PAGEOBJECT o = newText(d, hit.style.bold ? "Helvetica-Bold" : "Helvetica", 10, hit.text, 0, 100);
+        float bl, bb, br, bt;
+        double total = 0;
+        for (int i : hit.objects) {
+            FPDF_PAGEOBJECT po = api.FPDFPage_GetObject(pg, i);
+            float ol, ob, orr, ot;
+            if (po && api.FPDFPageObj_GetBounds(po, &ol, &ob, &orr, &ot)) total += orr - ol;
+        }
+        if (o && api.FPDFPageObj_GetBounds(o, &bl, &bb, &br, &bt) && br - bl > 1 && total > 0) {
+            // the words' own widths (the spaces between them are not in `total`): compare without the spaces
+            FPDF_PAGEOBJECT sp = newText(d, hit.style.bold ? "Helvetica-Bold" : "Helvetica", 10, L" ", 0, 100);
+            float sl = 0, sb = 0, sr = 0, st = 0;
+            double spaceW = 2.78;
+            if (sp && api.FPDFPageObj_GetBounds(sp, &sl, &sb, &sr, &st) && sr > sl) spaceW = sr - sl;
+            if (sp) api.FPDFPageObj_Destroy(sp);
+            const double spaces = static_cast<double>(std::count(hit.text.begin(), hit.text.end(), L' '));
+            const double w10 = std::max(1.0, (br - bl) - spaces * spaceW);
+            const double fit = 10.0 * total / w10;
+            if (fit > 0.5 * size && fit < 2 * size) hit.style.sizePt = std::round(fit * 2) / 2, hit.sizeExact = fit;
+        }
+        if (o) api.FPDFPageObj_Destroy(o);
+    }
+    // the size from the height of the first line's letters in the picture (capitals reach about 0.72 of the size, with
+    // descenders about 0.93): letter-spaced words (a label in capitals) are wider than the font would set them
+    {
+        int r0 = -1, r1 = -1;
+        for (int y = iy0; y < iy1; ++y) {
+            int count = 0;
+            for (int x = ix0; x < ix1; ++x) count += isInk(x, y);
+            if (count > 0) { if (r0 < 0) r0 = y; r1 = y; }
+            else if (r0 >= 0 && y - r1 > std::max(2.0, 0.15 * size * ky)) break;   // the gap under the first line
+        }
+        if (r0 >= 0 && r1 > r0) {
+            std::wstring firstLine = hit.text;
+            bool desc = false;
+            for (wchar_t ch : firstLine) if (std::wcschr(L"gjpqy(),;", ch)) { desc = true; break; }
+            const double h = (r1 - r0 + 1) / ky;
+            const double fromHeight = h / (desc ? 0.93 : 0.72);
+            if (fromHeight > 0.4 * size && fromHeight < 2.5 * size) { hit.style.sizePt = std::round(fromHeight * 2) / 2; hit.sizeExact = fromHeight; }
+        }
+    }
+    if (hit.lines <= 1) hit.lineStep = 1.2 * hit.sizeExact;
+    hit.overScan = true;
+    hit.scanBg = bg;
+    hit.scanL = L; hit.scanB = B; hit.scanR = R; hit.scanT = T;
+}
+// A picture of the page's background over l..t, as if what is drawn there were not: each point blended from the
+// picture just around the area (left and right on its row, above and below in its column), so a gradient or a tinted
+// panel goes on under it. A flat patch in the most common colour where the area cannot be drawn.
+FPDF_PAGEOBJECT backgroundPatch(Document& d, FPDF_PAGE pg, double l, double b, double r, double t, COLORREF flat) {
+    const auto& api = pdfium::api();
+    const double e = std::max(1.0, 0.08 * (t - b));   // the ring read around the area
+    const Area a = drawArea(pg, l - e, b - e, r + e, t + e, 1400);
+    FPDF_PAGEOBJECT img = nullptr;
+    if (a.w > 8 && a.h > 8) {
+        const double kx = a.w / (r - l + 2 * e), ky = a.h / (t - b + 2 * e);
+        const int x0 = std::max(1, static_cast<int>(e * kx)), y0 = std::max(1, static_cast<int>(e * ky));
+        const int x1 = std::max(x0 + 1, a.w - x0), y1 = std::max(y0 + 1, a.h - y0);
+        const int w = x1 - x0, h = y1 - y0;
+        auto at = [&](int x, int y) { return &a.px[(static_cast<size_t>(std::clamp(y, 0, a.h - 1)) * a.w + std::clamp(x, 0, a.w - 1)) * 4]; };
+        // the ring's colour at each row (left, right) and column (top, bottom): the median of a few pixels across it
+        auto median = [&](std::vector<std::array<int, 3>>& v) {
+            std::array<int, 3> m{};
+            for (int k = 0; k < 3; ++k) {
+                std::vector<int> c;
+                for (auto& p : v) c.push_back(p[k]);
+                std::nth_element(c.begin(), c.begin() + c.size() / 2, c.end());
+                m[k] = c[c.size() / 2];
+            }
+            return m;
+        };
+        // (only pixels near the background colour: the edge of a letter that reaches into the ring would be smeared across)
+        const std::array<int, 3> flatC{GetBValue(flat), GetGValue(flat), GetRValue(flat)};
+        auto ring = [&](int fx, int fy, int dx, int dy, int depth) {
+            std::vector<std::array<int, 3>> v;
+            for (int k = 1; k <= depth + 2; ++k) {
+                const uint8_t* p = at(fx + dx * k, fy + dy * k);
+                if (colourDistance(p, flat) < 90) v.push_back({p[0], p[1], p[2]});
+            }
+            return v.empty() ? flatC : median(v);
+        };
+        std::vector<std::array<int, 3>> left(h), right(h), top(w), bottom(w);
+        for (int y = 0; y < h; ++y) { left[y] = ring(x0, y0 + y, -1, 0, x0); right[y] = ring(x1 - 1, y0 + y, 1, 0, x0); }
+        for (int x = 0; x < w; ++x) { top[x] = ring(x0 + x, y0, 0, -1, y0); bottom[x] = ring(x0 + x, y1 - 1, 0, 1, y0); }
+        // smoothed along the edge: compression leaves faint dark fringes by letters, which would show as streaks
+        auto smooth = [](std::vector<std::array<int, 3>>& v) {
+            const int n = static_cast<int>(v.size()), rad = std::max(3, n / 30);
+            std::vector<std::array<int, 3>> o(v.size());
+            for (int i = 0; i < n; ++i) {
+                long long sum[3] = {0, 0, 0};
+                int c = 0;
+                for (int j = std::max(0, i - rad); j <= std::min(n - 1, i + rad); ++j) { for (int k = 0; k < 3; ++k) sum[k] += v[j][k]; ++c; }
+                for (int k = 0; k < 3; ++k) o[i][k] = static_cast<int>(sum[k] / c);
+            }
+            v.swap(o);
+        };
+        smooth(left); smooth(right); smooth(top); smooth(bottom);
+        FPDF_BITMAP bmp = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRx, nullptr, 0);
+        if (bmp) {
+            auto* px = static_cast<uint8_t*>(api.FPDFBitmap_GetBuffer(bmp));
+            const int stride = api.FPDFBitmap_GetStride(bmp);
+            for (int y = 0; y < h; ++y)
+                for (int x = 0; x < w; ++x) {
+                    const double u = (x + 0.5) / w, v = (y + 0.5) / h;
+                    // nearer edges count more: across a wide, short patch the rows above and below decide
+                    const double wh = 1.0 / std::max(1e-3, std::min(u, 1 - u) * w), wv = 1.0 / std::max(1e-3, std::min(v, 1 - v) * h);
+                    for (int k = 0; k < 3; ++k) {
+                        const double hc = left[y][k] * (1 - u) + right[y][k] * u, vc = top[x][k] * (1 - v) + bottom[x][k] * v;
+                        px[y * stride + x * 4 + k] = static_cast<uint8_t>(std::clamp((hc * wh + vc * wv) / (wh + wv), 0.0, 255.0));
+                    }
+                    px[y * stride + x * 4 + 3] = 255;
+                }
+            img = api.FPDFPageObj_NewImageObj(d.handle());
+            if (img && api.FPDFImageObj_SetBitmap(nullptr, 0, img, bmp)) {
+                const FS_MATRIX m{static_cast<float>(r - l), 0, 0, static_cast<float>(t - b), static_cast<float>(l), static_cast<float>(b)};
+                api.FPDFPageObj_SetMatrix(img, &m);
+            } else if (img) { api.FPDFPageObj_Destroy(img); img = nullptr; }
+            api.FPDFBitmap_Destroy(bmp);
+        }
+    }
+    if (img) return img;
+    FPDF_PAGEOBJECT rect = api.FPDFPageObj_CreateNewRect(static_cast<float>(l), static_cast<float>(b), static_cast<float>(r - l), static_cast<float>(t - b));
+    if (!rect) return nullptr;
+    api.FPDFPageObj_SetFillColor(rect, GetRValue(flat), GetGValue(flat), GetBValue(flat), 255);
+    api.FPDFPath_SetDrawMode(rect, FPDF_FILLMODE_WINDING, false);
+    return rect;
+}
+} // namespace
 
 ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnly) {
     ParagraphHit hit;
@@ -1188,10 +1481,28 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         const double area = (ln.r - ln.l) * (ln.t - ln.b);
         if (area < best) { best = area; hitLine = static_cast<int>(i); }
     }
+    if (hitLine < 0) {   // between two lines (inside a paragraph's outline): the nearest line across the click
+        double nearest = 1e18;
+        for (size_t i = 0; i < lines.size(); ++i) {
+            const Line& ln = lines[i];
+            if (x < ln.l - 2 || x > ln.r + 2) continue;
+            const double dy = y > ln.t ? y - ln.t : y < ln.b ? ln.b - y : 0;
+            if (dy < 0.9 * ln.size && dy < nearest) { nearest = dy; hitLine = static_cast<int>(i); }
+        }
+    }
     if (hitLine < 0) return hit;
     // 4. neighbouring lines of the same paragraph
-    int first = hitLine, last = hitLine;
-    paragraphSpan(lines, horizontalRules(pg), hitLine, lineOnly, first, last);
+    // (the paragraph's lines are put first, in order: below, lines[first..last] are the paragraph and the rest of the
+    // page's lines follow)
+    const std::vector<int> span = paragraphSpan(lines, horizontalRules(pg), hitLine, lineOnly);
+    {
+        std::vector<Line> ordered;
+        std::vector<char> taken(lines.size(), 0);
+        for (int k : span) { ordered.push_back(lines[static_cast<size_t>(k)]); taken[static_cast<size_t>(k)] = 1; }
+        for (size_t k = 0; k < lines.size(); ++k) if (!taken[k]) ordered.push_back(lines[k]);
+        lines.swap(ordered);
+    }
+    const int first = 0, last = static_cast<int>(span.size()) - 1;
     hit.found = true;
     hit.page = page;
     hit.lines = last - first + 1;
@@ -1311,9 +1622,79 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
                 if (bt < bandB + 1 || bb > bandT - 1) continue;   // not just touching it (a table's lines below)
                 if (bl >= lines[first].r - 0.5) contentR = std::min(contentR, static_cast<double>(bl) - 0.5 * size);
             }
+            // pages are set with about the same margin on both sides: the text may also reach as far from the right edge
+            // as the page's content starts from the left one (a title over a narrow table)
+            {
+                double contentL = lines[first].l;
+                for (const Line& ln : lines) contentL = std::min(contentL, ln.l);
+                double mirror = pageW - contentL;
+                // not onto anything drawn beside the line
+                for (int i = 0; i < no; ++i) {
+                    if (std::find(hit.objects.begin(), hit.objects.end(), i) != hit.objects.end()) continue;
+                    FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+                    float bl, bb, br, bt;
+                    if (!o || !api.FPDFPageObj_GetBounds(o, &bl, &bb, &br, &bt)) continue;
+                    if (bt < bandB + 1 || bb > bandT - 1) continue;
+                    if (bl >= lines[first].r - 0.5) mirror = std::min(mirror, static_cast<double>(bl) - 0.5 * size);
+                }
+                if (mirror > contentR && mirror < pageW) contentR = mirror;
+            }
             column = std::max(column, contentR);
         }
         hit.wrapWidth = std::max(widest, column - hit.originX);
+    }
+    // Centred text: lines sharing their middle and not their left edge; a line on its own is centred when the lines
+    // around it (a letterhead's name, department and town) share its middle. Set again around the same middle, as wide as
+    // the free space on both sides allows (a logo beside it stops it).
+    if (hit.upright && hit.align != Align::Justify) {
+        const double size = lines[first].size, mid = (lines[first].l + lines[first].r) / 2;
+        bool centred = false;
+        if (last > first) {
+            bool sameMid = true, sameLeft = true;
+            for (int i = first + 1; i <= last; ++i) {
+                if (std::fabs((lines[i].l + lines[i].r) / 2 - mid) > 0.6 * size) sameMid = false;
+                if (std::fabs(lines[i].l - lines[first].l) > 0.6 * size) sameLeft = false;
+            }
+            centred = sameMid && !sameLeft;
+        } else {
+            for (size_t i = static_cast<size_t>(last) + 1; i < lines.size() && !centred; ++i) {
+                const Line& o = lines[i];
+                if (std::fabs(o.b - lines[first].b) > 8 * size || std::fabs(o.l - lines[first].l) < size) continue;
+                if (std::fabs((o.l + o.r) / 2 - mid) < 1.5) centred = true;
+            }
+        }
+        if (centred) {
+            hit.align = Align::Centre;
+            double l = 1e9, r = -1e9;
+            for (int i = first; i <= last; ++i) { l = std::min(l, lines[i].l); r = std::max(r, lines[i].r); }
+            double half = (r - l) / 2;
+            const double c = (l + r) / 2;
+            if (last == first) {
+                // the free space: the page's content edges, and not onto anything drawn beside the line
+                const double pageW = d.pageSize(page).w;
+                double cl = l, cr = r;
+                const int no = api.FPDFPage_CountObjects(pg);
+                for (int i = 0; i < no; ++i) {
+                    FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+                    float bl, bb, br, bt;
+                    if (!o || !api.FPDFPageObj_GetBounds(o, &bl, &bb, &br, &bt) || br - bl >= 0.9 * pageW || bl < 0 || br > pageW) continue;
+                    cl = std::min(cl, static_cast<double>(bl)); cr = std::max(cr, static_cast<double>(br));
+                }
+                for (int i = 0; i < no; ++i) {
+                    if (std::find(hit.objects.begin(), hit.objects.end(), i) != hit.objects.end()) continue;
+                    FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+                    float bl, bb, br, bt;
+                    if (!o || !api.FPDFPageObj_GetBounds(o, &bl, &bb, &br, &bt)) continue;
+                    if (bt < lines[first].b + 1 || bb > lines[first].t - 1) continue;
+                    if (bl >= r - 0.5) cr = std::min(cr, static_cast<double>(bl) - 0.5 * size);
+                    if (br <= l + 0.5) cl = std::max(cl, static_cast<double>(br) + 0.5 * size);
+                }
+                half = std::max(half, std::min(c - cl, cr - c));
+            }
+            hit.originX = c - half;
+            hit.wrapWidth = 2 * half;
+            hit.firstIndent = hit.restIndent = 0;
+        }
     }
     // the style of most of the text (a bold label at the start of a paragraph is not the paragraph's style); each word keeps
     // its own when the paragraph is set again (charObject)
@@ -1326,6 +1707,11 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
     }
     styleOfObject(styleObj, lines[first].size, hit.style, hit.fontName);
     hit.sizeExact = lines[first].size;
+    {   // recognised text on a scanned page: its look in the picture
+        double l = 1e9, b = 1e9, r = -1e9, t = -1e9;
+        for (int i = first; i <= last; ++i) { l = std::min(l, lines[i].l); b = std::min(b, lines[i].b); r = std::max(r, lines[i].r); t = std::max(t, lines[i].t); }
+        if (!lineOnly) readScannedLook(d, pg, hit, l, b, r, t, lines[first].size);
+    }
     // in a table's cell: the text wraps at the cell's right line (replaceParagraph sets it as the table does)
     if (!lineOnly) {
         std::vector<tables::Table> found;
@@ -1558,10 +1944,10 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
     s.a = un > 0 ? own.a / un : 1; s.b = un > 0 ? own.b / un : 0;
     s.c = vn > 0 ? own.c / vn : 0; s.dd = vn > 0 ? own.dd / vn : 1;
     s.color = st.color;
-    s.renderMode = own.font ? own.renderMode : -1;
+    s.renderMode = own.font && !hit.overScan ? own.renderMode : -1;   // recognised text becomes visible
     f.fallback = s;
     f.main = s;
-    f.own = own.font && st.family == hit.style.family && st.bold == hit.style.bold && st.italic == hit.style.italic;
+    f.own = !hit.overScan && own.font && st.family == hit.style.family && st.bold == hit.style.bold && st.italic == hit.style.italic;
     if (f.own) {
         const unsigned long flags = static_cast<unsigned long>(api.FPDFFont_GetFlags(own.font));
         f.limited = api.FPDFFont_GetIsEmbedded(own.font) != 0;
@@ -1950,7 +2336,7 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
     std::vector<int> below;           // page objects below the paragraph in its column that have to move down
     std::vector<int> belowAnnots;
     double shift = 0;
-    if (upright && newLast < oldLast - 0.01) {
+    if (upright && !hit.overScan && newLast < oldLast - 0.01) {
         if (newLast - descent < pageBottom) return fail(L"The new text needs more lines than fit on this page. Shorten the text or choose a smaller size.");
         // What is below the paragraph in its column. Only what the longer text would run into moves down, and what that
         // then runs into, and so on, as a word processor moves the text below: a footer or picture far below stays.
@@ -2039,6 +2425,40 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
             }
             api.FPDFPage_CloseAnnot(a);
         }
+    }
+    // Over a scan: a patch of the picture's background hides the old words, under the new text. Where the new text needs
+    // more room than the old words had, the picture there must be background too (nothing below can move in a picture).
+    if (hit.overScan) {
+        double widest = 0;
+        for (const Out& ln : lines) widest = std::max(widest, ln.indent + widthOfRuns(ln.runs));
+        if (align == Align::Justify) widest = std::max(widest, W);
+        const double size = st.sizePt;
+        double nl = hit.originX, nr = hit.originX + widest;
+        if (align == Align::Centre) { nl = hit.originX + (W - widest) / 2; nr = nl + widest; }
+        else if (align == Align::Right) { nl = hit.originX + W - widest; nr = hit.originX + W; }
+        const double nt = hit.baseline + 0.95 * size, nb = newLast - 0.3 * size;
+        const double L = std::min(hit.scanL, nl - 0.15 * size), R = std::max(hit.scanR, nr + 0.15 * size);
+        const double T = std::max(hit.scanT, nt), B = std::min(hit.scanB, nb);
+        if (L < hit.scanL - 0.5 || R > hit.scanR + 0.5 || T > hit.scanT + 0.5 || B < hit.scanB - 0.5) {
+            const Area a = drawArea(pg, L, B, R, T, 1200);
+            if (a.w > 0) {
+                const double kx = a.w / (R - L), ky = a.h / (T - B);
+                long long out = 0, plain = 0;
+                for (int y = 0; y < a.h; ++y)
+                    for (int x = 0; x < a.w; ++x) {
+                        const double px = L + (x + 0.5) / kx, py = T - (y + 0.5) / ky;
+                        if (px >= hit.scanL && px <= hit.scanR && py >= hit.scanB && py <= hit.scanT) continue;   // the old words
+                        ++out;
+                        if (colourDistance(&a.px[(static_cast<size_t>(y) * a.w + x) * 4], hit.scanBg) < 90) ++plain;
+                    }
+                if (std::getenv("FEATHER_TRACE_SCAN")) std::fprintf(stderr, "scan: patch %.0f,%.0f-%.0f,%.0f words %.0f,%.0f-%.0f,%.0f plain %lld of %lld\n", L, B, R, T, hit.scanL, hit.scanB, hit.scanR, hit.scanT, plain, out);
+                if (out > 0 && plain < 0.92 * out)
+                    return fail(L"The new text needs more room than the scanned page has free there (the picture has something beside or below it). Shorten the text or choose a smaller size.");
+            }
+        }
+        FPDF_PAGEOBJECT patch = backgroundPatch(d, pg, L, B, R, T, hit.scanBg);
+        if (!patch) return fail(nullptr);
+        api.FPDFPage_InsertObject(pg, patch);
     }
     // remove the old lines (last object first so the indices stay valid), then set the new ones
     std::vector<int> idx = hit.objects;

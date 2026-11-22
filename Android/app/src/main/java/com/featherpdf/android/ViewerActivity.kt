@@ -640,7 +640,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             addView(size)
         }
         val hintText = TextView(this).apply {
-            setText("s^8 is a power, x_1 an index (use { } for more: e^{-st}). \\frac{top}{bottom} is a fraction, \\sqrt{x} a root."
+            setText("s^8 is a power, x_1 an index (use { } for more: e^{-st}). \\frac{top}{bottom} is a fraction, \\sqrt{x} a root.")
             textSize = 12f
         }
         val box = LinearLayout(this).apply {

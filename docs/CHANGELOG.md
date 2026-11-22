@@ -2,6 +2,18 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.24.2 (22 November 2026)
+
+From editing every formula of a LaTeX formula compendium (six pages of tables) one after another:
+
+- Fixed: an edited formula that became wider ran into the next formula on its line (or a word after it). What follows
+  on the line, with the tops and bottoms of its fractions, now moves along, up to the next column of the table.
+- Fixed: after a formula had been edited, the next one on its line was read together with the new one.
+- Better: Greek letters in equations lean as TeX sets them (they were upright); ∮ is drawn (an integral sign with a
+  ring); TeX's degree sign (90°) is drawn as one.
+- Fixed: a character no font of the equation can draw is refused with a message instead of printed as another letter.
+- Fixed (2.24.1): the Android build of 2.24.1 did not compile (a bracket missing in the equation editor's hint).
+
 ## 2.24.1 (22 November 2026)
 
 - Fixed: the app closed when text was clicked in edit mode on PDFs whose pages are each one form (pages put together by

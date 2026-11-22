@@ -21,6 +21,7 @@ struct Glyph {
     double size = 12;
     double stretch = 1;           // drawn this much taller (a bracket around a fraction)
     double advance = 0;           // its width as set
+    bool slant = false;           // drawn leaning (Greek letters in an equation are italic; the Symbol font's are upright)
 };
 struct Stroke {                   // a line drawn through the points (a fraction's bar, a radical sign)
     std::vector<std::pair<double, double>> points;

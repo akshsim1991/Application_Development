@@ -1525,3 +1525,24 @@ as 2.24.1.
   `text = ...` named the surrounding function's `text` value instead of the button's.
 - **Fix:** both corrected; the release check now waits for both builds before calling a version published.
 
+**Published:** 2.24.1 for Windows (22 November). The Mac 2.24.1 built; the Android one did not compile (B-120): both
+go out as 2.24.2.
+
+### B-120 The Android 2.24.1 build did not compile - High (Android)
+- **Cause:** the `text = ...` → `setText(...)` change of B-119 dropped the closing bracket of the equation editor's hint.
+- **Fix:** the bracket; every changed Kotlin line read again (there is no Android compiler in the build container; the CI
+  build is the check).
+
+### B-121 Editing formulas one after another in a LaTeX table: overlaps and mixed formulas - High (all apps)
+- **Found:** editing all 170 formulas of the user's fluid mechanics compendium (LaTeX, booktabs tables, Computer Modern).
+- **Causes:** (1) a formula that became wider was set over the next one on its line; (2) the new formula's pieces were
+  read as part of the next formula; (3) the table finder saw a table that is not there and gave a column edge in the
+  middle of the formulas; (4) the TeX extension font's code 32 is a tall bracket, but PDFium also reports trailing spaces
+  as code 32; (5) Greek letters were set upright; ∮ and the degree sign had no glyph.
+- **Fix:** what follows the formula on its line (and its fractions' parts) moves right by as much as the formula grew,
+  up to the next column (where far more lines start than anywhere else, and nothing near runs across); the editor's own
+  formulas never join another one; code 32 in CMEX is a space; Greek letters lean (a sheared matrix); ∮ is ∫ with a
+  ring; TeX's ◦ in a power is °; characters outside the Times fonts' WinAnsi are refused with a message.
+- **Tests:** the edit-every-formula run (scratch harness, not committed: the PDF is the user's): 170 formulas edited,
+  0 refused; cli_check, real-world 37, engine golden files and the Android bridge all pass.
+

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(FeatherPDF VERSION 2.24.1 LANGUAGES CXX)
+project(FeatherPDF VERSION 2.24.2 LANGUAGES CXX)
 # Each minor version (2.15, 2.16, ...) has a name of its own, shown with the number in About and the status bar.
 set(FEATHER_CODENAME "Maverick")
 

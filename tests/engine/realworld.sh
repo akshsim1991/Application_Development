@@ -3,7 +3,7 @@
 # edit is made (or refused where it must be) and the text read back from the saved PDF (pdfminer) has what it should.
 #   Public files: Mozilla pdf.js and py-pdf test collections on GitHub (downloaded once into $FEATHER_REALWORLD_CACHE).
 #   Private files (a user's question paper, list, assignment, scanned slides): used when $FEATHER_PRIVATE_PDFS holds them
-#   (ia.pdf, list.pdf, bme.pdf, m3d.pdf); never committed.
+#   (ia.pdf, list.pdf, bme.pdf, m3d.pdf, sy.pdf); never committed.
 # Usage: realworld.sh PROGRAM          Needs python3 with pikepdf and pdfminer.six.
 set -u
 prog="$1"
@@ -72,6 +72,9 @@ bme: a fraction read whole, with the left side|bme.pdf|eq 2 330 505 read|src: G\
 bme: a fraction edited in the equation editor|bme.pdf|eq 2 330 505 set "G(s)H(s) = \frac{2K}{s(s + 2)(s + 4)(s + 6)(s + 10)}"|eq ok objects=27|G\(s\)H\(s\) = 2K s\(s \+ 2\)\(s \+ 4\)\(s \+ 6\)\(s \+ 10\)|
 bme: a fraction with a squared bottom|bme.pdf|eq 1 317 138 read|src: G\(s\) = \\frac\{20\(1 \+ s\)\}\{s\^\{2\}\(2 \+ s\)\(4 \+ s\)\}|
 m3d: scanned slide: recognised text edited visibly|m3d.pdf|para 1 2000 343 replace "LASER POWDER BED FUSION"|para ok.*scan=1|LASER POWDER BED FUSION|
+sy: pages that are forms (FPDI): a click opens the form and the heading is edited (the app closed here)|sy.pdf|eq 1 170 772 read del 1 300 500 para 1 170 772 append "EDITED"|para ok|Computer Aided Machine Drawing Lab EDITED|
+sy: a bulleted list in a table cell keeps its lines and its bullets (Wingdings ➢)|sy.pdf|para 2 135 752 append "EDITED2"|para ok lines=11|Interference detection.*Keys and Coupling.*Plummer block Screw Jack.*Number of Hours: 28 EDITED2|
+sy: a page with a dash PDFium cannot write as text|sy.pdf|para 4 115 747 append "EDITED4"|para ok|EDITED4|
 EOF
 fi
 }

@@ -42,6 +42,8 @@ public:
     OpenResult reload(std::vector<unsigned char>&& bytes) { return load(std::move(bytes), password_); }
     // Replaces the content with `bytes` (used by undo/redo). View state and path are kept.
     OpenResult load(std::vector<unsigned char>&& bytes, const std::string& password);
+    // `out` becomes a separate copy of the document as it is now (to try a change on before making it here).
+    OpenResult copyInto(Document& out) const;
     static std::wstring describe(OpenResult r, const std::wstring& path);
 
     const std::wstring& path() const { return path_; }

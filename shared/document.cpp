@@ -572,6 +572,12 @@ void Document::mergeChangesSince(size_t depth, const std::wstring& what) {
     undo_.back().what = what;
 }
 
+OpenResult Document::copyInto(Document& out) const {
+    std::vector<unsigned char> bytes;
+    if (!serialize(bytes)) return OpenResult::Damaged;
+    return out.load(std::move(bytes), password_);
+}
+
 bool Document::rollbackChange() {
     if (undo_.empty()) return false;
     Snapshot snap = std::move(undo_.back());

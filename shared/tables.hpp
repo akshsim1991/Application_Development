@@ -47,6 +47,10 @@ struct Cell {
     int fRowSpan = 1, fColSpan = 1;
     COLORREF fFill = 0xFFFFFFFF;
     double textW = 0;                         // the width its text took
+    // how each of its lines that start a paragraph (a list's items) was set: its first word, where it started and where its
+    // text after a bullet or number started (from the cell's left line), and whether it was set against the right edge
+    struct ParaLook { std::wstring head; double indent = 0, hang = 0; bool right = false; };
+    std::vector<ParaLook> paraLook;
 };
 
 struct Table {

@@ -2,6 +2,8 @@
 #include "contentgen.hpp"
 #include "pdfium_api.hpp"
 #include <algorithm>
+#include <cwctype>
+#include <cwchar>
 #include <array>
 #include <cmath>
 #include <functional>
@@ -11,6 +13,22 @@
 
 namespace tables {
 namespace {
+// "1." "2)" "(a)" "iv." "b)": a numbered item's number
+bool numberMarker(const std::wstring& w) {
+    if (w.size() < 2 || w.size() > 6) return false;
+    const wchar_t last = w.back();
+    if (last != L'.' && last != L')') return false;
+    std::wstring core = w.substr(w[0] == L'(' ? 1 : 0, w.size() - 1 - (w[0] == L'(' ? 1 : 0));
+    if (core.empty()) return false;
+    bool digits = true, letters = true;
+    for (wchar_t c : core) { digits = digits && iswdigit(c); letters = letters && iswalpha(c); }
+    if (digits) return true;
+    if (!letters) return false;
+    if (core.size() == 1) return true;   // a) b.
+    for (wchar_t c : core) if (!std::wcschr(L"ivxlIVXL", c)) return false;   // ii) iv.
+    return true;
+}
+
 
 const pdfium::Api& api() { return pdfium::api(); }
 
@@ -431,7 +449,23 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
                     // the first word of this line would have fitted on the previous one: a line break
                     double firstWord = 0;
                     for (int ci : ln.chars) { firstWord = pt.chars[ci].r - ln.l; if (pt.chars[ci].spaceAfter) break; }
-                    text += prev.r + 0.3 * ln.size + firstWord < Rr - 1 ? L'\n' : L' ';
+                    // a line that starts with a bullet or a number (an item of a list in the cell) starts on its own too
+                    const std::wstring firstTok = s.substr(0, s.find(L' '));
+                    const bool item = !firstTok.empty() && (numberMarker(firstTok) || std::wcschr(L"\x2022\x27A2\x25AA\x25CF\x25E6\x2013\x2014\xF0B7\xF0D8\x2023\x25BA\x25A0\x2713\x2714", firstTok[0]) != nullptr);
+                    text += item || prev.r + 0.3 * ln.size + firstWord < Rr - 1 ? L'\n' : L' ';
+                }
+                if (li == 0 || text.back() == L'\n') {   // a paragraph starts: how it was set
+                    Cell::ParaLook pl;
+                    pl.head = s.substr(0, s.find(L' '));
+                    pl.indent = ln.l - L;
+                    pl.hang = pl.indent;
+                    // after a bullet or number: where the words start (the item's next lines start there)
+                    const bool marker = !pl.head.empty() && (numberMarker(pl.head) || std::wcschr(L"\x2022\x27A2\x25AA\x25CF\x25E6\x2013\x2014\xF0B7\xF0D8\x2023\x25BA\x25A0\x2713\x2714", pl.head[0]) != nullptr);
+                    if (marker)
+                        for (size_t k = 0; k + 1 < ln.chars.size(); ++k)
+                            if (pt.chars[ln.chars[k]].spaceAfter) { pl.hang = pt.chars[ln.chars[k + 1]].l - L; break; }
+                    pl.right = ln.l - L > 0.35 * (Rr - L) && Rr - ln.r < 0.06 * (Rr - L) + 3;
+                    cell.paraLook.push_back(pl);
                 }
                 text += s;
                 minL = std::min(minL, ln.l); maxR = std::max(maxR, ln.r); maxT = std::max(maxT, ln.t); minB = std::min(minB, ln.b);
@@ -440,8 +474,14 @@ bool fillCells(Document& d, Table& t, const PageText& pt, const std::vector<Box>
             cell.textW = maxR - minL;
             cell.baseOff = T - lines.front().base;
             cell.lines = static_cast<int>(lines.size());
-            // style: the first letter's object
-            const Char& first = pt.chars[lines.front().chars.front()];
+            // style: the first letter's object (not a bullet's: bullets are often in Symbol or Wingdings)
+            const Char* firstLetter = &pt.chars[lines.front().chars.front()];
+            for (const TLine& ln : lines) {
+                bool got = false;
+                for (int ci : ln.chars) if (iswalnum(pt.chars[ci].ch)) { firstLetter = &pt.chars[ci]; got = true; break; }
+                if (got) break;
+            }
+            const Char& first = *firstLetter;
             if (first.obj >= 0) {
                 pageobj::TextStyle st;
                 std::string fname;
@@ -1564,7 +1604,12 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
                 const int like = !t.scanned && validLike(d, t0, cell.like) ? cell.like : -1;
                 auto ts = std::make_unique<pageobj::TextSetter>(d, t.page, like, st);
                 if (!ts->ok()) return fail(L"The text of a cell could not be set in its font.");
-                const double w = t.colX[c + cell.colSpan] - t.colX[c] - 2 * t.pad;
+                double w = t.colX[c + cell.colSpan] - t.colX[c] - 2 * t.pad;
+                {   // a list in the cell: its lines are as wide as the room after its bullets
+                    double hang = 0;
+                    for (const auto& pl : cell.paraLook) if (!pl.right && pl.hang > pl.indent + 1) hang = std::max(hang, pl.hang - t.pad);
+                    if (hang > 0 && w - hang > 4 * size) w -= hang;
+                }
                 bool ok = true;
                 std::vector<char> ends;
                 std::vector<std::wstring> lines = wrap(*ts, cellText, std::max(4.0, w), ok, &ends);
@@ -1610,16 +1655,52 @@ bool write(Document& d, const Table& t0, std::wstring* why, double* grewBy, bool
         // a cell whose text still takes the lines it had sits where it was found
         const double rowTop = t.rowY[L.r], rowsH = rowTop - t.rowY[L.r + cell.rowSpan];
         if (cell.baseOff > 0 && static_cast<int>(L.lines.size()) == cell.lines && cell.baseOff < rowsH) y = rowTop - cell.baseOff;
+        // the cell's paragraphs as they were set (a list's items keep their indents; a line set against the right edge stays
+        // there), matched in order while their first words are the same
+        std::vector<const Cell::ParaLook*> looks;
+        {
+            size_t pi = 0;
+            bool start = true;
+            for (size_t li = 0; li < L.lines.size(); ++li) {
+                const Cell::ParaLook* pl = nullptr;
+                if (start) {
+                    const std::wstring head = L.lines[li].substr(0, L.lines[li].find(L' '));
+                    for (size_t k = pi; k < cell.paraLook.size(); ++k)
+                        if (cell.paraLook[k].head == head) { pl = &cell.paraLook[k]; pi = k + 1; break; }
+                }
+                looks.push_back(pl);
+                start = li < L.ends.size() && L.ends[li];
+            }
+        }
+        const Cell::ParaLook* item = nullptr;   // the item the line belongs to (its next lines hang under its words)
         for (size_t li = 0; li < L.lines.size(); ++li) {
             const std::wstring& line = L.lines[li];
+            const bool first = li == 0 || (li - 1 < L.ends.size() && L.ends[li - 1]);
+            if (first) item = looks[li];
             if (!line.empty()) {
                 const double w = L.ts->width(line);
                 double x = cl;
                 if (cell.align == 1) x = (cl + cr) / 2 - w / 2;
                 else if (cell.align == 2) x = cr - w;
+                if (item && cell.align != 1) {
+                    const double colL = t.colX[L.c];
+                    if (item->right) x = cr - w;
+                    else x = std::max(cl - 1, colL + (first ? item->indent : item->hang));
+                    if (x + w > cr + 1 && !item->right) x = std::max(cl, cr - w);
+                }
                 // justified: every line but a paragraph's last reaches both edges
                 const bool spread = cell.align == 3 && li < L.ends.size() && !L.ends[li];
-                std::vector<FPDF_PAGEOBJECT> objs = spread ? L.ts->make(line, x, y, cr - cl) : L.ts->make(line, x, y);
+                std::vector<FPDF_PAGEOBJECT> objs;
+                // an item's bullet or number where it was, its words where they started (a tab's width after it)
+                const size_t sp = line.find(L' ');
+                const double colL = t.colX[L.c];
+                if (first && item && !item->right && cell.align != 1 && sp != std::wstring::npos && sp > 0 &&
+                    colL + item->hang > x + L.ts->width(line.substr(0, sp)) + 0.5 && colL + item->hang + L.ts->width(line.substr(sp + 1)) <= cr + 1) {
+                    objs = L.ts->make(line.substr(0, sp), x, y);
+                    std::vector<FPDF_PAGEOBJECT> rest = L.ts->make(line.substr(sp + 1), colL + item->hang, y);
+                    if (rest.empty()) { for (auto o : objs) api().FPDFPageObj_Destroy(o); objs.clear(); }
+                    else objs.insert(objs.end(), rest.begin(), rest.end());
+                } else objs = spread ? L.ts->make(line, x, y, cr - cl) : L.ts->make(line, x, y);
                 if (objs.empty()) return fail(L"The text of a cell could not be set.");
                 text.insert(text.end(), objs.begin(), objs.end());
             }

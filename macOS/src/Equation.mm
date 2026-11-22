@@ -160,7 +160,7 @@ static FPEquationSheet* g_sheet = nil;
     hint.textColor = NSColor.secondaryLabelColor;
     // the buttons, in rows
     NSMutableArray<NSView*>* rows = [NSMutableArray array];
-    __block NSMutableArray<NSView*>* row = [NSMutableArray array];
+    NSMutableArray<NSView*>* row = [NSMutableArray array];
     auto flush = [&] { if (row.count) { NSStackView* r = [NSStackView stackViewWithViews:row]; r.spacing = 4; [rows addObject:r]; row = [NSMutableArray array]; } };
     auto add = [&](NSString* label, NSString* insert, NSString* tip) {
         NSButton* b = [NSButton buttonWithTitle:label target:s action:@selector(insertClicked:)];

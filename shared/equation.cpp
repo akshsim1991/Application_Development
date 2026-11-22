@@ -100,7 +100,7 @@ int fontFor(wchar_t c, int prefer) {
 enum Cls { Ord, Bin, Rel, Open, Close, Punct, Big };
 
 struct Node {
-    enum Kind { Row, Char, Script, Frac, Root, Space } kind = Row;
+    enum Kind { Row, Char, Script, Frac, Root, Space, Accent } kind = Row;
     std::wstring text;          // Char: the characters
     int font = Italic;          // Char: Italic for letters, Roman upright (digits and signs are upright anyway), Bold
     Cls cls = Ord;
@@ -336,6 +336,15 @@ struct Parser {
             out.kind = Node::Frac;
             out.kids.resize(2);
             return argument(out.kids[0], false) && argument(out.kids[1], false);
+        }
+        if (name == L"bar" || name == L"overline" || name == L"hat" || name == L"widehat" || name == L"tilde" || name == L"widetilde" ||
+            name == L"dot" || name == L"ddot" || name == L"vec") {
+            out = Node{};
+            out.kind = Node::Accent;
+            out.text = name == L"bar" || name == L"overline" ? L"\x00AF" : name == L"hat" || name == L"widehat" ? L"\x02C6"
+                     : name == L"tilde" || name == L"widetilde" ? L"\x02DC" : name == L"dot" ? L"\x02D9" : name == L"ddot" ? L"\x00A8" : L"\x2192";
+            out.kids.resize(1);
+            return argument(out.kids[0], false);
         }
         if (name == L"sqrt") {
             out = Node{};
@@ -577,6 +586,44 @@ void stretchFence(Box& f, double asc, double desc, double size) {
     f.w += extra;
 }
 
+// An accent over its letters: a bar drawn as a line, the others as small marks centred over them.
+Box setAccent(const Node& n, double size, int level) {
+    Box body = setNode(n.kids[0], size, level);
+    Box b = body;
+    const wchar_t a = n.text.empty() ? 0x00AF : n.text[0];
+    const double shift = body.italicEnd && body.glyphs.size() == 1 ? 0.08 * size : 0;   // over an italic letter's middle
+    const double top = std::max(body.asc, 0.45 * size);
+    if (a == 0x00AF) {
+        double l = 1e9, r = -1e9;
+        for (const Glyph& g : body.glyphs) { l = std::min(l, g.x); r = std::max(r, g.x + g.advance); }
+        if (l > r) { l = 0; r = body.w; }
+        Stroke bar;
+        const double y = top + 0.12 * size;
+        bar.points = {{l + 0.05 * size + shift, y}, {r - 0.02 * size + shift, y}};
+        bar.width = rule(size);
+        b.strokes.push_back(bar);
+        b.asc = std::max(b.asc, y + bar.width);
+        return b;
+    }
+    Node mark;
+    mark.kind = Node::Char;
+    mark.text = std::wstring(1, a == 0x02D9 ? L'.' : a);
+    mark.font = Roman;
+    mark.cls = Ord;
+    const double ms = a == 0x2192 ? size * 0.7 : size;
+    Box m = setChar(mark, ms);
+    double ml = 1e9, mb = 1e9;
+    for (const Glyph& g : m.glyphs) {
+        const Metrics& mt = metrics(g.font, g.text[0]);
+        ml = std::min(ml, g.x + mt.l * g.size);
+        mb = std::min(mb, mt.b * g.size);
+    }
+    double mw = 0;
+    for (const Glyph& g : m.glyphs) { const Metrics& mt = metrics(g.font, g.text[0]); mw = std::max(mw, g.x + mt.r * g.size - ml); }
+    b.put(m, (body.w - mw) / 2 - ml + shift, top + 0.06 * size - mb);
+    return b;
+}
+
 Box setRow(const Node& n, double size, int level) {
     std::vector<Box> items;
     items.reserve(n.kids.size());
@@ -653,6 +700,7 @@ Box setNode(const Node& n, double size, int level) {
     case Node::Frac: return setFrac(n, size, level);
     case Node::Root: return setRoot(n, size, level);
     case Node::Space: { Box b; b.w = n.em * size; return b; }
+    case Node::Accent: return setAccent(n, size, level);
     }
     return Box{};
 }
@@ -731,11 +779,63 @@ struct Unit {
     std::vector<bool> italic;     // per character: set italic (a letter of a mathematical alphabet, or an italic font)
     bool mathFont = false;        // Cambria Math, STIX Math, LaTeX's CMMI/CMSY ...
     bool uprightMath = false;     // plain letters in a mathematics font that has italic ones of its own: meant upright
+    bool big = false;             // TeX's extension font (big brackets, roots, sums): not the line's size
+    bool upright = false;         // an upright font (not italic)
+    wchar_t accent = 0;           // an accent over it (read from the page: \bar, \hat ...)
+    size_t accentAt = 0;          // over which of its characters
+    bool accentMark = false;      // this text is only an accent over the letter below it
     double l = 0, b = 0, r = 0, t = 0;
     double x = 0, y = 0, size = 0;
     COLORREF color = 0;
     bool used = false;
 };
+
+// TeX's extension font (CMEX) has no Unicode for its glyphs: its codes, as the characters they draw.
+wchar_t cmexChar(unsigned code) {
+    switch (code) {
+    case 0x00: case 0x10: case 0x12: case 0x20: case 0x30: case 0x40: return L'(';
+    case 0x01: case 0x11: case 0x13: case 0x21: case 0x31: case 0x41: return L')';
+    case 0x02: case 0x14: case 0x22: case 0x32: case 0x34: case 0x36: case 0x68: return L'[';
+    case 0x03: case 0x15: case 0x23: case 0x33: case 0x35: case 0x37: case 0x69: return L']';
+    case 0x08: case 0x1A: case 0x28: case 0x38: case 0x3A: case 0x3C: case 0x6E: return L'{';
+    case 0x09: case 0x1B: case 0x29: case 0x39: case 0x3B: case 0x3D: case 0x6F: return L'}';
+    case 0x0C: case 0x3E: case 0x42: case 0x43: return L'|';
+    case 0x0A: case 0x1C: case 0x2A: return 0x2329;
+    case 0x0B: case 0x1D: case 0x2B: return 0x232A;
+    case 0x48: case 0x49: return 0x222E;
+    case 0x50: case 0x58: return 0x2211;
+    case 0x51: case 0x59: return 0x220F;
+    case 0x52: case 0x5A: return 0x222B;
+    case 0x70: case 0x71: case 0x72: case 0x73: case 0x74: return 0x221A;
+    default: return 0;
+    }
+}
+const wchar_t kAccents[] = L"\x00AF\x02C9\x02C6\x02DC\x02D9\x00A8\x20D7";
+bool isAccentChar(wchar_t c) { return c != 0 && std::wcschr(kAccents, c) != nullptr; }
+const wchar_t* accentCommand(wchar_t c) {
+    switch (c) {
+    case 0x00AF: case 0x02C9: return L"\\bar";
+    case 0x02C6: case 0x005E: return L"\\hat";
+    case 0x02DC: case 0x007E: return L"\\tilde";
+    case 0x02D9: return L"\\dot";
+    case 0x00A8: return L"\\ddot";
+    default: return L"\\vec";
+    }
+}
+// Text that reads as mathematics in an upright font (TeX's CMR digits and signs, a function's name): no word of two or
+// more letters other than a function's name.
+bool mathlike(const std::wstring& t) {
+    size_t k = 0;
+    while (k < t.size()) {
+        if (t[k] < 0x80 && iswalpha(t[k])) {
+            size_t j = k;
+            while (j < t.size() && t[j] < 0x80 && iswalpha(t[j])) ++j;
+            if (j - k > 1 && !isFunction(t.substr(k, j - k))) return false;
+            k = j;
+        } else ++k;
+    }
+    return true;
+}
 
 bool mathFontName(const std::string& n) {
     for (const char* k : {"Math", "CMMI", "CMSY", "CMEX", "MSAM", "MSBM", "STIX", "Euclid", "MTExtra", "MT-Extra", "LMMath", "lmmi"})
@@ -774,6 +874,7 @@ std::vector<Unit> unitsOf(FPDF_PAGE pg, FPDF_TEXTPAGE tp) {
         FPDF_FONT font = api.FPDFTextObj_GetFont(o);
         const std::string name = pageobj::baseFontName(font);
         u.mathFont = mathFontName(name);
+        u.big = name.find("CMEX") != std::string::npos;
         bool italicFont = name.find("Italic") != std::string::npos || name.find("Oblique") != std::string::npos ||
                           name.find("CMMI") != std::string::npos || name.find("-It") != std::string::npos;
         int angle = 0;
@@ -797,6 +898,10 @@ std::vector<Unit> unitsOf(FPDF_PAGE pg, FPDF_TEXTPAGE tp) {
                 continue;
             }
             if (cp > 0xFFFF || cp == 0x2061 || cp == 0x2062 || cp == 0x2063 || cp == 0x200B) continue;
+            if (u.big && cp < 0x80) {   // CMEX: its codes
+                if (const wchar_t m = cmexChar(cp)) { u.chars += m; u.italic.push_back(false); }
+                continue;
+            }
             if (cp == L'\r' || cp == L'\n' || cp == 0xFFFE || cp == 0) continue;
             if (cp < 0x80 && iswalpha(static_cast<wint_t>(cp))) plainLetters = true;
             u.chars += static_cast<wchar_t>(cp);
@@ -805,6 +910,16 @@ std::vector<Unit> unitsOf(FPDF_PAGE pg, FPDF_TEXTPAGE tp) {
         if (u.chars.find_first_not_of(L' ') == std::wstring::npos) continue;
         // Cambria Math and its kind write italic letters as the mathematical alphabet's: their plain letters are upright
         u.uprightMath = u.mathFont && !italicFont && plainLetters && (name.find("Math") != std::string::npos || mathItalics);
+        u.upright = !italicFont;
+        // TeX's roman (CMR, Latin Modern) in an equation: its digits, signs and function names are mathematics
+        const bool texRoman = name.find("CMR") != std::string::npos || name.find("CMBX") != std::string::npos || name.find("LMRoman") != std::string::npos;
+        if (texRoman && mathlike(u.chars)) u.mathFont = true;
+        {   // an accent alone (TeX sets \bar h as a macron over the h)
+            std::wstring t = u.chars;
+            t.erase(std::remove(t.begin(), t.end(), L' '), t.end());
+            u.accentMark = t.size() == 1 && isAccentChar(t[0]) && (texRoman || u.mathFont || u.size > 0);
+            if (u.accentMark) u.mathFont = true;
+        }
         unsigned R = 0, G = 0, B = 0, A = 255;
         api.FPDFPageObj_GetFillColor(o, &R, &G, &B, &A);
         u.color = RGB(R, G, B);
@@ -842,12 +957,13 @@ std::wstring notationOf(const Unit& u) {
             out += (sk > 0 ? L"^{" : L"_{") + run + L"}";
             continue;
         }
-        if (c < 0x80 && iswalpha(c) && u.uprightMath && !u.italic[k]) {
+        if (c < 0x80 && iswalpha(c) && !u.italic[k]) {   // upright letters: a function's name, a word, or one letter
             size_t j = k;
             while (j < u.chars.size() && u.chars[j] < 0x80 && iswalpha(u.chars[j]) && !u.italic[j]) ++j;
             const std::wstring word = u.chars.substr(k, j - k);
             if (isFunction(word)) out += L"\\" + word + L" ";
-            else out += L"\\text{" + word + L"}";
+            else if (u.uprightMath || word.size() > 1) out += L"\\text{" + word + L"}";
+            else out += word;
             k = j;
             continue;
         }
@@ -864,22 +980,55 @@ struct Reader {
 
     // The most common size and the baseline of the text in it among `ids`.
     void mainLine(const std::vector<int>& ids, double& size, double& base) {
-        std::map<long, double> bySize;
-        for (int id : ids) if (us[id].text) bySize[std::lround(us[id].size * 4)] += static_cast<double>(us[id].chars.size());
-        long best = 0;
+        // the line's size: the largest text (powers, indices and a word set small under a letter are smaller; TeX's big
+        // brackets and roots do not count)
+        double big = 0;
+        for (int id : ids) if (us[id].text && !us[id].big && !us[id].accentMark) big = std::max(big, us[id].size);
+        if (big <= 0) for (int id : ids) if (us[id].text) big = std::max(big, us[id].size);
+        size = big;
         double most = -1;
-        for (auto& [k, v] : bySize) if (v > most || (v == most && k > best)) { most = v; best = k; }
-        size = best / 4.0;
         std::map<long, double> byBase;
         for (int id : ids)
-            if (us[id].text && std::fabs(us[id].size - size) < 0.6) byBase[std::lround(us[id].y * 2)] += static_cast<double>(us[id].chars.size());
-        most = -1;
+            if (us[id].text && !us[id].big && !us[id].accentMark && std::fabs(us[id].size - size) < 0.6) byBase[std::lround(us[id].y * 2)] += static_cast<double>(us[id].chars.size());
         long bb = 0;
         for (auto& [k, v] : byBase) if (v > most) { most = v; bb = k; }
         base = bb / 2.0;
     }
 
+    // TeX's accents (\bar h, \dot m): the mark over a letter goes with it
+    void attachAccents(const std::vector<int>& ids) {
+        for (int a : ids) {
+            Unit& m = us[static_cast<size_t>(a)];
+            if (!m.text || !m.accentMark || m.used == false) continue;
+            const double cx = (m.l + m.r) / 2;
+            int best = -1;
+            double bestGap = 1e9;
+            for (int id : ids) {
+                const Unit& u = us[static_cast<size_t>(id)];
+                if (id == a || !u.text || u.accentMark || cx < u.l - 1 || cx > u.r + 1) continue;
+                const double gap = m.b - u.t;
+                if (gap > -0.35 * u.size && gap < 0.5 * u.size && std::fabs(gap) < bestGap) { bestGap = std::fabs(gap); best = id; }
+            }
+            if (best < 0) { m.accentMark = false; continue; }   // not over a letter: an ordinary character
+            std::wstring t = m.chars;
+            t.erase(std::remove(t.begin(), t.end(), L' '), t.end());
+            Unit& under = us[static_cast<size_t>(best)];
+            under.accent = t[0];
+            // over which letter: by where it is along the text (its letters are about as wide)
+            size_t letters = 0;
+            for (wchar_t ch : under.chars) if (ch != L' ') ++letters;
+            const double along = under.r > under.l ? (cx - under.l) / (under.r - under.l) : 0;
+            const size_t nth = std::min(letters ? letters - 1 : 0, static_cast<size_t>(std::max(0.0, along * letters)));
+            size_t seen = 0;
+            for (size_t q = 0; q < under.chars.size(); ++q) if (under.chars[q] != L' ' && seen++ == nth) { under.accentAt = q; break; }
+            accentsTaken.push_back(a);
+        }
+    }
+    std::vector<int> accentsTaken;
+
     std::wstring build(std::vector<int> ids, double* sizeOut = nullptr, double* baseOut = nullptr) {
+        attachAccents(ids);
+        ids.erase(std::remove_if(ids.begin(), ids.end(), [&](int id) { return std::find(accentsTaken.begin(), accentsTaken.end(), id) != accentsTaken.end(); }), ids.end());
         // fractions and roots first, the widest bar first (an outer fraction holds the inner ones)
         std::vector<int> bars;
         for (int id : ids) if (!us[id].text) bars.push_back(id);
@@ -899,8 +1048,9 @@ struct Reader {
                 const Unit& u = us[id];
                 const double cx = (u.l + u.r) / 2;
                 if (cx < B.l - 0.1 * approx || cx > B.r + 0.1 * approx || u.l < B.l - 0.6 * approx || u.r > B.r + 0.6 * approx) continue;
-                if (u.b >= B.y - 0.25 * approx && u.b < B.y + 3 * approx) above.push_back(id);
-                else if (u.t <= B.y + 0.25 * approx && u.t > B.y - 3 * approx) below.push_back(id);
+                const double mid = u.text ? (u.b + u.t) / 2 : u.y;
+                if (mid > B.y && u.b >= B.y - 0.25 * approx && u.b < B.y + 3 * approx) above.push_back(id);
+                else if (mid < B.y && u.t <= B.y + 0.25 * approx && u.t > B.y - 3 * approx) below.push_back(id);
             }
             if (!above.empty() && !below.empty()) {
                 for (int id : above) taken[id] = true;
@@ -955,10 +1105,24 @@ struct Reader {
             }
             const Unit& u = us[it.unit];
             int kind = 0;
-            const bool smaller = u.size < 0.88 * size;
-            if ((smaller && u.y > base + 0.12 * size) || u.y > base + 0.45 * size) kind = 1;
+            const bool smaller = u.size < 0.88 * size && !u.big;
+            if (u.big) kind = 0;   // TeX's tall brackets and roots hang below the line: never a power
+            else if ((smaller && u.y > base + 0.12 * size) || u.y > base + 0.45 * size) kind = 1;
             else if ((smaller && u.y < base - 0.08 * size) || u.y < base - 0.3 * size) kind = -1;
             std::wstring t = notationOf(u);
+            if (u.accent) {   // \bar{h}: the letter under it in braces
+                Unit before = u, mark = u, after = u;
+                before.chars = u.chars.substr(0, u.accentAt);
+                mark.chars = u.chars.substr(u.accentAt, 1);
+                after.chars = u.accentAt + 1 < u.chars.size() ? u.chars.substr(u.accentAt + 1) : std::wstring();
+                before.italic.assign(u.italic.begin(), u.italic.begin() + static_cast<long>(std::min(u.accentAt, u.italic.size())));
+                mark.italic.assign(1, u.accentAt < u.italic.size() ? u.italic[u.accentAt] : true);
+                after.italic.assign(u.italic.begin() + static_cast<long>(std::min(u.accentAt + 1, u.italic.size())), u.italic.end());
+                before.accent = mark.accent = after.accent = 0;
+                std::wstring m = notationOf(mark);
+                while (!m.empty() && m.back() == L' ') m.pop_back();
+                t = notationOf(before) + std::wstring(accentCommand(u.accent)) + L"{" + m + L"}" + notationOf(after);
+            }
             if (kind != openKind) {
                 close();
                 if (kind != 0) { while (!out.empty() && out.back() == L' ') out.pop_back(); out += kind > 0 ? L"^{" : L"_{"; openKind = kind; }
@@ -1135,38 +1299,46 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     std::vector<int> in{seed};
     us[seed].used = true;
     double L = us[seed].l, B = us[seed].b, R = us[seed].r, T = us[seed].t;
+    // Each part joins through a part next to it (not through the box of all of them: a formula that runs onto a second line
+    // of a table's cell would take in that line).
+    auto mathish = [&](const Unit& u) {
+        if (u.mathFont) return true;
+        std::wstring t = u.chars;
+        t.erase(std::remove(t.begin(), t.end(), L' '), t.end());
+        return u.upright && !t.empty() && mathlike(t);
+    };
+    auto joins = [&](const Unit& u, const Unit& v) {
+        const double hgap = std::max(u.l - v.r, v.l - u.r);
+        const double vov = std::min(u.t, v.t) - std::max(u.b, v.b);   // how far they overlap up and down (< 0: the gap)
+        if (!u.text && !v.text) return false;
+        if (!u.text)   // a bar (a fraction's, a root's) just over or under the text, across it
+            return (u.r - u.l) < 30 * size && hgap < -0.2 * std::min(u.r - u.l, v.r - v.l) && -vov < 0.75 * size && mathish(v);
+        if (!v.text) {
+            const bool side = u.l >= v.l - 0.4 * size && u.r <= v.r + 0.4 * size && -vov < 0.75 * size;            // over or under it
+            const bool beside = std::fabs(u.y + axisOf(u.size) - v.y) < 0.35 * size && hgap < 0.6 * size && mathish(u);   // the line through it
+            const bool touching = vov > 0 && hgap < 0.3 * size && mathish(u);                                  // a root's sign
+            return side || beside || touching;
+        }
+        const bool sameLine = std::fabs(u.y - v.y) < 0.2 * size && std::fabs(u.size - v.size) < 0.12 * size;
+        if (sameLine && hgap < 0.6 * size && (mathish(u) || anyText)) return true;
+        if ((u.big || v.big) && vov > 0 && hgap < 0.6 * size && mathish(u)) return true;   // TeX's tall brackets, roots, sums
+        // a power or an index and what it hangs from (either way round)
+        auto script = [&](const Unit& small, const Unit& base) {
+            return small.size < 0.88 * base.size && small.size > 0.3 * base.size && hgap < 0.6 * base.size && vov > -0.2 * base.size;
+        };
+        if (script(u, v) || (script(v, u) && mathish(u))) return true;
+        if (u.accentMark && hgap < 0 && u.b >= v.t - 0.35 * size && u.b - v.t < 0.5 * size) return true;   // an accent over it
+        if (v.accentMark && hgap < 0 && v.b >= u.t - 0.35 * size && v.b - u.t < 0.5 * size && mathish(u)) return true;
+        return false;
+    };
     for (bool grew = true; grew;) {
         grew = false;
         for (size_t k = 0; k < us.size(); ++k) {
             Unit& u = us[k];
             if (u.used) continue;
-            const double vgap = std::max(u.b - T, B - u.t), hgap = std::max(u.l - R, L - u.r);
-            if (vgap > 0.45 * size || hgap > 0.9 * size) continue;
-            // on a line of the equation: a baseline of its text, or through the middle of one of its fractions' bars
-            bool sameLine = false;
-            if (u.text)
-                for (int id : in) {
-                    const Unit& v = us[static_cast<size_t>(id)];
-                    if (v.text ? std::fabs(u.y - v.y) < 0.2 * size && std::fabs(u.size - v.size) < 0.12 * size
-                               : std::fabs(u.y + axisOf(u.size) - v.y) < 0.35 * size && hgap < 0.6 * size) { sameLine = true; break; }
-                }
-            bool belongs = false;
-            if (!u.text) belongs = (u.r - u.l) < 30 * size && std::min(u.r, R) - std::max(u.l, L) > -0.5 * size;
-            else if (u.mathFont) belongs = true;
-            else if (u.size < 0.88 * size && u.size > 0.3 * size) belongs = true;   // a power or an index
-            else if (anyText && sameLine) belongs = true;
-            else if (sameLine && u.l >= L - 0.2 * size && u.r <= R + 0.2 * size) belongs = true;   // between its parts
-            if (!belongs) continue;
-            // text above or below that is no power or index: a side of a fraction (over or under one of its bars), else
-            // another line
-            if (u.text && !sameLine && u.size >= 0.88 * size) {
-                bool overBar = false;
-                for (int id : in) {
-                    const Unit& b = us[static_cast<size_t>(id)];
-                    if (!b.text && u.l >= b.l - 0.4 * size && u.r <= b.r + 0.4 * size && std::fabs((u.b + u.t) / 2 - b.y) < 3 * size) overBar = true;
-                }
-                if (!overBar && !(u.mathFont && vgap < 0.1 * size && hgap < 0)) continue;
-            }
+            bool j = false;
+            for (int id : in) if (joins(u, us[static_cast<size_t>(id)])) { j = true; break; }
+            if (!j) continue;
             u.used = true;
             in.push_back(static_cast<int>(k));
             L = std::min(L, u.l); B = std::min(B, u.b); R = std::max(R, u.r); T = std::max(T, u.t);
@@ -1178,10 +1350,14 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     if (!anyText) {
         const double seedY = us[seed].y;
         for (const Unit& u : us) {
-            if (u.used || !u.text || u.mathFont || std::fabs(u.y - seedY) > 0.2 * size || std::fabs(u.size - size) > 0.2 * size) continue;
+            if (u.used || !u.text || u.mathFont) continue;
             if (u.chars.find_first_not_of(L" ") == std::wstring::npos) continue;
+            // on the line: its baseline, or (a power clicked beside a word, kg/m³) overlapping the clicked text
+            const bool onLine = std::fabs(u.y - seedY) < 0.2 * size ||
+                                (std::min(u.t, us[seed].t) - std::max(u.b, us[seed].b) > 0 && u.size > us[seed].size * 1.12);
+            if (!onLine) continue;
             const double hgap = std::max(u.l - R, L - u.r);
-            if (hgap < 3 * size) return f;
+            if (hgap < 0.8 * std::max(size, u.size)) return f;
         }
     }
     if (std::getenv("FEATHER_TRACE_EQ"))

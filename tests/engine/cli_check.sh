@@ -9,7 +9,7 @@ here="$(cd "$(dirname "$0")" && pwd)"
 root="$(cd "$here/../.." && pwd)"
 prog="$1"
 jpeg="${2:-}"
-work="$(mktemp -d)"
+work="${FEATHER_CLI_WORK:-$(mktemp -d)}"; mkdir -p "$work"
 fail=0
 ok()   { echo "  ok   $1"; }
 bad()  { echo "  FAIL $1"; fail=1; }
@@ -705,5 +705,5 @@ qpmake "$W/qps.pdf" "$W/shifted.ttf"
 run --tables "$W/qps.pdf" "$W/qpst.txt"
 check "a justified cell is read as justified whatever its font's letters' side spacing" "grep -q '|A 1:4 scale.*type of turbine<j>' '$W/qpst.txt'"
 
-rm -rf "$work"
+[ -n "${FEATHER_CLI_WORK:-}" ] || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

@@ -526,10 +526,10 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         }
         val tools = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addView(Button(context).apply { text = "x\u00B2"; isAllCaps = false; setOnClickListener { script(1) } })
-            addView(Button(context).apply { text = "x\u2082"; isAllCaps = false; setOnClickListener { script(-1) } })
+            addView(Button(context).apply { setText("x\u00B2"); isAllCaps = false; setOnClickListener { script(1) } })
+            addView(Button(context).apply { setText("x\u2082"); isAllCaps = false; setOnClickListener { script(-1) } })
             addView(Button(context).apply {
-                text = "\u2211 Equation"; isAllCaps = false
+                setText("\u2211 Equation"); isAllCaps = false
                 setOnClickListener { dialog?.dismiss(); if (!editEquationAt(page, x, y, true)) Toast.makeText(context, "That text could not be read as an equation.", Toast.LENGTH_SHORT).show() }
             })
         }
@@ -628,7 +628,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             addView(LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 for ((label, insert) in items) addView(Button(context).apply {
-                    text = label; isAllCaps = false; minWidth = dp(44); minimumWidth = dp(44)
+                    setText(label); isAllCaps = false; minWidth = dp(44); minimumWidth = dp(44)
                     setOnClickListener { put(insert) }
                 })
             })
@@ -636,11 +636,11 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         val sizeRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            addView(TextView(context).apply { text = "Size" })
+            addView(TextView(context).apply { setText("Size") })
             addView(size)
         }
         val hintText = TextView(this).apply {
-            text = "s^8 is a power, x_1 an index (use { } for more: e^{-st}). \\frac{top}{bottom} is a fraction, \\sqrt{x} a root."
+            setText("s^8 is a power, x_1 an index (use { } for more: e^{-st}). \\frac{top}{bottom} is a fraction, \\sqrt{x} a root."
             textSize = 12f
         }
         val box = LinearLayout(this).apply {

@@ -1493,3 +1493,35 @@ Android files stay one release longer.
 - **Not yet:** the equation is set in Times and Symbol, not in the document's own Cambria Math (it is a font collection
   that cannot be embedded as it is); a matrix or a multi-line equation is not read as one.
 
+**Published:** 2.24.0 for Windows (22 November). The Mac and Android 2.24.0 builds failed to compile (B-119); they go out
+as 2.24.1.
+
+### B-117 The app closed on clicking text in edit mode (PDFs whose pages are forms) - Critical (all apps)
+- **Found:** the user's syllabus (pages put together by FPDI: each page one form, 94 forms sharing one resource list):
+  Feather PDF closed as soon as editing started.
+- **Cause:** a click on text inside a form opens the form onto the page (B-112). Here that failed (a stamp over the page
+  and one dash could only be kept as pictures), and the failure put the document back by loading it again. The click's
+  code (groupAt) went on using the page it had fetched before: freed memory. Reproduced on Linux with AddressSanitizer
+  (SEGV in FPDFPage_GetObject from groupAt).
+- **Fix:** opening a form is first tried on a copy of the document, so a refusal never reloads the open one; a refused page
+  is not tried again until the document changes; groupAt fetches the page again after finding the paragraph. Only text
+  taken out of the form counts when checking that nothing became a picture, and a character or two (≤ 3, ≤ 1%) is let
+  through.
+- **Tests:** realworld.sh, private sy.pdf: the click sequence of edit mode (equation, picking, paragraph) on page 1, page 4
+  with the dash; 25 to 33 clicks per page edit without a crash under AddressSanitizer.
+
+### B-118 A bulleted list in a table cell became one bold sans paragraph - High (all apps)
+- **Found:** editing the "Assembly Drawing Exercises" cell of the syllabus.
+- **Cause:** the cell's text was read with its lines joined unless a line ended well short of the edge; the editor then
+  joined the rest too; the cell's style was taken from its first character, a bullet in the Symbol font; the bullets
+  (➢, Wingdings) could not be set at all, so such cells were refused.
+- **Fix:** a line that starts with a bullet or a number starts its own line; line breaks are kept in the editor; the style
+  comes from the first letter; letters no font of the cell has are set in the standard Symbol or ZapfDingbats font; each
+  item keeps its indent and the place its words start after the bullet, and a line set against the right edge stays.
+- **Tests:** realworld.sh (sy.pdf page 2); cli_check 165 and the engine's golden files unchanged.
+
+### B-119 The Mac and Android builds of 2.24.0 did not compile - High (Mac, Android)
+- **Cause:** Mac: a variable captured by a C++ lambda was declared `__block`. Android: inside the buttons' `apply` blocks,
+  `text = ...` named the surrounding function's `text` value instead of the button's.
+- **Fix:** both corrected; the release check now waits for both builds before calling a version published.
+

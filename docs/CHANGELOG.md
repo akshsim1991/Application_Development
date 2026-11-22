@@ -2,6 +2,22 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.24.1 (22 November 2026)
+
+- Fixed: the app closed when text was clicked in edit mode on PDFs whose pages are each one form (pages put together by
+  FPDI, as many university and office systems make them). Such pages now open for editing; one that cannot is left as it
+  is, and is not tried again on every click.
+- Fixed: on such pages, a stamp added over the page (a number at its foot) or a dash that can only be kept as a picture no
+  longer stopped the whole page from being edited.
+- Fixed: a bulleted list in a table's cell came back as one run-on paragraph in a bold sans font. Its items keep their
+  own lines, bullets (➢ and other Wingdings bullets are set in the standard Dingbats font), indents and the cell's own
+  font; a line set against the cell's right edge ("Number of Hours: 28") stays there.
+- Better: equations from LaTeX (Computer Modern fonts) are read whole by the equation editor: its signs and digits, tall
+  brackets, roots, sums and integrals, accents (h̄, u̅), upright words under a letter (ρ_fluid) and functions (sin, cos).
+  Two equations side by side in a table's cell open one at a time.
+- Fixed (2.24.0): the Mac and Android builds of 2.24.0 did not compile; 2.24.1 is the first of them with the equation
+  editor.
+
 ## 2.24.0 "Maverick" (22 November 2026)
 
 An equation editor: equations are edited as equations, not as text.

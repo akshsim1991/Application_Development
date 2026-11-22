@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <map>
 #include <set>
+#include <tuple>
 #include <cwctype>
 #include <cctype>
 #include <cstdint>
@@ -1327,8 +1328,7 @@ bool cellParagraph(Document& d, int page, double x, double y, ParagraphHit& hit)
     hit.page = page;
     hit.objects = cell.objs;
     std::sort(hit.objects.begin(), hit.objects.end());
-    hit.text = cell.text;
-    for (auto& ch : hit.text) if (ch == L'\n') ch = L' ';
+    hit.text = cell.text;   // its lines that end on purpose (a list's items) stay lines
     hit.left = best->l; hit.top = best->tp; hit.width = best->rr - best->l;
     hit.lines = std::max(1, cell.lines);
     hit.lineHeight = (best->tp - best->b) / hit.lines;
@@ -2113,10 +2113,27 @@ FPDF_FONT installedFont(Document& d, FPDF_PAGE pg, const std::string& pdfName, b
 // changed, else the closest standard font. An embedded font may hold only the letters the document uses, so it is used only
 // for words whose letters are drawn with it on this page. Other words are set in the installed font of the same name when
 // there is one (`full`, embedded on first use), else in `fallback`, a standard font of the same style and size.
+// Whether a standard font draws a character (its glyph has a size).
+bool standardHas(Document& d, const char* font, wchar_t c) {
+    static std::map<std::pair<std::string, wchar_t>, bool> cache;
+    const auto key = std::make_pair(std::string(font), c);
+    if (auto it = cache.find(key); it != cache.end()) return it->second;
+    const auto& api = pdfium::api();
+    bool has = false;
+    if (FPDF_PAGEOBJECT o = api.FPDFPageObj_NewTextObj(d.handle(), font, 100)) {
+        const unsigned short t[2] = {static_cast<unsigned short>(c), 0};
+        float l, b, r, tp;
+        has = c <= 0xFFFF && api.FPDFText_SetText(o, t) && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &tp) && tp > b && r > l;
+        api.FPDFPageObj_Destroy(o);
+    }
+    return cache[key] = has;
+}
+
 struct Fonts {
     Document* d = nullptr;
     FPDF_PAGE pg = nullptr;
     Setter main{nullptr}, fallback{nullptr}, full{nullptr};
+    Setter symbol{nullptr}, dings{nullptr};   // the standard Symbol and ZapfDingbats fonts: Greek, signs, ➢ ✓ ● (last resort)
     bool own = false;               // main is the paragraph's own font
     bool limited = false;           // ... and it can draw only the letters in `have`
     bool mayLoad = false;           // `full` may be embedded (only while a change is being made)
@@ -2196,6 +2213,8 @@ bool fontsFor(Document& d, const ParagraphHit& hit, const TextStyle& st, Fonts& 
     s.color = st.color;
     s.renderMode = own.font && !hit.overScan ? own.renderMode : -1;   // recognised text becomes visible
     f.fallback = s;
+    f.symbol = s; f.symbol.standard = "Symbol";
+    f.dings = s; f.dings.standard = "ZapfDingbats";
     f.main = s;
     f.own = !hit.overScan && own.font && st.family == hit.style.family && st.bold == hit.style.bold && st.italic == hit.style.italic;
     if (f.own) {
@@ -2282,7 +2301,27 @@ std::vector<Run> runsOf(const std::vector<Fonts*>& wf, const std::vector<std::ws
             runs.insert(runs.end(), parts.begin(), parts.end());
             continue;
         }
-        if (!s) { ok = false; return {}; }
+        if (!s) {
+            // letters no one font has (a ➢ bullet from Wingdings, a μ in Arial text): each letter in the first font that
+            // draws it, the standard Symbol and ZapfDingbats fonts last
+            std::vector<Run> parts;
+            for (wchar_t ch : w) {
+                wchar_t base;
+                script::of(ch, base);
+                const std::wstring one(1, base);
+                const Setter* cs = f.own && f.limited && f.have.find(base) != std::wstring::npos ? &f.main
+                                 : f.own && !f.limited && isLatin(one) ? &f.main
+                                 : isLatin(one) ? &f.fallback
+                                 : f.d && standardHas(*f.d, "Symbol", base) ? &f.symbol
+                                 : f.d && standardHas(*f.d, "ZapfDingbats", base) ? &f.dings
+                                 : f.fullState == 1 ? &f.full : nullptr;
+                if (!cs) { ok = false; return {}; }
+                if (!parts.empty() && parts.back().set == cs) parts.back().text += ch;
+                else parts.push_back({std::wstring(1, ch), cs, 0, 0, &f, !parts.empty()});
+            }
+            runs.insert(runs.end(), parts.begin(), parts.end());
+            continue;
+        }
         // words share a run only when the font draws a space; one WPS embeds may not (the space was drawn as a box), and then
         // each word is its own run, a space's width apart
         const bool spaces = !(s == &f.main && f.limited && f.have.find(L' ') == std::wstring::npos);
@@ -2344,6 +2383,8 @@ TextSetter::TextSetter(Document& d, int page, int like, const TextStyle& style) 
     s.color = style.color;
     f.main = s;
     f.fallback = s;
+    f.symbol = s; f.symbol.standard = "Symbol";
+    f.dings = s; f.dings.standard = "ZapfDingbats";
     f.own = false;
     const double w1 = s.width(L"x x"), w2 = s.width(L"xx");
     f.space = w1 > 0 && w2 > 0 && w1 > w2 ? w1 - w2 : 0.25 * style.sizePt;
@@ -2889,7 +2930,7 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
         }
         g.left = L; g.bottom = B; g.right = R; g.top = T;
     };
-    const int n = api.FPDFPage_CountObjects(pg);
+    int n = api.FPDFPage_CountObjects(pg);
     for (int i = n - 1; i >= 0; --i) {   // the topmost picture
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
         float l, b, r, t;
@@ -2901,6 +2942,10 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
     }
     TableHit th = tableAt(d, page, x, y);
     ParagraphHit ph = paragraphAt(d, page, x, y);
+    // (finding the paragraph may have opened a form onto the page: the page and its objects are fetched again)
+    pg = d.page(page);
+    if (!pg) return g;
+    n = api.FPDFPage_CountObjects(pg);
     if (ph.found && !th.found) {
         g.found = true; g.kind = GroupHit::Paragraph; g.objects = ph.objects;
         bounds(g.objects);
@@ -2944,7 +2989,9 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
 // A form object under the point that holds text (a page a program stamped or merged keeps its whole content in one): its
 // contents are put on the page itself, in the same places and order, so its text can be edited. One undo step; the page
 // looks the same (checked as every change is), or nothing is changed.
-bool unwrapFormAt(Document& d, int page, double x, double y) {
+namespace {
+// unwrapFormAt's work: the form under the point (and forms inside it) opened onto the page, written, checked.
+bool unwrapCore(Document& d, int page, double x, double y) {
     FPDF_PAGE pg = d.page(page);
     if (!pg) return false;
     const auto& api = pdfium::api();
@@ -2964,6 +3011,7 @@ bool unwrapFormAt(Document& d, int page, double x, double y) {
             formIndex = i;
     }
     if (formIndex < 0) return false;
+    std::set<FPDF_PAGEOBJECT> opened;   // the text taken out of the forms
     d.beginChange(L"Make the text of a page editable");
     // forms inside it are opened too, a level at a time, until no form with text is left under the point
     for (int round = 0; round < 8 && formIndex >= 0; ++round) {
@@ -2972,6 +3020,7 @@ bool unwrapFormAt(Document& d, int page, double x, double y) {
         api.FPDFPageObj_GetMatrix(form, &m);
         std::vector<FPDF_PAGEOBJECT> kids;
         for (int i = 0, n = api.FPDFFormObj_CountObjects(form); i < n; ++i) kids.push_back(api.FPDFFormObj_GetObject(form, static_cast<unsigned long>(i)));
+        for (FPDF_PAGEOBJECT k : kids) if (api.FPDFPageObj_GetType(k) == FPDF_PAGEOBJ_TEXT) opened.insert(k);
         size_t at = static_cast<size_t>(formIndex);
         bool ok = true;
         for (FPDF_PAGEOBJECT k : kids) {
@@ -2994,19 +3043,53 @@ bool unwrapFormAt(Document& d, int page, double x, double y) {
                 formIndex = i;
         }
     }
-    // Text that could only be kept by drawing it as a picture (letters spaced in a way PDFium cannot write) would no longer
-    // be text, and a paragraph with such lines would be edited only in part: then the page is left as it was.
-    auto textObjects = [&] {
-        int count = 0;
-        for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n; ++i)
-            if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i)) count += api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT;
-        return count;
-    };
+    // Text of the form that could only be kept by drawing it as a picture (letters spaced in a way PDFium cannot write)
+    // would no longer be text, and a paragraph with such lines would be edited only in part: then the page is left as it
+    // was, unless it is a character or two. (Other text of the page that becomes a picture, a stamp added over it, does
+    // not stop it.)
     contentgen::prepare(d.handle(), pg);
-    const int before = textObjects();
-    if (!contentgen::generate(d, pg) || textObjects() < before) { d.rollbackChange(); return false; }
+    std::set<FPDF_PAGEOBJECT> before;
+    for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n; ++i)
+        if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i); o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT && opened.count(o)) before.insert(o);
+    const bool gen = contentgen::generate(d, pg);
+    size_t kept = 0;
+    if (gen)
+        for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n; ++i)
+            if (FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i); o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_TEXT && before.count(o)) ++kept;
+    if (std::getenv("FEATHER_TRACE_UNWRAP")) std::fprintf(stderr, "unwrap: generate=%d form text %zu kept %zu\n", gen, before.size(), kept);
+    // a dash or two that is only kept as a picture does not stop it; more does
+    const size_t lost = before.size() - kept;
+    if (!gen || lost > 3 || lost * 100 > before.size()) { d.rollbackChange(); return false; }
     d.resetText(page);
     return true;
+}
+} // namespace
+
+// A form object under the point that holds text: opened onto the page (see pageobjects.hpp). It is tried on a copy of the
+// document first: a failed try puts the document back by loading it again, and every page and number a caller holds would
+// be gone (the app closed on PDFs whose pages are forms that cannot be opened, B-117). A page refused once is not tried
+// again until the document changes.
+bool unwrapFormAt(Document& d, int page, double x, double y) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    bool any = false;   // a form with text under the point (else nothing to do)
+    for (int i = api.FPDFPage_CountObjects(pg) - 1; i >= 0 && !any; --i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float l, b, r, t;
+        if (o && api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_FORM && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t) && x >= l && x <= r && y >= b && y <= t &&
+            api.FPDFFormObj_CountObjects(o) > 0)
+            any = true;
+    }
+    if (!any) return false;
+    static std::map<std::tuple<const Document*, int, int>, int> refused;   // the revision a page was refused at
+    const auto key = std::make_tuple(static_cast<const Document*>(&d), page, d.pageCount());
+    if (auto it = refused.find(key); it != refused.end() && it->second == d.revision()) return false;
+    {
+        Document trial;
+        if (d.copyInto(trial) != OpenResult::Ok || !unwrapCore(trial, page, x, y)) { refused[key] = d.revision(); return false; }
+    }
+    return unwrapCore(d, page, x, y);
 }
 
 bool transformGroup(Document& d, int page, const std::vector<int>& objects, double fl, double fb, double fr, double ft, double tl, double tb, double tr, double tt) {

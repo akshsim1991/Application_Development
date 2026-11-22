@@ -4,6 +4,10 @@ Free forever. Windows and macOS. Newest first.
 
 ## 2.24.3 (22 November 2026)
 
+**A big update: please install it.** Editing PDFs had bugs, and this release fixes them (with 2.24.0 to 2.24.2, all in
+this update): the app no longer closes on PDFs whose pages are forms, equations are edited in an equation editor, and
+text in tables edits without moving rows apart or spoiling the formulas beside it.
+
 From editing a whole LaTeX formula compendium (formulas, names, conditions and units in tables without ruled columns):
 
 - Fixed: text in a table without drawn columns (LaTeX booktabs, a grid only read from how text lines up) was set again

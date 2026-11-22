@@ -879,18 +879,28 @@ struct Setter {
         const double un = std::hypot(a, b), vn = std::hypot(c, dd);
         const double ux = un > 0 ? a / un : 1, uy = un > 0 ? b / un : 0, vx = vn > 0 ? c / vn : 0, vy = vn > 0 ? dd / vn : 1;
         const double em = fontSize * vn;   // the size as drawn
-        double along = 0;
+        double along = 0, scriptAt = 0, scriptW = 0;
+        int prev = 0;
         for (const auto& [seg, kind] : segments(t)) {
             Setter s2 = *this;
             double off = 0;
             if (kind != 0) { s2.fontSize = static_cast<float>(fontSize * 0.62); off = kind > 0 ? 0.36 * em : -0.14 * em; }
-            FPDF_PAGEOBJECT o = s2.make(seg, e + along * ux + off * vx, f + along * uy + off * vy);
+            if (kind > 0 && starOnly(seg)) { s2.fontSize = static_cast<float>(fontSize * 0.9); off = 0.1 * em; }   // an asterisk sits high already
+            // a power and an index on one letter (T*₀, x₁²) stand one over the other
+            const bool stacked = kind != 0 && prev == -kind;
+            const double at = stacked ? scriptAt : along;
+            FPDF_PAGEOBJECT o = s2.make(seg, e + at * ux + off * vx, f + at * uy + off * vy);
             if (!o) { for (auto x : out) pdfium::api().FPDFPageObj_Destroy(x); out.clear(); return out; }
             out.push_back(o);
-            along += s2.plainWidth(seg) + (kind != 0 ? 0.04 * em : 0);
+            const double w = s2.plainWidth(seg);
+            if (stacked) along = at + std::max(scriptW, w) + 0.04 * em;
+            else along += w + (kind != 0 ? 0.04 * em : 0);
+            scriptAt = at; scriptW = w;
+            prev = stacked ? 0 : kind;
         }
         return out;
     }
+    static bool starOnly(const std::wstring& seg) { return !seg.empty() && seg.find_first_not_of(L'*') == std::wstring::npos; }
     // `t` in runs of plain text, superscript (1) and subscript (-1), each as its plain characters
     static std::vector<std::pair<std::wstring, int>> segments(const std::wstring& t) {
         std::vector<std::pair<std::wstring, int>> v;
@@ -926,14 +936,19 @@ struct Setter {
     double width(const std::wstring& t) const {
         if (!script::any(t)) return plainWidth(t);
         const double em = fontSize * std::hypot(c, dd);
-        double along = 0, last = 0;
+        double along = 0, last = 0, scriptAt = 0, scriptW = 0;
+        int prev = 0;
         for (const auto& [seg, kind] : segments(t)) {
             Setter s2 = *this;
-            if (kind != 0) s2.fontSize = static_cast<float>(fontSize * 0.62);
+            if (kind != 0) s2.fontSize = static_cast<float>(fontSize * (kind > 0 && starOnly(seg) ? 0.9 : 0.62));
             const double w = s2.plainWidth(seg);
             if (w < 0) return -1;
-            last = along + w;
-            along = last + (kind != 0 ? 0.04 * em : 0);
+            const bool stacked = kind != 0 && prev == -kind;   // (as makeAll sets them)
+            const double at = stacked ? scriptAt : along;
+            last = std::max(last, at + w);
+            along = (stacked ? at + std::max(scriptW, w) : at + w) + (kind != 0 ? 0.04 * em : 0);
+            scriptAt = at; scriptW = w;
+            prev = stacked ? 0 : kind;
         }
         return last;
     }
@@ -1176,9 +1191,17 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         std::map<long, std::set<long>> rowsAt;
         for (const Obj& o : objs) rowsAt[std::lround(o.l)].insert(std::lround(o.base));
         size_t most = 0;
-        for (const auto& [x, rows] : rowsAt) most = std::max(most, rows.size());
-        for (const auto& [x, rows] : rowsAt)
-            if (rows.size() >= std::max<size_t>(6, most * 3 / 10)) columnStarts.push_back(static_cast<double>(x));
+        // lines starting within a point either side count together (letters' boxes start a little apart: an italic f,
+        // a bracket, a capital)
+        std::map<long, size_t> startsNear;
+        for (const auto& [x, rows] : rowsAt) {
+            std::set<long> all;
+            for (long k = x - 1; k <= x + 1; ++k) if (auto it = rowsAt.find(k); it != rowsAt.end()) all.insert(it->second.begin(), it->second.end());
+            startsNear[x] = all.size();
+            most = std::max(most, all.size());
+        }
+        for (const auto& [x, count] : startsNear)
+            if (count >= std::max<size_t>(6, most * 3 / 10)) columnStarts.push_back(static_cast<double>(x));
     }
     auto columnStart = [&](double x) { for (double c : columnStarts) if (std::fabs(x - c) <= 3.0) return true; return false; };
     // 2. lines: objects on one baseline, left to right
@@ -1252,7 +1275,9 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
                     if (g < gap) { gap = g; closest = m; }
                 }
                 if (gap > 2.5 * size || gap < -0.3 * size) continue;   // another column, or drawn over
-                if (gap > 1.0 * size && objs[oj].l > objs[closest].r && columnStart(objs[oj].l)) continue;   // the next column
+                // the next column, whichever side the line was started from
+                if (gap > 1.0 * size && objs[oj].l > objs[closest].r && columnStart(objs[oj].l)) continue;
+                if (gap > 1.0 * size && objs[closest].l > objs[oj].r && columnStart(objs[closest].l)) continue;
                 // ordinary text and a formula a wide gap apart (a label and its formula in a table): not one line
                 if (gap > 1.0 * size && objs[oj].math != objs[closest].math) continue;
                 // a list number or bullet set apart from its item (wider than a word space) stays a line of its own: it
@@ -3021,6 +3046,33 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
         g.found = true; g.kind = GroupHit::Picture; g.objects = {i};
         bounds(g.objects);
         return g;
+    }
+    // A form holding only drawing (a journal's banner, a logo, an icon, as iText and TeX place them): picked whole, as a
+    // picture when it holds one, else as a shape. A form with text in it is opened onto the page when its text is edited.
+    {
+        std::function<void(FPDF_PAGEOBJECT, bool&, bool&)> look = [&](FPDF_PAGEOBJECT f, bool& text, bool& image) {
+            const int k = api.FPDFFormObj_CountObjects(f);
+            for (int j = 0; j < k && !text; ++j) {
+                FPDF_PAGEOBJECT c = api.FPDFFormObj_GetObject(f, static_cast<unsigned long>(j));
+                const int t = c ? api.FPDFPageObj_GetType(c) : 0;
+                if (t == FPDF_PAGEOBJ_TEXT) text = true;
+                else if (t == FPDF_PAGEOBJ_IMAGE) image = true;
+                else if (t == FPDF_PAGEOBJ_FORM) look(c, text, image);
+            }
+        };
+        const auto sz = d.pageSize(page);
+        for (int i = n - 1; i >= 0; --i) {
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            float l, b, r, t;
+            if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_FORM || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+            if (x < l || x > r || y < b || y > t || (r - l) * (t - b) > 0.5 * sz.w * sz.h) continue;
+            bool text = false, image = false;
+            look(o, text, image);
+            if (text) break;   // the text in it is what is clicked
+            g.found = true; g.kind = image ? GroupHit::Picture : GroupHit::Shape; g.objects = {i};
+            bounds(g.objects);
+            return g;
+        }
     }
     TableHit th = tableAt(d, page, x, y);
     ParagraphHit ph = paragraphAt(d, page, x, y);

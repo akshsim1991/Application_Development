@@ -1514,6 +1514,7 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
         if (o && api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
     }
+    double setSize = size;   // what it is set at (smaller when it would not fit its column)
     if (!remove) {
         const double x = f.centred ? (f.left + f.right) / 2 - L.width / 2 : f.left;
         // A wider equation pushes what follows it on its line (the next equation of a table's cell, a word) to the right,
@@ -1557,10 +1558,22 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
                 for (const auto& bar : bars)
                     if (cx >= bar[0] - 0.5 && cx <= bar[2] + 0.5 && std::max(q.b - bar[3], bar[1] - q.t) < 0.8 * size) { move.push_back(q.o); break; }
             }
-            if (std::getenv("FEATHER_TRACE_EQ")) std::fprintf(stderr, "push: grow %.1f limit %.1f column %d after %zu move %zu reach %.1f\n", grow, limit, column, after.size(), move.size(), reach);
-            for (FPDF_PAGEOBJECT o : move) api.FPDFPageObj_Transform(o, 1, 0, 0, 1, grow, 0);   // the gap stays as it was
+            // Pushed past the edge of its column, it would run into the next column: it is set smaller to fit (down to
+            // three quarters of its size; a fixed page cannot make the column wider).
+            double shift = grow;
+            if (column && reach + grow > limit + 0.5) {
+                const double fit = std::max(0.75, (L.width - (reach + grow - limit - 0.5)) / L.width);
+                Layout smaller;
+                if (fit < 0.995 && layout(source, size * fit, smaller, nullptr)) {
+                    L = std::move(smaller);
+                    setSize = size * fit;
+                    shift = std::max(0.0, x + L.width - f.right);
+                }
+            }
+            if (std::getenv("FEATHER_TRACE_EQ")) std::fprintf(stderr, "push: grow %.1f limit %.1f column %d after %zu move %zu reach %.1f size %.2f\n", shift, limit, column, after.size(), move.size(), reach, setSize);
+            if (shift > 0.3) for (FPDF_PAGEOBJECT o : move) api.FPDFPageObj_Transform(o, 1, 0, 0, 1, shift, 0);   // the gap stays as it was
         }
-        if (!place(d.handle(), pg, L, x, f.baseline, f.color, source, size, true)) {
+        if (!place(d.handle(), pg, L, x, f.baseline, f.color, source, setSize, true)) {
             d.rollbackChange();
             d.resetText(f.page);
             if (why) *why = L"The equation could not be set on the page.";

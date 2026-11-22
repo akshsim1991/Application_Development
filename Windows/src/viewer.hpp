@@ -123,7 +123,8 @@ public:
     // A selected group of page objects (a picture, a paragraph, a table). The viewer lets the user drag it or its corners
     // (aspect ratio kept), snaps to the guide lines (page coordinates) and reports the new rectangle as a Draw event
     // with the tool Select. Pass nullptr to clear the selection.
-    void setObjectSelection(int page, const annot::RectD* rect, std::vector<double> guidesX = {}, std::vector<double> guidesY = {});
+    // `sides` 1 shows the side handles (stretch one way), 0 only the corners (text), -1 keeps what was shown
+    void setObjectSelection(int page, const annot::RectD* rect, std::vector<double> guidesX = {}, std::vector<double> guidesY = {}, int sides = -1);
     bool hasObjectSelection() const { return objSelPage_ >= 0; }                     // a page's screen rectangle
 
     static constexpr double kMinZoom = 0.1, kMaxZoom = 8.0;
@@ -175,7 +176,8 @@ private:
     int objSelPage_ = -1;
     annot::RectD objSel_{}, objCur_{};
     std::vector<double> guideX_, guideY_;
-    enum class ObjDrag { None, Move, TL, TR, BL, BR } objDrag_ = ObjDrag::None;
+    enum class ObjDrag { None, Move, TL, TR, BL, BR, L, R, T, B } objDrag_ = ObjDrag::None;
+    bool objSides_ = true;   // handles on the sides too (stretch one way): pictures and shapes, not text
     annot::PointD objDragStart_{};
     double snapX_ = 0, snapY_ = 0; bool snappedX_ = false, snappedY_ = false;
     bool pageUnclamped(int cx, int cy, int page, annot::PointD& out) const;

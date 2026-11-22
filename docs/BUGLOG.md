@@ -1572,3 +1572,36 @@ go out as 2.24.2.
 **Published:** 2.24.3 for Windows, Mac and Android (22 November), all three from commit 04ec68c, with the note that it is a
 big update to install. The three downloads match latest.json (size and SHA-256); the 2.23.3 Mac and Android files and
 the 2.24.1 Windows installer stay one release longer.
+
+### B-123 Journal papers: no text could be edited, moved or resized - High (all apps)
+- **Found:** the user's IEEE Access paper (pdfTeX, then iText 7.1.1), pages 1 and 2: "This page uses drawing that could
+  not be written back exactly" on every edit, move and resize; the banner could not be picked.
+- **Causes:** (1) the title and running head are in a Separation colour space (PANTONE 3015 C). PDFium's writer cannot
+  write such a colour and leaves it out, so the text came back black; the check against the page held in memory then
+  refused every change. (2) The banner is an image inside a form XObject and the icons are drawings inside forms; the
+  picker looked only for images and paths on the page itself.
+- **Fix:** objects that do not write back faithfully are first set again in the plain colour they show (read from
+  PDFium), but only after a render of the object alone shows it in that one colour (blended with white at its edges), so
+  patterns, shadings and soft masks are never flattened; only what still differs becomes a picture of itself. A form
+  with no text in it, under the click, is picked whole: as a picture when it holds one, else as a shape.
+- **Tests:** new cli_check cases on a generated page with a spot-coloured title, a banner image in a form and an icon in
+  a form (edit, colour kept, move, resize); the paper's pages 1 and 2 (private, not committed): paragraph edits, moves and
+  resizes of text, the banner and both figures all made.
+
+### B-124 Resize handles all showed the move cursor - Medium (Windows, Mac)
+- **Found:** the user: the four-way arrow on a resize handle is confusing; each handle should show its direction.
+- **Fix:** Windows: corners show the diagonal size cursors, new side handles the left-right and up-down ones, the four-way
+  arrow only inside the box (in edit mode and with the Select tool). Mac: four corner handles (proportional) instead of
+  one, side handles, and drawn double-arrow cursors (macOS has no public diagonal one). Side handles stretch one way and
+  are offered for pictures and shapes, not text.
+
+### B-125 Remaining issues from the compendium report - Medium (all apps)
+- **Header row joined:** the column rule only split a line when the next column's text was joined on the right; a line
+  started from the second cell took the first in from the left. Now either side. Column starts also count lines starting
+  within a point either side (italic letters' boxes start a little apart), so a column is found where its starts spread.
+- **Formula past its column:** when what follows cannot move further, the formula is set smaller to fit, down to 75 %.
+- **T*₀ in a sentence:** a superscript directly followed by a subscript (or the reverse) is now set stacked, at the same
+  place; the raised star has a superscript form (U+20F0) and is set nearly full size, as an asterisk already sits high.
+- **Still open:** formulas LaTeX wrapped over two lines of a cell are read in parts (flagged in the editor's title);
+  formulas are set in Times, not Latin Modern, in TeX documents.
+

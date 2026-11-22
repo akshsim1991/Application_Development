@@ -2,6 +2,25 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.24.4 (22 November 2026)
+
+**Please install this update too:** on many journal papers (IEEE Access and others finished with iText) no text could be
+edited, moved or resized at all.
+
+- Fixed: on pages with text in a printer's spot colour (a Pantone ink, as journals print their titles and running heads)
+  every edit, move and resize was refused with "This page uses drawing that could not be written back exactly". The
+  coloured text is now written back in the colour it shows, and the page edits normally.
+- Fixed: a journal's banner or logo (a picture inside a form, as iText and TeX place them) could not be picked: clicking
+  it did nothing. It is now picked, moved, resized and deleted like any picture; small drawn icons as shapes.
+- New: resize handles show which way they stretch. The corners show diagonal arrows (and keep the proportions), and the
+  new handles in the middle of each side show left-right or up-down arrows and stretch one way. The four-way arrow is
+  only for moving. Text has corner handles only, so its letters are not squashed. (Windows and Mac.)
+- Fixed: a formula pushed past the edge of its table column ran into the next column; it is now set smaller to fit
+  (down to three quarters of its size).
+- Fixed: a power and an index on one letter (T*₀) in a sentence came out muddled when the sentence was edited; they now
+  stand one over the other, and a raised star stays a star.
+- Fixed: a table's header row ("Parameter / Concept", "Mathematical Formula") was read as one line.
+
 ## 2.24.3 (22 November 2026)
 
 **A big update: please install it.** Editing PDFs had bugs, and this release fixes them (with 2.24.0 to 2.24.2, all in

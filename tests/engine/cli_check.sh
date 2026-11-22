@@ -705,5 +705,42 @@ qpmake "$W/qps.pdf" "$W/shifted.ttf"
 run --tables "$W/qps.pdf" "$W/qpst.txt"
 check "a justified cell is read as justified whatever its font's letters' side spacing" "grep -q '|A 1:4 scale.*type of turbine<j>' '$W/qpst.txt'"
 
+# A journal page as iText leaves it: the title in a spot colour (a Pantone ink, which PDFium writes back as black), the
+# banner a picture inside a form, an icon a drawing inside a form. Edits, moves and resizes must all be made.
+python3 - "$W/spot.pdf" <<'PY'
+import sys, zlib, pikepdf
+from pikepdf import Name, Dictionary, Array
+pdf = pikepdf.new()
+func = Dictionary(FunctionType=2, Domain=[0, 1], C0=[0, 0, 0, 0], C1=[1, 0.3, 0, 0.2], N=1)
+sep = Array([Name.Separation, Name('/PANTONE 3015 C'), Name.DeviceCMYK, func])
+img = pikepdf.Stream(pdf, zlib.compress(bytes([30, 90, 160]) * (40 * 10)), Type=Name.XObject, Subtype=Name.Image, Width=40, Height=10,
+                     ColorSpace=Name.DeviceRGB, BitsPerComponent=8, Filter=Name.FlateDecode)
+banner = pikepdf.Stream(pdf, b"q 92 0 0 23 0 0 cm /R9 Do Q", Type=Name.XObject, Subtype=Name.Form, BBox=[0, 0, 92, 23],
+                        Resources=Dictionary(XObject=Dictionary(R9=img)))
+icon = pikepdf.Stream(pdf, b"0.6 0.8 0.2 rg 4 4 m 8 4 l 8 8 l 4 8 l f", Type=Name.XObject, Subtype=Name.Form, BBox=[0, 0, 12, 12])
+font = Dictionary(Type=Name.Font, Subtype=Name.Type1, BaseFont=Name.Helvetica, Encoding=Name.WinAnsiEncoding)
+body = (b"q 1 0 0 1 36 740 cm /Im3 Do Q "
+        b"/CS0 cs 1 sc BT /F1 20 Tf 36 690 Td (Design of a Hopping Robot) Tj ET "
+        b"0 g BT /F1 10 Tf 36 650 Td (Abstract: the wheel locomotion and the bounce movement.) Tj ET "
+        b"q 1 0 0 1 300 600 cm /Im2 Do Q")
+page = pdf.add_blank_page(page_size=(576, 783))
+page.obj.Resources = Dictionary(Font=Dictionary(F1=font), ColorSpace=Dictionary(CS0=sep), XObject=Dictionary(Im3=banner, Im2=icon))
+page.obj.Contents = pikepdf.Stream(pdf, body)
+pdf.save(sys.argv[1])
+PY
+"$prog" --edit "$W/spot.pdf" "$W/spot1.pdf" para 1 100 653 same </dev/null >/dev/null 2>&1
+check "a page with a spot-coloured title can be edited" "grep -q '^para ok' '$W/spot1.pdf.txt'"
+run --export png "$W/spot1.pdf" "$W/spot1.png" 40
+check "the spot-coloured title keeps its colour" "python3 -c \"
+import glob;from PIL import Image;im=Image.open(sorted(glob.glob('$W/spot1*.png'))[0]).convert('RGB');w,h=im.size
+px=[im.getpixel((x,y)) for x in range(w//16,w//2) for y in range(int(h*0.09),int(h*0.15))]
+assert any(b>100 and r<80 for r,g,b in px)\""
+"$prog" --edit "$W/spot.pdf" "$W/spot2.pdf" move 1 60 750 20 -10 </dev/null >/dev/null 2>&1
+check "a picture inside a form is picked and moved" "grep -q '^move ok picture' '$W/spot2.pdf.txt'"
+"$prog" --edit "$W/spot.pdf" "$W/spot3.pdf" scale 1 306 606 2 </dev/null >/dev/null 2>&1
+check "a drawing inside a form is picked and resized" "grep -q '^scale ok shape' '$W/spot3.pdf.txt'"
+"$prog" --edit "$W/spot.pdf" "$W/spot4.pdf" move 1 100 695 0 -8 </dev/null >/dev/null 2>&1
+check "the spot-coloured title moves" "grep -q '^move ok paragraph' '$W/spot4.pdf.txt'"
+
 [ -n "${FEATHER_CLI_WORK:-}" ] || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

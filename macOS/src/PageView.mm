@@ -51,6 +51,47 @@ constexpr size_t kCachedPages = 10;
     int _objPage;                                 // the selected object (Select tool)
     annot::RectD _objRect;
     FPToolEvent::Drag _objDrag;
+    int _objHandle;                               // the handle being dragged (FPToolEvent::kLeft ...)
+}
+
+// Cursors that show the way a handle stretches: a double arrow across (0), up and down (1), along the diagonals (2: top
+// left to bottom right, 3: top right to bottom left), and four arrows (4) for moving. Drawn here so all look alike (macOS
+// has no public diagonal resize cursor).
+static NSCursor* stretchCursor(int kind) {
+    static NSCursor* made[5];
+    if (made[kind]) return made[kind];
+    NSImage* im = [NSImage imageWithSize:NSMakeSize(24, 24) flipped:YES drawingHandler:^BOOL(NSRect) {
+        auto arrow = [](NSBezierPath* b, double angle) {   // a double-headed arrow through the centre
+            const double c = 12, len = 8.5, head = 4, ca = std::cos(angle), sa = std::sin(angle);
+            for (int side : {-1, 1}) {
+                const double ex = c + side * len * ca, ey = c + side * len * sa;
+                [b moveToPoint:NSMakePoint(c, c)];
+                [b lineToPoint:NSMakePoint(ex, ey)];
+                for (int w : {-1, 1}) {
+                    const double a2 = angle + (side > 0 ? M_PI : 0) + w * 0.7;
+                    [b moveToPoint:NSMakePoint(ex, ey)];
+                    [b lineToPoint:NSMakePoint(ex + head * std::cos(a2), ey + head * std::sin(a2))];
+                }
+            }
+        };
+        NSBezierPath* b = [NSBezierPath bezierPath];
+        if (kind == 0) arrow(b, 0);
+        else if (kind == 1) arrow(b, M_PI / 2);
+        else if (kind == 2) arrow(b, M_PI / 4);        // flipped: +45 degrees runs down to the right
+        else if (kind == 3) arrow(b, -M_PI / 4);
+        else { arrow(b, 0); arrow(b, M_PI / 2); }
+        b.lineCapStyle = NSLineCapStyleRound;
+        b.lineJoinStyle = NSLineJoinStyleRound;
+        b.lineWidth = 4;
+        [NSColor.whiteColor setStroke];
+        [b stroke];
+        b.lineWidth = 1.6;
+        [NSColor.blackColor setStroke];
+        [b stroke];
+        return YES;
+    }];
+    made[kind] = [[NSCursor alloc] initWithImage:im hotSpot:NSMakePoint(12, 12)];
+    return made[kind];
 }
 
 - (int)objectPage { return _objPage; }
@@ -66,9 +107,47 @@ constexpr size_t kCachedPages = 10;
     return NSMakeRect(std::min(a.x, b.x), std::min(a.y, b.y), std::fabs(b.x - a.x), std::fabs(b.y - a.y));
 }
 
-- (NSRect)objectHandle {
+// The handle under a view point: FPToolEvent::kLeft | kTop ... (a corner, or a side when the object has side handles); 0 none.
+- (int)objectHandleAt:(NSPoint)p {
+    if (_objPage < 0) return 0;
     const NSRect r = [self viewRectOnPage:_objPage rect:_objRect];
-    return NSMakeRect(NSMaxX(r) - 5, NSMaxY(r) - 5, 10, 10);
+    const double reach = 6;
+    const bool nl = std::fabs(p.x - NSMinX(r)) <= reach, nr = std::fabs(p.x - NSMaxX(r)) <= reach;
+    const bool nt = std::fabs(p.y - NSMinY(r)) <= reach, nb = std::fabs(p.y - NSMaxY(r)) <= reach;   // flipped: top is MinY
+    const bool mx = std::fabs(p.x - NSMidX(r)) <= reach, my = std::fabs(p.y - NSMidY(r)) <= reach;
+    int h = 0;
+    if ((nl || nr) && (nt || nb)) h = (nl ? FPToolEvent::kLeft : FPToolEvent::kRight) | (nt ? FPToolEvent::kTop : FPToolEvent::kBottom);
+    else if (self.objectSides && (nl || nr) && my) h = nl ? FPToolEvent::kLeft : FPToolEvent::kRight;
+    else if (self.objectSides && (nt || nb) && mx) h = nt ? FPToolEvent::kTop : FPToolEvent::kBottom;
+    return h;
+}
+
+// The cursor for a handle: the arrows the way it stretches.
+static NSCursor* handleCursor(int h) {
+    const bool horiz = h & (FPToolEvent::kLeft | FPToolEvent::kRight), vert = h & (FPToolEvent::kTop | FPToolEvent::kBottom);
+    if (horiz && vert) {
+        const bool nwse = ((h & FPToolEvent::kLeft) != 0) == ((h & FPToolEvent::kTop) != 0);
+        return stretchCursor(nwse ? 2 : 3);
+    }
+    return stretchCursor(horiz ? 0 : 1);
+}
+
+// The selected object's frame in the view while a handle is dragged by (dx, dy): a side moves alone; a corner keeps
+// the proportions, its opposite corner staying.
+static NSRect stretched(NSRect r, int h, double dx, double dy) {
+    const bool L = h & FPToolEvent::kLeft, R = h & FPToolEvent::kRight, T = h & FPToolEvent::kTop, B = h & FPToolEvent::kBottom;
+    double x0 = NSMinX(r), x1 = NSMaxX(r), y0 = NSMinY(r), y1 = NSMaxY(r);
+    if ((L || R) && (T || B)) {
+        const double w = std::max(1.0, r.size.width), nw = std::max(8.0, L ? w - dx : w + dx), nh = r.size.height * nw / w;
+        if (L) x0 = x1 - nw; else x1 = x0 + nw;
+        if (T) y0 = y1 - nh; else y1 = y0 + nh;
+    } else {
+        if (L) x0 = std::min(x1 - 8, x0 + dx);
+        if (R) x1 = std::max(x0 + 8, x1 + dx);
+        if (T) y0 = std::min(y1 - 8, y0 + dy);
+        if (B) y1 = std::max(y0 + 8, y1 + dy);
+    }
+    return NSMakeRect(x0, y0, x1 - x0, y1 - y0);
 }
 
 // The selected object: a frame and a handle; while it is dragged, the frame where it will go.
@@ -76,15 +155,22 @@ constexpr size_t kCachedPages = 10;
     if (_objPage < 0) return;
     NSRect r = [self viewRectOnPage:_objPage rect:_objRect];
     if (_toolDown && _objDrag == FPToolEvent::Move) r = NSOffsetRect(r, _toolNowView.x - _toolStartView.x, _toolNowView.y - _toolStartView.y);
-    if (_toolDown && _objDrag == FPToolEvent::Resize) r.size = NSMakeSize(std::max(8.0, r.size.width + _toolNowView.x - _toolStartView.x), std::max(8.0, r.size.height + _toolNowView.y - _toolStartView.y));
+    if (_toolDown && _objDrag == FPToolEvent::Resize) r = stretched(r, _objHandle, _toolNowView.x - _toolStartView.x, _toolNowView.y - _toolStartView.y);
     NSBezierPath* b = [NSBezierPath bezierPathWithRect:NSInsetRect(r, -2, -2)];
     const CGFloat d[] = {5, 3};
     [b setLineDash:d count:2 phase:0];
     b.lineWidth = 1.5;
     [NSColor.controlAccentColor setStroke];
     [b stroke];
-    [NSColor.controlAccentColor setFill];
-    NSRectFill(NSMakeRect(NSMaxX(r) - 5, NSMaxY(r) - 5, 10, 10));
+    std::vector<NSPoint> handles = {{NSMinX(r), NSMinY(r)}, {NSMaxX(r), NSMinY(r)}, {NSMinX(r), NSMaxY(r)}, {NSMaxX(r), NSMaxY(r)}};
+    if (self.objectSides) for (NSPoint q : {NSMakePoint(NSMidX(r), NSMinY(r)), NSMakePoint(NSMidX(r), NSMaxY(r)), NSMakePoint(NSMinX(r), NSMidY(r)), NSMakePoint(NSMaxX(r), NSMidY(r))}) handles.push_back(q);
+    for (NSPoint q : handles) {
+        const NSRect hr = NSMakeRect(q.x - 4, q.y - 4, 8, 8);
+        [NSColor.whiteColor setFill];
+        NSRectFill(hr);
+        [NSColor.controlAccentColor setStroke];
+        [NSBezierPath strokeRect:hr];
+    }
 }
 
 - (void)invalidatePage:(int)page {
@@ -725,7 +811,7 @@ constexpr size_t kCachedPages = 10;
     if (![self pageAt:p page:&page x:&x y:&y]) return;
     _objDrag = FPToolEvent::None;
     if ((_tool == FPToolSelectObject || _tool == FPToolEditAll) && _objPage == page) {   // on the selected object: move it, or resize it by its handle
-        if (NSPointInRect(p, NSInsetRect([self objectHandle], -3, -3))) _objDrag = FPToolEvent::Resize;
+        if ((_objHandle = [self objectHandleAt:p]) != 0) _objDrag = FPToolEvent::Resize;
         else if (NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) _objDrag = FPToolEvent::Move;
     }
     if (_tool == FPToolProtractor) {   // the corner, then a point on each side
@@ -802,6 +888,7 @@ constexpr size_t kCachedPages = 10;
             ev.page = _toolPage;
             ev.pts = {_toolPts.front(), _toolPts.back()};
             ev.drag = _objDrag;
+            ev.handle = _objHandle;
             self.onToolEvent(ev);
         }
         _objDrag = FPToolEvent::None;
@@ -1164,11 +1251,17 @@ constexpr size_t kCachedPages = 10;
         pageobj::EditBlock::Kind kind = pageobj::EditBlock::Text;
         const int b = [self editBlockAt:p page:&page kind:&kind];
         if (b != _hoverBlock || (b >= 0 && page != _hoverPage)) { _hoverBlock = b; _hoverPage = b >= 0 ? page : -1; [self setNeedsDisplay:YES]; }
-        if (_objPage >= 0 && NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) [NSCursor.openHandCursor set];
+        if (const int h = [self objectHandleAt:p]) [handleCursor(h) set];
+        else if (_objPage >= 0 && NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) [stretchCursor(4) set];
         else if (b < 0) [NSCursor.arrowCursor set];
         else if (kind == pageobj::EditBlock::Picture) [NSCursor.openHandCursor set];
         else [NSCursor.IBeamCursor set];
         return;
+    }
+    if (_tool == FPToolSelectObject) {   // the picked object's handles and frame show their arrows
+        const NSPoint p = [self convertPoint:e.locationInWindow fromView:nil];
+        if (const int h = [self objectHandleAt:p]) { [handleCursor(h) set]; return; }
+        if (_objPage >= 0 && NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) { [stretchCursor(4) set]; return; }
     }
     if (_tool != FPToolNone) { [NSCursor.crosshairCursor set]; return; }
     {

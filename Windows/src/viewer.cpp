@@ -1177,10 +1177,24 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (tool_ == Tool::EditAll) {   // edit mode: a text cursor over text, the move cursor over a picture
                     POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
                     int pg; pageobj::EditBlock b;
-                    cur = objHit(p.x, p.y) != ObjDrag::None ? IDC_SIZEALL : editBlockAt(p.x, p.y, pg, &b) < 0 ? IDC_ARROW
+                    // a handle shows the way it stretches; inside the box the four-way arrow moves it
+                    const ObjDrag h = objHit(p.x, p.y);
+                    cur = h == ObjDrag::TL || h == ObjDrag::BR ? IDC_SIZENWSE : h == ObjDrag::TR || h == ObjDrag::BL ? IDC_SIZENESW
+                        : h == ObjDrag::L || h == ObjDrag::R ? IDC_SIZEWE : h == ObjDrag::T || h == ObjDrag::B ? IDC_SIZENS
+                        : h == ObjDrag::Move ? IDC_SIZEALL : editBlockAt(p.x, p.y, pg, &b) < 0 ? IDC_ARROW
                         : b.kind == pageobj::EditBlock::Picture ? IDC_SIZEALL : IDC_IBEAM;
                     SetCursor(LoadCursor(nullptr, cur));
                     return TRUE;
+                }
+                if (tool_ == Tool::Select) {   // the same arrows on the picked object's handles
+                    POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
+                    const ObjDrag h = objHit(p.x, p.y);
+                    if (h != ObjDrag::None) {
+                        cur = h == ObjDrag::TL || h == ObjDrag::BR ? IDC_SIZENWSE : h == ObjDrag::TR || h == ObjDrag::BL ? IDC_SIZENESW
+                            : h == ObjDrag::L || h == ObjDrag::R ? IDC_SIZEWE : h == ObjDrag::T || h == ObjDrag::B ? IDC_SIZENS : IDC_SIZEALL;
+                        SetCursor(LoadCursor(nullptr, cur));
+                        return TRUE;
+                    }
                 }
                 if (tool_ == Tool::None && doc_->hasForm()) {
                     POINT p; GetCursorPos(&p); ScreenToClient(hwnd_, &p);
@@ -1402,6 +1416,18 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                     bestShift = 1e9;
                     for (double e : {r.bottom, (r.bottom + r.top) / 2, r.top}) { double g; bool ok; if (snap(guideY_, e, g, ok) && std::fabs(g - e) < std::fabs(bestShift)) { bestShift = g - e; line = g; snappedY_ = true; } }
                     if (snappedY_) { r.bottom += bestShift; r.top += bestShift; snapY_ = line; }
+                } else if (objDrag_ == ObjDrag::L || objDrag_ == ObjDrag::R || objDrag_ == ObjDrag::T || objDrag_ == ObjDrag::B) {
+                    // a side moves, the opposite side stays: stretched one way only
+                    double g; bool ok;
+                    if (objDrag_ == ObjDrag::L || objDrag_ == ObjDrag::R) {
+                        double v = (objDrag_ == ObjDrag::L ? objSel_.left : objSel_.right) + dx;
+                        if (snap(guideX_, v, g, ok)) { v = g; snappedX_ = true; snapX_ = g; }
+                        if (objDrag_ == ObjDrag::L) r.left = std::min(v, objSel_.right - 2); else r.right = std::max(v, objSel_.left + 2);
+                    } else {
+                        double v = (objDrag_ == ObjDrag::B ? objSel_.bottom : objSel_.top) + dy;
+                        if (snap(guideY_, v, g, ok)) { v = g; snappedY_ = true; snapY_ = g; }
+                        if (objDrag_ == ObjDrag::B) r.bottom = std::min(v, objSel_.top - 2); else r.top = std::max(v, objSel_.bottom + 2);
+                    }
                 } else {
                     // a corner moves, the opposite corner stays; the aspect ratio is kept
                     const bool left = objDrag_ == ObjDrag::TL || objDrag_ == ObjDrag::BL, topSide = objDrag_ == ObjDrag::TL || objDrag_ == ObjDrag::TR;
@@ -1600,8 +1626,9 @@ bool Viewer::linkAt(int cx, int cy, int& destPage, std::wstring& uri) const {
 }
 
 // ---- selected page objects: move and resize with guides ----
-void Viewer::setObjectSelection(int page, const annot::RectD* rect, std::vector<double> gx, std::vector<double> gy) {
+void Viewer::setObjectSelection(int page, const annot::RectD* rect, std::vector<double> gx, std::vector<double> gy, int sides) {
     objDrag_ = ObjDrag::None;
+    if (sides >= 0) objSides_ = sides != 0;
     if (!rect) { objSelPage_ = -1; }
     else { objSelPage_ = page; objSel_ = objCur_ = *rect; guideX_ = std::move(gx); guideY_ = std::move(gy); }
     InvalidateRect(hwnd_, nullptr, FALSE);
@@ -1624,6 +1651,13 @@ Viewer::ObjDrag Viewer::objHit(int cx, int cy) const {
     if (closeTo(r.right, r.top)) return ObjDrag::TR;
     if (closeTo(r.left, r.bottom)) return ObjDrag::BL;
     if (closeTo(r.right, r.bottom)) return ObjDrag::BR;
+    if (objSides_) {
+        const int mx = (r.left + r.right) / 2, my = (r.top + r.bottom) / 2;
+        if (closeTo(r.left, my)) return ObjDrag::L;
+        if (closeTo(r.right, my)) return ObjDrag::R;
+        if (closeTo(mx, r.top)) return ObjDrag::T;
+        if (closeTo(mx, r.bottom)) return ObjDrag::B;
+    }
     POINT p{cx, cy};
     return PtInRect(&r, p) ? ObjDrag::Move : ObjDrag::None;
 }
@@ -1637,6 +1671,10 @@ void Viewer::drawObjectSelection(HDC dc) {
     HBRUSH white = CreateSolidBrush(RGB(255, 255, 255));
     SelectObject(dc, white);
     for (POINT c : {POINT{r.left, r.top}, POINT{r.right, r.top}, POINT{r.left, r.bottom}, POINT{r.right, r.bottom}}) Rectangle(dc, c.x - 4, c.y - 4, c.x + 5, c.y + 5);
+    if (objSides_) {
+        const int mx = (r.left + r.right) / 2, my = (r.top + r.bottom) / 2;
+        for (POINT c : {POINT{r.left, my}, POINT{r.right, my}, POINT{mx, r.top}, POINT{mx, r.bottom}}) Rectangle(dc, c.x - 3, c.y - 3, c.x + 4, c.y + 4);
+    }
     if (objDrag_ != ObjDrag::None) {   // the guide lines the object snapped to
         HPEN gp = CreatePen(PS_SOLID, 1, RGB(0xE0, 0x30, 0xC0));
         SelectObject(dc, gp);

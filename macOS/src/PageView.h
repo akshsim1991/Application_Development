@@ -30,6 +30,8 @@ struct FPToolEvent {
     std::vector<annot::PointD> pts;   // page coordinates
     int annot = -1;                   // the annotation clicked or selected, if any
     enum Drag { None, Move, Resize } drag = None;   // the selected object (Select tool) was moved or resized: pts = from, to
+    int handle = 0;                   // with Resize: the handle dragged, kLeft | kRight | kTop | kBottom (a corner has two)
+    enum { kLeft = 1, kRight = 2, kTop = 4, kBottom = 8 };
     std::vector<double> pressure;     // a pen stroke drawn with a tablet pen: its pressure (0..1) at each point; else empty
 };
 
@@ -84,6 +86,7 @@ extern NSNotificationName const FPPageViewChanged;   // the page shown or the zo
 - (void)setObjectBox:(int)page rect:(annot::RectD)rect;
 - (NSPoint)viewPointOnPage:(int)page x:(double)x y:(double)y;   // a page point in this view's coordinates
 @property(nonatomic, readonly) int objectPage;
+@property(nonatomic) BOOL objectSides;                 // the selected object has side handles (stretch one way): not text
 // A rectangle of a page (PDF units) in this view.
 - (NSRect)viewRectOnPage:(int)page rect:(annot::RectD)r;
 - (void)endFormInput;               // the field being typed in lets go of the keyboard

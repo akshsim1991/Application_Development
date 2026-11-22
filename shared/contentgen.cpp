@@ -455,6 +455,35 @@ void activate(const std::vector<FPDF_PAGEOBJECT>& all, const std::vector<FPDF_PA
     if (on) for (auto o : *on) api.FPDFPageObj_SetIsActive(o, true);
 }
 
+// Whether `o`, drawn alone, is in its fill or stroke colour only (softened with the white page at its edges): a spot or
+// ICC colour, which can be set again as the plain colour it shows. A pattern, a shading or a soft mask is not.
+bool flatColoured(FPDF_PAGE pg, double scale, const std::vector<FPDF_PAGEOBJECT>& all, FPDF_PAGEOBJECT o,
+                  const unsigned* fill, const unsigned* stroke) {
+    const std::vector<FPDF_PAGEOBJECT> one{o};
+    activate(all, &one);
+    const Shot s = draw(pg, scale);
+    activate(all, nullptr);
+    long ink = 0, off = 0;
+    for (size_t i = 0; i + 3 < s.px.size(); i += 4) {
+        const double px[3] = {static_cast<double>(s.px[i + 2]), static_cast<double>(s.px[i + 1]), static_cast<double>(s.px[i])};
+        if (px[0] > 250 && px[1] > 250 && px[2] > 250) continue;
+        ++ink;
+        bool fits = false;
+        for (const unsigned* c : {fill, stroke}) {
+            if (!c || fits) continue;
+            // the pixel as white blended toward the colour: t from the channel that moves most
+            double t = 0, den = 0;
+            for (int k = 0; k < 3; ++k) { const double d = 255.0 - c[k]; t += (255.0 - px[k]) * d; den += d * d; }
+            t = den > 1 ? std::clamp(t / den, 0.0, 1.0) : 1;
+            double err = 0;
+            for (int k = 0; k < 3; ++k) err = std::max(err, std::fabs(255.0 - t * (255.0 - c[k]) - px[k]));
+            fits = err <= 24;
+        }
+        if (!fits) ++off;
+    }
+    return ink > 0 && off * 20 <= ink;   // a few stray pixels where it overlaps itself
+}
+
 // Whether the objects of `group`, written alone, read back as they are drawn now.
 bool writtenFaithfully(Document& d, FPDF_PAGE pg, int index, double scale, const std::vector<FPDF_PAGEOBJECT>& all,
                        const std::vector<FPDF_PAGEOBJECT>& group) {
@@ -564,6 +593,24 @@ bool generate(Document& d, FPDF_PAGE page) {
         findUnwritable(d, page, index, scale, all, there, bad, budget);
         if (std::getenv("FEATHER_TRACE_WRITE")) std::fprintf(stderr, "contentgen: page %d: %zu of %zu objects there become pictures\n", index, bad.size(), there.size());
         if (bad.empty()) return false;
+        // A colour PDFium cannot write (a spot colour such as a Pantone ink, an ICC or Lab colour) comes back black. Set
+        // as the plain colour it is drawn in, the object writes back as it looks; only what still differs becomes a picture.
+        {
+            std::vector<FPDF_PAGEOBJECT> still;
+            for (auto o : bad) {
+                if (api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_IMAGE || api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_FORM) { still.push_back(o); continue; }
+                unsigned int fr, fg, fb, fa, sr, sg, sb, sa;
+                const bool hasFill = api.FPDFPageObj_GetFillColor(o, &fr, &fg, &fb, &fa) != 0;
+                const bool hasStroke = api.FPDFPageObj_GetStrokeColor(o, &sr, &sg, &sb, &sa) != 0;
+                const unsigned fc[3] = {fr, fg, fb}, sc[3] = {sr, sg, sb};
+                if (!(hasFill || hasStroke) || !flatColoured(page, scale, all, o, hasFill ? fc : nullptr, hasStroke ? sc : nullptr)) { still.push_back(o); continue; }
+                if (hasFill) api.FPDFPageObj_SetFillColor(o, fr, fg, fb, fa);
+                if (hasStroke) api.FPDFPageObj_SetStrokeColor(o, sr, sg, sb, sa);
+                if (!(hasFill || hasStroke) || !writtenFaithfully(d, page, index, scale, all, {o})) still.push_back(o);
+            }
+            if (std::getenv("FEATHER_TRACE_WRITE")) std::fprintf(stderr, "contentgen: page %d: %zu written in plain colour, %zu pictured\n", index, bad.size() - still.size(), still.size());
+            bad.swap(still);
+        }
         for (int i = api.FPDFPage_CountObjects(page) - 1; i >= 0; --i)   // topmost first: the indices below stay valid
             if (std::find(bad.begin(), bad.end(), api.FPDFPage_GetObject(page, i)) != bad.end()) {
                 float l, b, r, t;

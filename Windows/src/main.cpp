@@ -5290,7 +5290,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             std::vector<double> gx, gy;
             pageobj::snapGuides(d, e.page, g.objects, gx, gy);
             annot::RectD r{g.left, g.bottom, g.right, g.top};
-            app.viewer.setObjectSelection(e.page, &r, gx, gy);
+            app.viewer.setObjectSelection(e.page, &r, gx, gy, g.kind == pageobj::GroupHit::Paragraph ? 0 : 1);
             return true;
         }
         case Viewer::Tool::EditAll: {
@@ -5321,7 +5321,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
                 std::vector<double> gx, gy;
                 pageobj::snapGuides(d, e.page, g.objects, gx, gy);
                 annot::RectD r{g.left, g.bottom, g.right, g.top};
-                app.viewer.setObjectSelection(e.page, &r, gx, gy);
+                app.viewer.setObjectSelection(e.page, &r, gx, gy, 1);
                 return true;
             }
             app.sel.page = -1; app.sel.objects.clear();

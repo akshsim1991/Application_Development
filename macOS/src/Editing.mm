@@ -264,6 +264,7 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
                 if (g.found && (g.kind == pageobj::GroupHit::Picture || g.kind == pageobj::GroupHit::Shape) && !hit.found) {
                     g_sel.page = e.page;
                     g_sel.group = g;
+                    self.pageView.objectSides = YES;
                     [self.pageView setObjectBox:e.page rect:annot::RectD{g.left, g.bottom, g.right, g.top}];
                     break;
                 }
@@ -282,7 +283,20 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
                 const double dx = e.pts[1].x - e.pts[0].x, dy = e.pts[1].y - e.pts[0].y;
                 double tl = g.left, tb = g.bottom, tr = g.right, tt = g.top;
                 if (e.drag == FPToolEvent::Move) { tl += dx; tr += dx; tb += dy; tt += dy; }
-                else { tr = std::max(g.left + 8, g.right + dx); tb = std::min(g.top - 8, g.bottom + dy); }
+                else {   // a side moves alone; a corner keeps the proportions, the opposite corner staying
+                    const int h = e.handle ? e.handle : FPToolEvent::kRight | FPToolEvent::kBottom;
+                    const bool L = h & FPToolEvent::kLeft, R = h & FPToolEvent::kRight, T = h & FPToolEvent::kTop, B = h & FPToolEvent::kBottom;
+                    if ((L || R) && (T || B)) {
+                        const double w0 = std::max(1.0, g.right - g.left), nw = std::max(8.0, L ? w0 - dx : w0 + dx), nh = (g.top - g.bottom) * nw / w0;
+                        if (L) tl = tr - nw; else tr = tl + nw;
+                        if (T) tt = tb + nh; else tb = tt - nh;
+                    } else {
+                        if (L) tl = std::min(g.right - 8, g.left + dx);
+                        if (R) tr = std::max(g.left + 8, g.right + dx);
+                        if (T) tt = std::max(g.bottom + 8, g.top + dy);
+                        if (B) tb = std::min(g.top - 8, g.bottom + dy);
+                    }
+                }
                 if (pageobj::transformGroup(*d, e.page, g.objects, g.left, g.bottom, g.right, g.top, tl, tb, tr, tt)) {
                     [self afterChange];
                     g_sel.group.left = tl; g_sel.group.bottom = tb; g_sel.group.right = tr; g_sel.group.top = tt;
@@ -293,6 +307,7 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
             if (e.kind != FPToolEvent::Click) break;
             g_sel.page = e.page;
             g_sel.group = pageobj::groupAt(*d, e.page, p.x, p.y);
+            self.pageView.objectSides = g_sel.group.kind != pageobj::GroupHit::Paragraph;   // text is not stretched one way
             if (g_sel.group.found) [self.pageView setObjectBox:e.page rect:annot::RectD{g_sel.group.left, g_sel.group.bottom, g_sel.group.right, g_sel.group.top}];
             else { g_sel.page = -1; [self.pageView setObjectBox:-1 rect:annot::RectD{}]; }
             break;

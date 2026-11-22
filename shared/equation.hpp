@@ -48,6 +48,8 @@ struct Found {
     double size = 12;                 // of its main line
     COLORREF color = 0;
     bool centred = false;             // in the middle of the page: stays centred
+    bool uncertain = false;           // its text runs over two lines (a formula wrapped in a table's cell): it may be read
+                                      // wrongly, and the editor says so
 };
 // The equation under a page point: text in a mathematics font (Cambria Math, STIX Math, LaTeX's) and what goes with it
 // (powers, the other side of a fraction, its bar), or one made by this editor. With `anyText`, any line of text there is

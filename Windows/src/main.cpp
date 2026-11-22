@@ -1767,7 +1767,9 @@ POINT clickPoint(int page, const annot::PointD& p) {
 // The equation editor on an equation found on the page: Apply sets it again (one undo step), Remove takes it away.
 void editEquation(Document& d, const equation::Found& f) {
     eqeditor::Result r;
-    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, L"Equation editor", f.source, f.size, true, r)) return;
+    const wchar_t* title = f.uncertain ? L"Equation editor \x2014 this formula runs over two lines and may be read wrongly: check it before applying"
+                                       : L"Equation editor";
+    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, title, f.source, f.size, true, r)) return;
     if (activeDoc() != &d) return;
     if (!r.remove && r.source == f.source && std::fabs(r.size - f.size) < 0.05) return;
     std::wstring why;

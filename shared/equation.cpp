@@ -1070,6 +1070,7 @@ struct Reader {
         }
     }
     std::vector<int> accentsTaken;
+    bool twoLines = false;   // full-size text a line above or below the main line: a formula wrapped onto two lines
 
     std::wstring build(std::vector<int> ids, double* sizeOut = nullptr, double* baseOut = nullptr) {
         attachAccents(ids);
@@ -1164,6 +1165,7 @@ struct Reader {
             const Unit& u = us[it.unit];
             int kind = 0;
             const bool smaller = u.size < 0.88 * size && !u.big;
+            if (!u.big && !smaller && std::fabs(u.y - base) > 0.9 * size) twoLines = true;
             if (u.big) kind = 0;   // TeX's tall brackets and roots hang below the line: never a power
             else if ((smaller && u.y > base + 0.12 * size) || u.y > base + 0.45 * size) kind = 1;
             else if ((smaller && u.y < base - 0.08 * size) || u.y < base - 0.3 * size) kind = -1;
@@ -1443,6 +1445,7 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     f.page = page;
     f.size = mainSize;
     f.baseline = base;
+    f.uncertain = rd.twoLines;
     std::vector<bool> isBar(us.size(), false);
     for (int bId : rd.barsUsed) isBar[static_cast<size_t>(bId)] = true;
     L = 1e9; B = 1e9; R = -1e9; T = -1e9;
@@ -1527,7 +1530,8 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
                 if (!o || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
                 const int type = api.FPDFPageObj_GetType(o);
                 if (type != FPDF_PAGEOBJ_TEXT && type != FPDF_PAGEOBJ_PATH) continue;
-                if (l < f.right - 0.5 || r > limit + 0.5 || r - l > 0.6 * (limit - f.left + 1)) continue;
+                // (what starts in the column moves whole, even when it reaches past its edge: a piece left behind would mix)
+                if (l < f.right - 0.5 || l > limit || r - l > 0.6 * (limit - f.left + 1)) continue;
                 const double cy = (b + t) / 2;
                 if (cy >= f.bottom && cy <= f.top) after.push_back({o, l, r});
                 else if (t > f.bottom - 1.2 * size && b < f.top + 1.2 * size) around.push_back({o, l, b, r, t});
@@ -1541,10 +1545,17 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
                 reach = std::max(reach, p.r);
                 from = std::min(from, p.l);
             }
-            // and what stands over or under the moved part of the line, within its width (a fraction's top and bottom)
+            // and what stands just over or under a moved fraction's bar, within its width (the fraction's top and bottom; not
+            // the row above or below)
+            std::vector<std::array<double, 4>> bars;
+            for (FPDF_PAGEOBJECT o : move) {
+                float l, b, r, t;
+                if (api.FPDFPageObj_GetType(o) == FPDF_PAGEOBJ_PATH && api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) bars.push_back({l, b, r, t});
+            }
             for (const Box4& q : around) {
                 const double cx = (q.l + q.r) / 2;
-                if (!move.empty() && cx >= from - 0.5 && cx <= reach + 0.5) move.push_back(q.o);
+                for (const auto& bar : bars)
+                    if (cx >= bar[0] - 0.5 && cx <= bar[2] + 0.5 && std::max(q.b - bar[3], bar[1] - q.t) < 0.8 * size) { move.push_back(q.o); break; }
             }
             if (std::getenv("FEATHER_TRACE_EQ")) std::fprintf(stderr, "push: grow %.1f limit %.1f column %d after %zu move %zu reach %.1f\n", grow, limit, column, after.size(), move.size(), reach);
             for (FPDF_PAGEOBJECT o : move) api.FPDFPageObj_Transform(o, 1, 0, 0, 1, grow, 0);   // the gap stays as it was

@@ -416,15 +416,17 @@ JNIEXPORT jstring FN(replaceParagraph)(JNIEnv* env, jclass, jlong h, jstring tex
 // ---- equations (the equation editor) ----
 
 // The equation at a page point (with `any`, a line of ordinary text read as one); kept for replaceEquation(). Returns its
-// notation (null when there is none); info gets: size, left, bottom, right, top (points).
+// notation (null when there is none); info gets: size, left, bottom, right, top (points), and 1 when it may be read
+// wrongly (it runs over two lines).
 JNIEXPORT jstring FN(equationAt)(JNIEnv* env, jclass, jlong h, jint page, jfloat x, jfloat y, jboolean any, jdoubleArray info) {
     LOCK;
     if (!h) return nullptr;
     Doc& doc = *docOf(h);
     doc.eq = equation::at(doc.d, page, x, y, any);
     if (!doc.eq.found) return nullptr;
-    const double v[5] = {doc.eq.size, doc.eq.left, doc.eq.bottom, doc.eq.right, doc.eq.top};
-    if (info && env->GetArrayLength(info) >= 5) env->SetDoubleArrayRegion(info, 0, 5, v);
+    const double v[6] = {doc.eq.size, doc.eq.left, doc.eq.bottom, doc.eq.right, doc.eq.top, doc.eq.uncertain ? 1.0 : 0.0};
+    if (info && env->GetArrayLength(info) >= 6) env->SetDoubleArrayRegion(info, 0, 6, v);
+    else if (info && env->GetArrayLength(info) >= 5) env->SetDoubleArrayRegion(info, 0, 5, v);
     return jstr(env, doc.eq.source);
 }
 

@@ -1087,15 +1087,29 @@ static std::vector<int> paragraphSpan(const std::vector<Line>& lines, const std:
 }
 
 // The text lines of a page, top to bottom (list numbers and bullets left out, the lines they start marked).
+// Part of an equation made by the equation editor (it is edited there, never as a line of text).
+static bool equationObject(FPDF_PAGEOBJECT o) {
+    const auto& api = pdfium::api();
+    for (int k = 0, n = api.FPDFPageObj_CountMarks(o); k < n; ++k) {
+        FPDF_PAGEOBJECTMARK m = api.FPDFPageObj_GetMark(o, k);
+        unsigned long len = 0;
+        if (!m || !api.FPDFPageObjMark_GetName(m, nullptr, 0, &len) || len < 2) continue;
+        std::vector<unsigned short> buf(len / 2 + 1);
+        api.FPDFPageObjMark_GetName(m, buf.data(), len, &len);
+        if (std::wstring(buf.begin(), buf.begin() + (len / 2 - 1)) == L"FeatherEq") return true;
+    }
+    return false;
+}
+
 static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vector<Line>& lines) {
     const auto& api = pdfium::api();
     // 1. every text object, with its size taken from the font size and the text matrix
-    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; unsigned rgb; double base; bool ocr = false; };
+    struct Obj { int idx; double l, b, r, t, size; std::wstring text; FPDF_PAGEOBJECT o; unsigned rgb; double base; bool ocr = false; bool math = false; };
     std::vector<Obj> objs;
     const int n = api.FPDFPage_CountObjects(pg);
     for (int i = 0; i < n; ++i) {
         FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
-        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT || equationObject(o)) continue;
         float l, b, r, t;
         if (!api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
         std::wstring text = textOfObject(tp, o);
@@ -1120,6 +1134,17 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         api.FPDFPageObj_GetFillColor(o, &cr, &cg, &cb, &ca);
         objs.push_back({i, l, b, r, t, sizeIncludesMatrix(d) ? fs : fs * (scale > 0.01 ? scale : 1.0), text, o, (cr << 16) | (cg << 8) | cb, m.f,
                         api.FPDFTextObj_GetTextRenderMode(o) == FPDF_TEXTRENDERMODE_INVISIBLE});
+        {   // a mathematics font (TeX's CMMI, CMSY, CMEX; Cambria Math, STIX ...)
+            const std::string fn = baseFontName(api.FPDFTextObj_GetFont(o));
+            for (const char* k : {"CMMI", "CMSY", "CMEX", "Math", "MSAM", "MSBM", "STIX", "LMMath"})
+                if (fn.find(k) != std::string::npos) { objs.back().math = true; break; }
+            // TeX's roman with no word in it (=, digits, an accent): an equation's
+            if (!objs.back().math && (fn.find("CMR") != std::string::npos || fn.find("LMRoman") != std::string::npos)) {
+                bool word = false;
+                for (size_t q = 0; q + 1 < text.size() && !word; ++q) word = iswalpha(text[q]) && iswalpha(text[q + 1]);
+                objs.back().math = !word;
+            }
+        }
     }
     // Where each object's letters are in the text page: between two objects a space is wherever PDFium's text puts one
     // (it measures with the fonts' real advances). Measuring the gap between the objects' boxes cannot tell a word space
@@ -1144,6 +1169,18 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
         }
         return -1;
     };
+    // Where columns start: a place where far more lines start than anywhere else (a table without ruled columns, a second
+    // column of text). Text after a gap of more than a space that starts there is the next column's, not the same line's.
+    std::vector<double> columnStarts;
+    {
+        std::map<long, std::set<long>> rowsAt;
+        for (const Obj& o : objs) rowsAt[std::lround(o.l)].insert(std::lround(o.base));
+        size_t most = 0;
+        for (const auto& [x, rows] : rowsAt) most = std::max(most, rows.size());
+        for (const auto& [x, rows] : rowsAt)
+            if (rows.size() >= std::max<size_t>(6, most * 3 / 10)) columnStarts.push_back(static_cast<double>(x));
+    }
+    auto columnStart = [&](double x) { for (double c : columnStarts) if (std::fabs(x - c) <= 3.0) return true; return false; };
     // 2. lines: objects on one baseline, left to right
     lines.clear();
     std::vector<char> used(objs.size(), 0);
@@ -1215,6 +1252,9 @@ static void collectLines(Document& d, FPDF_PAGE pg, FPDF_TEXTPAGE tp, std::vecto
                     if (g < gap) { gap = g; closest = m; }
                 }
                 if (gap > 2.5 * size || gap < -0.3 * size) continue;   // another column, or drawn over
+                if (gap > 1.0 * size && objs[oj].l > objs[closest].r && columnStart(objs[oj].l)) continue;   // the next column
+                // ordinary text and a formula a wide gap apart (a label and its formula in a table): not one line
+                if (gap > 1.0 * size && objs[oj].math != objs[closest].math) continue;
                 // a list number or bullet set apart from its item (wider than a word space) stays a line of its own: it
                 // marks the item (2b below) and is not part of its text
                 auto trimmed = [](std::wstring t) { while (!t.empty() && t.back() == L' ') t.pop_back(); while (!t.empty() && t.front() == L' ') t.erase(0, 1); return t; };
@@ -1278,11 +1318,19 @@ namespace {
 // The cells of the page's tables that hold text: a click in one edits the whole cell (its lines are one paragraph, wrapped
 // at its lines), not the lines of the page around the point, which may run on into the next cell or row.
 struct TextCell { const tables::Table* t; int r, c; double l, b, rr, tp; };
+// A table with drawn columns (a vertical line somewhere: between columns, or a box's sides): its cells are edited as cells. A grid that is
+// only read from how text lines up (a LaTeX booktabs table, two-column text) is edited as text: setting its "cells" again
+// re-sets equations as plain text and moves rows apart (B-122).
+bool ruledColumns(const tables::Table& t) {
+    for (char v : t.vRule) if (v) return true;   // (a boxed one-column table has only its sides)
+    return false;
+}
+
 std::vector<TextCell> textCells(FPDF_PAGE pg, const std::vector<tables::Table>& found) {
     const auto& api = pdfium::api();
     std::vector<TextCell> out;
     for (const tables::Table& t : found) {
-        if (t.cells.empty() || t.scanned) continue;
+        if (t.cells.empty() || t.scanned || !ruledColumns(t)) continue;
         for (int r = 0; r < t.rows(); ++r)
             for (int c = 0; c < t.cols(); ++c) {
                 const tables::Cell& cell = t.at(r, c);
@@ -1951,6 +1999,29 @@ ParagraphHit paragraphAt(Document& d, int page, double x, double y, bool lineOnl
         for (int i = first; i <= last; ++i) { l = std::min(l, lines[i].l); b = std::min(b, lines[i].b); r = std::max(r, lines[i].r); t = std::max(t, lines[i].t); }
         if (!lineOnly) readScannedLook(d, pg, hit, l, b, r, t, lines[first].size);
     }
+    // Lines wrap before what stands to their right on the page (the next column of a table without ruled columns, a
+    // formula beside a label): a longer text would run over it (B-122).
+    if (!lineOnly && !hit.equation) {
+        const double size = std::max(4.0, lines[first].size);
+        double cap = 1e9;
+        const int no = api.FPDFPage_CountObjects(pg);
+        const auto sz = d.pageSize(page);
+        for (int i = 0; i < no; ++i) {
+            if (std::find(hit.objects.begin(), hit.objects.end(), i) != hit.objects.end()) continue;
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+            float l, b, r, t;
+            if (!o || !api.FPDFPageObj_GetBounds(o, &l, &b, &r, &t)) continue;
+            const int type = api.FPDFPageObj_GetType(o);
+            if ((r - l) * (t - b) > 0.3 * sz.w * sz.h) continue;   // a background
+            if (type == FPDF_PAGEOBJ_PATH && t - b < 2) continue;    // a horizontal rule
+            // beside the paragraph: to the right of its text, within its height
+            double textR = -1e9, top = -1e9, bottom = 1e9;
+            for (int k = first; k <= last; ++k) { textR = std::max(textR, lines[k].r); top = std::max(top, lines[k].t); bottom = std::min(bottom, lines[k].b); }
+            if (l < textR + 1 || t < bottom || b > top) continue;
+            cap = std::min(cap, l - 0.6 * size - hit.originX);
+        }
+        if (cap < hit.wrapWidth && cap > 3 * size) hit.wrapWidth = cap;
+    }
     // in a table's cell: the text wraps at the cell's right line (replaceParagraph sets it as the table does)
     if (!lineOnly) {
         std::vector<tables::Table> found;
@@ -2473,6 +2544,7 @@ bool cellOf(Document& d, const ParagraphHit& hit, std::vector<tables::Table>& fo
     const std::wstring want = squeezedText(hit.text);
     for (size_t k = 0; k < found.size(); ++k) {
         const tables::Table& t = found[k];
+        if (!ruledColumns(t)) continue;
         for (int r = 0; r < t.rows(); ++r)
             for (int c = 0; c < t.cols(); ++c) {
                 const tables::Cell& cell = t.at(r, c);
@@ -2698,7 +2770,8 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         std::vector<int> tableOf(static_cast<size_t>(std::max(n, 0)), -1);
         const std::vector<tables::Table> found = tables::detect(d, hit.page);
         for (size_t k = 0; k < found.size(); ++k)
-            for (int i : found[k].objects) if (i >= 0 && i < n) tableOf[static_cast<size_t>(i)] = static_cast<int>(k);
+            if (ruledColumns(found[k]))   // (a grid read only from text lining up is not a table that must move whole)
+                for (int i : found[k].objects) if (i >= 0 && i < n) tableOf[static_cast<size_t>(i)] = static_cast<int>(k);
         std::vector<char> tableAbove(found.size(), 0);   // a table with a part above the paragraph's last line
         for (int i = 0; i < n; ++i) {
             if (std::find(hit.objects.begin(), hit.objects.end(), i) != hit.objects.end()) continue;
@@ -2720,8 +2793,17 @@ bool replaceParagraph(Document& d, const ParagraphHit& hit, const std::wstring& 
         }
         const double extra = oldLast - newLast;
         // the text right under the paragraph keeps its distance unless there is plenty of room (two lines more than needed)
+        // In a table-like page (the text below has text beside it in other columns: rows), what is below moves only when
+        // the longer text would really run into it; moving one column's rows apart tears the table.
+        bool rows = false;
+        for (const auto& it : items) {
+            if (rows || it.annot || it.r < colL || it.l > colR || oldLast - it.t > extra + 2 * step) continue;
+            for (const auto& o : items)
+                if (!o.annot && (o.l > colR + 2 || o.r < colL - 2) && std::min(o.t, it.t) - std::max(o.b, it.b) > 0.5 * std::min(o.t - o.b, it.t - it.b)) { rows = true; break; }
+        }
+        const double room = rows ? extra + 0.4 * step : extra + 2 * step;
         bool any = false;
-        for (auto& it : items) if (it.r >= colL && it.l <= colR && oldLast - it.t < extra + 2 * step) { it.moves = true; any = true; }
+        for (auto& it : items) if (it.r >= colL && it.l <= colR && oldLast - it.t < room) { it.moves = true; any = true; }
         if (any) {
             shift = extra;
             // what a moved object would come too close to (within 2 points, or onto), or holds (a box around text), moves

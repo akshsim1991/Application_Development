@@ -556,9 +556,10 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     /** Opens the equation at the point in the editor; false when there is none. */
     private fun editEquationAt(page: Int, x: Float, y: Float, any: Boolean): Boolean {
-        val info = DoubleArray(5)
+        val info = DoubleArray(6)
         val source = Engine.equationAt(doc, page, x, y, any, info) ?: return false
-        equationDialog("Equation editor", source, info[0], true) { src, size, remove ->
+        val title = if (info[5] != 0.0) "Equation editor (runs over two lines: check it)" else "Equation editor"
+        equationDialog(title, source, info[0], true) { src, size, remove ->
             if (!remove && src == source && Math.abs(size - info[0]) < 0.05) return@equationDialog
             val why = Engine.replaceEquation(doc, if (remove) "" else src, size)
             if (why == null) changedDocument()

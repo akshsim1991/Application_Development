@@ -74,7 +74,7 @@ public final class Engine {
     /** Null when done, else why not. */
     public static native String replaceParagraph(long doc, String text, int family, boolean bold, boolean italic, double size, int color);
 
-    /** The equation at a point (null if none; with any, a line of text read as one), kept for replaceEquation(). info (5): size, left, bottom, right, top. */
+    /** The equation at a point (null if none; with any, a line of text read as one), kept for replaceEquation(). info (6): size, left, bottom, right, top, 1 when it may be read wrongly (two lines). */
     public static native String equationAt(long doc, int page, float x, float y, boolean any, double[] info);
     /** Sets the equation found last again (empty: removes it). Null when done, else why not. */
     public static native String replaceEquation(long doc, String source, double size);

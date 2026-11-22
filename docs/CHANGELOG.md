@@ -2,6 +2,22 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.24.3 (22 November 2026)
+
+From editing a whole LaTeX formula compendium (formulas, names, conditions and units in tables without ruled columns):
+
+- Fixed: text in a table without drawn columns (LaTeX booktabs, a grid only read from how text lines up) was set again
+  as a table cell: rows moved apart, fractions came apart and a formula beside it became plain text. Such text is now
+  edited as text; tables with drawn lines are edited as tables as before.
+- Fixed: a longer label or condition ran over the formula beside it: lines now wrap before what stands to their right.
+- Fixed: a paragraph that grew pushed the next rows of its column only, out of line with the other columns; in a page
+  of rows, what is below moves only when the new lines would run into it.
+- Fixed: a label and the formula beside it on the same baseline (or a column's text and the next column's) were read as
+  one line; a wider gap where columns start, or between ordinary text and a formula, now ends the line.
+- Fixed: editing text next to a formula made by the equation editor took that formula into the text.
+- Fixed: when an edited formula grew, the fraction parts of the row above or below were moved with it.
+- New: a formula that runs over two lines of its cell opens with a warning in the title: it may be read wrongly.
+
 ## 2.24.2 (22 November 2026)
 
 From editing every formula of a LaTeX formula compendium (six pages of tables) one after another:

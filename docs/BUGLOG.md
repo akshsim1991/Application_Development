@@ -1546,3 +1546,25 @@ go out as 2.24.2.
 - **Tests:** the edit-every-formula run (scratch harness, not committed: the PDF is the user's): 170 formulas edited,
   0 refused; cli_check, real-world 37, engine golden files and the Android bridge all pass.
 
+**Published:** 2.24.2 built for all three (22 November); it went out with 2.24.3 below.
+
+### B-122 Editing text in a LaTeX formula table moved rows apart and turned formulas into plain text - High (all apps)
+- **Found:** the user's fluid mechanics compendium, every third line of names, conditions and units edited after all its
+  formulas (145 text edits on top of 165 formula edits).
+- **Causes:** (1) the table finder read a grid from text lining up (no drawn columns) and the cell writer set those
+  "cells" again; (2) a paragraph's wrap width was the page's (514 pt) beside a formula 120 pt away; (3) a growing
+  paragraph pushed its column's next rows only; (4) lines joined across a label-to-formula gap (1.7 em, below the 2.5 em
+  column rule), the bridge being TeX's accent in its roman font; (5) the editor's own formulas were read as text;
+  (6) fraction parts of the next row moved with a growing formula.
+- **Fix:** only tables with a drawn vertical line are edited as tables; lines wrap before what stands to their right
+  within the paragraph's height; in a page of rows, text below moves only if run into; a gap over 1 em ends a line where
+  many lines start (a column) or between text and mathematics (TeX's roman counts as mathematics when it has no word);
+  editor-made formulas are skipped by paragraphs; fraction parts move only with their own bar. Formulas over two lines
+  are flagged.
+- **Tests:** cli_check, real-world 37, engine golden files, Android bridge: all pass; the compendium (private, scratch
+  harness): 165 formulas edited, 3 two-line formulas flagged and left, 131 of 145 text edits made in sequence (the 14
+  refused say why: no room at the page foot, or symbols the fonts lack); every text line edited alone: 412 of 432.
+- **Still:** inline mathematics with a power and an index on one letter (T*₀) inside a sentence comes out muddled when
+  the sentence is edited; a header row's two cells can join; a formula pushed past its column's edge overlaps the next
+  column (there is no room for it); formulas wrapped over two lines are read in parts.
+

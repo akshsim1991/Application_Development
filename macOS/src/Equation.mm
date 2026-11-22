@@ -231,7 +231,7 @@ static FPEquationSheet* g_sheet = nil;
     if (!d) return;
     const equation::Found f = found;
     __weak FPWindowController* weak = self;
-    [self equationSheet:@"Equation Editor" source:f.source size:f.size existing:YES done:[weak, d, f](const std::wstring& src, double size, bool remove) {
+    [self equationSheet:(f.uncertain ? @"Equation Editor — this formula runs over two lines and may be read wrongly: check it before applying" : @"Equation Editor") source:f.source size:f.size existing:YES done:[weak, d, f](const std::wstring& src, double size, bool remove) {
         FPWindowController* me = weak;
         if (!me || me.pdf != d) return;
         if (!remove && src == f.source && std::fabs(size - f.size) < 0.05) return;

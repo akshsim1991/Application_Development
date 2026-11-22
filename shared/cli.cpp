@@ -907,7 +907,7 @@ int run(std::vector<std::wstring> files) {
                 if (how == L"set" && i + 5 < files.size()) { used = 6; ok = f.found && equation::replace(doc, f, files[i + 5], f.size, &why); }
                 else if (how == L"del") ok = f.found && equation::replace(doc, f, L"", f.size, &why);
                 char buf[200];
-                snprintf(buf, sizeof buf, " objects=%zu size=%.1f base=%.1f ours=%d centred=%d", f.objects.size(), f.size, f.baseline, f.ours, f.centred);
+                snprintf(buf, sizeof buf, " objects=%zu size=%.1f base=%.1f ours=%d centred=%d uncertain=%d", f.objects.size(), f.size, f.baseline, f.ours, f.centred, f.uncertain);
                 line("eq " + std::string(ok ? "ok" : "refused") + buf + " | " + u8(why) + " | src: " + u8(f.source));
                 i += used;
             } else if (op == L"eqins" && i + 4 < files.size()) {   // eqins P X BASELINE SRC : a new equation, 12 pt

@@ -1605,3 +1605,6 @@ the 2.24.1 Windows installer stay one release longer.
 - **Still open:** formulas LaTeX wrapped over two lines of a cell are read in parts (flagged in the editor's title);
   formulas are set in Times, not Latin Modern, in TeX documents.
 
+
+**Published:** 2.24.4 for Windows, Mac and Android (22 November) from commit 57609c4. The three downloads match latest.json
+(size and SHA-256); the 2.24.3 files stay one release longer.

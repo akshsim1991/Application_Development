@@ -51,6 +51,9 @@ tam: text inside a form object whose letters cannot be written: refused, page un
 at: short lines keep their breaks|at.pdf|para 1 90 780 append "Edited."|para ok|Image: .5 Edited.|
 at: a drawn shape moved|at.pdf|move 1 100 700 40 -30|move ok shape||
 at: a drawn shape deleted|at.pdf|del 1 200 500|del ok shape||
+gd: an equation inserted is read back as it was typed|gd.pdf|eqins 1 100 300 "x^{2} + \frac{a+1}{b} = \sqrt{y}" eq 1 104 302 read|eq ok.*ours=1.*src: x\^\{2\} \+ \\frac\{a\+1\}\{b\} = \\sqrt\{y\}|a \+ 1|
+gd: an inserted equation's power changed|gd.pdf|eqins 1 100 300 "s^7 + 9s^6 = 0" eq 1 104 302 set "s^8 + 9s^6 = 0" eq 1 104 302 read|eq ok.*src: s\^8 \+ 9s\^6 = 0|s8 \+ 9s6 = 0|s7
+gd: wrong notation is refused, the page unchanged|gd.pdf|eqins 1 100 300 "\frac{a}{b"|eqins refused.*no \} to close||
 EOF
 if [ -n "$private" ]; then cat <<'EOF'
 ia: a centred heading wraps centred|ia.pdf|para 1 330 722 append "AND AERONAUTICS"|para ok lines=1 align=1|ENGINEERING AND AERONAUTICS|
@@ -63,6 +66,11 @@ bme: a fraction's numerator alone|bme.pdf|para 1 317 138 replace "50(1 + 2s)"|pa
 bme: a fraction's bottom made longer stays on one line, the bar stretched|bme.pdf|para 2 330 494 replace "s(s + 2)(s + 4d)(s + 6)"|para ok lines=1|s\(s \+ 2\)\(s \+ 4d\)\(s \+ 6\)|
 bme: a fraction's top and bottom edited, the top centred over the longer bar|bme.pdf|para 2 330 512 replace "2K" para 2 330 494 replace "s(s + 2)(s + 4)(s + 6)(s + 10)"|para ok|2K.*s\(s \+ 2\)\(s \+ 4\)\(s \+ 6\)\(s \+ 10\)|
 bme: a polynomial with exponents|bme.pdf|para 2 300 539 same|para ok.*s⁷ \+ 9s⁶|23s \+ 15 = 0|
+bme: the polynomial read by the equation editor|bme.pdf|eq 2 300 536 read|src: s\^\{7\} \+ 9s\^\{6\} \+ 24s\^\{5\} \+ 24s\^\{4\} \+ 24s\^\{3\} \+ 24s\^\{2\} \+ 23s \+ 15 = 0|
+bme: s^7 made s^8 in the equation editor|bme.pdf|eq 2 300 536 set "s^{8} + 9s^{6} + 24s^{5} + 24s^{4} + 24s^{3} + 24s^{2} + 23s + 15 = 0"|eq ok|s8 \+ 9s6 \+ 24s5|s7
+bme: a fraction read whole, with the left side|bme.pdf|eq 2 330 505 read|src: G\(s\)H\(s\) = \\frac\{K\}\{s\(s \+ 2\)\(s \+ 4\)\(s \+ 6\)\}|
+bme: a fraction edited in the equation editor|bme.pdf|eq 2 330 505 set "G(s)H(s) = \frac{2K}{s(s + 2)(s + 4)(s + 6)(s + 10)}"|eq ok objects=27|G\(s\)H\(s\) = 2K s\(s \+ 2\)\(s \+ 4\)\(s \+ 6\)\(s \+ 10\)|
+bme: a fraction with a squared bottom|bme.pdf|eq 1 317 138 read|src: G\(s\) = \\frac\{20\(1 \+ s\)\}\{s\^\{2\}\(2 \+ s\)\(4 \+ s\)\}|
 m3d: scanned slide: recognised text edited visibly|m3d.pdf|para 1 2000 343 replace "LASER POWDER BED FUSION"|para ok.*scan=1|LASER POWDER BED FUSION|
 EOF
 fi

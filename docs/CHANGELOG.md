@@ -2,6 +2,25 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.24.0 "Maverick" (22 November 2026)
+
+An equation editor: equations are edited as equations, not as text.
+
+- New: the equation editor. In edit mode a click on an equation (Cambria Math from Word, LaTeX's fonts, or one made here)
+  opens it written in one line: `s^8` is a power, `x_1` an index (braces for more: `e^{-st}`, `x_{n+1}`),
+  `\frac{top}{bottom}` a fraction, `\sqrt{x}` and `\sqrt[3]{x}` roots, `\alpha` ... `\Omega`, `\le`, `\ne`, `\infty`,
+  `\sum_{i=1}^{n}`, `\int`, `\lim_{x \to 0}`, `\text{...}`; Unicode signs and letters can be typed as they are. Buttons
+  insert each of them (wrapping the selected text), and a live picture shows the equation as it will be set. Apply sets
+  it on the page: powers raised and smaller, fractions over a bar as wide as their longer side, brackets as tall as what
+  they hold, signs spaced, letters italic, functions upright. One undo step. Remove equation takes it off.
+  An equation from Word such as G(s)H(s) = K / s(s + 2)(s + 4)(s + 6) is read whole: the left side, the fraction's top,
+  bar and bottom, and its powers (s⁷ + 9s⁶ + ... reads as `s^{7} + 9s^{6} + ...`).
+- New: Insert equation (edit row, Tools menu, command palette; Mac: Edit menu and edit bar; Android: the Equation button
+  of Add text): written in the editor, then placed where the page is clicked.
+- New: x² and x₂ buttons in the text editor's bar (Windows, Mac and Android) make the selected text superscript or
+  subscript, or plain again; on Windows, with nothing selected they switch what is typed next, and Ctrl+Shift+= and
+  Ctrl+= do the same. A ∑ Equation button opens the line being edited in the equation editor.
+
 ## 2.23.3 (21 November 2026)
 
 - Fixed (since 2.23.0): two lines of one paragraph were edited apart when lines in a slightly smaller size below them

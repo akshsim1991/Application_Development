@@ -18,7 +18,7 @@ from reportlab.platypus.tableofcontents import TableOfContents
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PICS = os.path.join(ROOT, "docs", "guide")
 OUT = os.path.join(ROOT, "docs", "Feather PDF User Guide.pdf")
-VERSION = "2.23.3"
+VERSION = "2.24.0"
 
 FONT_DIR = "/usr/share/fonts/truetype/liberation"   # fonts-liberation (Arial / Courier New metrics)
 pdfmetrics.registerFont(TTFont("Sans", os.path.join(FONT_DIR, "LiberationSans-Regular.ttf")))
@@ -452,6 +452,12 @@ story += bullets([
     "<b>Search all my PDFs in a folder</b> finds a phrase in every PDF of a folder and keeps an index for fast repeat searches.",
 ])
 
+story += [P("New in 2.24 \u201cMaverick\u201d", "h2")]
+story += bullets([
+    "<b>Equation editor</b>: in edit mode, click an equation (from Word, LaTeX, or one made here) and it opens in the equation editor, written in one line: <b>s^8</b> is a power, <b>x_1</b> an index (braces for more: <b>e^{-st}</b>, <b>x_{n+1}</b>), <b>\\frac{top}{bottom}</b> a fraction, <b>\\sqrt{x}</b> a root, <b>\\alpha</b>, <b>\\le</b>, <b>\\infty</b> and so on, or the buttons for all of them. The picture under it shows the equation as it will be set; Apply puts it on the page, its powers raised and smaller and its fractions over a bar that fits them. <b>Remove equation</b> takes it off the page.",
+    "<b>Insert equation</b> (edit row, Tools menu; on Android the Equation button of Add text): write it, then click where it should start.",
+    "<b>x\u00b2 and x\u2082</b> in the text editor's bar make the selected text superscript or subscript (or plain again); with nothing selected they switch what you type next. <b>Ctrl+Shift+=</b> and <b>Ctrl+=</b> do the same. <b>\u2211 Equation</b> opens the line being edited in the equation editor.",
+])
 story += [P("New in 2.23 \u201cExplorer\u201d", "h2")]
 story += bullets([
     "<b>Edit scanned pages</b>: click the text of a scan in edit mode. If the page has no recognised text yet, Feather PDF offers to recognise it first. The new words are set in the colour, weight and size of the old ones, over a patch of the page's own background, so the page keeps its look.",

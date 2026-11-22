@@ -22,6 +22,7 @@
 #include "formdata.hpp"
 #include "ocr.hpp"
 #include "pageobjects.hpp"
+#include "equation.hpp"
 #include "pdfa.hpp"
 #include "picture.hpp"
 #include "platform.hpp"
@@ -895,6 +896,25 @@ int run(std::vector<std::wstring> files) {
                 const bool ok = found && tables::write(doc, t, &why);
                 line("table " + std::string(ok ? "ok" : "failed") + " " + u8(why));
                 i += used;
+            } else if (op == L"eq" && i + 4 < files.size()) {
+                // eq P X Y read|any|set SRC|del : the equation there, as the equation editor opens it (any: on ordinary text too)
+                const int p = static_cast<int>(num(i + 1)) - 1;
+                const std::wstring how = files[i + 4];
+                const equation::Found f = equation::at(doc, p, num(i + 2), num(i + 3), how == L"any");
+                size_t used = 5;
+                std::wstring why;
+                bool ok = f.found;
+                if (how == L"set" && i + 5 < files.size()) { used = 6; ok = f.found && equation::replace(doc, f, files[i + 5], f.size, &why); }
+                else if (how == L"del") ok = f.found && equation::replace(doc, f, L"", f.size, &why);
+                char buf[200];
+                snprintf(buf, sizeof buf, " objects=%zu size=%.1f base=%.1f ours=%d centred=%d", f.objects.size(), f.size, f.baseline, f.ours, f.centred);
+                line("eq " + std::string(ok ? "ok" : "refused") + buf + " | " + u8(why) + " | src: " + u8(f.source));
+                i += used;
+            } else if (op == L"eqins" && i + 4 < files.size()) {   // eqins P X BASELINE SRC : a new equation, 12 pt
+                std::wstring why;
+                const bool ok = equation::insert(doc, static_cast<int>(num(i + 1)) - 1, num(i + 2), num(i + 3), files[i + 4], 12, 0, &why);
+                line("eqins " + std::string(ok ? "ok" : "refused") + " | " + u8(why));
+                i += 5;
             } else if (op == L"blocks" && i + 1 < files.size()) {
                 const int p = static_cast<int>(num(i + 1)) - 1;
                 for (const auto& b : pageobj::editableBlocks(doc, p)) {

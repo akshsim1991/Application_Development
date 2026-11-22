@@ -18,6 +18,8 @@
 #define PDFIUM_FUNCS(X)          \
     X(FPDF_InitLibrary)          \
     X(FPDFText_LoadFont) \
+    X(FPDFText_LoadStandardFont) \
+    X(FPDFFont_GetGlyphWidth) \
     X(FPDFPageObj_CreateTextObj) \
     X(FPDFTextObj_GetTextRenderMode) \
     X(FPDFPageObj_GetStrokeColor) \

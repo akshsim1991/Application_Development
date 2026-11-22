@@ -32,6 +32,9 @@ import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
 import android.widget.ImageButton
+import android.widget.ImageView
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -485,6 +488,8 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     }
 
     fun editParagraph(page: Int, x: Float, y: Float, scripted: ((String?) -> Unit)? = null) {
+        // an equation (Cambria Math, LaTeX's, or one made here) opens in the equation editor
+        if (scripted == null && editEquationAt(page, x, y, false)) return
         val info = DoubleArray(11)
         val text = Engine.paragraphAt(doc, page, x, y, info)
         if (text == null) { Toast.makeText(this, "There is no text here to change.", Toast.LENGTH_SHORT).show(); scripted?.invoke("no paragraph"); return }
@@ -510,7 +515,25 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             addView(bold)
             addView(italic)
         }
-        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(body); addView(row) }
+        var dialog: AlertDialog? = null
+        // x² and x₂: the selected text made superscript (subscript), or plain again
+        fun script(kind: Int) {
+            val a = body.selectionStart.coerceAtLeast(0); val b = body.selectionEnd.coerceAtLeast(0)
+            if (b <= a) { Toast.makeText(this, "Select the text to raise or lower first.", Toast.LENGTH_SHORT).show(); return }
+            val made = Engine.scriptText(body.text.substring(a, b), kind)
+            body.text.replace(a, b, made)
+            body.setSelection(a, a + made.length)
+        }
+        val tools = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            addView(Button(context).apply { text = "x\u00B2"; isAllCaps = false; setOnClickListener { script(1) } })
+            addView(Button(context).apply { text = "x\u2082"; isAllCaps = false; setOnClickListener { script(-1) } })
+            addView(Button(context).apply {
+                text = "\u2211 Equation"; isAllCaps = false
+                setOnClickListener { dialog?.dismiss(); if (!editEquationAt(page, x, y, true)) Toast.makeText(context, "That text could not be read as an equation.", Toast.LENGTH_SHORT).show() }
+            })
+        }
+        val box = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; addView(body); addView(row); addView(tools) }
         val apply = {
             val why = Engine.replaceParagraph(doc, body.text.toString(), info[7].toInt(), bold.isChecked, italic.isChecked,
                                               size.text.toString().toDoubleOrNull() ?: info[4], info[8].toLong().toInt())
@@ -523,14 +546,137 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             scripted(apply())
             return
         }
-        AlertDialog.Builder(this).setTitle("Edit text").setView(padded(box))
+        dialog = AlertDialog.Builder(this).setTitle("Edit text").setView(padded(box))
             .setPositiveButton("Apply") { _, _ -> apply() }
             .setNegativeButton("Cancel", null).show()
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // The equation editor: the equation in one line (s^8, x_1, \frac{a}{b}, \sqrt{x}), buttons, and a live picture of it
+
+    /** Opens the equation at the point in the editor; false when there is none. */
+    private fun editEquationAt(page: Int, x: Float, y: Float, any: Boolean): Boolean {
+        val info = DoubleArray(5)
+        val source = Engine.equationAt(doc, page, x, y, any, info) ?: return false
+        equationDialog("Equation editor", source, info[0], true) { src, size, remove ->
+            if (!remove && src == source && Math.abs(size - info[0]) < 0.05) return@equationDialog
+            val why = Engine.replaceEquation(doc, if (remove) "" else src, size)
+            if (why == null) changedDocument()
+            else AlertDialog.Builder(this).setTitle("Not changed").setMessage(why).setPositiveButton("OK", null).show()
+        }
+        return true
+    }
+
+    private fun insertEquationAt(page: Int, x: Float, y: Float) {
+        equationDialog("Insert equation", "", 12.0, false) { src, size, _ ->
+            if (src.isBlank()) return@equationDialog
+            val why = Engine.insertEquation(doc, page, x.toDouble(), y.toDouble(), src, size, 0xFF000000.toInt())
+            if (why == null) changedDocument()
+            else AlertDialog.Builder(this).setTitle("Not added").setMessage(why).setPositiveButton("OK", null).show()
+        }
+    }
+
+    private fun equationDialog(title: String, source: String, size0: Double, existing: Boolean, done: (String, Double, Boolean) -> Unit) {
+        val field = EditText(this).apply {
+            setText(source)
+            textSize = 18f
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS or InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD
+            hint = "s^8 + 9s^6 = 0   G(s) = \\frac{2K}{s(s+2)}"
+            setSelection(source.length)
+        }
+        val size = EditText(this).apply {
+            inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL
+            setText(if (size0 % 1.0 == 0.0) size0.toInt().toString() else "%.1f".format(size0))
+            width = dp(72)
+        }
+        val preview = ImageView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            adjustViewBounds = true
+            minimumHeight = dp(90)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+        }
+        val error = TextView(this).apply { setTextColor(Color.rgb(0xC6, 0x28, 0x28)) }
+        fun sizeValue() = size.text.toString().toDoubleOrNull()?.takeIf { it in 4.0..144.0 } ?: 12.0
+        fun render() {
+            val dims = IntArray(2)
+            val err = arrayOfNulls<String>(1)
+            val src = field.text.toString()
+            val px = if (src.isBlank()) null else Engine.equationPreview(src, sizeValue(), 2.0 * density, dims, err)
+            preview.setImageBitmap(if (px != null) Bitmap.createBitmap(px, dims[0], dims[1], Bitmap.Config.ARGB_8888) else null)
+            error.text = if (src.isBlank()) "" else err[0] ?: ""
+        }
+        // a button's text at the cursor; a template wraps the selected text (the cursor goes inside it otherwise)
+        fun put(what: String) {
+            val a = field.selectionStart.coerceAtLeast(0); val b = field.selectionEnd.coerceAtLeast(a)
+            val sel = field.text.substring(a, b)
+            val slot = what.indexOf('\u0001')
+            var text = what; var caret = what.length
+            if (slot >= 0) {
+                text = what.substring(0, slot) + sel + what.substring(slot + 1)
+                caret = if (sel.isNotEmpty()) text.indexOf("{}", slot + sel.length).let { if (it >= 0) it + 1 else text.length } else slot
+            }
+            field.text.replace(a, b, text)
+            field.setSelection((a + caret).coerceAtMost(field.text.length))
+            field.requestFocus()
+        }
+        val structures = listOf("x\u00B2" to "^{\u0001}", "x\u2082" to "_{\u0001}", "a\u2044b" to "\\frac{\u0001}{}", "\u221A" to "\\sqrt{\u0001}",
+            "\u207F\u221A" to "\\sqrt[\u0001]{}", "( )" to "\\left(\u0001\\right)", "|x|" to "\\left|\u0001\\right|", "\u2211" to "\\sum_{\u0001}^{}",
+            "\u222B" to "\\int_{\u0001}^{}", "lim" to "\\lim_{\u0001}", "sin" to "\\sin \u0001", "abc" to "\\text{\u0001}")
+        val signs = "+\u2212\u00B1\u00D7\u00B7\u00F7=\u2260\u2248\u2264\u2265<>\u221E\u2192\u2202\u2032\u00B0\u2208"
+        val greek = "\u03B1\u03B2\u03B3\u03B4\u03B5\u03B8\u03BB\u03BC\u03C0\u03C1\u03C3\u03C4\u03C6\u03C9\u0394\u03A3\u03A9"
+        fun strip(items: List<Pair<String, String>>) = HorizontalScrollView(this).apply {
+            addView(LinearLayout(context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                for ((label, insert) in items) addView(Button(context).apply {
+                    text = label; isAllCaps = false; minWidth = dp(44); minimumWidth = dp(44)
+                    setOnClickListener { put(insert) }
+                })
+            })
+        }
+        val sizeRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            addView(TextView(context).apply { text = "Size" })
+            addView(size)
+        }
+        val hintText = TextView(this).apply {
+            text = "s^8 is a power, x_1 an index (use { } for more: e^{-st}). \\frac{top}{bottom} is a fraction, \\sqrt{x} a root."
+            textSize = 12f
+        }
+        val box = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(field); addView(hintText)
+            addView(strip(structures)); addView(strip(signs.map { it.toString() to it.toString() })); addView(strip(greek.map { it.toString() to it.toString() }))
+            addView(sizeRow); addView(preview); addView(error)
+        }
+        field.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: Editable?) { render() }
+        })
+        size.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: Editable?) { render() }
+        })
+        render()
+        val b = AlertDialog.Builder(this).setTitle(title).setView(android.widget.ScrollView(this).apply { addView(padded(box)) })
+            .setPositiveButton(if (existing) "Apply" else "Insert", null)
+            .setNegativeButton("Cancel", null)
+        if (existing) b.setNeutralButton("Remove") { _, _ -> done("", sizeValue(), true) }
+        val dlg = b.show()
+        dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            render()
+            if (error.text.isNotEmpty()) return@setOnClickListener   // the reason shows under the picture
+            dlg.dismiss()
+            done(field.text.toString(), sizeValue(), false)
+        }
     }
 
     private fun addText(page: Int, x: Float, y: Float) {
         val body = EditText(this).apply { hint = "Text"; inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE }
         AlertDialog.Builder(this).setTitle("Add text").setView(padded(body))
+            .setNeutralButton("Equation\u2026") { _, _ -> insertEquationAt(page, x, y) }
             .setPositiveButton("Add") { _, _ ->
                 val t = body.text.toString()
                 // in the drawing colour (Settings > Editing), as on Windows; yellow would not be read on white paper, so it is dark grey then

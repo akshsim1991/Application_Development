@@ -1,5 +1,6 @@
 #include "inlineedit.hpp"
 #include "fontlist.hpp"
+#include "equation.hpp"
 #include <algorithm>
 #include <cmath>
 #include <cwchar>
@@ -7,10 +8,14 @@
 namespace inlineedit {
 namespace {
 
-enum { ID_EDIT = 301, ID_FAM, ID_SIZE, ID_BOLD, ID_ITAL, ID_COL, ID_ALIGN, ID_OK, ID_NO, ID_HINT };
+enum { ID_EDIT = 301, ID_FAM, ID_SIZE, ID_BOLD, ID_ITAL, ID_COL, ID_ALIGN, ID_OK, ID_NO, ID_HINT, ID_SUP, ID_SUB, ID_EQ };
 const COLORREF kAccent = RGB(0x2D, 0x7F, 0xF9);
 const wchar_t* kFaces[] = {L"Arial", L"Times New Roman", L"Courier New"};
-Editor* g_current = nullptr;   // the edit box's subclass procedure finds its editor here (one editor at a time)
+Editor* g_current = nullptr;
+wchar_t featherMake(wchar_t c, int kind) {
+    const std::wstring s = equation::toScript(std::wstring(1, c), kind);
+    return s.empty() ? c : s[0];
+}   // the edit box's subclass procedure finds its editor here (one editor at a time)
 
 } // namespace
 
@@ -47,7 +52,8 @@ void Editor::start(const Spec& spec, Locate locate, Commit commit) {
         return c;
     };
     barH_ = 32;
-    famBox_ = sizeBox_ = boldBtn_ = italBtn_ = colBox_ = alignBox_ = hint_ = nullptr;
+    famBox_ = sizeBox_ = boldBtn_ = italBtn_ = colBox_ = alignBox_ = hint_ = supBtn_ = subBtn_ = eqBtn_ = nullptr;
+    scriptMode_ = 0;
     if (spec_.paragraph) {
         famBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_FAM, 120);
         for (const wchar_t* f : {L"Sans-serif", L"Serif", L"Monospaced"}) SendMessageW(famBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(f));
@@ -61,6 +67,9 @@ void Editor::start(const Spec& spec, Locate locate, Commit commit) {
         italBtn_ = mk(L"BUTTON", L"I", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_ITAL, 28);
         SendMessageW(boldBtn_, BM_SETCHECK, style_.bold ? BST_CHECKED : BST_UNCHECKED, 0);
         SendMessageW(italBtn_, BM_SETCHECK, style_.italic ? BST_CHECKED : BST_UNCHECKED, 0);
+        supBtn_ = mk(L"BUTTON", L"x\x00B2", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_SUP, 32);
+        subBtn_ = mk(L"BUTTON", L"x\x2082", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_SUB, 32);
+        if (spec_.onEquation) eqBtn_ = mk(L"BUTTON", L"\x2211 Equation", BS_PUSHBUTTON | WS_TABSTOP, ID_EQ, 84);
         colBox_ = mk(L"COMBOBOX", L"", CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, ID_COL, 112);
         SendMessageW(colBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(L"Colour as now"));
         for (const auto& n : spec_.paletteNames) SendMessageW(colBox_, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(n.c_str()));
@@ -72,13 +81,16 @@ void Editor::start(const Spec& spec, Locate locate, Commit commit) {
         noBtn_ = mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, ID_NO, 64);
         hint_ = mk(L"STATIC", L"Ctrl+Enter applies", SS_LEFT | SS_CENTERIMAGE, ID_HINT, 120);
     } else {
+        supBtn_ = mk(L"BUTTON", L"x\x00B2", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_SUP, 32);
+        subBtn_ = mk(L"BUTTON", L"x\x2082", BS_AUTOCHECKBOX | BS_PUSHLIKE | WS_TABSTOP, ID_SUB, 32);
+        if (spec_.onEquation) eqBtn_ = mk(L"BUTTON", L"\x2211 Equation", BS_PUSHBUTTON | WS_TABSTOP, ID_EQ, 84);
         hint_ = mk(L"STATIC", L"Enter applies \x00B7 Esc cancels", SS_LEFT | SS_CENTERIMAGE, ID_HINT, 170);
         okBtn_ = mk(L"BUTTON", L"Apply", BS_PUSHBUTTON | WS_TABSTOP, ID_OK, 64);
         noBtn_ = mk(L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, ID_NO, 64);
     }
     // the bar's controls, left to right
     int x = 4;
-    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
+    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, supBtn_, subBtn_, eqBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
         if (!c) continue;
         RECT r;
         GetWindowRect(c, &r);
@@ -213,7 +225,7 @@ void Editor::layout() {
     MoveWindow(wnd_, left, top, std::max(w + 2 * pad, barW_), h + 2 * pad + barH_, TRUE);
     MoveWindow(edit_, pad, frameY + pad, w, h, TRUE);
     if (wrap > 0) { RECT fr{0, 0, wrap, h}; SendMessageW(edit_, EM_SETRECT, 0, reinterpret_cast<LPARAM>(&fr)); }   // resizing reset it
-    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
+    for (HWND c : {famBox_, sizeBox_, boldBtn_, italBtn_, supBtn_, subBtn_, eqBtn_, colBox_, alignBox_, okBtn_, noBtn_, hint_}) {
         if (!c) continue;
         RECT r;
         GetWindowRect(c, &r);
@@ -251,6 +263,32 @@ void Editor::readBar() {
     const int c = static_cast<int>(SendMessageW(colBox_, CB_GETCURSEL, 0, 0));
     style_.color = c > 0 && c - 1 < static_cast<int>(spec_.palette.size()) ? spec_.palette[static_cast<size_t>(c - 1)] : spec_.style.color;
     style_.align = static_cast<int>(SendMessageW(alignBox_, CB_GETCURSEL, 0, 0));
+}
+
+// x² and x₂: the selected text made superscript (subscript), or back to plain when it already is; with nothing selected,
+// what is typed next is (pressed again: plain again). Letters and signs that have no such character stay as they are.
+void Editor::script(int kind) {
+    if (!edit_) return;
+    DWORD a = 0, b = 0;
+    SendMessageW(edit_, EM_GETSEL, reinterpret_cast<WPARAM>(&a), reinterpret_cast<LPARAM>(&b));
+    if (b > a) {
+        const int n = GetWindowTextLengthW(edit_);
+        std::wstring all(static_cast<size_t>(n) + 1, L'\0');
+        GetWindowTextW(edit_, all.data(), n + 1);
+        const std::wstring sel = all.substr(a, b - a);
+        bool every = true;
+        const std::wstring made = equation::scriptKind(sel) == kind ? equation::fromScript(sel) : equation::toScript(sel, kind, &every);
+        SendMessageW(edit_, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(made.c_str()));
+        SendMessageW(edit_, EM_SETSEL, a, a + made.size());
+        scriptMode_ = 0;
+        if (hint_) SetWindowTextW(hint_, every ? L"" : L"Some letters have no small raised form: use \x2211 Equation");
+    } else {
+        scriptMode_ = scriptMode_ == kind ? 0 : kind;
+    }
+    if (supBtn_) SendMessageW(supBtn_, BM_SETCHECK, scriptMode_ > 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+    if (subBtn_) SendMessageW(subBtn_, BM_SETCHECK, scriptMode_ < 0 ? BST_CHECKED : BST_UNCHECKED, 0);
+    layout();
+    SetFocus(edit_);
 }
 
 bool Editor::commit() {
@@ -345,6 +383,13 @@ LRESULT Editor::handle(HWND h, UINT m, WPARAM w, LPARAM l) {
                 return 0;
             }
             if ((id == ID_BOLD || id == ID_ITAL) && code == BN_CLICKED) { readBar(); applyFont(); layout(); SetFocus(edit_); return 0; }
+            if ((id == ID_SUP || id == ID_SUB) && code == BN_CLICKED) { script(id == ID_SUP ? 1 : -1); return 0; }
+            if (id == ID_EQ && code == BN_CLICKED && spec_.onEquation) {
+                auto open = spec_.onEquation;   // the editor goes first: what it held is read again as an equation
+                cancel();
+                open();
+                return 0;
+            }
             break;
         }
     }
@@ -363,9 +408,16 @@ LRESULT CALLBACK Editor::editProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             // applied once this key is handled, like the Apply button: a message the commit shows then gets the keyboard
             if (w == VK_RETURN && (!e->spec_.paragraph || ctrl)) { PostMessageW(e->wnd_, WM_COMMAND, MAKEWPARAM(ID_OK, BN_CLICKED), 0); return 0; }
             if (w == 'A' && ctrl) { SendMessageW(h, EM_SETSEL, 0, -1); return 0; }
+            // Ctrl+Shift+= superscript, Ctrl+= subscript (as in word processors)
+            if (ctrl && (w == VK_OEM_PLUS || w == VK_ADD)) { e->script(GetKeyState(VK_SHIFT) < 0 ? 1 : -1); return 0; }
             break;
         case WM_CHAR:
             if (w == 0x1B || w == 1) return 0;                                       // Esc, Ctrl+A
+            if (ctrl && (w == L'=' || w == L'+' || w == 0x1D)) return 0;              // the shortcuts above
+            if (e->scriptMode_ != 0 && w >= 0x20 && w != 0x7F) {                     // typing superscripts or subscripts
+                const wchar_t c = featherMake(static_cast<wchar_t>(w), e->scriptMode_);
+                return CallWindowProcW(old, h, m, c, l);
+            }
             if ((w == L'\r' || w == L'\n') && (!e->spec_.paragraph || ctrl)) return 0;   // handled on key down
             break;
     }

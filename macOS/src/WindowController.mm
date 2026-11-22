@@ -195,6 +195,7 @@ static BOOL editBarTool(FPTool t) {   // the tools of Edit PDF: the bar stays wh
     button(@"Add Text", @selector(chooseEditTool:), FPToolTextBox);
     button(@"Insert Picture…", @selector(insertPicture:), 0);
     button(@"Add a Table…", @selector(addNewTable:), 0);
+    button(@"Insert Equation…", @selector(insertEquation:), 0);
     button(@"Find and Replace…", @selector(findAndReplace:), 0);
     button(@"Redact an Area", @selector(chooseTool:), FPToolRedact);
     button(@"More Editing Tools…", @selector(editBarMore:), 0);

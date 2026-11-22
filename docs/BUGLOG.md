@@ -1474,3 +1474,22 @@ kept as tests/engine/realworld.sh (public files downloaded from GitHub; the user
 **Published:** 2.23.3 for Windows, Mac and Android (21 November), all three from commit 710cff8; Windows went out first
 as 2.23.0 to 2.23.3 at the user's request. The three downloads match latest.json (size and SHA-256); the 2.22.2 Mac and
 Android files stay one release longer.
+
+### B-116 Equations could only be edited as text: no way to make s⁷ into s⁸, no superscript or subscript - High (all apps)
+- **Found:** the user typed 8 over the 7 of s⁷ + 9s⁶ + ...: it became "s8⁷", a plain 8 beside the raised 7, and the text
+  editor had no superscript or subscript button. A fraction's top and bottom were edited as separate lines of text.
+- **Cause:** equations were edited as lines of text; a power was a character of the text, and only digits typed as ⁸
+  became one. There was no notation for fractions or roots, and nothing that read an equation as a whole.
+- **Fix:** an equation editor (shared/equation.cpp, used by all three apps). It reads the equation under the click from
+  the page: the text in the mathematics font and what belongs to it (smaller text raised or lowered becomes a power or
+  an index, text over and under a bar becomes a fraction, a radical sign with its line a root, the left side through the
+  middle of the bar). It shows it in a one-line notation, with buttons and a live picture, and sets the result on the page
+  with standard fonts (Times, Symbol) and drawn bars and radical signs, marked with its notation so it opens again exactly
+  as typed. The text editors got x² and x₂ (Ctrl+Shift+= and Ctrl+= on Windows) and an Equation button.
+- **Tests:** realworld.sh: the user's polynomial and fraction read whole, s^7 made s^8, the fraction's top and bottom
+  changed, a fraction with a power in its bottom read; an inserted equation read back as typed, its power changed, wrong
+  notation refused (34 checks, 3 new on public files). Android bridge: insert, read, change, preview, wrong notation,
+  superscripts. Previews checked by eye: fractions, roots, sums with limits, integrals, limits, Greek, growing brackets.
+- **Not yet:** the equation is set in Times and Symbol, not in the document's own Cambria Math (it is a font collection
+  that cannot be embedded as it is); a matrix or a multi-line equation is not read as one.
+

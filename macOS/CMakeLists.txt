@@ -38,6 +38,7 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/FormCalc.mm
   src/Palette.mm
   src/Editing.mm
+  src/Equation.mm
   src/TableSheet.mm
   src/FolderSearch.mm
   src/Settings.mm

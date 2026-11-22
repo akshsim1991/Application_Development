@@ -135,6 +135,19 @@ public class BridgeCheck {
         check("with its size and colour", Math.abs(info[4] - 12) < 0.6 && ((int) info[8] & 0xFFFFFF) == 0);
         String why = Engine.replaceParagraph(d, para + " Café crème, naïve – done.", (int) info[7], false, false, info[4], (int) info[8]);
         check("the paragraph is changed (" + why + ")", why == null);
+        // the equation editor
+        check("an equation is put on the page", Engine.insertEquation(d, 0, 100, 300, "s^7 + \\frac{a}{b} = 0", 12, 0xFF000000) == null);
+        double[] ei = new double[5];
+        String eq = Engine.equationAt(d, 0, 103, 302, false, ei);
+        check("it is read back as typed (" + eq + ")", "s^7 + \\frac{a}{b} = 0".equals(eq) && Math.abs(ei[0] - 12) < 0.1);
+        check("its power changed", Engine.replaceEquation(d, "s^8 + \\frac{a}{b} = 0", 12) == null);
+        check("and read again", "s^8 + \\frac{a}{b} = 0".equals(Engine.equationAt(d, 0, 103, 302, false, ei)));
+        int[] dims = new int[2];
+        String[] eqErr = new String[1];
+        int[] px = Engine.equationPreview("x = \\sqrt{y}", 12, 2, dims, eqErr);
+        check("a preview is drawn", px != null && dims[0] > 20 && dims[1] > 10 && px.length == dims[0] * dims[1]);
+        check("wrong notation is explained", Engine.equationPreview("\\frac{a", 12, 2, dims, eqErr) == null && eqErr[0] != null && eqErr[0].contains("}"));
+        check("x\u00B2 makes superscripts", "m\u00B3".equals("m" + Engine.scriptText("3", 1)) && "3".equals(Engine.scriptText("\u00B3", 1)));
         float[] hits = Engine.find(d, "naïve", false, false);
         check("the new words are found, accents and all", hits.length == 5 && hits[0] == 0);
         float[] q = Engine.find(d, "Quarterly", false, false);

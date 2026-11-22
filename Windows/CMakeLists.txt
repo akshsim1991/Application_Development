@@ -11,6 +11,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/annot.cpp
   src/formdialog.cpp
   ${SHARED}/pageobjects.cpp
+  ${SHARED}/equation.cpp
   ${SHARED}/exporter.cpp
   src/speech.cpp
   ${SHARED}/redact.cpp
@@ -55,6 +56,7 @@ add_executable(FeatherPDF WIN32
   ${SHARED}/crypto.cpp
   ${SHARED}/image.cpp
   src/hfdialog.cpp
+  src/eqeditor.cpp
   src/themeui.cpp
   src/settingsdlg.cpp
   src/tableeditor.cpp

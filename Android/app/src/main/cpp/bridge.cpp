@@ -14,6 +14,7 @@
 #include "annot.hpp"
 #include "crypto.hpp"
 #include "document.hpp"
+#include "equation.hpp"
 #include "image.hpp"
 #include "pageobjects.hpp"
 #include "pagecolours.hpp"
@@ -30,6 +31,7 @@ jobject g_hooks = nullptr;   // global reference to the app's Engine.SystemHooks
 struct Doc {
     Document d;
     pageobj::ParagraphHit hit;   // the paragraph found by the last paragraphAt()
+    equation::Found eq;          // the equation found by the last equationAt()
 };
 
 Doc* docOf(jlong h) { return reinterpret_cast<Doc*>(h); }
@@ -409,6 +411,73 @@ JNIEXPORT jstring FN(replaceParagraph)(JNIEnv* env, jclass, jlong h, jstring tex
     doc.hit = pageobj::ParagraphHit{};   // the page changed: the next edit finds its paragraph again
     if (ok) return nullptr;
     return jstr(env, why.empty() ? L"The paragraph could not be changed." : why);
+}
+
+// ---- equations (the equation editor) ----
+
+// The equation at a page point (with `any`, a line of ordinary text read as one); kept for replaceEquation(). Returns its
+// notation (null when there is none); info gets: size, left, bottom, right, top (points).
+JNIEXPORT jstring FN(equationAt)(JNIEnv* env, jclass, jlong h, jint page, jfloat x, jfloat y, jboolean any, jdoubleArray info) {
+    LOCK;
+    if (!h) return nullptr;
+    Doc& doc = *docOf(h);
+    doc.eq = equation::at(doc.d, page, x, y, any);
+    if (!doc.eq.found) return nullptr;
+    const double v[5] = {doc.eq.size, doc.eq.left, doc.eq.bottom, doc.eq.right, doc.eq.top};
+    if (info && env->GetArrayLength(info) >= 5) env->SetDoubleArrayRegion(info, 0, 5, v);
+    return jstr(env, doc.eq.source);
+}
+
+// Sets the equation found by the last equationAt() again (an empty notation removes it). Null when done, else why not.
+JNIEXPORT jstring FN(replaceEquation)(JNIEnv* env, jclass, jlong h, jstring source, jdouble size) {
+    LOCK;
+    if (!h || !docOf(h)->eq.found) return jstr(env, L"Tap the equation again.");
+    Doc& doc = *docOf(h);
+    std::wstring why;
+    const bool ok = equation::replace(doc.d, doc.eq, wstr(env, source), size, &why);
+    doc.eq = equation::Found{};
+    doc.hit = pageobj::ParagraphHit{};
+    if (ok) return nullptr;
+    return jstr(env, why.empty() ? L"The equation could not be changed." : why);
+}
+
+// A new equation starting at (x, y) on its baseline. Null when done, else why not.
+JNIEXPORT jstring FN(insertEquation)(JNIEnv* env, jclass, jlong h, jint page, jdouble x, jdouble y, jstring source, jdouble size, jint color) {
+    LOCK;
+    if (!h) return jstr(env, L"No document.");
+    Doc& doc = *docOf(h);
+    std::wstring why;
+    const bool ok = equation::insert(doc.d, page, x, y, wstr(env, source), size, colorref(color), &why);
+    doc.hit = pageobj::ParagraphHit{};
+    doc.eq = equation::Found{};
+    if (ok) return nullptr;
+    return jstr(env, why.empty() ? L"The equation could not be added." : why);
+}
+
+// A picture of the equation for the editor's preview: ARGB pixels, its width and height in dims[0..1]; null when the
+// notation is wrong, and error[0] says what.
+JNIEXPORT jintArray FN(equationPreview)(JNIEnv* env, jclass, jstring source, jdouble size, jdouble scale, jintArray dims, jobjectArray error) {
+    LOCK;
+    std::vector<unsigned char> px;
+    int w = 0, hgt = 0;
+    std::wstring err;
+    if (!equation::preview(wstr(env, source), size, scale, px, w, hgt, &err)) {
+        if (error && env->GetArrayLength(error) > 0) env->SetObjectArrayElement(error, 0, jstr(env, err));
+        return nullptr;
+    }
+    std::vector<jint> out(static_cast<size_t>(w) * hgt);
+    for (size_t i = 0; i < out.size(); ++i)
+        out[i] = static_cast<jint>(0xFF000000u | (static_cast<unsigned>(px[i * 4 + 2]) << 16) | (static_cast<unsigned>(px[i * 4 + 1]) << 8) | px[i * 4]);
+    if (dims && env->GetArrayLength(dims) >= 2) { const jint d2[2] = {w, hgt}; env->SetIntArrayRegion(dims, 0, 2, d2); }
+    jintArray a = env->NewIntArray(static_cast<jsize>(out.size()));
+    env->SetIntArrayRegion(a, 0, static_cast<jsize>(out.size()), out.data());
+    return a;
+}
+
+// The text's characters as superscripts (kind 1) or subscripts (-1), or plain again when they already are (x² / x₂).
+JNIEXPORT jstring FN(scriptText)(JNIEnv* env, jclass, jstring text, jint kind) {
+    const std::wstring t = wstr(env, text);
+    return jstr(env, equation::scriptKind(t) == kind ? equation::fromScript(t) : equation::toScript(t, kind));
 }
 
 JNIEXPORT jboolean FN(addTextBox)(JNIEnv* env, jclass, jlong h, jint page, jdouble x, jdouble y, jstring text, jdouble size, jint color) {

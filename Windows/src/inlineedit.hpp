@@ -29,6 +29,8 @@ struct Spec {
     // The width of a text (start to the last letter's right edge, in points) as it will be set on the page in a style.
     // The edit box's font is matched to it, so the box breaks lines where the page will.
     std::function<double(const std::wstring& text, const Style& style)> measure;
+    // When set, the bar has an "Equation" button: the editor closes and this opens the equation editor for the text.
+    std::function<void()> onEquation;
 };
 
 class Editor {
@@ -54,10 +56,13 @@ private:
     void applyFont();
     void readBar();
     void layout();
+    void script(int kind);   // the x² (1) and x₂ (-1) buttons
 
     HWND viewer_ = nullptr, wnd_ = nullptr, edit_ = nullptr;
     HINSTANCE inst_ = nullptr;
     HWND famBox_ = nullptr, sizeBox_ = nullptr, boldBtn_ = nullptr, italBtn_ = nullptr, colBox_ = nullptr, alignBox_ = nullptr, okBtn_ = nullptr, noBtn_ = nullptr, hint_ = nullptr;
+    HWND supBtn_ = nullptr, subBtn_ = nullptr, eqBtn_ = nullptr;
+    int scriptMode_ = 0;         // typing superscripts (1) or subscripts (-1)
     HFONT uiFont_ = nullptr, textFont_ = nullptr;
     HBRUSH editBrush_ = nullptr;
     WNDPROC oldEdit_ = nullptr;

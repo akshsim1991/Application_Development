@@ -63,6 +63,8 @@
 #include "fontlist.hpp"
 #include "buildinfo.hpp"
 #include "inlineedit.hpp"
+#include "eqeditor.hpp"
+#include "equation.hpp"
 #include "startpage.hpp"
 #include "tables.hpp"
 #include "cli.hpp"
@@ -92,7 +94,7 @@ struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0;
 enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU,
            C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE,
            // the edit row, under the toolbar while Edit PDF is on
-           C_ER_EDIT = 160, C_ER_ADDTEXT, C_ER_PICTURE, C_ER_TABLE, C_ER_REPLACE, C_ER_REDACT, C_ER_MORE, C_ER_DONE,
+           C_ER_EDIT = 160, C_ER_ADDTEXT, C_ER_PICTURE, C_ER_TABLE, C_ER_REPLACE, C_ER_REDACT, C_ER_MORE, C_ER_DONE, C_ER_EQUATION,
            C_TAB = 2000 /* + tab index: hover and tips */, C_TABCLOSE = 3000 /* + tab index */ };
 enum { ID_PAGE_BOX = 220, ID_ZOOM_BOX };
 
@@ -164,6 +166,8 @@ struct App {
     int defaultZoom = 0;      // a document opened without a remembered place: 0 fit width, 1 fit page, 2.. kDefaultZooms
     int defaultLayout = 1;    // a new window's pages: 0 single page, 1 continuous, 2 two pages, 3 two pages with the cover alone
     pageobj::TableSpec pendingTable;
+    std::wstring pendingEquation;      // Insert equation: set where the page is clicked next (with the table-placing tool)
+    double pendingEquationSize = 12;
     struct { int page = -1; std::vector<int> objects; } sel;   // the selected picture, paragraph or table
     struct { int page = -1, obj = -1; } cropPic;                // the picture the PicCrop tool trims
     annot::PointD protVertex{}, protArm{}; int protStage = 0, protPage = 0;
@@ -201,7 +205,7 @@ void sanitizeDialog(); void pdfaDialog(); void showFonts(Document& d); void sear
 void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int cmd); void addPictureItems(HMENU m);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
-void startLink(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
+void startLink(); void insertEquation(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
 // The zoom a document opens at when no place is remembered for it (Settings > PDF Viewing > Default zoom).
 const double kDefaultZooms[] = {0, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
 void applyDefaultZoom() {
@@ -581,7 +585,7 @@ enum MenuId { M_HIGHLIGHT = 300, M_UNDERLINE, M_STRIKE, M_SQUIGGLY, M_COMMENT, M
               T_WATERMARK = 500, T_NUMBERS, T_EXPORT, T_READ, T_RATE = 510, T_COLOURS = 520, T_PRINT = 530, T_PROPS, T_RED_AREA = 540, T_RED_SEL, T_RED_FIND, T_RED_CLEAR, T_RED_APPLY, M_RED_REMOVE, T_COMPRESS, T_EDIT_TEXT, T_ADD_TEXT, T_TEXT_STYLE, T_PROTECT, T_UNPROTECT, T_OCR, T_SIGN, T_OWNCERT, T_SHOWSIGS, T_NOTES, T_FULLSCREEN, T_PRESENT, T_STAMP = 700, T_STAMP_CUSTOM = 720, T_PICTURE, T_DEFAULT_VIEWER, T_RECENT = 600, T_RECENT_CLEAR = 620, M_COPY_PAGE,
               P_DELETE = 400, P_BLANK, P_ROT_R, P_ROT_L, P_ROT_ALL, P_MOVE, P_EXTRACT, P_INSERT, P_MERGE, P_CROP, P_SPLIT, P_CROPBOX, P_NEWPDF, P_NUP, P_REVERSE, P_BLANKS, P_DUPES, P_HEADER, P_BGCOLOR, P_HFDELETE, P_INTERLEAVE, M_HL_COLOUR = 320, M_DRAW_COLOUR = 340, M_WIDTH = 360 };
 // extra menu ids
-enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, N_REVIEW, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, F_CALC, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
+enum ExtraId { M_SELALL = 990, M_ADDCOMMENT_HERE, M_EDITTEXT_HERE, N_SELECTOBJ = 1012, N_EDITPARA = 1010, M_EDITPARA_HERE, N_RED_CHECK = 999, N_BATCH = 998, N_RED_SENSITIVE = 997, N_SANITIZE = 1020, N_PDFA, N_FONTS, N_ACCESS, N_REVIEW, F_RADIO = 1030, F_LIST, F_DATE, F_RESET, F_FLATTEN, F_CALC, A_POLYGON = 1040, A_CLOUD, A_CALLOUT, A_DATESTAMP = 1050, M_TABLE_HERE = 1080, M_TABLEDEL_HERE, N_EQUATION_INS = 1095, PX_ROT_R = 1060, PX_ROT_L, PX_FLIP_H, PX_FLIP_V, PX_CROP, PX_ADJUST, PX_GREY, PX_REPLACE, PX_SAVE, PX_FRONT, PX_BACK, PX_PASTE, F_EXPORT = 1000, F_FILL, F_TEXT, F_CHECK, F_COMBO, F_AUTO, N_FINDREPLACE = 800, N_TABLE_INS, N_TABLE_EDIT, N_TABLE_DEL, N_BOOKMARK, N_BW, N_LINK, N_SIG_TYPE, N_SIG_DRAW, N_SIG_PIC, N_SIG_SAVED,
                N_TEXTSIZE = 820, N_LAYOUT = 840, N_ROTL = 850, N_ROTR, N_BACK, N_FWD, N_RELOAD, N_COPYAREA, N_PALETTE, N_COMPARE, N_SBS_OPEN, N_SBS_TAB, N_SBS_OFF, N_SBS_LINK, N_SBS_HORZ, N_SBS_VERT, N_SBS_SWAP,
                G_RULER = 870, G_PROT, G_RULERS, G_KEEP, G_CLEAR, G_UNITS = 880, G_SCALE = 890, Z_BASE = 900, N_OPENFILEBOX = 950, N_SEARCH_WEB, N_LOOKUP = 960, N_READ_FROM = 970, N_SELECT_NOTES };
 constexpr double kZoomPresets[] = {0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0};
@@ -1582,7 +1586,7 @@ const wchar_t* toolHint(Viewer::Tool t) {
         case T::CropBox: return L"Drag a box around the part of the page to keep. Esc stops.";
         case T::TableDelete: return L"The tables found are outlined: click one to delete it, or drag a box around a table that is not outlined. Esc stops.";
         case T::TableEdit: return L"The tables found are outlined: click one to edit it, or drag a box around a table that is not outlined. Esc stops.";
-        case T::TablePlace: return L"Click where the top-left corner of the table should go. Esc cancels.";
+        case T::TablePlace: return app.pendingEquation.empty() ? L"Click where the top-left corner of the table should go. Esc cancels." : L"Click where the equation should start (on its baseline). Esc cancels.";
         case T::Select: return L"Click a picture, paragraph or table to pick it, then drag it or its corners. Esc stops.";
         case T::Polygon: return L"Click each corner; double-click, or click the first corner again, to finish. Esc stops.";
         case T::Cloud: return L"Drag a box where the cloud should go. Esc stops.";
@@ -1760,6 +1764,44 @@ POINT clickPoint(int page, const annot::PointD& p) {
     return {r.left, r.top};
 }
 
+// The equation editor on an equation found on the page: Apply sets it again (one undo step), Remove takes it away.
+void editEquation(Document& d, const equation::Found& f) {
+    eqeditor::Result r;
+    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, L"Equation editor", f.source, f.size, true, r)) return;
+    if (activeDoc() != &d) return;
+    if (!r.remove && r.source == f.source && std::fabs(r.size - f.size) < 0.05) return;
+    std::wstring why;
+    if (equation::replace(d, f, r.remove ? std::wstring() : r.source, r.size, &why)) { afterChange(f.page); return; }
+    app.viewer.documentChanged();   // a failed change puts the document back
+    refresh();
+    MessageBoxW(app.wnd, why.empty() ? L"The equation could not be changed." : why.c_str(), kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
+// Insert equation: written in the editor first, then placed where the page is clicked.
+void insertEquation() {
+    if (!activeDoc()) return;
+    eqeditor::Result r;
+    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, L"Insert equation", L"", 12, false, r)) return;
+    if (r.source.find_first_not_of(L" ") == std::wstring::npos) return;
+    app.pendingEquation = r.source;
+    app.pendingEquationSize = r.size;
+    if (app.tool != Viewer::Tool::TablePlace) setTool(Viewer::Tool::TablePlace);
+    else refresh();
+}
+
+// The text editor's Equation button: the text's line read as an equation, opened in the equation editor.
+std::function<void()> equationFor(Document& d, const pageobj::ParagraphHit& hit) {
+    Document* doc = &d;
+    const int page = hit.page;
+    const double x = hit.originX + 0.5, y = hit.baseline + 0.3 * std::max(4.0, hit.style.sizePt);
+    return [doc, page, x, y] {
+        if (activeDoc() != doc) return;
+        const equation::Found f = equation::at(*doc, page, x, y, true);
+        if (!f.found) { notice(L"That text could not be read as an equation."); return; }
+        editEquation(*doc, f);
+    };
+}
+
 // One text object, where it is: for turned text, which is not set again as a line.
 void editObjectTextInPlace(Document& d, int page, const pageobj::TextHit& hit, POINT click) {
     inlineedit::Spec sp;
@@ -1814,6 +1856,7 @@ void editLineInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT click)
     const pageobj::ParagraphHit h = hit;
     sp.measure = [doc, h](const std::wstring& t, const inlineedit::Style&) { return activeDoc() == doc ? pageobj::paragraphTextWidth(*doc, h, t, h.style) : 0.0; };
     const annot::RectD box{hit.originX, hit.baseline, hit.originX + std::max(1.0, hit.wrapWidth), hit.baseline};
+    sp.onEquation = equationFor(d, hit);
     app.inlineEd.start(sp,
         [doc, box, page = hit.page](RECT& r, double& ppp) {
             if (activeDoc() != doc) return false;
@@ -1854,6 +1897,7 @@ void editParagraphInPlace(Document& d, const pageobj::ParagraphHit& hit, POINT c
     const annot::RectD box{hit.originX, hit.baseline - hit.lineStep * std::max(0, hit.lines - 1), hit.originX + hit.wrapWidth, hit.baseline};
     Document* doc = &d;
     const pageobj::ParagraphHit h = hit;
+    sp.onEquation = equationFor(d, hit);
     sp.measure = [doc, h](const std::wstring& t, const inlineedit::Style& st) {
         if (activeDoc() != doc) return 0.0;
         pageobj::TextStyle ts = h.style;
@@ -1952,6 +1996,7 @@ void onViewerEvent(const Viewer::Event& e) {
                 break;
             }
             if (e.tool == Viewer::Tool::EditText) {
+                if (const equation::Found eq = equation::at(*d, e.page, e.pts.front().x, e.pts.front().y); eq.found) { editEquation(*d, eq); break; }
                 const pageobj::ParagraphHit line = pageobj::paragraphAt(*d, e.page, e.pts.front().x, e.pts.front().y, true);
                 if (line.found && line.upright) { editLineInPlace(*d, line, clickPoint(e.page, e.pts.front())); break; }
                 pageobj::TextHit hit = pageobj::textAt(*d, e.page, e.pts.front().x, e.pts.front().y);
@@ -3635,6 +3680,7 @@ void toolsDispatch(int cmd) {
         case T_PICTURE: startPicture(); break;
         case N_FINDREPLACE: doFindReplace(); break;
         case N_TABLE_INS: tableInsert(); break;
+        case N_EQUATION_INS: insertEquation(); break;
         case N_TABLE_EDIT: tableEdit(); break;
         case N_TABLE_DEL: tableDelete(); break;
         case N_BOOKMARK: addBookmarkHere(); break;
@@ -3677,6 +3723,7 @@ void showToolsMenu(const RECT& anchor) {
     { HMENU pm = CreatePopupMenu(); addPictureItems(pm); AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(pm), L"Picture (turn, crop, brightness...)"); }
     add(N_FINDREPLACE, L"Find and replace text...\tCtrl+Shift+H");
     add(N_TABLE_INS, L"Insert table...");
+    add(N_EQUATION_INS, L"Insert equation (equation editor)...");
     add(N_TABLE_EDIT, L"Edit a table (any table: found automatically)...");
     add(N_TABLE_DEL, L"Delete table", true, app.tool == Viewer::Tool::TableDelete);
     sep();
@@ -3883,6 +3930,7 @@ void runCommand(int id) {
         case C_ER_ADDTEXT: if (d) toolsDispatch(T_ADD_TEXT); break;
         case C_ER_PICTURE: if (d) startPicture(); break;
         case C_ER_TABLE: if (d) tableInsert(); break;
+        case C_ER_EQUATION: if (d) insertEquation(); break;
         case C_ER_REPLACE: if (d) doFindReplace(); break;
         case C_ER_REDACT: if (d) toolsDispatch(T_RED_AREA); break;
         case C_ER_DONE: if (app.inlineEd.active()) app.inlineEd.commit(); if (app.tool != Viewer::Tool::None) setTool(Viewer::Tool::None); break;
@@ -4788,6 +4836,7 @@ bool tableDialog(pageobj::TableSpec& t, const wchar_t* title, const wchar_t* ok)
 
 void tableInsert() {
     if (!activeDoc()) return;
+    app.pendingEquation.clear();
     app.pendingTable = pageobj::TableSpec{};
     if (!tableDialog(app.pendingTable, L"Insert table", L"Next")) return;
     if (app.tool != Viewer::Tool::TablePlace) setTool(Viewer::Tool::TablePlace);
@@ -5218,6 +5267,15 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
 bool featureClick(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
         case Viewer::Tool::TablePlace: {
+            if (!app.pendingEquation.empty()) {   // Insert equation: it starts here, on its baseline
+                const std::wstring src = app.pendingEquation;
+                app.pendingEquation.clear();
+                std::wstring why;
+                if (equation::insert(d, e.page, e.pts.front().x, e.pts.front().y, src, app.pendingEquationSize, RGB(0, 0, 0), &why)) afterChange(e.page);
+                else MessageBoxW(app.wnd, why.empty() ? L"The equation could not be added." : why.c_str(), kAppName, MB_OK | MB_ICONWARNING);
+                setTool(Viewer::Tool::TablePlace);   // one at a time
+                return true;
+            }
             if (pageobj::addTable(d, e.page, e.pts.front().x, e.pts.front().y, app.pendingTable)) { app.viewer.documentChanged(); refresh(); app.sidebar.refresh(); }
             else MessageBoxW(app.wnd, L"The table could not be added.", kAppName, MB_OK | MB_ICONWARNING);
             setTool(Viewer::Tool::TablePlace);   // one table at a time
@@ -5236,6 +5294,13 @@ bool featureClick(Document& d, const Viewer::Event& e) {
         case Viewer::Tool::EditAll: {
             // edit mode: a picture is picked (handles to move and resize it); text is edited where it was clicked
             const double x = e.pts.front().x, y = e.pts.front().y;
+            // an equation (Cambria Math, LaTeX's, or one made here) opens in the equation editor
+            if (const equation::Found eq = equation::at(d, e.page, x, y); eq.found) {
+                app.sel.page = -1; app.sel.objects.clear();
+                app.viewer.setObjectSelection(-1, nullptr);
+                editEquation(d, eq);
+                return true;
+            }
             pageobj::GroupHit g = pageobj::groupAt(d, e.page, x, y);
             // text under the click is edited (recognised text over a scan too); a picture is picked where there is none
             pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, x, y);
@@ -5263,6 +5328,7 @@ bool featureClick(Document& d, const Viewer::Event& e) {
             return true;
         }
         case Viewer::Tool::EditPara: {
+            if (const equation::Found eq = equation::at(d, e.page, e.pts.front().x, e.pts.front().y); eq.found) { editEquation(d, eq); return true; }
             pageobj::ParagraphHit hit = pageobj::paragraphAt(d, e.page, e.pts.front().x, e.pts.front().y);
             if (!hit.found) {
                 notice(L"No paragraph there. Click directly on the text (scanned pages are pictures: use text recognition first).");
@@ -6373,6 +6439,7 @@ void commandPalette() {
         add(L"Paste picture from the clipboard", [] { pictureAction(PX_PASTE); });
         add(L"Add text box", [] { toolsDispatch(T_ADD_TEXT); });
         add(L"Insert table", [] { tableInsert(); });
+        add(L"Insert equation (equation editor)", [] { insertEquation(); });
         add(L"Edit a table", [] { tableEdit(); });
         add(L"Delete table", [] { tableDelete(); });
         add(L"Add a bookmark for this page", [] { addBookmarkHere(); });
@@ -6502,7 +6569,7 @@ const wchar_t* toolName(Viewer::Tool t) {
         case T::Line: return L"Line"; case T::Arrow: return L"Arrow"; case T::Pen: return L"Pen"; case T::Redact: return L"Mark areas to redact";
         case T::AddText: return L"Add text"; case T::EditText: return L"Edit text"; case T::Picture: return L"Insert picture";
         case T::Stamp: return L"Stamp"; case T::Link: return L"Link"; case T::CopyArea: return L"Copy area"; case T::CropBox: return L"Crop";
-        case T::TableDelete: return L"Delete table"; case T::TablePlace: return L"Insert table"; case T::TableEdit: return L"Edit table";
+        case T::TableDelete: return L"Delete table"; case T::TablePlace: return app.pendingEquation.empty() ? L"Insert table" : L"Insert equation"; case T::TableEdit: return L"Edit table";
         case T::EditPara: return L"Edit paragraph"; case T::EditAll: return L"Editing"; case T::Select: return L"Move or resize"; case T::Polygon: return L"Polygon";
         case T::Cloud: return L"Cloud"; case T::Callout: return L"Callout"; case T::FormRadio: return L"Radio button";
         case T::FormList: return L"List field"; case T::FormDate: return L"Date field"; case T::FormText: return L"Text field";
@@ -6541,6 +6608,7 @@ std::wstring tipFor(int id) {
         case C_ER_ADDTEXT: return L"Click where new text should start";
         case C_ER_PICTURE: return L"Put a picture on the page";
         case C_ER_TABLE: return L"Draw a new table on the page";
+        case C_ER_EQUATION: return L"Write an equation (powers, fractions, roots, Greek) and put it on the page";
         case C_ER_REPLACE: return L"Find a word and change it everywhere (Ctrl+Shift+H)";
         case C_ER_REDACT: return L"Drag a box over what must be removed for good";
         case C_ER_MORE: return L"Every editing tool: pages, forms, redaction, watermark, OCR, signatures...";
@@ -6715,7 +6783,7 @@ void layoutHeader(HDC dc, int width) {
         const int et = th + toolH() + (px(42) - px(30)) / 2, eb = et + px(30);
         static const struct { const wchar_t* label; int id; } row[] = {
             {L"Edit text and pictures", C_ER_EDIT}, {L"Add text", C_ER_ADDTEXT}, {L"Insert picture", C_ER_PICTURE}, {L"Insert table", C_ER_TABLE},
-            {L"Find and replace", C_ER_REPLACE}, {L"Redact an area", C_ER_REDACT}, {L"More editing tools...", C_ER_MORE}};
+            {L"Insert equation", C_ER_EQUATION}, {L"Find and replace", C_ER_REPLACE}, {L"Redact an area", C_ER_REDACT}, {L"More editing tools...", C_ER_MORE}};
         int ex = px(8);
         for (const auto& r : row) {
             const int w = textWidth(dc, app.font, r.label) + px(24);

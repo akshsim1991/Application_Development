@@ -426,6 +426,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Edit a Table", @selector(chooseEditTool:), nil).tag = FPToolEditTable;
     add(m, @"Add a Table\u2026", @selector(addNewTable:), nil);
+    add(m, @"Insert Equation\u2026", @selector(insertEquation:), nil);
 
     m = submenu(bar, @"Forms");
     struct { NSString* title; FPTool tool; } fields[] = {{@"Add a Text Field", FPToolFormText}, {@"Add a Check Box", FPToolFormCheck},

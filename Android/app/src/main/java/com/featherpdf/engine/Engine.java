@@ -73,6 +73,17 @@ public final class Engine {
     public static native String paragraphAt(long doc, int page, float x, float y, double[] info);
     /** Null when done, else why not. */
     public static native String replaceParagraph(long doc, String text, int family, boolean bold, boolean italic, double size, int color);
+
+    /** The equation at a point (null if none; with any, a line of text read as one), kept for replaceEquation(). info (5): size, left, bottom, right, top. */
+    public static native String equationAt(long doc, int page, float x, float y, boolean any, double[] info);
+    /** Sets the equation found last again (empty: removes it). Null when done, else why not. */
+    public static native String replaceEquation(long doc, String source, double size);
+    /** A new equation starting at (x, y) on its baseline. Null when done, else why not. */
+    public static native String insertEquation(long doc, int page, double x, double y, String source, double size, int color);
+    /** The equation drawn for a preview: ARGB pixels, dims gets width and height; null when the notation is wrong (error[0] says why). */
+    public static native int[] equationPreview(String source, double size, double scale, int[] dims, String[] error);
+    /** x² and x₂: the text as superscripts (kind 1) or subscripts (-1), or plain again when it already is. */
+    public static native String scriptText(String text, int kind);
     public static native boolean addTextBox(long doc, int page, double x, double y, String text, double size, int color);
 
     public static native boolean addMarkup(long doc, int page, int kind, float[] rects, int color);

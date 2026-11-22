@@ -19,6 +19,7 @@
 #include "picture.hpp"
 #include "platform.hpp"
 #include "tables.hpp"
+#include "equation.hpp"
 
 using form::Field;
 using form::Fields;
@@ -82,7 +83,7 @@ pageobj::TableSpec g_newTable;
 @property(nonatomic, strong) NSTextView* textView;
 @property(nonatomic, strong) NSTextField* field;   // not used any more (kept for the old code paths)
 @property(nonatomic, strong) NSPopUpButton *family, *size, *colour, *align;
-@property(nonatomic, strong) NSButton *bold, *italic;
+@property(nonatomic, strong) NSButton *bold, *italic, *sup, *sub;
 @property(nonatomic) BOOL finished;
 @property(nonatomic) BOOL paragraph;
 @property(nonatomic) double zoom;                  // the zoom it was opened at (another zoom applies and closes it)
@@ -94,6 +95,13 @@ pageobj::TableSpec g_newTable;
 - (void)inlineFinished:(FPInlineEditor*)ed apply:(BOOL)apply;
 - (void)restyleInlineEditor;
 @end
+@interface FPWindowController (Equation)   // Equation.mm
+- (void)editEquation:(const equation::Found&)f;
+- (IBAction)insertEquation:(id)sender;
+@end
+bool FPEquationPending();
+void FPEquationClearPending();
+bool FPEquationPlace(Document& d, int page, double x, double y, std::wstring& why);
 @interface FPWindowController (TableSheet)
 - (void)editTable:(std::shared_ptr<tables::Table>)t;   // TableSheet.mm
 @end
@@ -122,6 +130,26 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
     // a line: Return applies; a paragraph: ⌘Return applies (Return starts a new line in it)
     if (cmd == @selector(insertNewline:) && (!self.paragraph || (NSApp.currentEvent.modifierFlags & NSEventModifierFlagCommand))) { [self end:YES]; return YES; }
     return NO;
+}
+// x² and x₂: the selected text made superscript (subscript), or plain again when it already is
+- (void)scriptClicked:(NSButton*)b {
+    NSTextView* tv = self.textView;
+    const NSRange r = tv.selectedRange;
+    const int kind = b == self.sup ? 1 : -1;
+    if (r.length == 0) { [tv.window makeFirstResponder:tv]; return; }
+    const std::wstring sel = form::ws([tv.string substringWithRange:r]);
+    const std::wstring made = equation::scriptKind(sel) == kind ? equation::fromScript(sel) : equation::toScript(sel, kind);
+    NSString* m = form::ns(made);
+    if ([tv shouldChangeTextInRange:r replacementString:m]) {
+        [tv replaceCharactersInRange:r withString:m];
+        [tv didChangeText];
+    }
+    [tv setSelectedRange:NSMakeRange(r.location, m.length)];
+    [tv.window makeFirstResponder:tv];
+}
+- (void)equationClicked:(id)sender {
+    SEL open = NSSelectorFromString(@"equationFromInlineEditor");   // FPWindowController (Editing)
+    if ([self.owner respondsToSelector:open]) ((void (*)(id, SEL))objc_msgSend)(self.owner, open);
 }
 - (void)styleChanged:(id)sender {
     SEL restyle = NSSelectorFromString(@"restyleInlineEditor");   // FPWindowController (Editing)
@@ -210,6 +238,7 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
         case FPToolEditText: case FPToolEditPara: {
             if (e.kind != FPToolEvent::Click) break;
             const bool para = self.pageView.tool == FPToolEditPara;
+            if (const equation::Found f = equation::at(*d, e.page, p.x, p.y); f.found) { [self editEquation:f]; break; }
             const pageobj::ParagraphHit hit = pageobj::paragraphAt(*d, e.page, p.x, p.y, !para);
             if (!hit.found || !hit.upright) {
                 [self edNote:L"No text there. Click directly on a line of text (scanned pages are pictures: use text recognition first)."];
@@ -221,6 +250,13 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
         case FPToolEditAll: {
             if (e.drag == FPToolEvent::None) {
                 if (e.kind != FPToolEvent::Click) break;
+                // an equation (Cambria Math, LaTeX's, or one made here) opens in the equation editor
+                if (const equation::Found f = equation::at(*d, e.page, p.x, p.y); f.found) {
+                    g_sel.page = -1;
+                    [self.pageView setObjectBox:-1 rect:annot::RectD{}];
+                    [self editEquation:f];
+                    break;
+                }
                 // a picture is picked (drag it to move it, its corner to resize it); text is edited where it was clicked
                 const pageobj::GroupHit g = pageobj::groupAt(*d, e.page, p.x, p.y);
                 pageobj::ParagraphHit hit;
@@ -279,6 +315,13 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
         }
         case FPToolPlaceTable:
             if (e.kind != FPToolEvent::Click) break;
+            if (FPEquationPending()) {   // Insert Equation: it starts here, on its baseline
+                std::wstring why;
+                if (FPEquationPlace(*d, e.page, p.x, p.y, why)) [self afterChange];
+                else [self edNote:why.empty() ? L"The equation could not be added." : why];
+                self.pageView.tool = FPToolNone;
+                break;
+            }
             if (pageobj::addTable(*d, e.page, p.x, p.y, g_newTable)) [self afterChange];
             else [self edNote:L"The table does not fit there. Click higher or further left, or make it smaller."];
             self.pageView.tool = FPToolNone;
@@ -408,9 +451,15 @@ NSTextAlignment textAlignment(pageobj::Align a) {
         [ed.align addItemsWithTitles:@[ @"Left", @"Centre", @"Right", @"Justify" ]];
         [ed.align selectItemAtIndex:static_cast<NSInteger>(hit.align)];
         for (NSPopUpButton* b in @[ ed.family, ed.size, ed.colour, ed.align ]) { b.target = ed; b.action = @selector(styleChanged:); }
+        ed.sup = [NSButton buttonWithTitle:@"x²" target:ed action:@selector(scriptClicked:)];
+        ed.sup.toolTip = @"Superscript: the selected text raised and smaller (m², x⁸)";
+        ed.sub = [NSButton buttonWithTitle:@"x₂" target:ed action:@selector(scriptClicked:)];
+        ed.sub.toolTip = @"Subscript: the selected text lowered and smaller (H₂O, x₁)";
+        NSButton* eq = [NSButton buttonWithTitle:@"∑ Equation…" target:ed action:@selector(equationClicked:)];
+        eq.toolTip = @"Edit this line in the equation editor (fractions, powers, roots)";
         NSButton* cancel = [NSButton buttonWithTitle:@"Cancel" target:ed action:@selector(cancelClicked:)];
         NSButton* apply = [NSButton buttonWithTitle:@"Apply (⌘↩)" target:ed action:@selector(applyClicked:)];
-        ed.bar = [NSStackView stackViewWithViews:@[ ed.family, ed.size, ed.bold, ed.italic, ed.colour, ed.align, cancel, apply ]];
+        ed.bar = [NSStackView stackViewWithViews:@[ ed.family, ed.size, ed.bold, ed.italic, ed.sup, ed.sub, eq, ed.colour, ed.align, cancel, apply ]];
         ed.bar.spacing = 8;
         ed.bar.edgeInsets = NSEdgeInsetsMake(4, 10, 4, 10);
         ed.bar.wantsLayer = YES;
@@ -751,8 +800,20 @@ NSTextAlignment textAlignment(pageobj::Align a) {
 
 // ---- tables ----
 
+// The text editor's Equation button: the edited line read as an equation and opened in the equation editor.
+- (void)equationFromInlineEditor {
+    Document* d = self.pdf;
+    const pageobj::ParagraphHit hit = g_edit.hit;
+    [self endInlineEdit:NO];
+    if (!d) return;
+    const equation::Found f = equation::at(*d, hit.page, hit.originX + 0.5, hit.baseline + 0.3 * std::max(4.0, hit.style.sizePt), true);
+    if (!f.found) { [self edNote:L"That text could not be read as an equation."]; return; }
+    [self editEquation:f];
+}
+
 - (IBAction)addNewTable:(id)sender {
     if (!self.pdf) return;
+    FPEquationClearPending();
     Fields f(5);
     f[0] = {Field::Text, L"Rows:", {}, L"4"};
     f[1] = {Field::Text, L"Columns:", {}, L"3"};

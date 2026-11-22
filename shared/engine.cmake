@@ -9,6 +9,7 @@ set(ENGINE_SOURCES
   ${SHARED}/platform.cpp
   ${SHARED}/document.cpp
   ${SHARED}/pageobjects.cpp
+  ${SHARED}/equation.cpp
   ${SHARED}/contentgen.cpp
   ${SHARED}/tables.cpp
   ${SHARED}/headfoot.cpp

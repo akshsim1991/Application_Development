@@ -1568,3 +1568,7 @@ go out as 2.24.2.
   the sentence is edited; a header row's two cells can join; a formula pushed past its column's edge overlaps the next
   column (there is no room for it); formulas wrapped over two lines are read in parts.
 
+
+**Published:** 2.24.3 for Windows, Mac and Android (22 November), all three from commit 04ec68c, with the note that it is a
+big update to install. The three downloads match latest.json (size and SHA-256); the 2.23.3 Mac and Android files and
+the 2.24.1 Windows installer stay one release longer.

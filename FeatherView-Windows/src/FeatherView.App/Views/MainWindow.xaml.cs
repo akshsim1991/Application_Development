@@ -1,17 +1,21 @@
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Media;
+using FeatherView.Core.Settings;
 using FeatherView.Services;
 using FeatherView.ViewModels;
 
 namespace FeatherView.Views;
 
-/// <summary>View-only code: window chrome, drag-and-drop, wiring the zoom surface and gallery scrolling to the view-model.</summary>
+/// <summary>View-only code: window chrome, drag-and-drop, drop-down menus, filmstrip scrolling, and wiring the zoom surface to the view-model.</summary>
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _vm;
     private readonly ThemeService _theme;
     private WindowState _stateBeforeFullscreen;
+    private List<InputBinding>? _savedBindings;
 
     public MainWindow(MainViewModel vm, ThemeService theme)
     {
@@ -27,23 +31,61 @@ public partial class MainWindow : Window
         {
             if (row >= 0 && row < vm.Gallery.Rows.Count) GalleryList.ScrollIntoView(vm.Gallery.Rows[row]);
         };
+        vm.Gallery.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex) && vm.Gallery.Selected is { } sel) FilmList.ScrollIntoView(sel);
+        };
+        vm.FocusSearchRequested += () => Dispatcher.BeginInvoke(new Action(() => { SearchBox.Focus(); SearchBox.SelectAll(); }), System.Windows.Threading.DispatcherPriority.Input);
         GalleryList.SizeChanged += (_, e) => vm.Gallery.SetViewportWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 20);
+
+        // While typing in the search box, single-letter shortcuts must not fire.
+        SearchBox.GotKeyboardFocus += (_, _) =>
+        {
+            _savedBindings = InputBindings.Cast<InputBinding>().ToList();
+            InputBindings.Clear();
+            InputBindings.Add(new KeyBinding(vm.ClearSearchCommand, Key.Escape, ModifierKeys.None));
+        };
+        SearchBox.LostKeyboardFocus += (_, _) =>
+        {
+            if (_savedBindings == null) return;
+            InputBindings.Clear();
+            foreach (var b in _savedBindings) InputBindings.Add(b);
+            _savedBindings = null;
+        };
+
         SourceInitialized += (_, _) => theme.ApplyToWindow(this);
+        StateChanged += (_, _) => UpdateMaximizeState();
         Closing += (_, _) => SaveBounds();
         Closed += (_, _) => vm.Shutdown();
         Drop += OnDrop;
         DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
     }
 
+    // ---- custom title bar ----
+    private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
+    private void Close_Click(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
+    private void Maximize_Click(object sender, RoutedEventArgs e)
+    {
+        if (WindowState == WindowState.Maximized) SystemCommands.RestoreWindow(this); else SystemCommands.MaximizeWindow(this);
+    }
+
+    private void UpdateMaximizeState()
+    {
+        bool max = WindowState == WindowState.Maximized;
+        // A maximized window with a custom frame overhangs the screen by the resize border: pull the content back in.
+        RootGrid.Margin = max && !_vm.IsFullscreen ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
+        MaximizeButton.Tag = max ? "M3.5 2h6.5v6.5 M2 3.5h6.5V10H2z" : "M2 2h8v8H2z";
+        MaximizeButton.ToolTip = max ? "Restore" : "Maximize";
+    }
+
+    private void MediaHost_SizeChanged(object sender, SizeChangedEventArgs e)
+    {
+        MediaHost.Clip = new RectangleGeometry(new Rect(0, 0, e.NewSize.Width, e.NewSize.Height), 12, 12);   // rounded corners for the picture
+    }
+
     private void OnDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length > 0) _vm.OpenPath(paths[0]);
-    }
-
-    private void RecentButton_Click(object sender, RoutedEventArgs e)
-    {
-        _vm.RefreshRecent();
-        if (RecentButton.ContextMenu is { } m) { m.PlacementTarget = RecentButton; m.Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom; m.IsOpen = true; }
     }
 
     private void Tile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
@@ -55,11 +97,93 @@ public partial class MainWindow : Window
         }
     }
 
+    // ---- filmstrip ----
+    private void FilmItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MediaItemViewModel item }) { _vm.OpenItemCommand.Execute(item); e.Handled = true; }
+    }
+
+    private void FilmLeft_Click(object sender, RoutedEventArgs e) => ScrollFilm(-1);
+    private void FilmRight_Click(object sender, RoutedEventArgs e) => ScrollFilm(1);
+
+    private void ScrollFilm(int direction)
+    {
+        var sv = FindDescendant<ScrollViewer>(FilmList);
+        if (sv == null) return;
+        for (int i = 0; i < 5; i++) { if (direction < 0) sv.LineLeft(); else sv.LineRight(); }
+    }
+
+    private static T? FindDescendant<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is T t) return t;
+            if (FindDescendant<T>(c) is { } d) return d;
+        }
+        return null;
+    }
+
+    // ---- menus (built when opened so they always reflect the current state) ----
+    private static MenuItem Item(string header, Action action, bool check = false, bool enabled = true, string? gesture = null)
+    {
+        var m = new MenuItem { Header = header, IsChecked = check, IsEnabled = enabled, InputGestureText = gesture ?? "" };
+        m.Click += (_, _) => action();
+        return m;
+    }
+
+    private static void Show(Button anchor, ContextMenu menu)
+    {
+        menu.PlacementTarget = anchor; menu.Placement = PlacementMode.Bottom; menu.IsOpen = true;
+    }
+
+    private void ZoomButton_Click(object sender, RoutedEventArgs e)
+    {
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Fit to window", () => _vm.ZoomPresetCommand.Execute("fit"), gesture: "0"));
+        foreach (var (label, factor) in new[] { ("25%", "0.25"), ("50%", "0.5"), ("100% (actual size)", "1"), ("200%", "2"), ("400%", "4") })
+        { var f = factor; menu.Items.Add(Item(label, () => _vm.ZoomPresetCommand.Execute(f))); }
+        Show(ZoomButton, menu);
+    }
+
+    private void MoreButton_Click(object sender, RoutedEventArgs e)
+    {
+        _vm.RefreshRecent();
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Open file...", () => _vm.OpenFileCommand.Execute(null), gesture: "Ctrl+O"));
+        menu.Items.Add(Item("Open folder...", () => _vm.OpenFolderCommand.Execute(null), gesture: "Ctrl+Shift+O"));
+        var recent = new MenuItem { Header = "Recent files", IsEnabled = _vm.RecentFiles.Count > 0 };
+        foreach (var p in _vm.RecentFiles) { var path = p; recent.Items.Add(Item(System.IO.Path.GetFileName(path), () => _vm.OpenRecentCommand.Execute(path))); }
+        menu.Items.Add(recent);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Rotate left", () => _vm.RotateLeftCommand.Execute(null), gesture: "L"));
+        menu.Items.Add(Item("Copy image", () => _vm.CopyCommand.Execute(null), gesture: "Ctrl+C"));
+        menu.Items.Add(Item("Delete (Recycle Bin)...", () => _vm.DeleteCommand.Execute(null), gesture: "Del"));
+        menu.Items.Add(Item("Reload folder", () => _vm.ReloadCommand.Execute(null), gesture: "F5"));
+        menu.Items.Add(new Separator());
+        var sort = new MenuItem { Header = "Sort by" };
+        foreach (var mode in Enum.GetValues<SortMode>()) { var m = mode; sort.Items.Add(Item(m.ToString(), () => _vm.SetSort(m), check: _vm.Settings.Sort == m)); }
+        sort.Items.Add(new Separator());
+        sort.Items.Add(Item("Ascending", () => _vm.SetSort(_vm.Settings.Sort, false), check: !_vm.Settings.SortDescending));
+        sort.Items.Add(Item("Descending", () => _vm.SetSort(_vm.Settings.Sort, true), check: _vm.Settings.SortDescending));
+        menu.Items.Add(sort);
+        menu.Items.Add(Item("Sidebar", () => _vm.ToggleSidebarCommand.Execute(null), check: _vm.ShowSidebar, gesture: "Ctrl+B"));
+        menu.Items.Add(Item("Thumbnail strip", () => _vm.ToggleFilmstripCommand.Execute(null), check: _vm.Settings.ShowFilmstrip, gesture: "T"));
+        menu.Items.Add(Item("Details panel", () => _vm.ToggleInfoCommand.Execute(null), check: _vm.ShowInfo, gesture: "I"));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Settings...", () => _vm.SettingsCommand.Execute(null), gesture: "Ctrl+,"));
+        menu.Items.Add(Item("Check for updates...", () => _vm.CheckUpdatesCommand.Execute(null)));
+        menu.Items.Add(Item("About Feather View", () => _vm.AboutCommand.Execute(null)));
+        Show(MoreButton, menu);
+    }
+
+    // ---- full screen and remembered bounds ----
     private void ApplyFullscreen(bool on)
     {
         if (on)
         {
             _stateBeforeFullscreen = WindowState;
+            RootGrid.Margin = new Thickness(0);
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
             WindowState = WindowState.Normal; WindowState = WindowState.Maximized; Topmost = true;
         }
@@ -67,6 +191,7 @@ public partial class MainWindow : Window
         {
             Topmost = false; WindowStyle = WindowStyle.SingleBorderWindow; ResizeMode = ResizeMode.CanResize;
             WindowState = _stateBeforeFullscreen;
+            UpdateMaximizeState();
         }
     }
 
@@ -74,7 +199,7 @@ public partial class MainWindow : Window
     {
         var s = _vm.Settings;
         if (!s.RememberWindow) return;
-        Width = s.WindowWidth; Height = s.WindowHeight;
+        Width = Math.Max(s.WindowWidth, MinWidth); Height = Math.Max(s.WindowHeight, MinHeight);
         bool onScreen = !double.IsNaN(s.WindowLeft) && !double.IsNaN(s.WindowTop)
             && s.WindowLeft < SystemParameters.VirtualScreenLeft + SystemParameters.VirtualScreenWidth - 80
             && s.WindowTop < SystemParameters.VirtualScreenTop + SystemParameters.VirtualScreenHeight - 80

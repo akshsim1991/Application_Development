@@ -29,6 +29,8 @@ Two engines behind one interface (`IVideoEngine`): **Windows Media Foundation** 
 Automatic mode uses libmpv when installed and falls back to the built-in player. Video keys: Space play/pause, Left/Right +-5 s, Ctrl+Left/Right +-30 s, Up/Down volume, `,` `.` frame step, `[` `]` speed, M mute, A set A/B/clear, Ctrl+S screenshot, Ctrl+T go to time, Ctrl+L loop, PageUp/PageDown previous/next file.
 Videos never auto-play inside slideshows (slideshows show pictures only).
 
+Interface: sidebar (Gallery / Folders / Favorites / Recent / Search + quick filters), rounded toolbar, details panel (Info / Histogram / EXIF), filmstrip and a status bar with wallpaper, print and open-folder actions. Extra keys: Ctrl+D favorite, Ctrl+B sidebar, T thumbnail strip, Ctrl+F search, Ctrl+P print.
+
 ## Keys
 Left/Right previous/next | Home/End first/last | G gallery | S slideshow | I details | F or F11 full screen | R / L rotate | + / - zoom | 0 fit | 1 actual size |
 Ctrl+O open file | Ctrl+Shift+O open folder | Ctrl+C copy | Del recycle | F5 reload | Esc back / exit full screen | Ctrl+, settings

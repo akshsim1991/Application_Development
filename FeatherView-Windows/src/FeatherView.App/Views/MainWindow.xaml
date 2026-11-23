@@ -3,11 +3,16 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:c="clr-namespace:FeatherView.Controls"
         xmlns:v="clr-namespace:FeatherView.Views"
-        Title="Feather View" Width="1100" Height="720" MinWidth="880" MinHeight="420"
+        xmlns:s="clr-namespace:FeatherView.Services"
+        Title="Feather View" Width="1280" Height="800" MinWidth="980" MinHeight="520"
         Background="{DynamicResource BgBrush}" AllowDrop="True" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Ideal" FontFamily="Segoe UI Variable, Segoe UI" FontSize="13">
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0" CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="B2V" />
+        <s:EnumEqualsConverter x:Key="EnumEq" />
     </Window.Resources>
     <Window.InputBindings>
         <KeyBinding Key="Right" Command="{Binding NextCommand}" />
@@ -57,97 +62,278 @@
         <KeyBinding Key="NumPad0" Command="{Binding FitCommand}" />
         <KeyBinding Key="D1" Command="{Binding ActualSizeCommand}" />
         <KeyBinding Key="NumPad1" Command="{Binding ActualSizeCommand}" />
+        <KeyBinding Key="D" Modifiers="Ctrl" Command="{Binding ToggleFavoriteCommand}" />
+        <KeyBinding Key="B" Modifiers="Ctrl" Command="{Binding ToggleSidebarCommand}" />
+        <KeyBinding Key="T" Command="{Binding ToggleFilmstripCommand}" />
+        <KeyBinding Key="P" Modifiers="Ctrl" Command="{Binding PrintCommand}" />
+        <KeyBinding Key="F" Modifiers="Ctrl" Command="{Binding ShowSectionCommand}" CommandParameter="Search" />
     </Window.InputBindings>
 
-    <Grid>
+    <Grid x:Name="RootGrid">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
-        <!-- Toolbar: icon-only with tooltips; hidden in full screen so the picture gets all the space. -->
-        <Border Grid.Row="0" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrushSoft}"
-                BorderThickness="0,0,0,1" Padding="8,5" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}">
-            <Grid>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                </Grid.ColumnDefinitions>
+        <!-- Title bar (dragging comes from WindowChrome.CaptionHeight) -->
+        <Grid Grid.Row="0" Height="40" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}">
+            <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
+                <Viewbox Width="22" Height="22">
+                    <Canvas Width="24" Height="24"><Path Data="{StaticResource IconFeather}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="{DynamicResource AccentSoftBrush}" /></Canvas>
+                </Viewbox>
+                <TextBlock Text="Feather View" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
+                <Button Style="{StaticResource CaptionButton}" Tag="M2 6h8" ToolTip="Minimize" Click="Minimize_Click" AutomationProperties.Name="Minimize" />
+                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Tag="M2 2h8v8H2z" ToolTip="Maximize" Click="Maximize_Click" AutomationProperties.Name="Maximize or restore" />
+                <Button Style="{StaticResource CloseCaptionButton}" Tag="M2 2l8 8M10 2l-8 8" ToolTip="Close" Click="Close_Click" AutomationProperties.Name="Close" />
+            </StackPanel>
+        </Grid>
 
-                <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFile}" ToolTip="Open file (Ctrl+O)" Command="{Binding OpenFileCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFolder}" ToolTip="Open folder (Ctrl+Shift+O)" Command="{Binding OpenFolderCommand}" />
-                    <Button x:Name="RecentButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconClock}" ToolTip="Recent files" Click="RecentButton_Click">
-                        <Button.ContextMenu>
-                            <ContextMenu ItemsSource="{Binding RecentFiles}">
-                                <ContextMenu.ItemContainerStyle>
-                                    <Style TargetType="MenuItem">
-                                        <Setter Property="Header" Value="{Binding}" />
-                                        <Setter Property="Command" Value="{Binding DataContext.OpenRecentCommand, RelativeSource={RelativeSource AncestorType=ContextMenu}}" />
-                                        <Setter Property="CommandParameter" Value="{Binding}" />
-                                    </Style>
-                                </ContextMenu.ItemContainerStyle>
-                            </ContextMenu>
-                        </Button.ContextMenu>
-                    </Button>
-                    <Rectangle Width="1" Margin="6,6" Fill="{DynamicResource BorderBrushSoft}" />
-                    <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)"
-                                  IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" />
-                </StackPanel>
+        <Grid Grid.Row="1" Margin="10,0,10,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="1" Text="{Binding StatusText}" Margin="14,0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
-
-                <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconPrev}" ToolTip="Previous (Left)" Command="{Binding PrevCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconNext}" ToolTip="Next (Right)" Command="{Binding NextCommand}" />
-                    <Rectangle Width="1" Margin="6,6" Fill="{DynamicResource BorderBrushSoft}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconZoomOut}" ToolTip="Zoom out (-)" Command="{Binding ZoomOutCommand}" />
-                    <TextBlock Text="{Binding ZoomText}" Width="44" TextAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconZoomIn}" ToolTip="Zoom in (+)" Command="{Binding ZoomInCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFit}" ToolTip="Fit to window (0)" Command="{Binding FitCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconActual}" ToolTip="Actual size (1)" Command="{Binding ActualSizeCommand}" />
-                    <Rectangle Width="1" Margin="6,6" Fill="{DynamicResource BorderBrushSoft}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconRotateLeft}" ToolTip="Rotate left (L)" Command="{Binding RotateLeftCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFlip}" ToolTip="Flip horizontally" Command="{Binding FlipCommand}" />
-                    <Rectangle Width="1" Margin="6,6" Fill="{DynamicResource BorderBrushSoft}" />
-                    <Button ToolTip="Slideshow (S)" Command="{Binding ToggleSlideshowCommand}">
+            <!-- Sidebar -->
+            <StackPanel Grid.Column="0" Width="214" Margin="0,4,12,0">
+                <StackPanel.Style>
+                    <Style TargetType="StackPanel">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <MultiDataTrigger>
+                                <MultiDataTrigger.Conditions>
+                                    <Condition Binding="{Binding ShowSidebar}" Value="True" />
+                                    <Condition Binding="{Binding ShowChrome}" Value="True" />
+                                </MultiDataTrigger.Conditions>
+                                <Setter Property="Visibility" Value="Visible" />
+                            </MultiDataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </StackPanel.Style>
+                    <Button Tag="{StaticResource IconGrid}" Content="Gallery" Command="{Binding ShowSectionCommand}" CommandParameter="Gallery" AutomationProperties.Name="Gallery">
                         <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
-                                <Setter Property="Tag" Value="{StaticResource IconPlay}" />
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSlideshow}" Value="True">
-                                        <Setter Property="Tag" Value="{StaticResource IconPause}" />
+                                    <DataTrigger Binding="{Binding Section}" Value="Gallery">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                     </Button>
-                    <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconInfo}" ToolTip="Details (I)" IsChecked="{Binding ShowInfo}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconCopy}" ToolTip="Copy image (Ctrl+C)" Command="{Binding CopyCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconTrash}" ToolTip="Delete to Recycle Bin (Del)" Command="{Binding DeleteCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFullscreen}" ToolTip="Full screen (F11)" Command="{Binding ToggleFullscreenCommand}" />
-                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconSettings}" ToolTip="Settings (Ctrl+,)" Command="{Binding SettingsCommand}" />
-                </StackPanel>
-            </Grid>
-        </Border>
+                    <Button Tag="{StaticResource IconFolder}" Content="Folders" Command="{Binding ShowSectionCommand}" CommandParameter="Folders" AutomationProperties.Name="Folders">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Section}" Value="Folders">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconStar}" Content="Favorites" Command="{Binding ShowSectionCommand}" CommandParameter="Favorites" AutomationProperties.Name="Favorites">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Section}" Value="Favorites">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconClock}" Content="Recent" Command="{Binding ShowSectionCommand}" CommandParameter="Recent" AutomationProperties.Name="Recent">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Section}" Value="Recent">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconSearch}" Content="Search" Command="{Binding ShowSectionCommand}" CommandParameter="Search" AutomationProperties.Name="Search">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Section}" Value="Search">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="4,12,4,12" />
+                <TextBlock Text="Quick Filters" Foreground="{DynamicResource SubtleTextBrush}" Margin="12,0,0,6" FontSize="12" />
+                    <Button Tag="{StaticResource IconImage}" Command="{Binding SetFilterCommand}" CommandParameter="All" AutomationProperties.Name="All Media filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="All Media" /><TextBlock Text="{Binding CountAll}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="All">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconImage}" Command="{Binding SetFilterCommand}" CommandParameter="Jpg" AutomationProperties.Name="JPG filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="JPG" /><TextBlock Text="{Binding CountJpg}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="Jpg">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconImage}" Command="{Binding SetFilterCommand}" CommandParameter="Png" AutomationProperties.Name="PNG filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="PNG" /><TextBlock Text="{Binding CountPng}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="Png">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconImage}" Command="{Binding SetFilterCommand}" CommandParameter="Gif" AutomationProperties.Name="GIF filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="GIF" /><TextBlock Text="{Binding CountGif}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="Gif">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconVideo}" Command="{Binding SetFilterCommand}" CommandParameter="Video" AutomationProperties.Name="Videos filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="Videos" /><TextBlock Text="{Binding CountVideo}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="Video">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Tag="{StaticResource IconFile}" Command="{Binding SetFilterCommand}" CommandParameter="Other" AutomationProperties.Name="Other filter">
+                        <Button.Content>
+                            <Grid><TextBlock Text="Other" /><TextBlock Text="{Binding CountOther}" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                        </Button.Content>
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource NavItem}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding Filter}" Value="Other">
+                                        <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+            </StackPanel>
 
-        <Grid Grid.Row="1">
-          <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="*" />
-            <ColumnDefinition Width="Auto" />
-          </Grid.ColumnDefinitions>
-          <Grid Grid.Column="0">
-            <!-- Photo mode -->
-            <c:ZoomPanImage x:Name="Viewer" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}"
+            <!-- Content -->
+            <Grid Grid.Column="1">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+
+                <Border Grid.Row="0" Margin="0,4,0,8" Padding="10,6" CornerRadius="10" Background="{DynamicResource SurfaceBrush}" Visibility="{Binding ShowSearch, Converter={StaticResource B2V}}">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Style="{StaticResource IconButton}" Tag="{StaticResource IconClose}" ToolTip="Close search (Esc)" Command="{Binding ClearSearchCommand}" AutomationProperties.Name="Close search" />
+                        <TextBox x:Name="SearchBox" Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Padding="8,6" FontSize="14" AutomationProperties.Name="Search file names" />
+                    </DockPanel>
+                </Border>
+
+                <!-- Toolbar -->
+                <Border Grid.Row="1" Margin="0,4,0,10" Padding="10,6" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Orientation="Horizontal">
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconPrev}" ToolTip="Previous (Left)" Command="{Binding PrevCommand}" AutomationProperties.Name="Previous (Left)" />
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconNext}" ToolTip="Next (Right)" Command="{Binding NextCommand}" AutomationProperties.Name="Next (Right)" />
+                            <Rectangle Width="1" Margin="10,6" Fill="{DynamicResource BorderBrushSoft}" />
+                            <Button x:Name="ZoomButton" Style="{StaticResource TextButton}" Background="Transparent" Padding="8,4" MinWidth="0" Click="ZoomButton_Click" ToolTip="Zoom" AutomationProperties.Name="Zoom level">
+                                <StackPanel Orientation="Horizontal">
+                                    <Viewbox Width="17" Height="17"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconZoomIn}" Stroke="{DynamicResource TextBrush}" StrokeThickness="2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Canvas></Viewbox>
+                                    <TextBlock Text="{Binding ZoomText}" Margin="10,0,6,0" MinWidth="38" VerticalAlignment="Center" />
+                                    <Viewbox Width="12" Height="12"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconChevronDown}" Stroke="{DynamicResource SubtleTextBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" /></Canvas></Viewbox>
+                                </StackPanel>
+                            </Button>
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFit}" ToolTip="Fit to window (0)" Command="{Binding FitCommand}" AutomationProperties.Name="Fit to window (0)" Margin="6,0,1,0"/>
+                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)" IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" AutomationProperties.Name="Gallery" Margin="6,0,1,0" />
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" AutomationProperties.Name="Rotate right (R)" Margin="6,0,1,0"/>
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconTarget}" ToolTip="Actual size (1)" Command="{Binding ActualSizeCommand}" AutomationProperties.Name="Actual size (1)" Margin="6,0,1,0"/>
+                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFlip}" ToolTip="Flip horizontally" Command="{Binding FlipCommand}" AutomationProperties.Name="Flip horizontally" Margin="6,0,1,0"/>
+                            <Button ToolTip="Slideshow (S)" Command="{Binding ToggleSlideshowCommand}" Margin="6,0,1,0" AutomationProperties.Name="Slideshow">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                        <Setter Property="Tag" Value="{StaticResource IconPlay}" />
+                                        <Style.Triggers><DataTrigger Binding="{Binding IsSlideshow}" Value="True"><Setter Property="Tag" Value="{StaticResource IconPause}" /></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                        <TextBlock Grid.Column="1" Text="{Binding StatusText}" Margin="16,0" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
+                        <StackPanel Grid.Column="2" Orientation="Horizontal">
+                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconStar}" ToolTip="Favorite (Ctrl+D)" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" AutomationProperties.Name="Favorite" />
+                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconInfo}" ToolTip="Details (I)" IsChecked="{Binding ShowInfo}" AutomationProperties.Name="Details panel" />
+                            <Button x:Name="MoreButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconMore}" ToolTip="More" Click="MoreButton_Click" AutomationProperties.Name="More options" />
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Media area -->
+                <Border x:Name="MediaHost" Grid.Row="2" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" SizeChanged="MediaHost_SizeChanged">
+                    <Grid>
+                        <c:ZoomPanImage x:Name="Viewer" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}"
                             Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}" />
             <TextBlock Text="{Binding ErrorText}" Visibility="{Binding HasError, Converter={StaticResource B2V}}" Foreground="{DynamicResource SubtleTextBrush}"
                        FontSize="15" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460" VerticalAlignment="Center" HorizontalAlignment="Center" />
-
-            <!-- Gallery mode: rows of tiles inside a virtualizing list, so only visible rows exist. -->
-            <ListBox x:Name="GalleryList" ItemsSource="{Binding Gallery.Rows}" Visibility="{Binding IsGallery, Converter={StaticResource B2V}}"
+                        <ListBox x:Name="GalleryList" ItemsSource="{Binding Gallery.Rows}" Visibility="{Binding IsGallery, Converter={StaticResource B2V}}"
                      Background="Transparent" BorderThickness="0" Padding="10,8" Focusable="False" SelectionMode="Single"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True"
                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
@@ -215,23 +401,21 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+                        <v:VideoPlayerView DataContext="{Binding Video}" Visibility="{Binding DataContext.IsVideo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource B2V}}" />
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding ShowEmptyState, Converter={StaticResource B2V}}">
+                            <TextBlock Text="Feather View" FontSize="30" FontWeight="Light" HorizontalAlignment="Center" />
+                            <TextBlock Text="{Binding EmptyMessage}" Margin="0,6,0,18" Foreground="{DynamicResource SubtleTextBrush}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
+                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button Content="Open file" Style="{StaticResource PrimaryButton}" Command="{Binding OpenFileCommand}" Margin="0,0,8,0" />
+                                <Button Content="Open folder" Style="{StaticResource TextButton}" Command="{Binding OpenFolderCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
 
-            <!-- Video mode -->
-            <v:VideoPlayerView DataContext="{Binding Video}" Visibility="{Binding DataContext.IsVideo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource B2V}}" />
-
-            <!-- Empty state -->
-            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding ShowEmptyState, Converter={StaticResource B2V}}">
-                <TextBlock Text="Feather View" FontSize="30" FontWeight="Light" HorizontalAlignment="Center" />
-                <TextBlock Text="Open a photo or a folder, or drop them here." Margin="0,6,0,18" Foreground="{DynamicResource SubtleTextBrush}" HorizontalAlignment="Center" />
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                    <Button Content="Open file" Style="{StaticResource PrimaryButton}" Command="{Binding OpenFileCommand}" Margin="0,0,8,0" />
-                    <Button Content="Open folder" Style="{StaticResource TextButton}" Command="{Binding OpenFolderCommand}" />
-                </StackPanel>
-            </StackPanel>
-
-          </Grid>
-            <!-- Details panel -->
-            <Border Grid.Column="1" Width="290" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="1,0,0,0">
+            <!-- Details panel: next to the picture, never on top of it (native video windows cannot be overlapped) -->
+            <Border Grid.Column="2" Width="318" Margin="10,4,0,0" CornerRadius="12" Background="{DynamicResource SurfaceBrush}">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />
@@ -240,29 +424,224 @@
                                 <MultiDataTrigger.Conditions>
                                     <Condition Binding="{Binding ShowInfo}" Value="True" />
                                     <Condition Binding="{Binding IsGallery}" Value="False" />
+                                    <Condition Binding="{Binding ShowChrome}" Value="True" />
                                 </MultiDataTrigger.Conditions>
                                 <Setter Property="Visibility" Value="Visible" />
                             </MultiDataTrigger>
                         </Style.Triggers>
                     </Style>
                 </Border.Style>
-                <DockPanel Margin="16,14">
-                    <TextBlock DockPanel.Dock="Top" Text="Details" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
-                    <Button DockPanel.Dock="Bottom" Content="Show in Explorer" Style="{StaticResource TextButton}" Command="{Binding ShowInExplorerCommand}" Margin="0,10,0,0" />
-                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                        <ItemsControl ItemsSource="{Binding Info}">
-                            <ItemsControl.ItemTemplate>
-                                <DataTemplate>
-                                    <StackPanel Margin="0,0,0,10">
-                                        <TextBlock Text="{Binding Label}" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" />
-                                        <TextBlock Text="{Binding Value}" TextWrapping="Wrap" />
-                                    </StackPanel>
-                                </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                <DockPanel>
+                    <Grid DockPanel.Dock="Top" Margin="18,6,8,0">
+                        <StackPanel Orientation="Horizontal">
+                    <Button Content="Info" Command="{Binding SelectInfoTabCommand}" CommandParameter="Info">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Info">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="Histogram" Command="{Binding SelectInfoTabCommand}" CommandParameter="Histogram">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Histogram">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button Content="EXIF" Command="{Binding SelectInfoTabCommand}" CommandParameter="Exif">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Exif">
+                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                        <Setter Property="FontWeight" Value="SemiBold" />
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                        </StackPanel>
+                        <Button HorizontalAlignment="Right" Style="{StaticResource IconButton}" Tag="{StaticResource IconClose}" ToolTip="Close details" Command="{Binding ToggleInfoCommand}" AutomationProperties.Name="Close details" />
+                    </Grid>
+                    <Rectangle DockPanel.Dock="Top" Height="1" Fill="{DynamicResource BorderBrushSoft}" />
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="18,14,10,14">
+                        <Grid>
+                            <!-- Info tab -->
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Info"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                </StackPanel.Style>
+                                <Border CornerRadius="6" ClipToBounds="True" HorizontalAlignment="Left" MaxWidth="180" MaxHeight="100" Margin="0,0,0,12">
+                                    <Image Source="{Binding Gallery.Selected.Thumbnail}" Stretch="Uniform" />
+                                </Border>
+                                <TextBlock Text="{Binding InfoTitle}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding InfoSubtitle}" Margin="0,4,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
+                                <TextBlock Text="{Binding InfoDimensions}" Margin="0,2,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
+                                <Button Content="Show in Explorer" Style="{StaticResource TextButton}" Command="{Binding ShowInExplorerCommand}" HorizontalAlignment="Left" Padding="12,5" Margin="0,12,0,0" />
+                                <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,16,0,14" />
+                                <TextBlock Text="Details" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <ItemsControl ItemsSource="{Binding Info}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="108" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource SubtleTextBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <StackPanel Visibility="{Binding HasTaken, Converter={StaticResource B2V}}">
+                                    <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,8,0,14" />
+                                    <TextBlock Text="Taken On" FontWeight="SemiBold" Margin="0,0,0,8" />
+                                    <ItemsControl ItemsSource="{Binding TakenLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                                    <Viewbox Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,10,0">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Path StrokeThickness="2" Stroke="{DynamicResource SubtleTextBrush}" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
+                                                                <Path.Style>
+                                                                    <Style TargetType="Path">
+                                                                        <Setter Property="Data" Value="{StaticResource IconCalendar}" />
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding Label}" Value="Camera"><Setter Property="Data" Value="{StaticResource IconCamera}" /></DataTrigger>
+                                                                            <DataTrigger Binding="{Binding Label}" Value="Lens"><Setter Property="Data" Value="{StaticResource IconLens}" /></DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </Path.Style>
+                                                            </Path>
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                    <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxWidth="240" />
+                                                </StackPanel>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </StackPanel>
+                            </StackPanel>
+
+                            <!-- Histogram tab -->
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Histogram"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="Brightness and colour" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <Border Background="{DynamicResource BgBrush}" CornerRadius="8" Height="150" Padding="6">
+                                    <Grid>
+                                        <Path Data="{Binding Histogram.Luma}" Fill="#44FFFFFF" Stretch="Fill" />
+                                        <Path Data="{Binding Histogram.Red}" Fill="#55FF4D4D" Stretch="Fill" />
+                                        <Path Data="{Binding Histogram.Green}" Fill="#5547D16B" Stretch="Fill" />
+                                        <Path Data="{Binding Histogram.Blue}" Fill="#554D8DFF" Stretch="Fill" />
+                                    </Grid>
+                                </Border>
+                                <Grid Margin="2,6,2,0"><TextBlock Text="Dark" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" /><TextBlock Text="Light" FontSize="11" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                                <TextBlock Text="Open a picture to see its histogram." Margin="0,10,0,0" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding HasHistogram}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+
+                            <!-- EXIF tab -->
+                            <StackPanel>
+                                <StackPanel.Style>
+                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Exif"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                </StackPanel.Style>
+                                <TextBlock Text="File and camera details" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <ItemsControl ItemsSource="{Binding ExifLines}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,0,0,8">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="108" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource SubtleTextBrush}" />
+                                                <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="No camera details are stored in this file." Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding HasExif}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
                     </ScrollViewer>
                 </DockPanel>
             </Border>
         </Grid>
+
+        <!-- Filmstrip -->
+        <Grid Grid.Row="2" Height="118" Margin="10,10,10,0" Visibility="{Binding FilmstripVisible, Converter={StaticResource B2V}}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <Button Grid.Column="0" Style="{StaticResource IconButton}" Tag="{StaticResource IconPrev}" ToolTip="Scroll left" Click="FilmLeft_Click" AutomationProperties.Name="Scroll thumbnails left" />
+            <ListBox x:Name="FilmList" Grid.Column="1" ItemsSource="{Binding Gallery.Items}" SelectedItem="{Binding Gallery.Selected, Mode=OneWay}" Background="Transparent" BorderThickness="0" Focusable="False"
+                     ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="True"
+                     VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">
+                <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate><VirtualizingStackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.ItemContainerStyle>
+                    <Style TargetType="ListBoxItem">
+                        <Setter Property="Focusable" Value="False" />
+                        <Setter Property="Template">
+                            <Setter.Value><ControlTemplate TargetType="ListBoxItem"><ContentPresenter /></ControlTemplate></Setter.Value>
+                        </Setter>
+                    </Style>
+                </ListBox.ItemContainerStyle>
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Border x:Name="Film" Width="132" Height="104" Margin="4,0" Padding="3" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
+                                MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" ToolTip="{Binding Name}">
+                            <Grid>
+                                <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                                <TextBlock Text="VIDEO" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsVideo}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                        </Border>
+                        <DataTemplate.Triggers>
+                            <DataTrigger Binding="{Binding IsSelected}" Value="True"><Setter TargetName="Film" Property="BorderBrush" Value="{DynamicResource AccentBrush}" /></DataTrigger>
+                        </DataTemplate.Triggers>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <Button Grid.Column="2" Style="{StaticResource IconButton}" Tag="{StaticResource IconNext}" ToolTip="Scroll right" Click="FilmRight_Click" AutomationProperties.Name="Scroll thumbnails right" />
+        </Grid>
+
+        <!-- Status bar -->
+        <Border Grid.Row="3" Margin="10,10,10,10" Height="44" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}">
+            <Grid Margin="16,0,8,0">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ItemCountText}" Foreground="{DynamicResource SubtleTextBrush}" />
+                    <TextBlock Text="  •  " Foreground="{DynamicResource SubtleTextBrush}" />
+                    <TextBlock Text="{Binding SelectedCountText}" Foreground="{DynamicResource SubtleTextBrush}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconMonitor}" Content="Set as Wallpaper" Command="{Binding SetWallpaperCommand}" AutomationProperties.Name="Set as Wallpaper" />
+                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconPrinter}" Content="Print" Command="{Binding PrintCommand}" AutomationProperties.Name="Print" />
+                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconFolder}" Content="Open Folder" Command="{Binding ShowInExplorerCommand}" AutomationProperties.Name="Open Folder" />
+                    <Rectangle Width="1" Margin="8,8" Fill="{DynamicResource BorderBrushSoft}" />
+                    <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFullscreen}" ToolTip="Full screen (F11)" Command="{Binding ToggleFullscreenCommand}" AutomationProperties.Name="Full screen" />
+                </StackPanel>
+            </Grid>
+        </Border>
     </Grid>
 </Window>

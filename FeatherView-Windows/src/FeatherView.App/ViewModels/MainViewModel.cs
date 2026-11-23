@@ -8,14 +8,17 @@ using FeatherView.Core.Infrastructure;
 using FeatherView.Core.Media;
 using FeatherView.Core.Mvvm;
 using FeatherView.Core.Settings;
+using System.Windows.Media;
 using FeatherView.Services;
 
 namespace FeatherView.ViewModels;
 
 public enum ViewMode { Photo, Gallery, Video }
+public enum NavSection { Gallery, Folders, Favorites, Recent, Search }
+public enum InfoTabKind { Info, Histogram, Exif }
 
 /// <summary>The view surface (zoom/pan control) as seen by the view-model.</summary>
-public interface IViewport { void ZoomIn(); void ZoomOut(); void Fit(); void ActualSize(); }
+public interface IViewport { void ZoomIn(); void ZoomOut(); void Fit(); void ActualSize(); void ZoomTo(double factor); }
 
 public sealed class MainViewModel : ObservableObject
 {
@@ -26,7 +29,18 @@ public sealed class MainViewModel : ObservableObject
     private readonly ThemeService _theme;
     private readonly DispatcherTimer _slideTimer = new();
 
-    private List<MediaFile> _files = new();
+    private List<MediaFile> _source = new();      // everything in the current folder/collection
+    private List<MediaFile> _files = new();       // what the quick filter and search leave (indexes refer to this list)
+    private QuickFilter _filter = QuickFilter.All;
+    private string _searchText = "";
+    private bool _showSearch;
+    private NavSection _section = NavSection.Gallery;
+    private InfoTabKind _infoTab = InfoTabKind.Info;
+    private Dictionary<QuickFilter, int> _counts = Enum.GetValues<QuickFilter>().ToDictionary(k => k, _ => 0);
+    private string _emptyMessage = "Open a photo or a folder, or drop them here.";
+    private string _infoTitle = "", _infoSubtitle = "", _infoDimensions = "";
+    private HistogramShapes? _histogram;
+    private CancellationTokenSource? _histCts;
     private int _index = -1;
     private CancellationTokenSource? _loadCts;
     private BitmapSource? _base, _gifFrame;
@@ -50,6 +64,7 @@ public sealed class MainViewModel : ObservableObject
         Video = videoFactory(this);
         Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
         Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
+        Gallery.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex)) OnPropertyChanged(nameof(SelectedCountText)); };
         Gallery = new GalleryViewModel();
         Gallery.SetThumbSize(settings.ThumbnailSize);
         _showInfo = settings.ShowInfoPanelOnOpen;
@@ -87,6 +102,22 @@ public sealed class MainViewModel : ObservableObject
         FitCommand = new RelayCommand(() => Viewport?.Fit());
         ActualSizeCommand = new RelayCommand(() => Viewport?.ActualSize());
         ReloadCommand = new RelayCommand(Reload);
+        AboutCommand = new RelayCommand(() => _dialogs.Info("Feather View", $"Feather View {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3)}\n\nA lightweight, offline photo and video viewer. No ads, no telemetry.\nDesigned and developed by Akshaya Simha."));
+        ShowSectionCommand = new RelayCommand(p => ShowSection(p as string));
+        SetFilterCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<QuickFilter>(n, out var f)) { Filter = f; ApplyFilter(); } });
+        ClearSearchCommand = new RelayCommand(() => { SearchText = ""; ShowSearch = false; Section = NavSection.Gallery; });
+        ToggleFavoriteCommand = new RelayCommand(ToggleFavorite);
+        SetWallpaperCommand = new RelayCommand(SetWallpaper);
+        PrintCommand = new RelayCommand(PrintImage);
+        ToggleFilmstripCommand = new RelayCommand(() => { Settings.ShowFilmstrip = !Settings.ShowFilmstrip; OnPropertyChanged(nameof(FilmstripVisible)); SaveSettings(); });
+        ToggleSidebarCommand = new RelayCommand(() => { Settings.ShowSidebar = !Settings.ShowSidebar; OnPropertyChanged(nameof(ShowSidebar)); SaveSettings(); });
+        ZoomPresetCommand = new RelayCommand(p =>
+        {
+            if (p is not string t) return;
+            if (t == "fit") Viewport?.Fit();
+            else if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z)) Viewport?.ZoomTo(z);
+        });
+        SelectInfoTabCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<InfoTabKind>(n, out var t)) ActiveInfoTab = t; });
         ShowInExplorerCommand = new RelayCommand(() => { if (Current != null) FileOperations.ShowInExplorer(Current.Path); });
         SettingsCommand = new RelayCommand(OpenSettings);
         CheckUpdatesCommand = new AsyncRelayCommand(() => Updates?.CheckAsync(true) ?? Task.CompletedTask);
@@ -101,7 +132,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<InfoLine> Info { get; } = new();
     public ObservableCollection<string> RecentFiles { get; } = new();
 
-    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); } } }
+    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); OnPropertyChanged(nameof(FilmstripVisible)); } } }
     public bool IsGallery => _mode == ViewMode.Gallery;
     public bool IsPhoto => _mode == ViewMode.Photo;
     public bool IsVideo => _mode == ViewMode.Video;
@@ -118,6 +149,37 @@ public sealed class MainViewModel : ObservableObject
     public bool ShowInfo { get => _showInfo; set => Set(ref _showInfo, value); }
     public string SlideshowIcon => _isSlideshow ? "Pause" : "Play";
     public MediaFile? Current => _index >= 0 && _index < _files.Count ? _files[_index] : null;
+
+    // ---- sidebar, filters, search ----
+    public NavSection Section { get => _section; private set => Set(ref _section, value); }
+    public QuickFilter Filter { get => _filter; private set => Set(ref _filter, value); }
+    public string SearchText { get => _searchText; set { if (Set(ref _searchText, value)) ApplyFilter(); } }
+    public bool ShowSearch { get => _showSearch; private set => Set(ref _showSearch, value); }
+    public event Action? FocusSearchRequested;
+    public int CountAll => _counts[QuickFilter.All];
+    public int CountJpg => _counts[QuickFilter.Jpg];
+    public int CountPng => _counts[QuickFilter.Png];
+    public int CountGif => _counts[QuickFilter.Gif];
+    public int CountVideo => _counts[QuickFilter.Video];
+    public int CountOther => _counts[QuickFilter.Other];
+    public string ItemCountText => _files.Count == 1 ? "1 item" : $"{_files.Count} items";
+    public string SelectedCountText => Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
+    public string EmptyMessage { get => _emptyMessage; private set => Set(ref _emptyMessage, value); }
+    public bool ShowSidebar => Settings.ShowSidebar;
+    public bool FilmstripVisible => Settings.ShowFilmstrip && _mode != ViewMode.Gallery && _files.Count > 1;
+    public bool IsFavorite => Current != null && Settings.IsFavorite(Current.Path);
+
+    // ---- details panel ----
+    public InfoTabKind ActiveInfoTab { get => _infoTab; set { if (Set(ref _infoTab, value) && value == InfoTabKind.Histogram) _ = RefreshHistogramAsync(); } }
+    public string InfoTitle { get => _infoTitle; private set => Set(ref _infoTitle, value); }
+    public string InfoSubtitle { get => _infoSubtitle; private set => Set(ref _infoSubtitle, value); }
+    public string InfoDimensions { get => _infoDimensions; private set => Set(ref _infoDimensions, value); }
+    public ObservableCollection<InfoLine> TakenLines { get; } = new();
+    public ObservableCollection<InfoLine> ExifLines { get; } = new();
+    public bool HasTaken => TakenLines.Count > 0;
+    public bool HasExif => ExifLines.Count > 0;
+    public HistogramShapes? Histogram { get => _histogram; private set { Set(ref _histogram, value); OnPropertyChanged(nameof(HasHistogram)); } }
+    public bool HasHistogram => _histogram != null;
 
     public RelayCommand OpenFileCommand { get; }
     public RelayCommand OpenFolderCommand { get; }
@@ -151,6 +213,17 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand FitCommand { get; }
     public RelayCommand ActualSizeCommand { get; }
     public RelayCommand ReloadCommand { get; }
+    public RelayCommand AboutCommand { get; }
+    public RelayCommand ShowSectionCommand { get; }
+    public RelayCommand SetFilterCommand { get; }
+    public RelayCommand ClearSearchCommand { get; }
+    public RelayCommand ToggleFavoriteCommand { get; }
+    public RelayCommand SetWallpaperCommand { get; }
+    public RelayCommand PrintCommand { get; }
+    public RelayCommand ToggleFilmstripCommand { get; }
+    public RelayCommand ToggleSidebarCommand { get; }
+    public RelayCommand ZoomPresetCommand { get; }
+    public RelayCommand SelectInfoTabCommand { get; }
     public RelayCommand ShowInExplorerCommand { get; }
     public RelayCommand SettingsCommand { get; }
     public AsyncRelayCommand CheckUpdatesCommand { get; }
@@ -177,23 +250,137 @@ public sealed class MainViewModel : ObservableObject
     {
         StopSlideshow();
         _folderPath = folder;
-        _files = MediaScanner.Scan(folder, Settings.Sort, Settings.SortDescending);
-        if (selectFile != null && !_files.Any(f => f.Path.Equals(selectFile, StringComparison.OrdinalIgnoreCase)) && MediaTypes.Classify(selectFile) != MediaKind.Unknown)
+        Section = NavSection.Gallery; ShowSearch = false; _searchText = ""; OnPropertyChanged(nameof(SearchText));
+        Filter = QuickFilter.All;
+        var list = MediaScanner.Scan(folder, Settings.Sort, Settings.SortDescending);
+        if (selectFile != null && !list.Any(f => f.Path.Equals(selectFile, StringComparison.OrdinalIgnoreCase)) && MediaTypes.Classify(selectFile) != MediaKind.Unknown)
         {
             var fi = new FileInfo(selectFile);   // file the scanner skipped (e.g. hidden)
-            _files.Insert(0, new MediaFile(fi.FullName, fi.Name, fi.Length, fi.LastWriteTimeUtc, MediaTypes.Classify(selectFile)));
+            list.Insert(0, new MediaFile(fi.FullName, fi.Name, fi.Length, fi.LastWriteTimeUtc, MediaTypes.Classify(selectFile)));
         }
-        int idx = selectFile == null ? 0 : Math.Max(0, _files.FindIndex(f => f.Path.Equals(selectFile, StringComparison.OrdinalIgnoreCase)));
-        Gallery.SetItems(_files.Select(f => new MediaItemViewModel(f, _thumbs)), idx);
-        OnPropertyChanged(nameof(ShowEmptyState));
+        _source = list;
+        EmptyMessage = "Open a photo or a folder, or drop them here.";
+        int idx = RebuildFiles(selectFile, 0, out _);
         if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = "No photos or videos in this folder"; return; }
         if (gallery) { Mode = ViewMode.Gallery; _index = idx; UpdateStatus(); }
         else { Mode = ViewMode.Photo; _ = ShowIndexAsync(idx); }
     }
 
+    /// <summary>Applies the quick filter and search to the source list and refreshes counts and the gallery. Returns the selected index.</summary>
+    private int RebuildFiles(string? keepPath, int fallbackIndex, out bool found)
+    {
+        _files = _source.Where(f => MediaFilter.Matches(f, _filter, _searchText)).ToList();
+        _counts = MediaFilter.Count(_source);
+        int idx = keepPath == null ? -1 : _files.FindIndex(f => f.Path.Equals(keepPath, StringComparison.OrdinalIgnoreCase));
+        found = idx >= 0;
+        if (!found) idx = Math.Clamp(fallbackIndex, 0, Math.Max(0, _files.Count - 1));
+        Gallery.SetItems(_files.Select(f => new MediaItemViewModel(f, _thumbs)), idx);
+        _index = _files.Count == 0 ? -1 : idx;
+        foreach (var n in new[] { nameof(CountAll), nameof(CountJpg), nameof(CountPng), nameof(CountGif), nameof(CountVideo), nameof(CountOther), nameof(ItemCountText),
+                                  nameof(SelectedCountText), nameof(ShowEmptyState), nameof(FilmstripVisible), nameof(IsFavorite) })
+            OnPropertyChanged(n);
+        return idx;
+    }
+
+    /// <summary>Called when the quick filter or the search text changes.</summary>
+    private void ApplyFilter()
+    {
+        var keep = Current?.Path;
+        RebuildFiles(keep, 0, out var found);
+        if (_files.Count == 0)
+        {
+            Video.Stop(); StopGif(); CurrentImage = null; Mode = ViewMode.Gallery;
+            StatusText = _searchText.Length > 0 || _filter != QuickFilter.All ? "Nothing matches this filter" : StatusText;
+            EmptyMessage = _searchText.Length > 0 || _filter != QuickFilter.All ? "Nothing matches this filter." : EmptyMessage;
+            return;
+        }
+        if (Mode != ViewMode.Gallery && !found) _ = ShowIndexAsync(_index);   // the open file was filtered out: show the first match instead
+        else UpdateStatus();
+    }
+
+    private void ShowSection(string? name)
+    {
+        if (name == null || !Enum.TryParse<NavSection>(name, out var s)) return;
+        switch (s)
+        {
+            case NavSection.Gallery:
+                if (Section != NavSection.Gallery && !string.IsNullOrEmpty(_folderPath)) { LoadFolder(_folderPath, Current?.Path, gallery: true); return; }
+                ShowSearch = false; Section = NavSection.Gallery;
+                if (_searchText.Length > 0) { _searchText = ""; OnPropertyChanged(nameof(SearchText)); ApplyFilter(); }
+                if (_files.Count > 0 && Mode != ViewMode.Gallery) ToggleGallery();
+                break;
+            case NavSection.Folders: OpenFolder(); break;
+            case NavSection.Favorites: LoadCollection(Settings.Favorites, NavSection.Favorites, "No favorites yet. Press Ctrl+D on a picture or video to add it."); break;
+            case NavSection.Recent: LoadCollection(Settings.RecentFiles, NavSection.Recent, "Nothing opened recently."); break;
+            case NavSection.Search:
+                Section = NavSection.Search; ShowSearch = true;
+                if (_files.Count > 0 && Mode != ViewMode.Gallery) ToggleGallery();
+                FocusSearchRequested?.Invoke();
+                break;
+        }
+    }
+
+    private void LoadCollection(IEnumerable<string> paths, NavSection section, string emptyMessage)
+    {
+        StopSlideshow(); Video.Stop(); StopGif();
+        Section = section; ShowSearch = false; _searchText = ""; OnPropertyChanged(nameof(SearchText)); Filter = QuickFilter.All;
+        var list = new List<MediaFile>();
+        foreach (var p in paths)
+        {
+            try
+            {
+                var kind = MediaTypes.Classify(p);
+                if (kind == MediaKind.Unknown || !File.Exists(p)) continue;
+                var fi = new FileInfo(p);
+                list.Add(new MediaFile(fi.FullName, fi.Name, fi.Length, fi.LastWriteTimeUtc, kind));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        _source = list; EmptyMessage = emptyMessage;
+        RebuildFiles(null, 0, out _);
+        Mode = ViewMode.Gallery; CurrentImage = null; _index = _files.Count == 0 ? -1 : 0;
+        StatusText = _files.Count == 0 ? emptyMessage : "";
+    }
+
+    private void ToggleFavorite()
+    {
+        var f = Mode == ViewMode.Gallery ? Gallery.Selected?.File : Current;
+        if (f == null) return;
+        bool now = Settings.ToggleFavorite(f.Path);
+        SaveSettings();
+        OnPropertyChanged(nameof(IsFavorite));
+        if (Section == NavSection.Favorites) { var keep = Current?.Path; LoadCollection(Settings.Favorites, NavSection.Favorites, EmptyMessage); }
+        else StatusText = now ? "Added to favorites" : "Removed from favorites";
+    }
+
+    private void SetWallpaper()
+    {
+        if (CurrentImage is not BitmapSource bs || Current == null) { _dialogs.Info("Set as wallpaper", "Open a picture first."); return; }
+        if (!_dialogs.Confirm("Set as wallpaper", $"Use \"{Current.Name}\" as your desktop background?", "Set wallpaper")) return;
+        var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "FeatherView");
+        if (FileOperations.SetWallpaper(bs, folder)) StatusText = "Desktop wallpaper changed";
+        else _dialogs.Error("Set as wallpaper", "Windows could not change the wallpaper.");
+    }
+
+    private void PrintImage()
+    {
+        if (CurrentImage is not BitmapSource bs || Current == null) { _dialogs.Info("Print", "Open a picture first."); return; }
+        try { FileOperations.Print(bs, Current.Name); }
+        catch (Exception ex) { _log.Warn($"Print failed ({ex.GetType().Name})."); _dialogs.Error("Print", "The picture could not be printed."); }
+    }
+
+    private async Task RefreshHistogramAsync()
+    {
+        _histCts?.Cancel();
+        if (_infoTab != InfoTabKind.Histogram || CurrentImage is not BitmapSource bs) { Histogram = null; return; }
+        var cts = _histCts = new CancellationTokenSource();
+        var shapes = await Task.Run(() => HistogramService.Compute(bs));
+        if (!cts.IsCancellationRequested) Histogram = shapes;
+    }
+
     private void Reload()
     {
-        if (string.IsNullOrEmpty(_folderPath)) return;
+        if (string.IsNullOrEmpty(_folderPath) || Section is NavSection.Favorites or NavSection.Recent) return;
         var keep = Current?.Path;
         LoadFolder(_folderPath, keep, gallery: IsGallery);
     }
@@ -259,7 +446,9 @@ public sealed class MainViewModel : ObservableObject
 
         if (file.Kind == MediaKind.Video)
         {
-            _base = null; CurrentImage = null; ImageId = file.Path; Info.Clear();
+            _base = null; CurrentImage = null; ImageId = file.Path; Info.Clear(); TakenLines.Clear(); ExifLines.Clear(); Histogram = null;
+            InfoTitle = file.Name; InfoSubtitle = $"{Path.GetExtension(file.Name).TrimStart('.').ToUpperInvariant()}  •  {FormatSize(file.Length)}"; InfoDimensions = "";
+            OnPropertyChanged(nameof(HasTaken)); OnPropertyChanged(nameof(HasExif)); OnPropertyChanged(nameof(IsFavorite));
             Mode = ViewMode.Video;
             Video.Open(file);
             return;
@@ -302,18 +491,35 @@ public sealed class MainViewModel : ObservableObject
 
     private void BuildInfo(MediaFile f, LoadedImage li)
     {
+        var ext = Path.GetExtension(f.Name).TrimStart('.').ToUpperInvariant();
+        InfoTitle = f.Name;
+        InfoSubtitle = $"{(string.IsNullOrEmpty(ext) ? li.Format : ext)}  •  {FormatSize(f.Length)}";
+        var ratio = AspectRatio.Format(li.PixelWidth, li.PixelHeight);
+        InfoDimensions = $"{li.PixelWidth} × {li.PixelHeight}" + (ratio.Length > 0 ? $" ({ratio})" : "");
         Info.Clear();
-        Info.Add(new InfoLine("Name", f.Name));
-        Info.Add(new InfoLine("Type", li.Format));
-        Info.Add(new InfoLine("Dimensions", $"{li.PixelWidth} × {li.PixelHeight} px"));
+        Info.Add(new InfoLine("Dimensions", $"{li.PixelWidth} × {li.PixelHeight}"));
+        if (li.BitsPerPixel > 0) Info.Add(new InfoLine("Color Depth", $"{li.BitsPerPixel} bit"));
+        if (li.DpiX > 0) Info.Add(new InfoLine("DPI", $"{Math.Round(li.DpiX)} × {Math.Round(li.DpiY)}"));
         Info.Add(new InfoLine("Size", FormatSize(f.Length)));
-        Info.Add(new InfoLine("Modified", f.LastWriteUtc.ToLocalTime().ToString("g")));
+        if (ratio.Length > 0) Info.Add(new InfoLine("Aspect Ratio", ratio));
         if (li.Gif != null) Info.Add(new InfoLine("Frames", li.Gif.Frames.Count.ToString()));
-        foreach (var l in li.Exif) Info.Add(l);
+        TakenLines.Clear();
+        if (li.Meta.Taken != null) TakenLines.Add(new InfoLine("Calendar", li.Meta.Taken));
+        if (li.Meta.Camera != null) TakenLines.Add(new InfoLine("Camera", li.Meta.Camera));
+        if (li.Meta.Lens != null) TakenLines.Add(new InfoLine("Lens", li.Meta.Lens));
+        OnPropertyChanged(nameof(HasTaken));
+        ExifLines.Clear();
+        ExifLines.Add(new InfoLine("Format", li.Format));
+        ExifLines.Add(new InfoLine("Modified", f.LastWriteUtc.ToLocalTime().ToString("g")));
+        foreach (var l in li.Exif) ExifLines.Add(l);
+        OnPropertyChanged(nameof(HasExif));
+        _ = RefreshHistogramAsync();
+        OnPropertyChanged(nameof(IsFavorite));
     }
 
     private void UpdateStatus(int w = 0, int h = 0)
     {
+        OnPropertyChanged(nameof(SelectedCountText)); OnPropertyChanged(nameof(IsFavorite));
         var f = Current;
         if (f == null) { StatusText = ""; return; }
         var dims = w > 0 ? $"  ·  {w}×{h}" : "";
@@ -344,11 +550,10 @@ public sealed class MainViewModel : ObservableObject
             int idx = _files.IndexOf(f);
             if (idx == _index) { StopGif(); _base = null; CurrentImage = null; Video.Stop(); }
             FileOperations.Recycle(f.Path);
-            _files.RemoveAt(idx);
-            Gallery.SetItems(_files.Select(x => new MediaItemViewModel(x, _thumbs)), Math.Min(idx, _files.Count - 1));
-            OnPropertyChanged(nameof(ShowEmptyState));
-            if (_files.Count == 0) { _index = -1; Mode = ViewMode.Gallery; StatusText = "No more photos or videos in this folder"; return; }
-            if (Mode == ViewMode.Photo) _ = ShowIndexAsync(Math.Min(idx, _files.Count - 1)); else { _index = Math.Min(idx, _files.Count - 1); UpdateStatus(); }
+            _source.Remove(f);
+            RebuildFiles(null, Math.Min(idx, Math.Max(0, _files.Count - 2)), out _);
+            if (_files.Count == 0) { _index = -1; Mode = ViewMode.Gallery; StatusText = "No more photos or videos here"; return; }
+            if (Mode == ViewMode.Gallery) UpdateStatus(); else _ = ShowIndexAsync(_index);
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) { _log.Warn($"Delete failed ({ex.GetType().Name})."); _dialogs.Error("Delete", "The file could not be moved to the Recycle Bin."); }
@@ -421,9 +626,16 @@ public sealed class MainViewModel : ObservableObject
         SaveSettings();
         OnPropertyChanged(nameof(Settings));
         Video.ApplySettings();
+        OnPropertyChanged(nameof(ShowSidebar)); OnPropertyChanged(nameof(FilmstripVisible));
     }
 
     private static Task RunAsync(AsyncRelayCommand c) { c.Execute(null); return Task.CompletedTask; }
+
+    public void SetSort(SortMode mode, bool? descending = null)
+    {
+        Settings.Sort = mode; if (descending is bool d) Settings.SortDescending = d;
+        SaveSettings(); Reload();
+    }
 
     public void SaveSettings() => _settingsService.Save(Settings);
 

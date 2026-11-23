@@ -28,6 +28,21 @@ Nothing below is marked done unless the code exists. "Verified" means the Core t
 | Corrupted/unsupported file handled with a message, not a crash | built, untested on Windows |
 | SVG, RAW | planned |
 
+## UI redesign (matches the supplied mockup)
+All items below are `built, untested on Windows` (the logic parts - aspect ratio, filters/counts, histogram maths, favorites - are unit-tested in Core).
+
+| Mockup element | Implementation |
+|---|---|
+| Custom title bar with feather logo and caption buttons | WindowChrome, own minimize/maximize/close |
+| Sidebar: Gallery, Folders, Favorites, Recent, Search | Gallery = thumbnail grid; Folders = folder picker (a folder tree is planned); Favorites/Recent = collections shown in the gallery; Search = live filename filter |
+| Quick Filters with counts: All, JPG, PNG, GIF, Other (+ Videos) | Real filters; counts always show each category's total in the folder |
+| Rounded toolbar: back/forward, zoom drop-down, fit, gallery, rotate, actual size, flip, slideshow, more | Same icons; zoom menu has Fit/25/50/100/200/400 %; "..." menu holds open, recent, rotate left, copy, delete, reload, sort, panels, settings, updates, about |
+| Rounded picture area | Clipped corners |
+| Details panel with Info / Histogram / EXIF tabs, thumbnail, name, type/size, dimensions + ratio, Image Details, Taken On (date, camera, lens) | Info tab (details table, Taken On from metadata), Histogram tab (luminance + RGB), EXIF tab (all metadata found) |
+| Filmstrip with scroll chevrons | Virtualized strip (toggle with T), shown while viewing a picture or video |
+| Status bar: "248 items - 1 selected", Set as Wallpaper, Print, Open Folder, full screen | Real actions (wallpaper asks first and stores a PNG copy in the app data folder; print uses the Windows print dialog) |
+Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/details toggles (Ctrl+B / T / I).
+
 ## Phase 3 - Video playback (engine option A: Windows built-in + optional libmpv)
 `built, untested on Windows` = code complete; the libmpv wrapper itself **is** tested against a real libmpv 0.37 in the dev container (load, tracks, info, exact seek, frame step, speed, A-B, volume, subtitles/audio selection, EOF/error events). The WPF player UI and window embedding have never run.
 

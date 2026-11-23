@@ -65,6 +65,23 @@ public class SettingsTests
     }
 }
 
+public class FavoritesTests
+{
+    [Fact] public void ToggleAddsAndRemovesCaseInsensitively()
+    {
+        var s = new AppSettings();
+        Assert.True(s.ToggleFavorite("C:\\Pics\\A.jpg")); Assert.True(s.IsFavorite("c:\\pics\\a.JPG"));
+        Assert.False(s.ToggleFavorite("c:\\pics\\a.jpg")); Assert.Empty(s.Favorites);
+    }
+    [Fact] public void FavoritesSurviveSaveAndLoad()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "fv-fav-" + Guid.NewGuid().ToString("N")); var svc = new SettingsService(Path.Combine(dir, "s.json"));
+        var s = new AppSettings(); s.ToggleFavorite("C:\\x.png"); s.ShowFilmstrip = false; svc.Save(s);
+        var r = svc.Load(); Assert.True(r.IsFavorite("C:\\x.png")); Assert.False(r.ShowFilmstrip); Assert.True(r.ShowSidebar);
+        Directory.Delete(dir, true);
+    }
+}
+
 public class LruTests
 {
     [Fact] public void EvictsLeastRecentlyUsed()

@@ -17,6 +17,7 @@ public sealed class GalleryViewModel : ObservableObject
     private double _width = 900;
 
     public ObservableCollection<GalleryRow> Rows { get; } = new();
+    public IReadOnlyList<MediaItemViewModel> Items => _items;   // flat list for the filmstrip
     public event Action<int>? ScrollToRow;
 
     public int ThumbSize { get => _thumbSize; private set { if (Set(ref _thumbSize, value)) { OnPropertyChanged(nameof(TileWidth)); OnPropertyChanged(nameof(TileHeight)); } } }
@@ -30,6 +31,7 @@ public sealed class GalleryViewModel : ObservableObject
     {
         _items = items.ToList();
         _selected = -1;
+        OnPropertyChanged(nameof(Items)); OnPropertyChanged(nameof(Count));
         Rebuild();
         Select(selected, scroll: true);
     }

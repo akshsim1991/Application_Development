@@ -4,6 +4,7 @@ using System.Windows.Media.Imaging;
 namespace FeatherView.Services;
 
 public sealed record InfoLine(string Label, string Value);
+public sealed record ImageMeta(string? Taken, string? Camera, string? Lens);
 
 /// <summary>Reads a few camera details through WIC metadata queries. Location data is intentionally never read.</summary>
 public static class ExifReader
@@ -16,6 +17,28 @@ public static class ExifReader
         }
         catch { /* format without metadata */ }
         return 1;
+    }
+
+    public static ImageMeta ReadMeta(BitmapFrame frame)
+    {
+        string? taken = null, camera = null, lens = null;
+        try
+        {
+            if (frame.Metadata is BitmapMetadata m)
+            {
+                try { if (DateTime.TryParse(m.DateTaken, out var d)) taken = d.ToString("MMMM d, yyyy   h:mm tt", CultureInfo.CurrentCulture); } catch { }
+                try
+                {
+                    var make = m.CameraManufacturer?.Trim(); var model = m.CameraModel?.Trim();
+                    camera = string.IsNullOrWhiteSpace(model) ? make : (!string.IsNullOrWhiteSpace(make) && !model.StartsWith(make, StringComparison.OrdinalIgnoreCase) ? make + " " + model : model);
+                    if (string.IsNullOrWhiteSpace(camera)) camera = null;
+                }
+                catch { }
+                try { lens = m.GetQuery("System.Photo.LensModel") as string; if (string.IsNullOrWhiteSpace(lens)) lens = null; } catch { }
+            }
+        }
+        catch { }
+        return new ImageMeta(taken, camera, lens?.Trim());
     }
 
     public static List<InfoLine> Read(BitmapFrame frame)

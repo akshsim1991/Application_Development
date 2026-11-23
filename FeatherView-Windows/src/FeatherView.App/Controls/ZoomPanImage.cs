@@ -63,6 +63,7 @@ public sealed class ZoomPanImage : FrameworkElement, FeatherView.ViewModels.IVie
     public void ZoomIn() => ZoomBy(1.25, null);
     public void ZoomOut() => ZoomBy(0.8, null);
     public void Fit() => FitInternal();
+    public void ZoomTo(double factor) { if (Source == null) return; _fit = false; SetZoom(Math.Clamp(factor, 0.02, 32), null); ClampPan(); Redraw(); }
     public void ActualSize() { _fit = false; SetZoom(1, null); _pan = default; Redraw(); }
     public bool IsFit => _fit;
 

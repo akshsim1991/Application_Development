@@ -36,7 +36,10 @@ public sealed class AppSettings
 
     // Photo viewing
     public bool FitOnOpen { get; set; } = true;
-    public bool ShowInfoPanelOnOpen { get; set; }
+    public bool ShowInfoPanelOnOpen { get; set; } = true;
+    public bool ShowFilmstrip { get; set; } = true;
+    public bool ShowSidebar { get; set; } = true;
+    public List<string> Favorites { get; set; } = new();
 
     // Slideshow
     public int SlideshowSeconds { get; set; } = 4;
@@ -90,6 +93,7 @@ public sealed class AppSettings
         if (!(WindowWidth >= 400)) WindowWidth = 1100;
         if (!(WindowHeight >= 300)) WindowHeight = 720;
         RecentFiles ??= new();
+        Favorites ??= new();
         if (RecentFiles.Count > MaxRecentFiles) RecentFiles.RemoveRange(MaxRecentFiles, RecentFiles.Count - MaxRecentFiles);
     }
 
@@ -98,6 +102,17 @@ public sealed class AppSettings
         RecentFiles.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
         RecentFiles.Insert(0, path);
         Normalize();
+    }
+
+    public bool IsFavorite(string path) => Favorites.Any(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Adds or removes a favorite; returns true when the file is now a favorite.</summary>
+    public bool ToggleFavorite(string path)
+    {
+        if (Favorites.RemoveAll(p => string.Equals(p, path, StringComparison.OrdinalIgnoreCase)) > 0) return false;
+        Favorites.Insert(0, path);
+        if (Favorites.Count > 2000) Favorites.RemoveRange(2000, Favorites.Count - 2000);
+        return true;
     }
 
     public AppSettings Clone() => SettingsJson.Deserialize(SettingsJson.Serialize(this)) ?? new AppSettings();

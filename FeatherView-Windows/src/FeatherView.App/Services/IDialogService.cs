@@ -16,7 +16,7 @@ public interface IDialogService
     string? Prompt(string title, string message, string defaultValue);
     string? PickFolder();
     AppSettings? ShowSettings(AppSettings current, Func<Task> checkUpdatesNow, string engineStatus, Func<Task> installEngine);
-    UpdateChoice AskUpdate(UpdateManifest manifest, string currentVersion);
+    UpdateChoice AskUpdate(UpdateManifest manifest, string currentVersion, long? downloadBytes);
     IProgress<double> ShowDownloadProgress(string title, Action cancel);
     void CloseDownloadProgress();
 }

@@ -9,7 +9,7 @@ public sealed record ScanResult(List<MediaFile> Files, bool Truncated);
 /// <summary>Finds viewable media in a folder. Read-only; never touches the files.</summary>
 public static class MediaScanner
 {
-    public const int DefaultMaxFiles = 50_000;
+    public const int DefaultMaxFiles = 200_000;
 
     public static List<MediaFile> Scan(string folder, SortMode sort = SortMode.Name, bool descending = false,
                                        bool includeVideo = true, bool images = true) =>
@@ -20,11 +20,12 @@ public static class MediaScanner
     /// <paramref name="maxTime"/>, so pointing it at a whole drive cannot freeze the window; <see cref="ScanResult.Truncated"/> says so.
     /// </summary>
     public static ScanResult ScanDetailed(string folder, SortMode sort = SortMode.Name, bool descending = false, bool includeVideo = true, bool images = true,
-                                          bool recurse = false, int maxFiles = DefaultMaxFiles, TimeSpan? maxTime = null)
+                                          bool recurse = false, int maxFiles = DefaultMaxFiles, TimeSpan? maxTime = null,
+                                          CancellationToken ct = default, IProgress<int>? progress = null)
     {
         var list = new List<MediaFile>();
         bool truncated = false;
-        var deadline = DateTime.UtcNow + (maxTime ?? TimeSpan.FromSeconds(4));
+        var deadline = maxTime is TimeSpan t ? DateTime.UtcNow + t : DateTime.MaxValue;   // no time limit unless asked: a drive is scanned completely (cancellable)
         try
         {
             var opts = new EnumerationOptions { IgnoreInaccessible = true, RecurseSubdirectories = recurse,
@@ -32,16 +33,18 @@ public static class MediaScanner
             int seen = 0;
             foreach (var fi in new DirectoryInfo(folder).EnumerateFiles("*", opts))
             {
-                if (recurse && (++seen & 0xFF) == 0 && DateTime.UtcNow > deadline) { truncated = true; break; }
+                if ((++seen & 0xFF) == 0) { ct.ThrowIfCancellationRequested(); if (recurse && DateTime.UtcNow > deadline) { truncated = true; break; } }
                 var kind = MediaTypes.Classify(fi.Name);
                 if (kind == MediaKind.Unknown) continue;
                 if (kind == MediaKind.Video && !includeVideo) continue;
                 if (kind == MediaKind.Image && !images) continue;
                 list.Add(new MediaFile(fi.FullName, fi.Name, fi.Length, fi.LastWriteTimeUtc, kind));
+                if ((list.Count & 0x1FF) == 0) progress?.Report(list.Count);
                 if (list.Count >= maxFiles) { truncated = true; break; }
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { /* unreadable folder: empty list */ }
+        progress?.Report(list.Count);
         Sort(list, sort, descending);
         return new ScanResult(list, truncated);
     }
@@ -68,7 +71,7 @@ public static class MediaScanner
             SortMode.Size => (a, b) => a.Length.CompareTo(b.Length),
             SortMode.Type => (a, b) => { int c = string.Compare(System.IO.Path.GetExtension(a.Name), System.IO.Path.GetExtension(b.Name), StringComparison.OrdinalIgnoreCase);
                                          return c != 0 ? c : NaturalComparer.Instance.Compare(a.Name, b.Name); },
-            _ => (a, b) => NaturalComparer.Instance.Compare(a.Name, b.Name),
+            _ => (a, b) => { int c = NaturalComparer.Instance.Compare(System.IO.Path.GetDirectoryName(a.Path), System.IO.Path.GetDirectoryName(b.Path)); return c != 0 ? c : NaturalComparer.Instance.Compare(a.Name, b.Name); },   // pictures stay grouped by folder
         };
         // Stable sort with a name tie-breaker so equal keys keep a predictable order.
         var sorted = list.Select((f, i) => (f, i)).ToList();

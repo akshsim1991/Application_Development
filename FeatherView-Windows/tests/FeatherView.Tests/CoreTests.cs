@@ -197,3 +197,68 @@ public class FolderNavigationTests
         Directory.Delete(root, true);
     }
 }
+
+public class InstallerChoiceTests
+{
+    private static UpdateManifest M(bool small) => new()
+    {
+        Version = "9", Win64 = new() { Url = "https://github.com/x/full.exe", Sha256 = "a", Size = 46_000_000 },
+        Win64Small = small ? new() { Url = "https://github.com/x/small.exe", Sha256 = "b", Size = 1_500_000 } : null,
+    };
+
+    [Fact] public void SmallInstallsGetTheSmallDownloadWhenOneExists()
+    {
+        Assert.Equal(1_500_000, M(true).PickInstaller(frameworkDependentInstall: true)!.Size);
+        Assert.Equal(46_000_000, M(true).PickInstaller(frameworkDependentInstall: false)!.Size);   // a self-contained copy must stay self-contained
+        Assert.Equal(46_000_000, M(false).PickInstaller(frameworkDependentInstall: true)!.Size);   // no small file published: fall back to the full installer
+    }
+
+    [Fact] public void DetectsFlavourFromRuntimeConfig()
+    {
+        Assert.True(InstallFlavor.IsFrameworkDependent("{\"runtimeOptions\":{\"tfm\":\"net10.0\",\"framework\":{\"name\":\"Microsoft.WindowsDesktop.App\",\"version\":\"10.0.0\"}}}"));
+        Assert.False(InstallFlavor.IsFrameworkDependent("{\"runtimeOptions\":{\"includedFrameworks\":[{\"name\":\"Microsoft.NETCore.App\"}]}}"));
+        Assert.False(InstallFlavor.IsFrameworkDependent(null)); Assert.False(InstallFlavor.IsFrameworkDependent(""));
+    }
+
+    [Fact] public void ManifestWithSmallAssetParses()
+    {
+        var json = "{\"version\":\"2\",\"win64\":{\"url\":\"https://github.com/a\",\"sha256\":\"x\"},\"win64Small\":{\"url\":\"https://github.com/b\",\"sha256\":\"y\",\"size\":10}}";
+        var h = new HttpClientHandlerStub(json);
+        var m = new UpdateService(new HttpClient(h)).CheckAsync("1").GetAwaiter().GetResult();
+        Assert.Equal("https://github.com/b", m!.Win64Small!.Url);
+    }
+
+    private sealed class HttpClientHandlerStub : HttpMessageHandler
+    {
+        private readonly string _json; public HttpClientHandlerStub(string json) { _json = json; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage r, CancellationToken ct) =>
+            Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_json), RequestMessage = r });
+    }
+}
+
+public class ScanControlTests
+{
+    [Fact] public void CancelledScanThrowsAndProgressIsReported()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fv-cancel-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        for (int i = 0; i < 700; i++) File.WriteAllText(Path.Combine(root, $"p{i:D4}.jpg"), "x");
+        var reported = new List<int>();
+        var r = MediaScanner.ScanDetailed(root, recurse: true, progress: new Progress<int>(reported.Add) is var p ? new SyncProgress(reported) : null);
+        Assert.Equal(700, r.Files.Count); Assert.Contains(700, reported);
+        using var cts = new CancellationTokenSource(); cts.Cancel();
+        Assert.Throws<OperationCanceledException>(() => MediaScanner.ScanDetailed(root, recurse: true, ct: cts.Token));
+        Directory.Delete(root, true);
+    }
+
+    [Fact] public void PicturesStayGroupedByFolderWhenSortedByName()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fv-group-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "B")); Directory.CreateDirectory(Path.Combine(root, "A"));
+        File.WriteAllText(Path.Combine(root, "B", "a.jpg"), "x"); File.WriteAllText(Path.Combine(root, "A", "z.jpg"), "x"); File.WriteAllText(Path.Combine(root, "A", "b.jpg"), "x");
+        var names = MediaScanner.ScanDetailed(root, recurse: true).Files.Select(f => Path.GetFileName(Path.GetDirectoryName(f.Path)) + "/" + f.Name);
+        Assert.Equal(new[] { "A/b.jpg", "A/z.jpg", "B/a.jpg" }, names);
+        Directory.Delete(root, true);
+    }
+
+    private sealed class SyncProgress : IProgress<int> { private readonly List<int> _l; public SyncProgress(List<int> l) { _l = l; } public void Report(int v) => _l.Add(v); }
+}

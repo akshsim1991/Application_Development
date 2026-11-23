@@ -55,9 +55,9 @@ public sealed class WpfDialogService : IDialogService
         return w.ShowDialog() == true ? w.Edited : null;
     }
 
-    public UpdateChoice AskUpdate(UpdateManifest manifest, string currentVersion)
+    public UpdateChoice AskUpdate(UpdateManifest manifest, string currentVersion, long? downloadBytes)
     {
-        var w = Prepare(new UpdateWindow(manifest, currentVersion));
+        var w = Prepare(new UpdateWindow(manifest, currentVersion, downloadBytes));
         w.ShowDialog();
         return w.Choice;
     }

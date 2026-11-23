@@ -66,7 +66,7 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 | Item | Status |
 |---|---|
 | Folders inside the opened folder are listed above the pictures; click one to go in; Up button and the folder path | built, untested on Windows |
-| "Include subfolders" (menu and Settings): shows pictures from the whole tree, stops after 50,000 files or 4 seconds and says so | scanner tested (Core); UI untested on Windows |
+| Opening a folder or drive shows the pictures of ALL folders underneath in one go (on by default; menu/Settings switch). Runs in the background with a live count, never freezes the window; up to 200,000 items; pictures stay grouped by folder; single files opened from Explorer still open instantly | scanner (cancel, progress, grouping, limit) tested in Core; UI being verified in CI |
 | Opening a drive or a folder that holds only sub-folders now explains this instead of showing an empty window | built, untested on Windows |
 
 ## Tabs (V2.1 item brought forward)

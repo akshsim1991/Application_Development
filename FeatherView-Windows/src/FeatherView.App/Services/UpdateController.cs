@@ -60,24 +60,31 @@ public sealed class UpdateController
             }
             if (!userInitiated && string.Equals(_settings().SkippedVersion, m.Version, StringComparison.OrdinalIgnoreCase)) return;
 
-            switch (_dialogs.AskUpdate(m, _currentVersion))
+            var asset = m.PickInstaller(IsFrameworkDependentInstall());
+            switch (_dialogs.AskUpdate(m, _currentVersion, asset?.Size))
             {
                 case UpdateChoice.SkipVersion: { var s = _settings(); s.SkippedVersion = m.Version; _settingsService.Save(s); return; }
                 case UpdateChoice.Later: return;
             }
-            await DownloadAndInstallAsync(svc, m);
+            await DownloadAndInstallAsync(svc, m, asset);
         }
         finally { _busy = false; }
     }
 
-    private async Task DownloadAndInstallAsync(UpdateService svc, UpdateManifest m)
+    private static bool IsFrameworkDependentInstall()
+    {
+        try { return InstallFlavor.IsFrameworkDependent(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "FeatherView.runtimeconfig.json"))); }
+        catch { return false; }
+    }
+
+    private async Task DownloadAndInstallAsync(UpdateService svc, UpdateManifest m, UpdateAsset? asset)
     {
         var cts = new CancellationTokenSource();
         var progress = _dialogs.ShowDownloadProgress($"Downloading Feather View {m.Version}", () => cts.Cancel());
         string? file = null;
         try
         {
-            file = await svc.DownloadAsync(m, Path.Combine(Path.GetTempPath(), "FeatherViewUpdate"), progress, cts.Token);
+            file = await svc.DownloadAsync(m, Path.Combine(Path.GetTempPath(), "FeatherViewUpdate"), progress, cts.Token, asset);
         }
         catch (OperationCanceledException) { return; }
         catch (UpdateException ex) { _dialogs.CloseDownloadProgress(); _dialogs.Error("Update", ex.Message); return; }

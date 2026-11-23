@@ -121,7 +121,7 @@ public sealed class MainViewModel : ObservableObject
         OpenFolderInNewTabCommand = new RelayCommand(() => { var p = _dialogs.PickFolder(); if (p != null) Tabs.OpenInNewTab(p); });
         OpenFolderPathCommand = new RelayCommand(p => { if (p is string path && Directory.Exists(path)) LoadFolder(path, null, gallery: true); });
         GoUpCommand = new RelayCommand(GoUp, () => CanGoUp);
-        ToggleSubfoldersCommand = new RelayCommand(() => { Settings.IncludeSubfolders = !Settings.IncludeSubfolders; SaveSettings(); OnPropertyChanged(nameof(IncludeSubfolders)); Reload(); });
+        ToggleSubfoldersCommand = new RelayCommand(() => { Settings.IncludeSubfolders = !Settings.IncludeSubfolders; SaveSettings(); OnPropertyChanged(nameof(IncludeSubfolders)); OnPropertyChanged(nameof(ShowFolderChips)); Reload(); });
         ShowSectionCommand = new RelayCommand(p => ShowSection(p as string));
         SetFilterCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<QuickFilter>(n, out var f)) { Filter = f; ApplyFilter(); } });
         ClearSearchCommand = new RelayCommand(() => { SearchText = ""; ShowSearch = false; Section = NavSection.Gallery; });
@@ -152,6 +152,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Folders inside the opened folder, shown above the pictures so you can go into them.</summary>
     public ObservableCollection<FolderItem> SubFolders { get; } = new();
     public bool ShowFolderStrip => !string.IsNullOrEmpty(_folderPath) && Section == NavSection.Gallery;
+    public bool ShowFolderChips => !Settings.IncludeSubfolders;
     public string FolderDisplay => _folderPath;
     public bool CanGoUp => !string.IsNullOrEmpty(_folderPath) && Path.GetDirectoryName(_folderPath.TrimEnd('\\', '/')) is { Length: > 0 };
     public bool IncludeSubfolders => Settings.IncludeSubfolders;
@@ -307,24 +308,69 @@ public sealed class MainViewModel : ObservableObject
         {
             if (Directory.Exists(path)) { LoadFolder(path, null, gallery: true); return; }
             if (!File.Exists(path)) { _dialogs.Error("Open", "That file could not be found."); return; }
-            LoadFolder(Path.GetDirectoryName(path)!, path, gallery: false);
+            LoadFolder(Path.GetDirectoryName(path)!, path, gallery: false, recursive: false);
             Settings.AddRecent(path); SaveSettings(); RefreshRecent();
         }
         catch (Exception ex) { _log.Error("Open failed", ex); _dialogs.Error("Open", "The location could not be opened."); }
     }
 
-    private void LoadFolder(string folder, string? selectFile, bool gallery)
+    private CancellationTokenSource? _scanCts;
+    private bool _scanning;
+    public bool IsScanning { get => _scanning; private set => Set(ref _scanning, value); }
+
+    /// <summary>
+    /// Opens a folder. With "include subfolders" (the default) the whole tree is scanned on a background thread with a live count,
+    /// then every picture appears at once; otherwise just this folder is read immediately.
+    /// </summary>
+    private void LoadFolder(string folder, string? selectFile, bool gallery, Action? onLoaded = null, bool? recursive = null)
     {
         StopSlideshow();
+        _scanCts?.Cancel();
         _folderPath = folder;
         Section = NavSection.Gallery; ShowSearch = false; _searchText = ""; OnPropertyChanged(nameof(SearchText));
         Filter = QuickFilter.All;
-        var scan = MediaScanner.ScanDetailed(folder, Settings.Sort, Settings.SortDescending, recurse: Settings.IncludeSubfolders);
-        var list = scan.Files;
-        _folderTruncated = scan.Truncated;
         SubFolders.Clear();
         foreach (var name in MediaScanner.ListFolders(folder)) SubFolders.Add(new FolderItem(name, Path.Combine(folder, name)));
         OnPropertyChanged(nameof(ShowFolderStrip)); OnPropertyChanged(nameof(FolderDisplay)); OnPropertyChanged(nameof(CanGoUp)); GoUpCommand.RaiseCanExecuteChanged();
+        bool recurse = recursive ?? Settings.IncludeSubfolders;
+
+        if (!recurse)
+        {
+            IsScanning = false;
+            FinishLoad(folder, selectFile, gallery, MediaScanner.ScanDetailed(folder, Settings.Sort, Settings.SortDescending), onLoaded);
+            return;
+        }
+
+        // show an empty, labelled view right away; the pictures arrive when the scan is done
+        var cts = _scanCts = new CancellationTokenSource();
+        IsScanning = true;
+        StopGif(); Video.Stop();
+        _source = new(); EmptyMessage = "Looking for pictures and videos in this folder and all folders underneath...";
+        RebuildFiles(null, 0, out _);
+        CurrentImage = null; Mode = ViewMode.Gallery; StatusText = "Scanning...";
+        Tabs.UpdateActiveTitle();
+        _ = ScanThenFinishAsync(folder, selectFile, gallery, cts, onLoaded);
+    }
+
+    private async Task ScanThenFinishAsync(string folder, string? selectFile, bool gallery, CancellationTokenSource cts, Action? onLoaded)
+    {
+        var progress = new Progress<int>(n => { if (!cts.IsCancellationRequested) StatusText = $"Scanning... {n:N0} pictures and videos found"; });
+        var sort = Settings.Sort; var desc = Settings.SortDescending;
+        try
+        {
+            var scan = await Task.Run(() => MediaScanner.ScanDetailed(folder, sort, desc, recurse: true, ct: cts.Token, progress: progress), cts.Token);
+            if (cts.IsCancellationRequested) return;
+            FinishLoad(folder, selectFile, gallery, scan, onLoaded);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _log.Warn($"Folder scan failed ({ex.GetType().Name})."); if (!cts.IsCancellationRequested) StatusText = "The folder could not be read."; }
+        finally { if (ReferenceEquals(_scanCts, cts)) IsScanning = false; }
+    }
+
+    private void FinishLoad(string folder, string? selectFile, bool gallery, ScanResult scan, Action? onLoaded)
+    {
+        var list = scan.Files;
+        _folderTruncated = scan.Truncated;
         if (selectFile != null && !list.Any(f => f.Path.Equals(selectFile, StringComparison.OrdinalIgnoreCase)) && MediaTypes.Classify(selectFile) != MediaKind.Unknown)
         {
             var fi = new FileInfo(selectFile);   // file the scanner skipped (e.g. hidden)
@@ -333,13 +379,15 @@ public sealed class MainViewModel : ObservableObject
         _source = list;
         EmptyMessage = SubFolders.Count > 0 && !Settings.IncludeSubfolders
             ? "There are no pictures or videos directly in this folder. Open one of the folders above, or turn on 'Include subfolders' in the ... menu."
-            : "Open a photo or a folder, or drop them here.";
+            : Settings.IncludeSubfolders && SubFolders.Count > 0 ? "No pictures or videos were found in this folder or in the folders underneath." : "Open a photo or a folder, or drop them here.";
         int idx = RebuildFiles(selectFile, 0, out _);
         Tabs.UpdateActiveTitle();
-        if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = SubFolders.Count > 0 ? $"{SubFolders.Count} folders here, no pictures directly in this one" : "No photos or videos in this folder"; return; }
-        if (_folderTruncated) StatusText = $"Showing the first {_files.Count:N0} items; the scan stopped early. Open a smaller folder to see everything.";
-        if (gallery) { Mode = ViewMode.Gallery; _index = idx; UpdateStatus(); }
+        if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = "No photos or videos found"; onLoaded?.Invoke(); return; }
+        if (_folderTruncated) StatusText = $"Showing the first {_files.Count:N0} items (the limit). Open a smaller folder to see everything.";
+        else if (gallery) StatusText = $"{_files.Count:N0} pictures and videos";
+        if (gallery) { Mode = ViewMode.Gallery; _index = idx; }
         else { Mode = ViewMode.Photo; _ = ShowIndexAsync(idx); }
+        onLoaded?.Invoke();
     }
 
     /// <summary>Applies the quick filter and search to the source list and refreshes counts and the gallery. Returns the selected index.</summary>
@@ -523,8 +571,7 @@ public sealed class MainViewModel : ObservableObject
         if (t.Section == nameof(NavSection.Favorites)) { LoadCollection(Settings.Favorites, NavSection.Favorites, "No favorites yet. Press Ctrl+D on a picture or video to add it."); ApplyTabFilter(t); return; }
         if (t.Section == nameof(NavSection.Recent)) { LoadCollection(Settings.RecentFiles, NavSection.Recent, "Nothing opened recently."); ApplyTabFilter(t); return; }
         if (string.IsNullOrEmpty(t.FolderPath) || !Directory.Exists(t.FolderPath)) { ClearView(); return; }
-        LoadFolder(t.FolderPath, t.SelectedPath, gallery: t.Mode == nameof(ViewMode.Gallery));
-        ApplyTabFilter(t);
+        LoadFolder(t.FolderPath, t.SelectedPath, gallery: t.Mode == nameof(ViewMode.Gallery), onLoaded: () => ApplyTabFilter(t));
     }
 
     private void ApplyTabFilter(TabState t)

@@ -18,6 +18,11 @@ public sealed class UpdateManifest
     [JsonPropertyName("date")] public string? Date { get; set; }
     [JsonPropertyName("notes")] public string? Notes { get; set; }
     [JsonPropertyName("win64")] public UpdateAsset? Win64 { get; set; }
+    /// <summary>Small installer (a couple of MB) for PCs that already have the .NET 10 Desktop Runtime.</summary>
+    [JsonPropertyName("win64Small")] public UpdateAsset? Win64Small { get; set; }
+
+    /// <summary>Copies that were installed with the small installer keep getting the small download; others get the full installer.</summary>
+    public UpdateAsset? PickInstaller(bool frameworkDependentInstall) => frameworkDependentInstall && Win64Small != null ? Win64Small : Win64;
 }
 
 [JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
@@ -84,9 +89,9 @@ public sealed class UpdateService
     }
 
     /// <summary>Downloads the installer to a temp file and verifies size and SHA-256. Deletes it if verification fails.</summary>
-    public async Task<string> DownloadAsync(UpdateManifest m, string directory, IProgress<double>? progress = null, CancellationToken ct = default)
+    public async Task<string> DownloadAsync(UpdateManifest m, string directory, IProgress<double>? progress = null, CancellationToken ct = default, UpdateAsset? chosen = null)
     {
-        var asset = m.Win64 ?? throw new UpdateException("No Windows download is listed for this version.");
+        var asset = chosen ?? m.Win64 ?? throw new UpdateException("No Windows download is listed for this version.");
         if (!Uri.TryCreate(asset.Url, UriKind.Absolute, out var uri)) throw new UpdateException("The download address is invalid.");
         if (string.IsNullOrWhiteSpace(asset.Sha256)) throw new UpdateException("The download has no fingerprint, so it cannot be verified.");
         EnsureAllowed(uri);

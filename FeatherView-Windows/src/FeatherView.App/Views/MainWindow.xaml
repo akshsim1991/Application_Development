@@ -410,7 +410,7 @@
                                         <Button DockPanel.Dock="Left" Style="{StaticResource StatusButton}" Tag="{StaticResource IconUp}" Content="Up" Command="{Binding GoUpCommand}" Margin="0,0,10,0" ToolTip="Go to the parent folder" AutomationProperties.Name="Up one folder" />
                                         <TextBlock Text="{Binding FolderDisplay}" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
                                     </DockPanel>
-                                    <ScrollViewer MaxHeight="124" VerticalScrollBarVisibility="Auto" Focusable="False">
+                                    <ScrollViewer MaxHeight="124" VerticalScrollBarVisibility="Auto" Focusable="False" Visibility="{Binding ShowFolderChips, Converter={StaticResource B2V}}">
                                         <ItemsControl ItemsSource="{Binding SubFolders}">
                                             <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>

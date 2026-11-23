@@ -58,6 +58,7 @@ jobs:
           $v = (Get-Content VERSION).Trim()
           choco install innosetup -y --no-progress | Out-Null
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\FeatherView.iss
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\FeatherView-small.iss
           New-Item -ItemType Directory -Force dist | Out-Null
           Compress-Archive -Path publish\win-x64\* -DestinationPath "dist\FeatherView-$v-portable-win-x64.zip" -Force
           Compress-Archive -Path publish\fxdep\* -DestinationPath "dist\FeatherView-$v-framework-dependent-win-x64.zip" -Force
@@ -81,19 +82,20 @@ jobs:
           Feather View $v
 
           Files
-          - FeatherView-Setup-$v.exe: installer (64-bit Windows 10 1809 or later; includes the .NET runtime, no prerequisites)
+          - FeatherView-Setup-$v.exe: full installer (about 44 MB; 64-bit Windows 10 1809 or later; includes the .NET runtime, no prerequisites)
+          - FeatherView-Setup-small-$v.exe: small installer (a couple of MB) for PCs that have the .NET 10 Desktop Runtime; updates are then tiny too
           - FeatherView-$v-portable-win-x64.zip: no install needed, unzip and run FeatherView.exe
           - FeatherView-$v-framework-dependent-win-x64.zip: small download, needs the .NET 10 Desktop Runtime installed
           - latest.json: update manifest (for the releases repository)
 
           Installer SHA-256: $hash
 
-          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 0.1.1 and later check this release for updates automatically (Settings > Updates).
+          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 0.1.1 and later check this release for updates automatically (Settings > Updates). Download only the one installer you need, not the CI artifact bundle.
           "@
           # A re-run replaces the release so its tag points at the commit that was just built.
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
-          gh release create $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
+          gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:

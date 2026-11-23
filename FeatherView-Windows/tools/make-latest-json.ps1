@@ -7,6 +7,15 @@ $v = (Get-Content VERSION).Trim()
 $setup = "dist\FeatherView-Setup-$v.exe"
 $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
 $size = (Get-Item $setup).Length
+$small = "dist\FeatherView-Setup-small-$v.exe"
+$smallAsset = $null
+if (Test-Path $small) {
+  $smallAsset = [ordered]@{
+    url    = "https://github.com/akshsim1991/Application_Development/releases/download/featherview-v$v/FeatherView-Setup-small-$v.exe"
+    size   = (Get-Item $small).Length
+    sha256 = (Get-FileHash $small -Algorithm SHA256).Hash.ToLower()
+  }
+}
 $json = [ordered]@{
   version = $v
   date    = (Get-Date -Format "yyyy-MM-dd")
@@ -16,6 +25,7 @@ $json = [ordered]@{
     size   = $size
     sha256 = $hash
   }
+  win64Small = $smallAsset
 } | ConvertTo-Json -Depth 4
 $json | Out-File -Encoding utf8 dist\latest.json
 Write-Host $json

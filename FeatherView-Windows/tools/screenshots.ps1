@@ -102,5 +102,14 @@ Set-Theme "Dark"
 Test-Fullscreen "$dir\mountain-lake.jpg"
 Take "photo-dark" "$dir\mountain-lake.jpg" 6
 Take "gallery-dark" $dir 9
+# Pictures only in sub-folders (like opening a whole drive): opening the parent must show all of them at once
+$tree = Join-Path $env:RUNNER_TEMP "fv-shots\All Pictures"
+foreach ($sub in @("Italy\Rome", "Japan", "Family\2026\Summer")) { New-Item -ItemType Directory -Force (Join-Path $tree $sub) | Out-Null }
+$files = Get-ChildItem $dir -File
+for ($i = 0; $i -lt $files.Count; $i++) {
+  $target = @("Italy\Rome", "Japan", "Family\2026\Summer")[$i % 3]
+  Copy-Item $files[$i].FullName (Join-Path (Join-Path $tree $target) $files[$i].Name)
+}
+Take "gallery-tree" $tree 10
 Set-Theme "Light"
 Take "photo-light" "$dir\sunset-beach.jpg" 6

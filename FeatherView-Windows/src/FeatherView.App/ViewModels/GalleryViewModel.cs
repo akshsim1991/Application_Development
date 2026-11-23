@@ -16,7 +16,8 @@ public sealed class GalleryViewModel : ObservableObject
     private int _columns = 4, _selected = -1, _thumbSize = 160;
     private double _width = 900;
 
-    public ObservableCollection<GalleryRow> Rows { get; } = new();
+    private ObservableCollection<GalleryRow> _rows = new();
+    public ObservableCollection<GalleryRow> Rows { get => _rows; private set => Set(ref _rows, value); }
     public IReadOnlyList<MediaItemViewModel> Items => _items;   // flat list for the filmstrip
     public event Action<int>? ScrollToRow;
 
@@ -60,8 +61,9 @@ public sealed class GalleryViewModel : ObservableObject
 
     private void Rebuild()
     {
-        Rows.Clear();
+        var rows = new List<GalleryRow>((_items.Count + _columns - 1) / _columns);
         for (int i = 0; i < _items.Count; i += _columns)
-            Rows.Add(new GalleryRow(_items.Skip(i).Take(_columns).ToList()));
+            rows.Add(new GalleryRow(_items.GetRange(i, Math.Min(_columns, _items.Count - i))));   // O(n) overall, important for tens of thousands of pictures
+        Rows = new ObservableCollection<GalleryRow>(rows);
     }
 }

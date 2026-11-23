@@ -11,4 +11,4 @@ i686-w64-mingw32-g++   $FLAGS main.cpp -o dist/FeatherViewer32.exe $LIBS
 echo "Built dist/FeatherViewer64.exe and dist/FeatherViewer32.exe"
 # Installer (needs: sudo apt install nsis)
 makensis -V2 installer.nsi
-echo "Built dist/FeatherViewer-Setup-0.2.0.exe"
+echo "Built dist/FeatherViewer-Setup-0.3.0.exe"

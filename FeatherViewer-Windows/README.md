@@ -1,10 +1,10 @@
 # Feather Image and Video Viewer (Windows)
 
-Version 0.2: image viewer with animated GIF and a modern overlay UI. Video playback is planned.
+Version 0.3: image viewer with animated GIF and a modern overlay UI. Video playback is planned.
 
 ## Download / install
 Prebuilt files are in `dist/`:
-- `FeatherViewer-Setup-0.2.0.exe` — installer (auto-picks 64-bit or 32-bit; Start Menu/Desktop shortcuts, "Open with" entries, uninstaller). Silent install: `/S`.
+- `FeatherViewer-Setup-0.3.0.exe` — installer (auto-picks 64-bit or 32-bit; Start Menu/Desktop shortcuts, "Open with" entries, uninstaller). Silent install: `/S`.
 - `FeatherViewer64.exe` / `FeatherViewer32.exe` — portable, no install needed.
 The installer is a plain NSIS exe (not MSI), so it does not depend on the Windows Installer service, which is unavailable in Safe Mode.
 
@@ -24,7 +24,8 @@ command-line path; folder browsing; zoom (wheel at cursor, +/-), fit, 100%, drag
 | Ctrl+O | Open | Left/Right, PgUp/PgDn | Previous/next |
 | Home/End | First/last | + / - / wheel | Zoom |
 | 0 | Fit | 1 | Actual size |
-| R / Shift+R | Rotate right/left | B | Cycle background |
+| R / L (or Shift+R) | Rotate right / left |
+| Del | Delete to Recycle Bin (asks first) | B | Cycle background |
 | F or F11 | Fullscreen | Esc | Leave fullscreen |
 | Double-click | Toggle fit/100% | Drag | Pan |
 | Right-click | Full menu | P | Pause/resume GIF |

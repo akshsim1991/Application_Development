@@ -1,4 +1,4 @@
-// Feather Image and Video Viewer - v0.2 (image viewing, animated GIF)
+// Feather Image and Video Viewer - v0.3 (image viewing, animated GIF, rotate, delete)
 // Pure Win32 + GDI/GDI+, statically linked. No .NET, no DirectX/D2D, no WinRT/UWP,
 // no network, no services, no extra DLLs beyond core system ones that are present in
 // Safe Mode (user32, gdi32, gdiplus, comdlg32, shell32, shlwapi). Software rendering only.
@@ -27,7 +27,7 @@ static const wchar_t* APP_NAME = L"Feather Image and Video Viewer";
 static const wchar_t* CLASS_NAME = L"FeatherViewerWnd";
 
 enum { ID_OPEN = 100, ID_EXIT, ID_NEXT, ID_PREV, ID_FIRST, ID_LAST, ID_ZIN, ID_ZOUT, ID_FIT, ID_ACTUAL,
-       ID_ROTR, ID_ROTL, ID_FULL, ID_ABOUT, ID_BG, ID_PAUSE };
+       ID_ROTR, ID_ROTL, ID_FULL, ID_ABOUT, ID_BG, ID_PAUSE, ID_DELETE };
 static const UINT_PTR HIDE_TIMER = 2;
 
 struct State {
@@ -321,6 +321,26 @@ static void ToggleFullscreen() {
     }
 }
 
+static void DeleteCurrent() {
+    if (S.index < 0 || S.index >= (int)S.files.size()) return;
+    int keep = S.index;
+    std::wstring path = S.dir + L"\\" + S.files[keep];
+    // GDI+ keeps the file locked while the image is loaded: release it before deleting.
+    StopAnim();
+    delete g_src; g_src = nullptr;
+    FreeImage();
+    std::vector<wchar_t> buf(path.begin(), path.end());
+    buf.push_back(0); buf.push_back(0);
+    SHFILEOPSTRUCTW op = {};
+    op.hwnd = S.hwnd; op.wFunc = FO_DELETE; op.pFrom = buf.data(); op.fFlags = FOF_ALLOWUNDO;  // Recycle Bin + confirmation
+    int rc = SHFileOperationW(&op);
+    bool gone = GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES;
+    if (rc != 0 || op.fAnyOperationsAborted || !gone) { LoadIndex(keep); return; }   // cancelled/failed: show it again
+    S.files.erase(S.files.begin() + keep);
+    if (S.files.empty()) { S.index = -1; S.error = L"No more images in this folder."; Refresh(); return; }
+    LoadIndex(std::min(keep, (int)S.files.size() - 1));
+}
+
 static void DoOpenDialog() {
     wchar_t file[MAX_PATH * 2] = L"";
     OPENFILENAMEW o = { sizeof(o) };
@@ -338,7 +358,7 @@ static const COLORREF C_BAR = RGB(36, 37, 41), C_BORDER = RGB(70, 72, 80), C_HOV
 
 struct Btn { int id; bool sepBefore; };
 static const Btn BTNS[] = { {ID_OPEN, false}, {ID_PREV, true}, {ID_NEXT, false}, {ID_ZOUT, true}, {ID_ZIN, false},
-                            {ID_FIT, false}, {ID_ACTUAL, false}, {ID_ROTR, true}, {ID_FULL, false} };
+                            {ID_FIT, false}, {ID_ACTUAL, false}, {ID_ROTL, true}, {ID_ROTR, false}, {ID_DELETE, true}, {ID_FULL, false} };
 static const int NB = sizeof(BTNS) / sizeof(BTNS[0]);
 
 // Computes the bar rectangle and every button rectangle.
@@ -392,6 +412,22 @@ static void DrawIcon(HDC dc, int id, RECT r, COLORREF col) {
             SelectObject(dc, GetStockObject(NULL_BRUSH)); DeleteObject(b);
             break;
         }
+        case ID_ROTL: {
+            SetArcDirection(dc, AD_COUNTERCLOCKWISE);
+            Arc(dc, cx - u, cy - u, cx + u, cy + u, cx - u, cy, cx, cy - u);
+            POINT tri[3] = { { cx + 1, cy - u - Sx(4) }, { cx + 1, cy - u + Sx(4) }, { cx - Sx(4), cy - u } };
+            HBRUSH b = CreateSolidBrush(col); SelectObject(dc, b); Polygon(dc, tri, 3);
+            SelectObject(dc, GetStockObject(NULL_BRUSH)); DeleteObject(b);
+            break;
+        }
+        case ID_DELETE: {   // trash can
+            Line(dc, cx - u, cy - u + 2, cx + u + 1, cy - u + 2);
+            Line(dc, cx - 3, cy - u + 2, cx - 3, cy - u - 1); Line(dc, cx - 3, cy - u - 1, cx + 3, cy - u - 1);
+            Line(dc, cx + 3, cy - u - 1, cx + 3, cy - u + 2);
+            Rectangle(dc, cx - u + 2, cy - u + 2, cx + u, cy + u + 2);
+            Line(dc, cx - 2, cy - u + 6, cx - 2, cy + u - 2); Line(dc, cx + 2, cy - u + 6, cx + 2, cy + u - 2);
+            break;
+        }
         case ID_FULL: {
             int k = Sx(5);
             int L = cx - u - 1, R = cx + u + 1, T = cy - u - 1, B = cy + u + 1;
@@ -427,7 +463,8 @@ static void DrawUI(HDC dc, int cw, int ch) {
             if (i == S.hover) FillRound(dc, r[i], Sx(12), C_HOVER, C_HOVER);
             int id = BTNS[i].id;
             bool needsImg = id != ID_OPEN && id != ID_FULL;
-            DrawIcon(dc, id, r[i], (!S.hbm && needsImg) ? C_DIM : (i == S.hover ? C_ACCENT : C_ICON));
+            bool danger = id == ID_DELETE && i == S.hover;
+            DrawIcon(dc, id, r[i], (!S.hbm && needsImg) ? C_DIM : (danger ? RGB(255, 120, 120) : i == S.hover ? C_ACCENT : C_ICON));
             if (BTNS[i].sepBefore) {
                 HPEN p = CreatePen(PS_SOLID, 1, C_BORDER); HGDIOBJ op = SelectObject(dc, p);
                 int sx = r[i].left - Sx(7); Line(dc, sx, r[i].top + Sx(8), sx, r[i].bottom - Sx(8));
@@ -514,6 +551,7 @@ static HMENU BuildMenu() {
     HMENU bar = CreatePopupMenu();
     HMENU f = CreatePopupMenu(), v = CreatePopupMenu(), n = CreatePopupMenu(), h = CreatePopupMenu();
     AppendMenuW(f, MF_STRING, ID_OPEN, L"&Open...\tCtrl+O");
+    AppendMenuW(f, MF_STRING, ID_DELETE, L"&Delete (Recycle Bin)\tDel");
     AppendMenuW(f, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(f, MF_STRING, ID_EXIT, L"E&xit\tAlt+F4");
     AppendMenuW(n, MF_STRING, ID_PREV, L"&Previous\tLeft");
@@ -526,7 +564,7 @@ static HMENU BuildMenu() {
     AppendMenuW(v, MF_STRING, ID_ACTUAL, L"&Actual size\t1");
     AppendMenuW(v, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(v, MF_STRING, ID_ROTR, L"Rotate &right\tR");
-    AppendMenuW(v, MF_STRING, ID_ROTL, L"Rotate &left\tShift+R");
+    AppendMenuW(v, MF_STRING, ID_ROTL, L"Rotate &left\tL / Shift+R");
     AppendMenuW(v, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(v, MF_STRING, ID_PAUSE, L"&Pause/resume animation\tP");
     AppendMenuW(v, MF_STRING, ID_BG, L"Change &background\tB");
@@ -554,6 +592,7 @@ static void Command(int id) {
         case ID_ROTR: Rotate(true); break;
         case ID_ROTL: Rotate(false); break;
         case ID_FULL: ToggleFullscreen(); break;
+        case ID_DELETE: DeleteCurrent(); break;
         case ID_PAUSE: g_paused = !g_paused; if (g_paused) StopAnim(); else ArmAnim(); break;
         case ID_BG:
             S.bgMode = (S.bgMode + 1) % 3;
@@ -561,7 +600,7 @@ static void Command(int id) {
             break;
         case ID_ABOUT:
             MessageBoxW(S.hwnd,
-                L"Feather Image and Video Viewer 0.2\n\nLightweight viewer that also runs in Windows Safe Mode "
+                L"Feather Image and Video Viewer 0.3\n\nLightweight viewer that also runs in Windows Safe Mode "
                 L"(native Win32, software rendering, no network, no extra dependencies).\n\n"
                 L"Formats: JPEG, PNG, BMP, animated GIF, TIFF, ICO, EMF, WMF.\n"
                 L"Video playback: planned.\n\nDesigned and developed by Akshaya Simha.",
@@ -609,7 +648,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 case '0': case VK_NUMPAD0: Command(ID_FIT); break;
                 case '1': case VK_NUMPAD1: Command(ID_ACTUAL); break;
                 case 'R': Rotate(!shift); break;
+                case VK_DELETE: DeleteCurrent(); break;
                 case 'B': Command(ID_BG); break;
+                case 'L': Rotate(false); break;
                 case 'P': g_paused = !g_paused; if (g_paused) StopAnim(); else ArmAnim(); break;
                 case 'O': if (ctrl) DoOpenDialog(); break;
                 case VK_F11: case 'F': ToggleFullscreen(); break;

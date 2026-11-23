@@ -2,7 +2,7 @@
 ; service, no .NET, so it also runs in Safe Mode). Picks the 64-bit or 32-bit program automatically.
 Unicode true
 !define APP "Feather Image and Video Viewer"
-!define VER "0.2.0"
+!define VER "0.3.0"
 !define PUB "Akshaya Simha"
 !define UNKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\FeatherViewer"
 

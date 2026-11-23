@@ -29,7 +29,7 @@ public sealed class MpvEngine : IVideoEngine
     public string Name => "libmpv (extended engine)";
     public VideoCaps Capabilities => VideoCaps.ExactSeek | VideoCaps.FrameStep | VideoCaps.AbLoop | VideoCaps.SubtitleTracks | VideoCaps.AudioTracks | VideoCaps.Chapters |
         VideoCaps.Screenshot | VideoCaps.ExternalSubtitles | VideoCaps.ExternalAudio | VideoCaps.Delays | VideoCaps.DetailedInfo | VideoCaps.SubtitleStyle |
-        VideoCaps.Rotation | VideoCaps.Aspect | VideoCaps.Amplify;
+        VideoCaps.Rotation | VideoCaps.Aspect | VideoCaps.Amplify | VideoCaps.Loudness;
     public FrameworkElement Surface => _host;
 
     public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked;
@@ -49,7 +49,7 @@ public sealed class MpvEngine : IVideoEngine
                 ["wid"] = hwnd.ToInt64().ToString(CultureInfo.InvariantCulture),
                 ["terminal"] = "no", ["config"] = "no", ["idle"] = "yes", ["osc"] = "no", ["osd-level"] = "0",
                 ["input-default-bindings"] = "no", ["input-vo-keyboard"] = "no", ["input-cursor"] = "no", ["cursor-autohide"] = "no",
-                ["keep-open"] = "yes", ["hr-seek"] = "yes", ["volume-max"] = "200", ["audio-display"] = "no",
+                ["keep-open"] = "yes", ["hr-seek"] = "yes", ["volume-max"] = "300", ["audio-display"] = "no",
                 ["ytdl"] = "no",                                   // never try to reach websites
                 ["load-scripts"] = "no", ["load-stats-overlay"] = "no", ["load-osd-console"] = "no", ["load-auto-profiles"] = "no",
                 ["demuxer-max-bytes"] = "48MiB", ["demuxer-max-back-bytes"] = "16MiB",   // keep memory modest
@@ -103,7 +103,18 @@ public sealed class MpvEngine : IVideoEngine
     public void Seek(double seconds, bool exact) =>
         _player?.TryCommand("seek", Math.Max(0, seconds).ToString("0.###", CultureInfo.InvariantCulture), exact ? "absolute+exact" : "absolute+keyframes");
 
-    public double Volume { get => _player?.GetDouble("volume") ?? 80; set => _player?.SetDouble("volume", Math.Clamp(value, 0, 200)); }
+    public double Volume { get => _player?.GetDouble("volume") ?? 80; set => _player?.SetDouble("volume", Math.Clamp(value, 0, 300)); }
+    private bool _boost;
+    public bool LoudnessBoost
+    {
+        get => _boost;
+        set
+        {
+            _boost = value;
+            // dynaudnorm lifts quiet passages and evens out loud ones; acompressor + makeup adds extra headroom for very quiet films
+            _player?.SetString("af", value ? "lavfi=[dynaudnorm=f=200:g=21:p=0.95:m=30:s=12,acompressor=threshold=0.06:ratio=6:attack=10:release=200:makeup=4]" : "");
+        }
+    }
     public bool Muted { get => _player?.GetBool("mute") ?? false; set => _player?.SetBool("mute", value); }
     public double Speed { get => _player?.GetDouble("speed") ?? 1; set => _player?.SetDouble("speed", Math.Clamp(value, 0.25, 4)); }
     public bool Loop { get => _loop; set { _loop = value; _player?.SetString("loop-file", value ? "inf" : "no"); } }

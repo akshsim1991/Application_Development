@@ -57,8 +57,9 @@ public sealed class AppSettings
     public bool VideoLoop { get; set; }
     public int FullscreenControlsHideSeconds { get; set; } = 5;     // full screen: controls appear on mouse movement and hide again after this long
     public bool KeepVideoPlayingAcrossTabs { get; set; } = true;   // a video keeps playing (sound) when another tab is shown
-    public int VideoVolume { get; set; } = 80;            // 0-200 (above 100 amplifies)
+    public int VideoVolume { get; set; } = 80;            // 0-300 (above 100 amplifies)
     public bool VideoMuted { get; set; }
+    public bool VideoLoudnessBoost { get; set; }          // lifts quiet audio (extended engine)
     public bool HardwareDecoding { get; set; } = true;
     public bool AutoLoadSubtitles { get; set; } = true;
     public string PreferredSubtitleLanguages { get; set; } = "";   // e.g. "en,eng"
@@ -87,7 +88,7 @@ public sealed class AppSettings
         ThumbnailCacheItems = Math.Clamp(ThumbnailCacheItems, 50, 5000);
         ThumbnailParallelism = Math.Clamp(ThumbnailParallelism, 1, 8);
         MaxRecentFiles = Math.Clamp(MaxRecentFiles, 0, 50);
-        VideoVolume = Math.Clamp(VideoVolume, 0, 200);
+        VideoVolume = Math.Clamp(VideoVolume, 0, 300);
         FullscreenControlsHideSeconds = Math.Clamp(FullscreenControlsHideSeconds, 2, 15);
         SubtitleSize = Math.Clamp(SubtitleSize, 20, 120);
         SubtitleBackgroundOpacity = Math.Clamp(SubtitleBackgroundOpacity, 0, 100);

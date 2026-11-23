@@ -104,6 +104,7 @@ public sealed class MediaFoundationEngine : IVideoEngine
     public void Seek(double seconds, bool exact) { if (_opened) { _me.Position = TimeSpan.FromSeconds(Math.Max(0, seconds)); UpdateSubtitle(); } }
 
     public double Volume { get => _volume; set { _volume = Math.Clamp(value, 0, 100); ApplyVolume(); } }   // no amplification on this engine
+    public bool LoudnessBoost { get; set; }   // not supported by the built-in engine
     public bool Muted { get => _muted; set { _muted = value; ApplyVolume(); } }
     public double Speed { get => _me.SpeedRatio; set => _me.SpeedRatio = Math.Clamp(value, 0.25, 4); }
     public bool Loop { get => _loop; set => _loop = value; }

@@ -66,6 +66,7 @@
 
                     <StackPanel Grid.Column="2" Orientation="Horizontal">
                         <Button x:Name="SpeedButton" Content="{Binding SpeedText}" Style="{StaticResource TextButton}" Padding="8,4" MinWidth="48" ToolTip="Playback speed ([ and ])" Click="SpeedButton_Click" AutomationProperties.Name="Playback speed" />
+                        <Button Content="{Binding LoudnessText}" Style="{StaticResource TextButton}" Padding="8,4" ToolTip="Make quiet audio louder (dialogue boost). Volume goes up to 300% with the extended engine." Command="{Binding LoudnessCommand}" AutomationProperties.Name="Quiet audio boost" />
                         <Button x:Name="SubtitleButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconSubtitles}" ToolTip="Subtitles" Click="SubtitleButton_Click" AutomationProperties.Name="Subtitles" />
                         <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconAudio}" ToolTip="Audio tracks" Click="AudioButton_Click" AutomationProperties.Name="Audio tracks" />
                         <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconCamera}" ToolTip="Save a screenshot of this frame (Ctrl+S)" Command="{Binding ScreenshotCommand}" AutomationProperties.Name="Screenshot" />

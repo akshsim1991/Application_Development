@@ -151,7 +151,7 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         get => _volume;
         set
         {
-            var max = Has(VideoCaps.Amplify) ? 200 : 100;
+            var max = Has(VideoCaps.Amplify) ? 300 : 100;
             var v = Math.Clamp(value, 0, max);
             if (!Set(ref _volume, v)) return;
             if (_engine != null) _engine.Volume = v;
@@ -160,6 +160,24 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         }
     }
     public double VolumeMax => Has(VideoCaps.Amplify) ? 200 : 100;
+    private bool _boost;
+    public bool LoudnessEnabled => _boost;
+    public string LoudnessText => _boost ? "Boost: on" : "Boost";
+    public RelayCommand LoudnessCommand => _loudCmd ??= new RelayCommand(ToggleLoudness, () => Active);
+    private RelayCommand? _loudCmd;
+    private void ToggleLoudness()
+    {
+        if (!Has(VideoCaps.Loudness))
+        {
+            Toast("Quiet-audio boost and volume above 100% need the extended video engine (Settings > Video).");
+            return;
+        }
+        _boost = !_boost;
+        if (_engine != null) _engine.LoudnessBoost = _boost;
+        _settings().VideoLoudnessBoost = _boost;
+        OnPropertyChanged(nameof(LoudnessEnabled)); OnPropertyChanged(nameof(LoudnessText));
+        Toast(_boost ? "Quiet-audio boost on" : "Quiet-audio boost off");
+    }
     public bool IsMuted { get => _muted; set { if (Set(ref _muted, value)) { if (_engine != null) _engine.Muted = value; _settings().VideoMuted = value; } } }
     public bool LoopEnabled { get => _loop; set { if (Set(ref _loop, value)) { if (_engine != null) _engine.Loop = value; _settings().VideoLoop = value; } } }
 
@@ -242,9 +260,11 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
             Surface = engine.Surface;
         }
         var s = _settings();
-        _volume = Math.Clamp(s.VideoVolume, 0, engine.Capabilities.HasFlag(VideoCaps.Amplify) ? 200 : 100);
+        _volume = Math.Clamp(s.VideoVolume, 0, engine.Capabilities.HasFlag(VideoCaps.Amplify) ? 300 : 100);
         _muted = s.VideoMuted; _loop = s.VideoLoop;
-        engine.Volume = _volume; engine.Muted = _muted; engine.Loop = _loop; engine.Speed = 1;
+        engine.Volume = _volume; engine.Muted = _muted;
+        _boost = s.VideoLoudnessBoost && engine.Capabilities.HasFlag(VideoCaps.Loudness); engine.LoudnessBoost = _boost;
+        OnPropertyChanged(nameof(LoudnessEnabled)); OnPropertyChanged(nameof(LoudnessText)); engine.Loop = _loop; engine.Speed = 1;
         engine.ApplySettings(s);
         OnPropertyChanged(nameof(Volume)); OnPropertyChanged(nameof(VolumeMax)); OnPropertyChanged(nameof(IsMuted)); OnPropertyChanged(nameof(LoopEnabled)); OnPropertyChanged(nameof(EngineName));
         RaiseCaps();

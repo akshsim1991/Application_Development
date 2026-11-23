@@ -7,7 +7,7 @@ namespace FeatherView.Video;
 public enum VideoCaps
 {
     None = 0, ExactSeek = 1, FrameStep = 2, AbLoop = 4, SubtitleTracks = 8, AudioTracks = 16, Chapters = 32, Screenshot = 64,
-    ExternalSubtitles = 128, ExternalAudio = 256, Delays = 512, DetailedInfo = 1024, SubtitleStyle = 2048, Rotation = 4096, Aspect = 8192, Amplify = 16384,
+    ExternalSubtitles = 128, ExternalAudio = 256, Delays = 512, DetailedInfo = 1024, SubtitleStyle = 2048, Rotation = 4096, Aspect = 8192, Amplify = 16384, Loudness = 32768,
 }
 
 public sealed record TrackInfo(int Id, string Label, bool Selected);
@@ -44,8 +44,9 @@ public interface IVideoEngine : IDisposable
     double Duration { get; }
     void Seek(double seconds, bool exact);
 
-    double Volume { get; set; }        // 0-200 (above 100 only where Amplify is supported)
+    double Volume { get; set; }        // 0-300 (above 100 only where Amplify is supported)
     bool Muted { get; set; }
+    bool LoudnessBoost { get; set; }   // raises quiet speech/dialogue (only where Loudness is supported)
     double Speed { get; set; }
     bool Loop { get; set; }
 

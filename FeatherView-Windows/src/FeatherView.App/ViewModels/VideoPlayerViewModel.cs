@@ -287,8 +287,14 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         e.SurfaceClicked -= OnSurfaceClicked; e.SurfaceDoubleClicked -= OnSurfaceDoubleClicked; e.SurfaceWheel -= OnSurfaceWheel; e.SurfaceMoved -= RegisterActivity;
     }
 
-    private void OnSurfaceClicked() => TogglePlay();
-    private void OnSurfaceDoubleClicked() => ToggleFullscreenRequested?.Invoke();
+    private long _lastClickTick;
+    private void OnSurfaceClicked() { _lastClickTick = Environment.TickCount64; TogglePlay(); }
+    private void OnSurfaceDoubleClicked()
+    {
+        // the first click of a double click already paused/resumed: undo that so a double click only switches full screen
+        if (Environment.TickCount64 - _lastClickTick < 700) { TogglePlay(); _lastClickTick = 0; }
+        ToggleFullscreenRequested?.Invoke();
+    }
     private void OnSurfaceWheel(int delta) => Volume += delta > 0 ? 5 : -5;
 
     private void OnOpened()

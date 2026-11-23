@@ -10,7 +10,7 @@ namespace FeatherView.Video;
 public sealed class MpvHost : HwndHost
 {
     private const int WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_CLIPSIBLINGS = 0x04000000;
-    private const int WM_NCHITTEST = 0x0084, WM_LBUTTONDOWN = 0x0201, WM_MOUSEWHEEL = 0x020A, WM_SIZE = 0x0005, WM_MOUSEMOVE = 0x0200, WM_SETCURSOR = 0x0020, HTCLIENT = 1;
+    private const int WM_NCHITTEST = 0x0084, WM_LBUTTONDOWN = 0x0201, WM_LBUTTONDBLCLK = 0x0203, WM_MOUSEWHEEL = 0x020A, WM_SIZE = 0x0005, WM_MOUSEMOVE = 0x0200, WM_SETCURSOR = 0x0020, HTCLIENT = 1;
 
     private delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -67,6 +67,8 @@ public sealed class MpvHost : HwndHost
                 else { _lastClick = now; Clicked?.Invoke(); }
                 handled = true; return IntPtr.Zero;
             }
+            case WM_LBUTTONDBLCLK:          // windows whose class has CS_DBLCLKS deliver the second click of a double click as this message
+                _lastClick = 0; DoubleClicked?.Invoke(); handled = true; return IntPtr.Zero;
             case WM_MOUSEWHEEL: Wheel?.Invoke((short)((wParam.ToInt64() >> 16) & 0xFFFF)); handled = true; return IntPtr.Zero;
             case WM_SIZE: PrepareChildren(); break;
             case WM_MOUSEMOVE:

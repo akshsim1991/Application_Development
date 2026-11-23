@@ -1,3 +1,6 @@
+Feather View 2.1.6
+- Rotate left, rotate right, flip, copy and delete are now always in the toolbar, with colour-coded icons (amber rotate, purple flip, teal copy, red delete, gold favourite, green slideshow)
+
 Feather View 2.1.5
 - FIXED: GIF files showed "This file could not be opened" (the animation data was used from the wrong thread); animated GIFs open and play again
 

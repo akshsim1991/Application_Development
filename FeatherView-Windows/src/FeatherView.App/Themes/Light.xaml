@@ -10,4 +10,12 @@
     <SolidColorBrush x:Key="AccentBrush" Color="#FF1F6FEB" />
     <SolidColorBrush x:Key="AccentSoftBrush" Color="#FFDCE8FD" />
     <SolidColorBrush x:Key="DangerBrush" Color="#FFD1242F" />
+    <SolidColorBrush x:Key="ToolRotateBrush" Color="#FFD9730D" />
+    <SolidColorBrush x:Key="ToolFlipBrush" Color="#FF8250DF" />
+    <SolidColorBrush x:Key="ToolDeleteBrush" Color="#FFD1242F" />
+    <SolidColorBrush x:Key="ToolCopyBrush" Color="#FF0E8F84" />
+    <SolidColorBrush x:Key="ToolStarBrush" Color="#FFC98A00" />
+    <SolidColorBrush x:Key="ToolPlayBrush" Color="#FF1A9D55" />
+    <SolidColorBrush x:Key="ToolGalleryBrush" Color="#FF1F6FEB" />
+    <SolidColorBrush x:Key="ToolInfoBrush" Color="#FF0A7CC4" />
 </ResourceDictionary>

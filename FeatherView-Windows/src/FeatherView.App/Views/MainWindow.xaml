@@ -333,11 +333,15 @@
                                     <Viewbox Width="12" Height="12"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconChevronDown}" Stroke="{DynamicResource SubtleTextBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" /></Canvas></Viewbox>
                                 </StackPanel>
                             </Button>
-                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)" IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" AutomationProperties.Name="Gallery" Margin="6,0,1,0" />
-                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" AutomationProperties.Name="Rotate right (R)" Margin="6,0,1,0"/>
+                            <ToggleButton Style="{StaticResource IconToggle}" Foreground="{DynamicResource ToolGalleryBrush}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)" IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" AutomationProperties.Name="Gallery" Margin="6,0,1,0" />
+                            <Rectangle Width="1" Margin="8,6" Fill="{DynamicResource BorderBrushSoft}" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolRotateBrush}" Tag="{StaticResource IconRotateLeft}" ToolTip="Rotate left (L)" Command="{Binding RotateLeftCommand}" AutomationProperties.Name="Rotate left" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolRotateBrush}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" AutomationProperties.Name="Rotate right" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolFlipBrush}" Tag="{StaticResource IconFlip}" ToolTip="Flip horizontally" Command="{Binding FlipCommand}" AutomationProperties.Name="Flip horizontally" />
                             <Button ToolTip="Slideshow (S)" Command="{Binding ToggleSlideshowCommand}" Margin="6,0,1,0" AutomationProperties.Name="Slideshow">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                        <Setter Property="Foreground" Value="{DynamicResource ToolPlayBrush}" />
                                         <Setter Property="Tag" Value="{StaticResource IconPlay}" />
                                         <Style.Triggers><DataTrigger Binding="{Binding IsSlideshow}" Value="True"><Setter Property="Tag" Value="{StaticResource IconPause}" /></DataTrigger></Style.Triggers>
                                     </Style>
@@ -346,8 +350,19 @@
                         </StackPanel>
                         <TextBlock Grid.Column="1" Text="{Binding StatusText}" Margin="16,0" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
                         <StackPanel Grid.Column="2" Orientation="Horizontal">
-                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconStar}" ToolTip="Favorite (Ctrl+D)" IsChecked="{Binding IsFavorite, Mode=OneWay}" Command="{Binding ToggleFavoriteCommand}" AutomationProperties.Name="Favorite" />
-                            <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconInfo}" ToolTip="Details (I)" IsChecked="{Binding ShowInfo}" AutomationProperties.Name="Details panel" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolCopyBrush}" Tag="{StaticResource IconCopy}" ToolTip="Copy image (Ctrl+C)" Command="{Binding CopyCommand}" AutomationProperties.Name="Copy" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolDeleteBrush}" Tag="{StaticResource IconTrash}" ToolTip="Delete - moves to the Recycle Bin (Del)" Command="{Binding DeleteCommand}" AutomationProperties.Name="Delete" />
+                            <Rectangle Width="1" Margin="8,6" Fill="{DynamicResource BorderBrushSoft}" />
+                            <Button ToolTip="Favorite (Ctrl+D)" Command="{Binding ToggleFavoriteCommand}" AutomationProperties.Name="Favorite">
+                                <Button.Style>
+                                    <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                        <Setter Property="Tag" Value="{StaticResource IconStar}" />
+                                        <Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+                                        <Style.Triggers><DataTrigger Binding="{Binding IsFavorite}" Value="True"><Setter Property="Foreground" Value="{DynamicResource ToolStarBrush}" /></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <ToggleButton Style="{StaticResource IconToggle}" Foreground="{DynamicResource ToolInfoBrush}" Tag="{StaticResource IconInfo}" ToolTip="Details (I)" IsChecked="{Binding ShowInfo}" AutomationProperties.Name="Details panel" />
                             <Button x:Name="MoreButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconMore}" ToolTip="More" Click="MoreButton_Click" AutomationProperties.Name="More options" />
                         </StackPanel>
                     </Grid>

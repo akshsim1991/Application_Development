@@ -61,6 +61,41 @@ public partial class MainWindow : Window
         DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
     }
 
+    // ---- tabs ----
+    private void TitleBar_SizeChanged(object sender, SizeChangedEventArgs e) => _vm.Tabs.SetAvailableWidth(e.NewSize.Width - 52 - 150 - 36);
+
+    private static TabItemViewModel? TabOf(object sender) => (sender as FrameworkElement)?.DataContext as TabItemViewModel;
+
+    private void Tab_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (TabOf(sender) is { } tab) { _vm.Tabs.Activate(tab); e.Handled = true; }
+    }
+
+    private void Tab_MouseDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ChangedButton == MouseButton.Middle && TabOf(sender) is { } tab) { _vm.Tabs.CloseTabCommand.Execute(tab); e.Handled = true; }
+    }
+
+    private void TabClose_Click(object sender, RoutedEventArgs e)
+    {
+        if (TabOf(sender) is { } tab) _vm.Tabs.CloseTabCommand.Execute(tab);
+        e.Handled = true;
+    }
+
+    private void Tab_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (TabOf(sender) is not { } tab) return;
+        var menu = new ContextMenu();
+        menu.Items.Add(Item("Rename tab...", () => _vm.Tabs.RenameTabCommand.Execute(tab)));
+        menu.Items.Add(Item("Duplicate tab", () => _vm.Tabs.DuplicateTabCommand.Execute(tab)));
+        menu.Items.Add(Item("Close tab", () => _vm.Tabs.CloseTabCommand.Execute(tab), gesture: "Ctrl+W"));
+        menu.Items.Add(Item("Close other tabs", () => _vm.Tabs.CloseOtherTabsCommand.Execute(tab), enabled: _vm.Tabs.Count > 1));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Reopen closed tab", () => _vm.Tabs.ReopenTabCommand.Execute(null), enabled: _vm.Tabs.CanReopen, gesture: "Ctrl+Shift+T"));
+        menu.PlacementTarget = (UIElement)sender; menu.IsOpen = true;
+        e.Handled = true;
+    }
+
     // ---- custom title bar ----
     private void Minimize_Click(object sender, RoutedEventArgs e) => SystemCommands.MinimizeWindow(this);
     private void Close_Click(object sender, RoutedEventArgs e) => SystemCommands.CloseWindow(this);
@@ -152,6 +187,7 @@ public partial class MainWindow : Window
         var menu = new ContextMenu();
         menu.Items.Add(Item("Open file...", () => _vm.OpenFileCommand.Execute(null), gesture: "Ctrl+O"));
         menu.Items.Add(Item("Open folder...", () => _vm.OpenFolderCommand.Execute(null), gesture: "Ctrl+Shift+O"));
+        menu.Items.Add(Item("Open folder in a new tab...", () => _vm.OpenFolderInNewTabCommand.Execute(null)));
         var recent = new MenuItem { Header = "Recent files", IsEnabled = _vm.RecentFiles.Count > 0 };
         foreach (var p in _vm.RecentFiles) { var path = p; recent.Items.Add(Item(System.IO.Path.GetFileName(path), () => _vm.OpenRecentCommand.Execute(path))); }
         menu.Items.Add(recent);

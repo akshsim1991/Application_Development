@@ -26,6 +26,7 @@ public sealed class AppSettings
     public double WindowWidth { get; set; } = 1100;
     public double WindowHeight { get; set; } = 720;
     public bool WindowMaximized { get; set; }
+    public bool RestoreSession { get; set; } = true;     // reopen the previous tabs at start-up
     public int MaxRecentFiles { get; set; } = 12;
     public List<string> RecentFiles { get; set; } = new();
 

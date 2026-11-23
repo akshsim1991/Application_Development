@@ -105,7 +105,7 @@ public partial class VideoPlayerView : UserControl
     {
         if (Vm is not { } vm) return;
         var menu = new ContextMenu();
-        menu.Items.Add(Item("Go to time... (Ctrl+T)", () => vm.GoToTimeCommand.Execute(null)));
+        menu.Items.Add(Item("Go to time... (Ctrl+J)", () => vm.GoToTimeCommand.Execute(null)));
         menu.Items.Add(Item("Rotate video 90°", () => vm.RotateCommand.Execute(null), enabled: vm.CanRotate));
         var aspect = new MenuItem { Header = "Aspect ratio", IsEnabled = vm.CanAspect };
         foreach (var (label, value) in new (string, string?)[] { ("Original", null), ("16:9", "16:9"), ("4:3", "4:3"), ("21:9", "21:9"), ("1:1", "1:1") })

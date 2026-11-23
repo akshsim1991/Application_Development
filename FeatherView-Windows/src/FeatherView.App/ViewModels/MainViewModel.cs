@@ -8,6 +8,7 @@ using FeatherView.Core.Infrastructure;
 using FeatherView.Core.Media;
 using FeatherView.Core.Mvvm;
 using FeatherView.Core.Settings;
+using FeatherView.Core.Tabs;
 using System.Windows.Media;
 using FeatherView.Services;
 
@@ -62,6 +63,7 @@ public sealed class MainViewModel : ObservableObject
     {
         Settings = settings; _settingsService = settingsService; _thumbs = thumbs; _dialogs = dialogs; _theme = theme; _log = log;
         Video = videoFactory(this);
+        Tabs = new TabsViewModel(this, dialogs);
         Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
         Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
         Gallery.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex)) OnPropertyChanged(nameof(SelectedCountText)); };
@@ -103,6 +105,7 @@ public sealed class MainViewModel : ObservableObject
         ActualSizeCommand = new RelayCommand(() => Viewport?.ActualSize());
         ReloadCommand = new RelayCommand(Reload);
         AboutCommand = new RelayCommand(() => _dialogs.Info("Feather View", $"Feather View {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3)}\n\nA lightweight, offline photo and video viewer. No ads, no telemetry.\nDesigned and developed by Akshaya Simha."));
+        OpenFolderInNewTabCommand = new RelayCommand(() => { var p = _dialogs.PickFolder(); if (p != null) Tabs.OpenInNewTab(p); });
         ShowSectionCommand = new RelayCommand(p => ShowSection(p as string));
         SetFilterCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<QuickFilter>(n, out var f)) { Filter = f; ApplyFilter(); } });
         ClearSearchCommand = new RelayCommand(() => { SearchText = ""; ShowSearch = false; Section = NavSection.Gallery; });
@@ -127,6 +130,8 @@ public sealed class MainViewModel : ObservableObject
     public AppSettings Settings { get; private set; }
     public GalleryViewModel Gallery { get; }
     public VideoPlayerViewModel Video { get; }
+    public TabsViewModel Tabs { get; }
+    public string? SessionPath { get; set; }
     public IViewport? Viewport { get; set; }
     public UpdateController? Updates { get; set; }
     public ObservableCollection<InfoLine> Info { get; } = new();
@@ -214,6 +219,7 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ActualSizeCommand { get; }
     public RelayCommand ReloadCommand { get; }
     public RelayCommand AboutCommand { get; }
+    public RelayCommand OpenFolderInNewTabCommand { get; }
     public RelayCommand ShowSectionCommand { get; }
     public RelayCommand SetFilterCommand { get; }
     public RelayCommand ClearSearchCommand { get; }
@@ -261,6 +267,7 @@ public sealed class MainViewModel : ObservableObject
         _source = list;
         EmptyMessage = "Open a photo or a folder, or drop them here.";
         int idx = RebuildFiles(selectFile, 0, out _);
+        Tabs.UpdateActiveTitle();
         if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = "No photos or videos in this folder"; return; }
         if (gallery) { Mode = ViewMode.Gallery; _index = idx; UpdateStatus(); }
         else { Mode = ViewMode.Photo; _ = ShowIndexAsync(idx); }
@@ -340,6 +347,7 @@ public sealed class MainViewModel : ObservableObject
         RebuildFiles(null, 0, out _);
         Mode = ViewMode.Gallery; CurrentImage = null; _index = _files.Count == 0 ? -1 : 0;
         StatusText = _files.Count == 0 ? emptyMessage : "";
+        Tabs.UpdateActiveTitle();
     }
 
     private void ToggleFavorite()
@@ -376,6 +384,53 @@ public sealed class MainViewModel : ObservableObject
         var cts = _histCts = new CancellationTokenSource();
         var shapes = await Task.Run(() => HistogramService.Compute(bs));
         if (!cts.IsCancellationRequested) Histogram = shapes;
+    }
+
+    // ---- tab state ----
+    public string FolderPath => _folderPath;
+
+    public void CaptureTabState(TabState t)
+    {
+        t.Section = Section == NavSection.Search ? "Gallery" : Section.ToString();
+        t.FolderPath = string.IsNullOrEmpty(_folderPath) ? null : _folderPath;
+        t.SelectedPath = Current?.Path ?? Gallery.Selected?.File.Path;
+        t.Filter = Filter.ToString();
+        t.Search = _searchText;
+        t.Mode = Mode.ToString();
+    }
+
+    /// <summary>Shows a tab's saved state: re-reads its folder (cheap) instead of keeping anything heavy in memory.</summary>
+    public void RestoreTabState(TabState t)
+    {
+        StopSlideshow(); Video.Stop(); StopGif();
+        if (t.Section == nameof(NavSection.Favorites)) { LoadCollection(Settings.Favorites, NavSection.Favorites, "No favorites yet. Press Ctrl+D on a picture or video to add it."); ApplyTabFilter(t); return; }
+        if (t.Section == nameof(NavSection.Recent)) { LoadCollection(Settings.RecentFiles, NavSection.Recent, "Nothing opened recently."); ApplyTabFilter(t); return; }
+        if (string.IsNullOrEmpty(t.FolderPath) || !Directory.Exists(t.FolderPath)) { ClearView(); return; }
+        LoadFolder(t.FolderPath, t.SelectedPath, gallery: t.Mode == nameof(ViewMode.Gallery));
+        ApplyTabFilter(t);
+    }
+
+    private void ApplyTabFilter(TabState t)
+    {
+        bool hasFilter = Enum.TryParse<QuickFilter>(t.Filter, out var f) && f != QuickFilter.All;
+        if (!hasFilter && string.IsNullOrEmpty(t.Search)) return;
+        if (hasFilter) Filter = Enum.Parse<QuickFilter>(t.Filter);
+        _searchText = t.Search ?? ""; OnPropertyChanged(nameof(SearchText)); ShowSearch = _searchText.Length > 0;
+        if (ShowSearch) Section = NavSection.Search;
+        ApplyFilter();
+    }
+
+    /// <summary>Empty view for a new tab.</summary>
+    private void ClearView()
+    {
+        _folderPath = ""; _source = new(); Section = NavSection.Gallery; Filter = QuickFilter.All;
+        _searchText = ""; OnPropertyChanged(nameof(SearchText)); ShowSearch = false;
+        EmptyMessage = "Open a photo or a folder, or drop them here.";
+        RebuildFiles(null, 0, out _);
+        _base = null; CurrentImage = null; Mode = ViewMode.Gallery; _index = -1; StatusText = "";
+        Info.Clear(); TakenLines.Clear(); ExifLines.Clear(); Histogram = null; InfoTitle = InfoSubtitle = InfoDimensions = "";
+        OnPropertyChanged(nameof(HasTaken)); OnPropertyChanged(nameof(HasExif)); OnPropertyChanged(nameof(IsFavorite));
+        Tabs.UpdateActiveTitle();
     }
 
     private void Reload()
@@ -639,6 +694,14 @@ public sealed class MainViewModel : ObservableObject
 
     public void SaveSettings() => _settingsService.Save(Settings);
 
-    public void Shutdown() { Video.Dispose(); SaveSettings(); }
+    public void Shutdown()
+    {
+        if (SessionPath != null)
+        {
+            var store = new SessionStore(SessionPath);
+            if (Settings.RestoreSession) store.Save(Tabs.ToSession()); else store.Delete();
+        }
+        Video.Dispose(); SaveSettings();
+    }
     public void RefreshRecent() { RecentFiles.Clear(); foreach (var p in Settings.RecentFiles.Where(File.Exists)) RecentFiles.Add(p); }
 }

@@ -33,6 +33,7 @@
 
                 <TextBlock Text="General" Style="{StaticResource SectionTitle}" />
                 <CheckBox Content="Remember window size and position" IsChecked="{Binding RememberWindow}" />
+                <CheckBox Content="Reopen my tabs when Feather View starts" IsChecked="{Binding RestoreSession}" />
 
                 <TextBlock Text="Browsing" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="Sort files by" Margin="0,0,0,2" />
@@ -123,7 +124,7 @@
 
                 <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionTitle}" />
                 <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{DynamicResource SubtleTextBrush}"
-                           Text="Left / Right: previous / next      Home / End: first / last&#10;G: gallery      S: slideshow      I: details      F or F11: full screen&#10;R / L: rotate right / left      + / -: zoom      0: fit      1: actual size&#10;Ctrl+O: open file      Ctrl+Shift+O: open folder      Ctrl+C: copy image&#10;Del: delete to Recycle Bin      F5: reload folder      Esc: back / exit full screen" />
+                           Text="Left / Right: previous / next      Home / End: first / last&#10;G: gallery      S: slideshow      I: details      F or F11: full screen&#10;R / L: rotate right / left      + / -: zoom      0: fit      1: actual size&#10;Ctrl+O: open file      Ctrl+Shift+O: open folder      Ctrl+C: copy image&#10;Ctrl+T: new tab      Ctrl+W: close tab      Ctrl+Shift+T: reopen closed tab      Ctrl+Tab: next tab&#10;Del: delete to Recycle Bin      F5: reload folder      Esc: back / exit full screen" />
 
                 <TextBlock Text="File associations" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="The installer adds Feather View to the 'Open with' list. Windows lets only you choose the default app." TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,0,0,8" />

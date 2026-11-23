@@ -43,6 +43,18 @@ All items below are `built, untested on Windows` (the logic parts - aspect ratio
 | Status bar: "248 items - 1 selected", Set as Wallpaper, Print, Open Folder, full screen | Real actions (wallpaper asks first and stores a PNG copy in the app data folder; print uses the Windows print dialog) |
 Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/details toggles (Ctrl+B / T / I).
 
+## Tabs (V2.1 item brought forward)
+| Item | Status |
+|---|---|
+| Tab strip in the title bar (new, close, switch, middle-click close, right-click menu) | built, untested on Windows |
+| Independent state per tab: folder or collection (Favorites/Recent), selected file, view mode, quick filter, search | built, untested on Windows; the state logic is unit-tested |
+| Rename, duplicate, close others, reopen closed tab (last 10), up to 20 tabs | logic tested (Core); UI untested on Windows |
+| Ctrl+T new, Ctrl+W close, Ctrl+Shift+T reopen, Ctrl+Tab / Ctrl+Shift+Tab switch | built, untested on Windows (Ctrl+T used to be "go to time", now Ctrl+J) |
+| Open folder in a new tab (More menu) | built, untested on Windows |
+| Session restore: tabs reopen at start-up (setting "Reopen my tabs") | logic tested (Core); wiring untested on Windows |
+| Low memory by design: inactive tabs hold a small record only; switching re-reads the folder, decoded images exist only for the active tab | by design |
+Not done: dragging tabs to reorder, separate windows, tab-specific zoom position, pinned tabs.
+
 ## Phase 3 - Video playback (engine option A: Windows built-in + optional libmpv)
 `built, untested on Windows` = code complete; the libmpv wrapper itself **is** tested against a real libmpv 0.37 in the dev container (load, tracks, info, exact seek, frame step, speed, A-B, volume, subtitles/audio selection, EOF/error events). The WPF player UI and window embedding have never run.
 

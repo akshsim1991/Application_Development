@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using FeatherView.Core.Infrastructure;
 using FeatherView.Core.Settings;
+using FeatherView.Core.Tabs;
 using FeatherView.Core.Video;
 using FeatherView.Services;
 using FeatherView.ViewModels;
@@ -46,8 +47,14 @@ public partial class App : Application
         MainWindow = window;
         window.Show();
 
+        vm.SessionPath = Path.Combine(appData, "FeatherView", "session.json");
+        bool restored = false;
+        if (settings.RestoreSession && new SessionStore(vm.SessionPath, log).Load() is { Tabs.Count: > 0 } session)
+        {
+            vm.Tabs.LoadSession(session); restored = true;
+        }
         var arg = e.Args.FirstOrDefault(a => !a.StartsWith('-'));
-        if (arg != null) vm.OpenPath(arg);
+        if (arg != null) { if (restored) vm.Tabs.OpenInNewTab(arg); else vm.OpenPath(arg); }
 
         // Quiet daily update check a few seconds after start-up; the user is asked before anything is downloaded.
         _ = Dispatcher.InvokeAsync(async () =>

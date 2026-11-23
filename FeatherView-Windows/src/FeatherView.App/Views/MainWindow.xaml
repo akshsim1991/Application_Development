@@ -32,7 +32,12 @@
         <KeyBinding Key="M" Command="{Binding Video.MuteCommand}" />
         <KeyBinding Key="A" Command="{Binding Video.AbLoopCommand}" />
         <KeyBinding Key="S" Modifiers="Ctrl" Command="{Binding Video.ScreenshotCommand}" />
-        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding Video.GoToTimeCommand}" />
+        <KeyBinding Key="J" Modifiers="Ctrl" Command="{Binding Video.GoToTimeCommand}" />
+        <KeyBinding Key="T" Modifiers="Ctrl" Command="{Binding Tabs.NewTabCommand}" />
+        <KeyBinding Key="W" Modifiers="Ctrl" Command="{Binding Tabs.CloseTabCommand}" />
+        <KeyBinding Key="T" Modifiers="Ctrl+Shift" Command="{Binding Tabs.ReopenTabCommand}" />
+        <KeyBinding Key="Tab" Modifiers="Ctrl" Command="{Binding Tabs.NextTabCommand}" />
+        <KeyBinding Key="Tab" Modifiers="Ctrl+Shift" Command="{Binding Tabs.PreviousTabCommand}" />
         <KeyBinding Key="L" Modifiers="Ctrl" Command="{Binding Video.LoopCommand}" />
         <KeyBinding Key="PageDown" Modifiers="Ctrl" Command="{Binding Video.ChapterNextCommand}" />
         <KeyBinding Key="PageUp" Modifiers="Ctrl" Command="{Binding Video.ChapterPreviousCommand}" />
@@ -78,12 +83,36 @@
         </Grid.RowDefinitions>
 
         <!-- Title bar (dragging comes from WindowChrome.CaptionHeight) -->
-        <Grid Grid.Row="0" Height="40" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}">
+        <Grid x:Name="TitleBar" Grid.Row="0" Height="40" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}" SizeChanged="TitleBar_SizeChanged">
             <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
                 <Viewbox Width="22" Height="22">
                     <Canvas Width="24" Height="24"><Path Data="{StaticResource IconFeather}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="{DynamicResource AccentSoftBrush}" /></Canvas>
                 </Viewbox>
-                <TextBlock Text="Feather View" Margin="14,0,0,0" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel x:Name="TabStrip" Orientation="Horizontal" Margin="52,0,150,0" VerticalAlignment="Center" HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True">
+                <ItemsControl ItemsSource="{Binding Tabs.Items}">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <Border x:Name="Chip" Width="{Binding DataContext.Tabs.TabWidth, RelativeSource={RelativeSource AncestorType=Window}}" Height="30" Margin="2,0" Padding="12,0,4,0"
+                                    CornerRadius="8" Background="Transparent" ToolTip="{Binding Title}"
+                                    MouseLeftButtonDown="Tab_MouseLeftButtonDown" MouseDown="Tab_MouseDown" MouseRightButtonUp="Tab_MouseRightButtonUp">
+                                <DockPanel>
+                                    <Button DockPanel.Dock="Right" Style="{StaticResource TinyCloseButton}" Tag="{StaticResource IconClose}" ToolTip="Close tab (Ctrl+W)" Click="TabClose_Click" AutomationProperties.Name="Close tab" />
+                                    <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" x:Name="ChipText" />
+                                </DockPanel>
+                            </Border>
+                            <DataTemplate.Triggers>
+                                <Trigger SourceName="Chip" Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="Background" Value="{DynamicResource HoverBrush}" /></Trigger>
+                                <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                    <Setter TargetName="Chip" Property="Background" Value="{DynamicResource SurfaceBrush}" />
+                                    <Setter TargetName="ChipText" Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                </DataTrigger>
+                            </DataTemplate.Triggers>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+                <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconPlus}" ToolTip="New tab (Ctrl+T)" Command="{Binding Tabs.NewTabCommand}" AutomationProperties.Name="New tab" Margin="4,0,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
                 <Button Style="{StaticResource CaptionButton}" Tag="M2 6h8" ToolTip="Minimize" Click="Minimize_Click" AutomationProperties.Name="Minimize" />

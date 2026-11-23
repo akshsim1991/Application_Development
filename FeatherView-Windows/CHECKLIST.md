@@ -75,6 +75,7 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 | Subtitles in the built-in player (SRT, VTT, ASS text): auto-load next to the video, load file, delay, size/colour/background/position | parser tested (Core, 6 tests); on-screen drawing untested on Windows |
 | Aspect ratio (original, 16:9, 4:3, 21:9, 1:1) in the built-in player | built, untested on Windows |
 | "Download extended video support" works: the build publishes an LGPL libmpv build as release `featherview-engine` (commit message tag [engine]) | being verified in CI |
+| Seek bar: one seek on release instead of one per mouse move; the bar no longer jumps back after a click; repeated seek keys add up; built-in player's scrubbing only while paused | built, untested on Windows (big files are still slow in the built-in player - the extended engine seeks much faster) |
 | Full-screen video controls hide after N seconds (Settings, default 5); phantom mouse-move guard; CI test with screenshots (entered / after mouse move / after 8 s idle) | being verified in CI |
 
 ## Tabs (V2.1 item brought forward)

@@ -20,7 +20,7 @@ public sealed class MediaFoundationEngine : IVideoEngine
 {
     private readonly MediaElement _me = new()
     {
-        LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, ScrubbingEnabled = true, Stretch = Stretch.Uniform,
+        LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, ScrubbingEnabled = false, Stretch = Stretch.Uniform,
         Focusable = false, Volume = 0.8
     };
     private readonly Grid _surface = new() { Background = Brushes.Black };
@@ -96,8 +96,9 @@ public sealed class MediaFoundationEngine : IVideoEngine
     public void Poll() { }
 
     public bool IsPlaying => _playing;
-    public void Play() { if (_opened) { _me.Play(); _playing = true; } }
-    public void Pause() { if (_opened) { _me.Pause(); _playing = false; } }
+    // Scrubbing (showing frames while paused/seeking) costs extra decoding, so it is only on while the video is paused.
+    public void Play() { if (_opened) { _me.ScrubbingEnabled = false; _me.Play(); _playing = true; } }
+    public void Pause() { if (_opened) { _me.Pause(); _me.ScrubbingEnabled = true; _playing = false; } }
     public double Position => _me.Position.TotalSeconds;
     public double Duration => _me.NaturalDuration.HasTimeSpan ? _me.NaturalDuration.TimeSpan.TotalSeconds : 0;
     public void Seek(double seconds, bool exact) { if (_opened) { _me.Position = TimeSpan.FromSeconds(Math.Max(0, seconds)); UpdateSubtitle(); } }

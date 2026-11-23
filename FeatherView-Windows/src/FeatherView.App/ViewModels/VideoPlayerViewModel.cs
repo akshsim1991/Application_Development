@@ -40,6 +40,9 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     private string? _notice, _status;
     private bool _noticeCanInstall;
     private System.Windows.FrameworkElement? _surface;
+    private double? _seekTarget, _scrubTarget;     // where the user just asked to go, until the player has really arrived
+    private long _seekStamp;
+    private readonly DispatcherTimer _scrubTimer = new() { Interval = TimeSpan.FromMilliseconds(220) };
     private bool _fullscreen, _controlsVisible = true;
     private int _idleTicks;
 
@@ -51,6 +54,11 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         _settings = settings; _dialogs = dialogs; _history = history; _localAppData = localAppData; _log = log;
         _timer.Tick += (_, _) => Tick();
         _toast.Tick += (_, _) => { _toast.Stop(); StatusMessage = null; };
+        _scrubTimer.Tick += (_, _) =>
+        {
+            // live preview while dragging (only on engines that can seek fast): at most ~4 seeks a second, never a flood
+            if (_scrubTarget is double t) { _engine?.Seek(t, exact: false); _scrubTarget = null; } else _scrubTimer.Stop();
+        };
 
         PlayPauseCommand = new RelayCommand(TogglePlay, () => Active);
         FrameBackCommand = new RelayCommand(() => _engine?.StepFrame(false), () => Active && CanFrameStep);
@@ -315,7 +323,16 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     {
         if (_engine == null) return;
         _engine.Poll();
-        if (!_seeking) Position = _engine.Position;
+        if (!_seeking)
+        {
+            var p = _engine.Position;
+            // right after a seek the player still reports the OLD position for a moment: keep showing the target until it arrives
+            if (_seekTarget is double target)
+            {
+                if (Math.Abs(p - target) < 2.0 || Environment.TickCount64 - _seekStamp > 6000) _seekTarget = null; else p = target;
+            }
+            Position = p;
+        }
         if (_engine.Duration > 0) Duration = _engine.Duration;
         IsPlaying = _engine.IsPlaying;
         if (IsPlaying && ++_ticks % 60 == 0) SaveProgress(flush: false);
@@ -325,10 +342,33 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
 
     public void TogglePlay() { if (_engine == null || _file == null) return; if (_engine.IsPlaying) { _engine.Pause(); SaveProgress(flush: true); } else _engine.Play(); IsPlaying = _engine.IsPlaying; }
     public void Pause() { if (_engine != null && _engine.IsPlaying) { _engine.Pause(); IsPlaying = false; SaveProgress(flush: true); } }
-    public void SeekRelative(double seconds) { if (_engine == null) return; var t = Math.Clamp(_engine.Position + seconds, 0, Math.Max(0, _engine.Duration)); _engine.Seek(t, exact: Has(VideoCaps.ExactSeek)); Position = t; }
-    public void BeginSeek() => _seeking = true;
-    public void SeekTo(double seconds) { Position = seconds; _engine?.Seek(seconds, exact: false); }
-    public void EndSeek(double seconds) { _seeking = false; _engine?.Seek(seconds, exact: Has(VideoCaps.ExactSeek)); Position = seconds; }
+    private void HoldPosition(double target) { _seekTarget = target; _seekStamp = Environment.TickCount64; }
+
+    public void SeekRelative(double seconds)
+    {
+        if (_engine == null) return;
+        var from = _seekTarget ?? _engine.Position;      // repeated key presses add up even before the player has caught up
+        var t = Math.Clamp(from + seconds, 0, Math.Max(0, _engine.Duration));
+        _engine.Seek(t, exact: Has(VideoCaps.ExactSeek)); Position = t; HoldPosition(t);
+    }
+
+    public void BeginSeek() { _seeking = true; _scrubTarget = null; }
+
+    /// <summary>While the thumb is dragged: only the time label moves (and, on fast engines, a throttled preview). The real seek happens once, on release.</summary>
+    public void SeekTo(double seconds)
+    {
+        Position = seconds;
+        if (!Has(VideoCaps.ExactSeek)) return;           // the built-in player seeks slowly on big files: wait for the release
+        _scrubTarget = seconds;
+        if (!_scrubTimer.IsEnabled) _scrubTimer.Start();
+    }
+
+    public void EndSeek(double seconds)
+    {
+        _seeking = false; _scrubTimer.Stop(); _scrubTarget = null;
+        _engine?.Seek(seconds, exact: Has(VideoCaps.ExactSeek));
+        Position = seconds; HoldPosition(seconds);
+    }
 
     private void SetSpeedIndex(int i) { _speedIndex = Math.Clamp(i, 0, SpeedSteps.Length - 1); if (_engine != null) _engine.Speed = SpeedSteps[_speedIndex]; OnPropertyChanged(nameof(SpeedText)); }
     private void ChangeSpeed(int d) => SetSpeedIndex(_speedIndex + d);
@@ -351,7 +391,7 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         if (_engine == null) return;
         var text = _dialogs.Prompt("Go to time", "Enter a time such as 90, 1:30 or 1:02:03.", TimeCode.Format(_engine.Position));
         if (text == null) return;
-        if (TimeCode.Parse(text) is double t) { _engine.Seek(Math.Min(t, Math.Max(0, _engine.Duration)), exact: Has(VideoCaps.ExactSeek)); Position = t; }
+        if (TimeCode.Parse(text) is double t) { var tt = Math.Min(t, Math.Max(0, _engine.Duration)); _engine.Seek(tt, exact: Has(VideoCaps.ExactSeek)); Position = tt; HoldPosition(tt); }
         else _dialogs.Error("Go to time", "That is not a valid time.");
     }
 
@@ -421,7 +461,7 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
 
     public void Stop()
     {
-        _timer.Stop();
+        _timer.Stop(); _scrubTimer.Stop(); _seekTarget = null; _scrubTarget = null; _seeking = false;
         if (_engine != null && _file != null) SaveProgress(flush: true);
         _engine?.Stop();
         _file = null; _key = null; IsPlaying = false;

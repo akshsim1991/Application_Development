@@ -2,6 +2,7 @@ Feather View 2.1.1
 - Video: subtitles (SRT, VTT, ASS) now work in the built-in player, incl. automatic loading of a subtitle file with the same name; delay, size, colour, background and position are adjustable
 - Video: aspect ratio (16:9, 4:3, 21:9, 1:1) now works in the built-in player
 - Video: "Download extended video support" now works (open-source libmpv, checked before it is installed)
+- Video seek bar: a click or drag now seeks once, the bar no longer jumps back, key presses add up
 - Full screen video: the control bar and mouse pointer hide after the number of seconds set in Settings (default 5)
 - Opening a folder or drive shows all pictures from all folders underneath in one go
 - New app icon: a feather over a picture

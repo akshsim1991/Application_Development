@@ -5,6 +5,10 @@ on:
     paths: ['FeatherView-Windows/**', '.github/workflows/featherview.yml']
   workflow_dispatch:
 
+concurrency:
+  group: featherview-${{ github.ref }}
+  cancel-in-progress: false   # builds queue up instead of publishing the same release at the same time
+
 jobs:
   build:
     runs-on: windows-latest

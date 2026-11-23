@@ -185,7 +185,22 @@ Document::Document() = default;
 Document::~Document() {
     closePages();
     exitForm();
+    closeFonts();
     if (doc_) pdfium::api().FPDF_CloseDocument(doc_);
+}
+
+void Document::closeFonts() {
+    for (auto& kv : fonts_) if (kv.second) pdfium::api().FPDFFont_Close(kv.second);
+    fonts_.clear();
+}
+
+FPDF_FONT Document::embeddedFont(int key, const unsigned char* data, size_t size) {
+    if (!doc_) return nullptr;
+    auto it = fonts_.find(key);
+    if (it != fonts_.end()) return it->second;
+    FPDF_FONT f = pdfium::api().FPDFText_LoadFont(doc_, data, static_cast<uint32_t>(size), FPDF_FONT_TRUETYPE, 1);
+    if (f) fonts_[key] = f;
+    return f;
 }
 
 void Document::closePages() {
@@ -271,6 +286,7 @@ OpenResult Document::load(std::vector<unsigned char>&& buf, const std::string& p
     }
     closePages();
     exitForm();
+    closeFonts();
     if (doc_) api.FPDF_CloseDocument(doc_);
     doc_ = d;
     pages_.assign(n, nullptr);

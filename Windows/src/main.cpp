@@ -1769,7 +1769,7 @@ void editEquation(Document& d, const equation::Found& f) {
     eqeditor::Result r;
     const wchar_t* title = f.uncertain ? L"Equation editor \x2014 this formula runs over two lines and may be read wrongly: check it before applying"
                                        : L"Equation editor";
-    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, title, f.source, f.size, true, r)) return;
+    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, title, f.source, f.size, true, r, f.tex)) return;
     if (activeDoc() != &d) return;
     if (!r.remove && r.source == f.source && std::fabs(r.size - f.size) < 0.05) return;
     std::wstring why;
@@ -1783,7 +1783,8 @@ void editEquation(Document& d, const equation::Found& f) {
 void insertEquation() {
     if (!activeDoc()) return;
     eqeditor::Result r;
-    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, L"Insert equation", L"", 12, false, r)) return;
+    const bool tex = equation::pageIsTex(*activeDoc(), app.viewer.currentPage());   // (a LaTeX document: Latin Modern)
+    if (!eqeditor::run(app.wnd, app.inst, app.dpi, app.font, L"Insert equation", L"", 12, false, r, tex)) return;
     if (r.source.find_first_not_of(L" ") == std::wstring::npos) return;
     app.pendingEquation = r.source;
     app.pendingEquationSize = r.size;

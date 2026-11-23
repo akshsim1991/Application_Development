@@ -415,6 +415,9 @@ JNIEXPORT jstring FN(replaceParagraph)(JNIEnv* env, jclass, jlong h, jstring tex
 
 // ---- equations (the equation editor) ----
 
+// The equation last opened is in TeX's fonts: the editor's preview shows it in Latin Modern, as it will be set again.
+static bool g_previewTex = false;
+
 // The equation at a page point (with `any`, a line of ordinary text read as one); kept for replaceEquation(). Returns its
 // notation (null when there is none); info gets: size, left, bottom, right, top (points), and 1 when it may be read
 // wrongly (it runs over two lines).
@@ -423,6 +426,7 @@ JNIEXPORT jstring FN(equationAt)(JNIEnv* env, jclass, jlong h, jint page, jfloat
     if (!h) return nullptr;
     Doc& doc = *docOf(h);
     doc.eq = equation::at(doc.d, page, x, y, any);
+    g_previewTex = doc.eq.found && doc.eq.tex;   // its preview in Latin Modern, as it will be set
     if (!doc.eq.found) return nullptr;
     const double v[6] = {doc.eq.size, doc.eq.left, doc.eq.bottom, doc.eq.right, doc.eq.top, doc.eq.uncertain ? 1.0 : 0.0};
     if (info && env->GetArrayLength(info) >= 6) env->SetDoubleArrayRegion(info, 0, 6, v);
@@ -463,7 +467,7 @@ JNIEXPORT jintArray FN(equationPreview)(JNIEnv* env, jclass, jstring source, jdo
     std::vector<unsigned char> px;
     int w = 0, hgt = 0;
     std::wstring err;
-    if (!equation::preview(wstr(env, source), size, scale, px, w, hgt, &err)) {
+    if (!equation::preview(wstr(env, source), size, scale, px, w, hgt, &err, g_previewTex)) {
         if (error && env->GetArrayLength(error) > 0) env->SetObjectArrayElement(error, 0, jstr(env, err));
         return nullptr;
     }

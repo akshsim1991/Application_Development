@@ -1608,3 +1608,45 @@ the 2.24.1 Windows installer stay one release longer.
 
 **Published:** 2.24.4 for Windows, Mac and Android (22 November) from commit 57609c4. The three downloads match latest.json
 (size and SHA-256); the 2.24.3 files stay one release longer.
+
+### B-126 Opening and editing felt slow - High (all apps)
+- **Found:** the user: loading and editing documents take longer. Measured with the new `--timing` option (open, edit
+  mode's outlines and a click, page by page) on all the test PDFs, and profiled with callgrind.
+- **Causes:** (1) on a scanned page, the lines of tables are read from the picture; every dark run of 40 points counted,
+  so a photo gave about 7,000 "lines" and the table finder took 0.7 s per page for the outlines and 1.4 s per click;
+  (2) the table finder ran again for every click on an unchanged page; (3) the check after each edit softened and
+  compared the whole page image (1100 px) for every trial, 57 % of an edit's time.
+- **Fix:** a dark run is a rule only where the page a few pixels above and below it (left and right) is mostly light;
+  the tables found are kept per page while its objects are the same (a fingerprint of each object's identity, type and
+  box); the comparison softens and compares only the box where the two images differ at all, and trials stop counting
+  once over their limit.
+- **Result:** the slowest step on any test PDF went from 1.48 s to 0.14 s; an edit on the journal page from 0.56 s to
+  0.34 s (later edits on the same page are quicker still); opening is a few milliseconds.
+
+### B-127 Formulas wrapped over two lines of a table cell were read in pieces - Medium (all apps)
+- **Found:** the compendium report (still open after 2.24.4).
+- **Causes:** the reader grew a formula through any part next to it, so the second line's fractions and powers mixed
+  with the first line's formulas; nothing joined a line ending in "=" with its continuation.
+- **Fix:** the lines of the cell are found from the baselines of full-size text that is not the top or bottom of a
+  fraction, and from full-size fractions' bars (fractions within fractions, table rules and root signs do not count);
+  each part joins only parts on its own line (the top and bottom of a fraction go with its bar's line, TeX's tall signs
+  by their middle). A formula ending in "=" or a sign takes the first formula of the next line when that starts under or
+  left of it; a click on the continuation takes the end of the line above. The column is bounded by the words of the
+  neighbouring columns. Set again, it goes on one line if it fits, else it is broken after the last top-level relation
+  or sign (not in brackets, not a leading minus) that keeps the first line in the column, with one mark for both lines.
+  The reader also takes a line made only of fractions at its widest full-size bar (a power's small bar gave the wrong
+  baseline).
+- **Tests:** edit-every-formula run on the compendium (scratch harness): of the formulas read the same way before and
+  after, none read worse; the 13 that changed are all now read whole (P_col =, F_x =, h_exit =, ρ*/ρ0 =, labels on the
+  line above). cli_check, real-world, engine golden files and the Android bridge pass.
+
+### B-128 Edited equations in LaTeX documents were set in Times - Low (all apps)
+- **Fix:** Latin Modern Math (GUST Font License) as three small TrueType fonts (upright; mathematical italic and bold
+  at the plain letters' code points, so copied text reads as letters and every PDF library writes them), built by
+  scripts/make-math-fonts.py into shared/mathfonts.cpp. Used when the equation was in TeX's fonts (CMR, CMMI, CMSY,
+  CMEX, LMRoman, LMMath) or, for a new one, when the page's text mostly is; loaded into a document once
+  (Document::embeddedFont) and measured from the fonts' own tables. Notices: THIRD_PARTY_NOTICES.md, the Mac app's
+  licences, Android's licence list.
+- **Tests:** cli_check: an equation added on a page in CMR10 is in FeatherLMMath and reads back; edited again, one
+  copy of each font; other pages keep Times.
+

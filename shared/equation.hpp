@@ -16,7 +16,7 @@ namespace equation {
 
 struct Glyph {
     std::wstring text;
-    int font = 0;                 // 0 Times-Roman, 1 Times-Italic, 2 Symbol
+    int font = 0;                 // 0 Times-Roman, 1 Times-Italic, 2 Symbol, 3 Times-Bold; 4 to 7 the same in Latin Modern
     double x = 0, y = 0;          // where it starts, on its baseline
     double size = 12;
     double stretch = 1;           // drawn this much taller (a bracket around a fraction)
@@ -31,10 +31,12 @@ struct Layout {
     std::vector<Glyph> glyphs;
     std::vector<Stroke> strokes;
     double width = 0, ascent = 0, descent = 0;   // from its start on the baseline
+    bool tex = false;                            // set in Latin Modern (fonts 4 to 7), not Times
 };
 
 // Sets `source` at `size` points, starting at (0, 0) on the baseline. False when the notation is wrong; `error` says what.
-bool layout(const std::wstring& source, double size, Layout& out, std::wstring* error = nullptr);
+// With `tex`, in Latin Modern (TeX's look: for documents made with LaTeX); else in Times and Symbol.
+bool layout(const std::wstring& source, double size, Layout& out, std::wstring* error = nullptr, bool tex = false);
 
 // An equation found on a page.
 struct Found {
@@ -48,6 +50,10 @@ struct Found {
     double size = 12;                 // of its main line
     COLORREF color = 0;
     bool centred = false;             // in the middle of the page: stays centred
+    bool tex = false;                 // set in TeX's fonts: set again in Latin Modern
+    bool wrapped = false;             // it runs onto a second line (a formula wrapped in a table's cell): that line
+    double wrapX = 0, wrapBaseline = 0;   // starts here, and a longer formula is broken there again
+    double startX = 0;                // where its first line starts
     bool uncertain = false;           // its text runs over two lines (a formula wrapped in a table's cell): it may be read
                                       // wrongly, and the editor says so
 };
@@ -57,10 +63,13 @@ struct Found {
 Found at(Document& d, int page, double x, double y, bool anyText = false);
 // Sets `source` in place of the equation (one undo step). An empty `source` removes it.
 bool replace(Document& d, const Found& f, const std::wstring& source, double size, std::wstring* why);
-// Puts a new equation on the page, starting at `x` on the baseline `baseline`.
+// Puts a new equation on the page, starting at `x` on the baseline `baseline` (in Latin Modern on a page set by TeX).
 bool insert(Document& d, int page, double x, double baseline, const std::wstring& source, double size, COLORREF color, std::wstring* why);
+// Whether the page's text is mostly in TeX's fonts: a new equation there is set in Latin Modern.
+bool pageIsTex(Document& d, int page);
 // A picture of the equation for a preview: BGRA rows, `scale` pixels per point, on white. False when it does not parse.
-bool preview(const std::wstring& source, double size, double scale, std::vector<unsigned char>& bgra, int& w, int& h, std::wstring* error);
+bool preview(const std::wstring& source, double size, double scale, std::vector<unsigned char>& bgra, int& w, int& h, std::wstring* error,
+             bool tex = false);
 
 // Superscript (kind 1) or subscript (-1) characters for `text` where they exist (², ₁, ⁿ ...): what an editor's x² and x₂
 // buttons make of the selected text. Characters that have none stay as they are; `all` is false then.

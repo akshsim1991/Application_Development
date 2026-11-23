@@ -2,6 +2,24 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.25.0 "Taurus" (23 November 2026)
+
+Equations in LaTeX documents now look like LaTeX's, formulas wrapped over two lines are edited whole, and opening,
+clicking and editing are faster.
+
+- New: in a document made with LaTeX, an edited or added equation is set in Latin Modern, TeX's own typeface: the same
+  italic letters, Greek, digits and signs as the equations around it, not Times. The fonts are built into the app and
+  added to the PDF once. The equation editor's preview shows it the same way.
+- New: a formula LaTeX wrapped onto a second line of a table's cell (it ends in "=" or a sign, the rest on the line
+  below) is read and edited as one formula, from a click on either line. When it is set again it goes on one line if it
+  now fits, else it is broken again after a relation or sign, the rest where the second line was. The formulas on the
+  same line as it are no longer mixed up with it.
+- Faster: on scanned pages, a click took up to a second and a half (dark areas of photos were taken for the lines of
+  tables): now about a tenth of a second. The tables of a page are found once while the page is unchanged, not again on
+  every click, and the check made after each edit compares only the part of the page that changed.
+- Fixed: a formula pushed to the edge of its column was left touching the next column, and was then read together
+  with it; it now keeps a clear gap.
+
 ## 2.24.4 (22 November 2026)
 
 **Please install this update too:** on many journal papers (IEEE Access and others finished with iText) no text could be

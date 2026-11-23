@@ -1,6 +1,7 @@
 #pragma once
 #include <functional>
 #include <memory>
+#include <map>
 #include <string>
 #include <vector>
 #include "pdfium_api.hpp"
@@ -55,6 +56,9 @@ public:
     int pageCount() const { return static_cast<int>(sizes_.size()); }
     const PageSize& pageSize(int i) const { return sizes_[i]; }
     FPDF_DOCUMENT handle() const { return doc_; }
+    // A font from `data` (TrueType) loaded into this document once and kept while the document is open: equations set
+    // in the same font share one copy of it in the file. `key` names it among the fonts kept.
+    FPDF_FONT embeddedFont(int key, const unsigned char* data, size_t size);
 
     // ---- fillable forms ----
     FPDF_FORMHANDLE form() const { return form_; }
@@ -170,6 +174,8 @@ private:
     std::wstring path_;
     std::vector<unsigned char> data_;   // PDFium reads from this buffer for the document's life
     FPDF_DOCUMENT doc_ = nullptr;
+    std::map<int, FPDF_FONT> fonts_;   // embeddedFont's, closed before doc_ is
+    void closeFonts();
     std::wstring name_;
     std::vector<PageSize> sizes_;
     std::string password_;

@@ -10,6 +10,7 @@ set(ENGINE_SOURCES
   ${SHARED}/document.cpp
   ${SHARED}/pageobjects.cpp
   ${SHARED}/equation.cpp
+  ${SHARED}/mathfonts.cpp
   ${SHARED}/contentgen.cpp
   ${SHARED}/tables.cpp
   ${SHARED}/headfoot.cpp

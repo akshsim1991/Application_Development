@@ -65,6 +65,7 @@ add_custom_command(TARGET FeatherPDFMac POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E make_directory "$<TARGET_BUNDLE_CONTENT_DIR:FeatherPDFMac>/Frameworks"
   COMMAND ${CMAKE_COMMAND} -E copy_if_different "${PDFIUM_DIR}/lib/libpdfium.dylib" "$<TARGET_BUNDLE_CONTENT_DIR:FeatherPDFMac>/Frameworks/"
   COMMAND ${CMAKE_COMMAND} -E copy_directory "${PDFIUM_DIR}/licenses" "$<TARGET_BUNDLE_CONTENT_DIR:FeatherPDFMac>/Resources/licenses"
+  COMMAND ${CMAKE_COMMAND} -E copy "${CMAKE_SOURCE_DIR}/shared/fonts/GUST-FONT-LICENSE.txt" "$<TARGET_BUNDLE_CONTENT_DIR:FeatherPDFMac>/Resources/licenses/Latin_Modern_Math_GUST.txt"
   COMMAND codesign --force --sign - "$<TARGET_BUNDLE_CONTENT_DIR:FeatherPDFMac>/Frameworks/libpdfium.dylib"
   COMMAND codesign --force --sign - "$<TARGET_BUNDLE_DIR:FeatherPDFMac>")
 

@@ -14,6 +14,8 @@ struct Result {
 
 // Shows the editor. `source` and `size` are what it starts with (an empty source: a new equation); `existing` offers
 // "Remove equation". False when it was cancelled.
-bool run(HWND parent, HINSTANCE inst, int dpi, HFONT font, const wchar_t* title, const std::wstring& source, double size, bool existing, Result& out);
+// `tex`: the preview in Latin Modern, as the equation will be set in a document made with LaTeX.
+bool run(HWND parent, HINSTANCE inst, int dpi, HFONT font, const wchar_t* title, const std::wstring& source, double size, bool existing, Result& out,
+         bool tex = false);
 
 } // namespace eqeditor

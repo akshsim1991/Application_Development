@@ -44,7 +44,7 @@ struct State {
     std::vector<std::wstring> inserts;
     HFONT font = nullptr, big = nullptr, small = nullptr, sym = nullptr;
     int dpi = 96;
-    bool done = false, ok = false, remove = false, existing = false;
+    bool done = false, ok = false, remove = false, existing = false, tex = false;
     std::vector<unsigned char> pixels;
     int pw = 0, ph = 0;
     std::wstring err;
@@ -73,7 +73,7 @@ void render(State& s) {
     if (src.find_first_not_of(L" \t") != std::wstring::npos) {
         // drawn larger than on the page, to be read easily: a 12-point equation about twice its printed size
         const double scale = 2.0 * s.dpi / 72.0;
-        if (!equation::preview(src, sizeOf(s), scale, s.pixels, s.pw, s.ph, &s.err)) { s.pixels.clear(); s.pw = s.ph = 0; }
+        if (!equation::preview(src, sizeOf(s), scale, s.pixels, s.pw, s.ph, &s.err, s.tex)) { s.pixels.clear(); s.pw = s.ph = 0; }
     }
     SetWindowTextW(s.error, s.err.c_str());
     EnableWindow(GetDlgItem(s.wnd, ID_APPLY), s.err.empty());
@@ -262,7 +262,8 @@ LRESULT CALLBACK proc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 } // namespace
 
-bool run(HWND parent, HINSTANCE inst, int dpi, HFONT font, const wchar_t* title, const std::wstring& source, double size, bool existing, Result& out) {
+bool run(HWND parent, HINSTANCE inst, int dpi, HFONT font, const wchar_t* title, const std::wstring& source, double size, bool existing, Result& out,
+         bool tex) {
     static bool registered = false;
     if (!registered) {
         WNDCLASSEXW wc{sizeof(wc)};
@@ -278,6 +279,7 @@ bool run(HWND parent, HINSTANCE inst, int dpi, HFONT font, const wchar_t* title,
     s.dpi = dpi;
     s.font = font;
     s.existing = existing;
+    s.tex = tex;
     s.big = CreateFontW(-MulDiv(19, dpi, 96), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,
                         CLEARTYPE_QUALITY, DEFAULT_PITCH, L"Segoe UI");
     s.sym = CreateFontW(-MulDiv(17, dpi, 96), 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET, OUT_TT_PRECIS, CLIP_DEFAULT_PRECIS,

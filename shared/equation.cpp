@@ -1,4 +1,5 @@
 #include "equation.hpp"
+#include "mathfonts.hpp"
 #include "pdfium_api.hpp"
 #include "contentgen.hpp"
 #include "tables.hpp"
@@ -9,6 +10,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <cwchar>
 #include <cwctype>
 #include <cstdlib>
 #include <map>
@@ -43,6 +45,78 @@ namespace {
 
 const char* const kFontNames[4] = {"Times-Roman", "Times-Italic", "Symbol", "Times-Bold"};
 enum FontId { Roman = 0, Italic = 1, Sym = 2, Bold = 3 };
+// A document made with TeX gets its equations in Latin Modern (TeX's own look): fonts 4 to 7 are the Latin Modern ones
+// for the roles 0 to 3 (upright, italic, signs and Greek, bold). While an equation is laid out, `gTex` says which.
+constexpr int kTex = 4;
+thread_local bool gTex = false;
+int role(int font) { return font & 3; }
+bool isTex(int font) { return font >= kTex; }
+int texFile(int font) { const int r = role(font); return r == Italic ? 1 : r == Bold ? 2 : 0; }   // mathfonts::kFonts
+
+// What a TrueType font says of a character: its advance and its outline's box, in em (read from the font's own tables).
+struct TtfInfo {
+    const unsigned char* p = nullptr;
+    size_t n = 0;
+    unsigned em = 1000, hmetrics = 0, glyphs = 0;
+    size_t cmap4 = 0, hmtx = 0, loca = 0, glyf = 0;
+    bool longLoca = false;
+    unsigned u16(size_t o) const { return o + 2 <= n ? (p[o] << 8) | p[o + 1] : 0; }
+    int s16(size_t o) const { return static_cast<int16_t>(u16(o)); }
+    unsigned long u32(size_t o) const { return o + 4 <= n ? (static_cast<unsigned long>(u16(o)) << 16) | u16(o + 2) : 0; }
+    explicit TtfInfo(const mathfonts::Font& f) : p(f.data), n(f.size) {
+        const unsigned tables = u16(4);
+        size_t head = 0, hhea = 0, maxp = 0, cmap = 0;
+        for (unsigned i = 0; i < tables; ++i) {
+            const size_t r = 12 + 16 * i;
+            const std::string tag(reinterpret_cast<const char*>(p + r), 4);
+            const size_t off = u32(r + 8);
+            if (tag == "head") head = off; else if (tag == "hhea") hhea = off; else if (tag == "maxp") maxp = off;
+            else if (tag == "cmap") cmap = off; else if (tag == "hmtx") hmtx = off; else if (tag == "loca") loca = off;
+            else if (tag == "glyf") glyf = off;
+        }
+        em = u16(head + 18); longLoca = s16(head + 50) != 0;
+        hmetrics = u16(hhea + 34); glyphs = u16(maxp + 4);
+        for (unsigned i = 0, k = u16(cmap + 2); i < k; ++i) {
+            const size_t sub = cmap + u32(cmap + 4 + 8 * i + 4);
+            if (u16(sub) == 4) { cmap4 = sub; break; }
+        }
+    }
+    unsigned glyphOf(unsigned c) const {
+        if (!cmap4 || c > 0xFFFF) return 0;
+        const unsigned segs = u16(cmap4 + 6) / 2;
+        const size_t ends = cmap4 + 14, starts = ends + 2 * segs + 2, deltas = starts + 2 * segs, ranges = deltas + 2 * segs;
+        for (unsigned i = 0; i < segs; ++i) {
+            if (c > u16(ends + 2 * i)) continue;
+            if (c < u16(starts + 2 * i)) return 0;
+            const unsigned ro = u16(ranges + 2 * i);
+            if (!ro) return (c + u16(deltas + 2 * i)) & 0xFFFF;
+            const unsigned g = u16(ranges + 2 * i + ro + 2 * (c - u16(starts + 2 * i)));
+            return g ? (g + u16(deltas + 2 * i)) & 0xFFFF : 0;
+        }
+        return 0;
+    }
+    bool metrics(unsigned c, double& adv, double& l, double& b, double& r, double& t) const {
+        const unsigned g = glyphOf(c);
+        if (!g || g >= glyphs || !em) return false;
+        adv = u16(hmtx + 4 * std::min(g, hmetrics - 1)) / static_cast<double>(em);
+        const size_t a = longLoca ? u32(loca + 4 * g) : 2 * static_cast<size_t>(u16(loca + 2 * g));
+        const size_t e = longLoca ? u32(loca + 4 * g + 4) : 2 * static_cast<size_t>(u16(loca + 2 * g + 2));
+        if (e > a) { const size_t q = glyf + a; l = s16(q + 2) / double(em); b = s16(q + 4) / double(em); r = s16(q + 6) / double(em); t = s16(q + 8) / double(em); }
+        else { l = 0; b = 0; r = adv; t = 0; }   // nothing drawn (a space)
+        return true;
+    }
+};
+constexpr int kTexFontKey = 0x7E40;   // Document::embeddedFont's keys for the three
+// A font of TeX's (Computer Modern, Latin Modern, or this editor's Latin Modern): by its name in the PDF.
+bool texFontName(const std::string& n) {
+    for (const char* k : {"CMR", "CMMI", "CMSY", "CMEX", "CMBX", "CMTI", "CMSS", "LMRoman", "LMMath", "LatinModern", "FeatherLMMath", "lmr", "lmmi"})
+        if (n.find(k) != std::string::npos) return true;
+    return false;
+}
+const TtfInfo& texInfo(int font) {
+    static const TtfInfo infos[3] = {TtfInfo(mathfonts::kFonts[0]), TtfInfo(mathfonts::kFonts[1]), TtfInfo(mathfonts::kFonts[2])};
+    return infos[texFile(font)];
+}
 
 // ---- measuring, in the standard fonts the equation is set in ----
 FPDF_DOCUMENT scratch() {
@@ -65,6 +139,12 @@ const Metrics& metrics(int font, wchar_t c) {
     if (it != cache.end()) return it->second;
     const auto& api = pdfium::api();
     Metrics m;
+    if (isTex(font)) {
+        m.drawn = texInfo(font).metrics(static_cast<unsigned>(c), m.adv, m.l, m.b, m.r, m.t);
+        if (!m.drawn) { m.adv = 0.5; m.l = 0; m.b = 0; m.r = 0.5; m.t = 0; }
+        if (c == L' ') { m.drawn = true; m.adv = 0.333; }
+        return cache.emplace(key, m).first->second;
+    }
     float w = 0;
     if (FPDF_FONT f = stdFont(font); f && api.FPDFFont_GetGlyphWidth(f, static_cast<uint32_t>(c), 1000, &w)) m.adv = w / 1000.0;
     m.drawn = false;
@@ -85,7 +165,7 @@ const Metrics& metrics(int font, wchar_t c) {
 }
 // The character a font draws for `c` (the Symbol font has its own code points for a few letters and signs).
 wchar_t drawnAs(int font, wchar_t c) {
-    if (font != Sym) return c;
+    if (font != Sym) return c;   // (Latin Modern has the letters at their own code points)
     switch (c) {
     case 0x0394: return 0x2206;   // Delta: the Symbol font's Delta is "increment"
     case 0x03A9: return 0x2126;   // Omega: "ohm"
@@ -94,12 +174,21 @@ wchar_t drawnAs(int font, wchar_t c) {
     }
 }
 // The font a character is set in: letters in Times (italic when `italic`), what Times lacks in Symbol.
-int fontFor(wchar_t c, int prefer) {
+int fontForRole(wchar_t c, int prefer) {
     if (c < 0x80) return iswalpha(c) ? prefer : (prefer == Bold ? Bold : Roman);
     if (c == 0xB1 || c == 0xD7 || c == 0xB7 || c == 0xF7 || c == 0xB0 || c == 0x2026 || c == 0x2022) return prefer == Bold ? Bold : Roman;
     if (c >= 0xC0 && c <= 0x17F) return prefer;   // accented Latin letters
+    if (gTex) return prefer == Italic && metrics(Italic + kTex, c).drawn ? Italic : Sym;   // (Latin Modern's upright font has the signs)
     if (metrics(Sym, drawnAs(Sym, c)).drawn) return Sym;
     return prefer;
+}
+// The font (0 to 7) a character is set in, in the face being laid out. In Latin Modern, a character its italic or bold
+// font lacks (a sign in bold, an accented letter in italic) is set upright.
+int fontFor(wchar_t c, int prefer) {
+    const int r = fontForRole(c, prefer);
+    if (!gTex) return r;
+    if (!metrics(r + kTex, c).drawn && metrics(Roman + kTex, c).drawn) return Roman + kTex;
+    return r + kTex;
 }
 
 // ---- the notation ----
@@ -452,7 +541,7 @@ struct Box {
 };
 
 double axisOf(double size) {
-    const Metrics& m = metrics(Roman, L'+');
+    const Metrics& m = metrics(gTex ? Roman + kTex : Roman, L'+');
     return (m.b + m.t) / 2 * size;
 }
 double rule(double size) { return std::max(0.045 * size, 0.4); }
@@ -475,7 +564,8 @@ Box setChar(const Node& n, double size) {
         const int f = fontFor(c, n.font);
         const wchar_t d = drawnAs(f, c);
         const Metrics& m = metrics(f, d);
-        // lower-case Greek is italic in mathematics (as TeX sets it); the Symbol font's is upright, so it leans
+        // lower-case Greek is italic in mathematics (as TeX sets it); the Symbol font's is upright, so it leans (Latin
+        // Modern's italic font has italic Greek)
         const bool slant = f == Sym && n.font == Italic && ((c >= 0x3B1 && c <= 0x3C9) || c == 0x3D1 || c == 0x3D5 || c == 0x3D6 || c == 0x3F5);
         if (lastFont == f && !b.glyphs.empty() && b.glyphs.back().slant == slant) { b.glyphs.back().text += d; b.glyphs.back().advance += m.adv * sz; }
         else { Glyph g; g.text = std::wstring(1, d); g.font = f; g.x = x; g.y = 0; g.size = sz; g.advance = m.adv * sz; g.slant = slant; b.glyphs.push_back(g); }
@@ -491,7 +581,7 @@ Box setChar(const Node& n, double size) {
         top += dy; bottom += dy;
     }
     for (double rx : rings) {
-        const Metrics& m = metrics(Sym, 0x222B);
+        const Metrics& m = metrics(gTex ? Sym + kTex : Sym, 0x222B);
         const double cx = rx + (m.l + m.r) / 2 * sz, cy = n.cls == Big ? axisOf(size) : (m.b + m.t) / 2 * sz, rr = 0.16 * sz;
         Stroke ring;
         for (int k = 0; k <= 24; ++k) { const double a = k * 3.14159265358979 / 12; ring.points.push_back({cx + rr * std::cos(a), cy + rr * 1.15 * std::sin(a)}); }
@@ -501,7 +591,7 @@ Box setChar(const Node& n, double size) {
     b.asc = std::max(0.0, top);
     b.desc = std::max(0.0, -bottom);
     b.first = b.last = n.cls;
-    b.italicEnd = lastFont == Italic;
+    b.italicEnd = lastFont >= 0 && role(lastFont) == Italic;
     b.func = n.func;
     b.big = n.cls == Big;
     b.limits = n.limits;
@@ -775,7 +865,7 @@ std::wstring markParam(FPDF_PAGEOBJECTMARK m, const char* key) {
     return std::wstring(buf.begin(), buf.begin() + (n / 2 - 1));
 }
 // This editor's equation an object belongs to: its id (empty when none), notation and size.
-std::wstring ourMark(FPDF_PAGEOBJECT o, std::wstring* src = nullptr, double* size = nullptr) {
+std::wstring ourMark(FPDF_PAGEOBJECT o, std::wstring* src = nullptr, double* size = nullptr, std::wstring* wrap = nullptr) {
     const auto& api = pdfium::api();
     const int marks = api.FPDFPageObj_CountMarks(o);
     for (int k = 0; k < marks; ++k) {
@@ -787,6 +877,7 @@ std::wstring ourMark(FPDF_PAGEOBJECT o, std::wstring* src = nullptr, double* siz
         if (std::wstring(buf.begin(), buf.begin() + (n / 2 - 1)) != L"FeatherEq") continue;
         if (src) *src = decode(markParam(m, "src"));
         if (size) *size = std::wcstod(markParam(m, "size").c_str(), nullptr);
+        if (wrap) *wrap = markParam(m, "wrap");
         return markParam(m, "id");
     }
     return {};
@@ -805,6 +896,7 @@ struct Unit {
     size_t accentAt = 0;          // over which of its characters
     bool accentMark = false;      // this text is only an accent over the letter below it
     bool ours = false;            // part of an equation this editor made (never part of another one)
+    bool tex = false;             // in one of TeX's fonts (Computer Modern, Latin Modern)
     double l = 0, b = 0, r = 0, t = 0;
     double x = 0, y = 0, size = 0;
     COLORREF color = 0;
@@ -896,6 +988,7 @@ std::vector<Unit> unitsOf(FPDF_PAGE pg, FPDF_TEXTPAGE tp) {
         FPDF_FONT font = api.FPDFTextObj_GetFont(o);
         const std::string name = pageobj::baseFontName(font);
         u.mathFont = mathFontName(name);
+        u.tex = texFontName(name);
         u.big = name.find("CMEX") != std::string::npos;
         bool italicFont = name.find("Italic") != std::string::npos || name.find("Oblique") != std::string::npos ||
                           name.find("CMMI") != std::string::npos || name.find("-It") != std::string::npos;
@@ -1033,8 +1126,29 @@ struct Reader {
         size = big;
         double most = -1;
         std::map<long, double> byBase;
+        // (the top and bottom of a fraction are not on the line: TeX may set them full size)
+        auto fractionPart = [&](const Unit& u) {
+            for (int id : ids) {
+                const Unit& v = us[id];
+                if (v.text || u.r <= v.l || u.l >= v.r || (v.t - v.b) > 0.3 * size || (v.r - v.l) < 0.5 * (u.r - u.l)) continue;
+                const double y = (v.b + v.t) / 2;
+                if ((u.b >= y - 0.3 * size && u.b - y < 0.9 * size) || (u.t <= y + 0.3 * size && y - u.t < 0.9 * size)) return true;
+            }
+            return false;
+        };
         for (int id : ids)
-            if (us[id].text && !us[id].big && !us[id].accentMark && std::fabs(us[id].size - size) < 0.6) byBase[std::lround(us[id].y * 2)] += static_cast<double>(us[id].chars.size());
+            if (us[id].text && !us[id].big && !us[id].accentMark && std::fabs(us[id].size - size) < 0.6 && !fractionPart(us[id]))
+                byBase[std::lround(us[id].y * 2)] += static_cast<double>(us[id].chars.size());
+        if (byBase.empty()) {   // nothing but fractions (and brackets round them): the line is where the widest bar's axis is
+            double widest = -1;
+            for (int id : ids) {
+                const Unit& v = us[id];
+                if (!v.text && (v.t - v.b) <= 0.3 * size && v.r - v.l > widest) { widest = v.r - v.l; base = (v.b + v.t) / 2 - axisOf(size); }
+            }
+            if (widest > 0) return;
+            for (int id : ids)
+                if (us[id].text && !us[id].big && !us[id].accentMark && std::fabs(us[id].size - size) < 0.6) byBase[std::lround(us[id].y * 2)] += static_cast<double>(us[id].chars.size());
+        }
         long bb = 0;
         for (auto& [k, v] : byBase) if (v > most) { most = v; bb = k; }
         base = bb / 2.0;
@@ -1136,7 +1250,15 @@ struct Reader {
         bool onLine = false;   // text of the line's size outside the fractions
         for (int id : rest) if (!us[id].big && !us[id].accentMark && us[id].size > 0.88 * approx) onLine = true;
         if (onLine) mainLine(rest, size, base);
-        else if (!barsUsed.empty()) base = us[barsUsed.back()].y - axisOf(size);   // the line runs through the fraction's bar
+        else if (!barsUsed.empty()) {   // the line runs through a full-size fraction's bar (not a small one in a power)
+            base = us[barsUsed.back()].y - axisOf(size);
+            double widest = -1;
+            for (const Item& it : items)
+                if (it.unit < 0 && it.size >= 0.88 * approx) {
+                    for (int bar : bars)
+                        if (std::fabs(us[bar].y - it.y) < 1e-6 && std::fabs(us[bar].l - it.x) < 1e-6 && us[bar].r - us[bar].l > widest) { widest = us[bar].r - us[bar].l; base = it.y - axisOf(size); }
+                }
+        }
         else if (!rest.empty()) mainLine(rest, size, base);
         if (sizeOut) *sizeOut = size;
         if (baseOut) *baseOut = base;
@@ -1209,9 +1331,13 @@ std::string newId() {
 }
 
 // Puts the equation's objects on the page, starting at (x, y) on the baseline. False when one cannot be made.
-bool place(FPDF_DOCUMENT doc, FPDF_PAGE pg, const Layout& L, double x, double y, COLORREF color, const std::wstring& source, double size, bool mark) {
+// `tex`: the document's Latin Modern fonts (upright, italic, bold), for an equation laid out in them.
+// `id` and `wrap` (the second line's start from the first's, "dx dy") for the two lines of a wrapped equation: both are
+// placed with one mark, so the equation is found whole.
+bool place(FPDF_DOCUMENT doc, FPDF_PAGE pg, const Layout& L, double x, double y, COLORREF color, const std::wstring& source, double size, bool mark,
+           const FPDF_FONT* tex = nullptr, const std::string& givenId = std::string(), const std::string& wrap = std::string()) {
     const auto& api = pdfium::api();
-    const std::string id = newId(), src = encode(source);
+    const std::string id = givenId.empty() ? newId() : givenId, src = encode(source);
     char sz[32];
     std::snprintf(sz, sizeof sz, "%.2f", size);
     auto tag = [&](FPDF_PAGEOBJECT o) {
@@ -1221,9 +1347,11 @@ bool place(FPDF_DOCUMENT doc, FPDF_PAGE pg, const Layout& L, double x, double y,
         api.FPDFPageObjMark_SetStringParam(doc, o, m, "id", id.c_str());
         api.FPDFPageObjMark_SetStringParam(doc, o, m, "src", src.c_str());
         api.FPDFPageObjMark_SetStringParam(doc, o, m, "size", sz);
+        if (!wrap.empty()) api.FPDFPageObjMark_SetStringParam(doc, o, m, "wrap", wrap.c_str());
     };
     for (const Glyph& g : L.glyphs) {
-        FPDF_PAGEOBJECT o = api.FPDFPageObj_NewTextObj(doc, kFontNames[g.font], static_cast<float>(g.size));
+        FPDF_PAGEOBJECT o = isTex(g.font) ? (tex && tex[texFile(g.font)] ? api.FPDFPageObj_CreateTextObj(doc, tex[texFile(g.font)], static_cast<float>(g.size)) : nullptr)
+                                          : api.FPDFPageObj_NewTextObj(doc, kFontNames[g.font], static_cast<float>(g.size));
         if (!o) return false;
         std::vector<unsigned short> w(g.text.begin(), g.text.end());
         w.push_back(0);
@@ -1252,8 +1380,11 @@ bool place(FPDF_DOCUMENT doc, FPDF_PAGE pg, const Layout& L, double x, double y,
 
 } // namespace
 
-bool layout(const std::wstring& source, double size, Layout& out, std::wstring* error) {
+bool layout(const std::wstring& source, double size, Layout& out, std::wstring* error, bool tex) {
+    struct Face { bool was = gTex; ~Face() { gTex = was; } } keep;   // (laid out in the face asked for, then as before)
+    gTex = tex;
     out = Layout{};
+    out.tex = tex;
     const std::wstring src = normalise(source);
     Parser p(src);
     Node root;
@@ -1274,6 +1405,7 @@ bool layout(const std::wstring& source, double size, Layout& out, std::wstring* 
     out.descent = b.desc;
     return true;
 }
+
 
 Found at(Document& d, int page, double x, double y, bool anyText) {
     Found f;
@@ -1301,9 +1433,9 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     if (seed < 0) return f;
     // one of this editor's: all its objects, its notation as it was typed
     {
-        std::wstring src;
+        std::wstring src, wrap;
         double size = 0;
-        const std::wstring id = ourMark(api.FPDFPage_GetObject(pg, us[seed].idx), &src, &size);
+        const std::wstring id = ourMark(api.FPDFPage_GetObject(pg, us[seed].idx), &src, &size, &wrap);
         if (!id.empty()) {
             f.found = f.ours = true;
             f.page = page;
@@ -1322,9 +1454,10 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
             }
             f.left = L; f.bottom = B; f.right = R; f.top = T;
             f.size = size > 0 ? size : 12;
+            f.tex = firstText && texFontName(pageobj::baseFontName(api.FPDFTextObj_GetFont(firstText)));   // set in Latin Modern
             // where it starts: from its first piece of text, as the notation sets it (it may have been moved or scaled)
             Layout lay;
-            if (firstText && layout(src, f.size, lay) && !lay.glyphs.empty()) {
+            if (firstText && layout(src, f.size, lay, nullptr, f.tex) && !lay.glyphs.empty()) {
                 FS_MATRIX m{};
                 api.FPDFPageObj_GetMatrix(firstText, &m);
                 float fs = 0;
@@ -1338,6 +1471,13 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
                 api.FPDFPageObj_GetFillColor(firstText, &r, &gg, &b, &a);
                 f.color = RGB(r, gg, b);
             } else { f.baseline = B; (void)firstIdx; }
+            f.startX = f.left;
+            double dx = 0, dy = 0;   // set on two lines: where the second starts
+            if (!wrap.empty() && std::swscanf(wrap.c_str(), L"%lf %lf", &dx, &dy) == 2) {
+                f.wrapped = true;
+                f.wrapX = f.left + dx;
+                f.wrapBaseline = f.baseline + dy;
+            }
             const double pw = d.pageSize(page).w;
             f.centred = std::fabs((L + R) / 2 - pw / 2) < 0.04 * pw;
             return f;
@@ -1405,18 +1545,208 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
         if (v.accentMark && hgap < 0 && v.b >= u.t - 0.35 * size && v.b - u.t < 0.5 * size && mathish(u)) return true;
         return false;
     };
-    for (bool grew = true; grew;) {
-        grew = false;
-        for (size_t k = 0; k < us.size(); ++k) {
-            Unit& u = us[k];
-            if (u.used) continue;
-            bool j = false;
-            for (int id : in) if (joins(u, us[static_cast<size_t>(id)])) { j = true; break; }
-            if (!j) continue;
-            u.used = true;
-            in.push_back(static_cast<int>(k));
-            L = std::min(L, u.l); B = std::min(B, u.b); R = std::max(R, u.r); T = std::max(T, u.t);
-            grew = true;
+    // the parts joined from `from`; with `bands`, only parts on the same line of text as each other (bandOf)
+    std::vector<int> bandOf(us.size(), -1);
+    auto grow = [&](int from, bool bands) {
+        std::vector<int> got{from};
+        us[static_cast<size_t>(from)].used = true;
+        for (bool grew = true; grew;) {
+            grew = false;
+            for (size_t k = 0; k < us.size(); ++k) {
+                Unit& u = us[k];
+                if (u.used) continue;
+                bool j = false;
+                for (int id : got)
+                    if ((!bands || bandOf[k] == bandOf[static_cast<size_t>(id)]) && joins(u, us[static_cast<size_t>(id)])) { j = true; break; }
+                if (!j) continue;
+                u.used = true;
+                got.push_back(static_cast<int>(k));
+                grew = true;
+            }
+        }
+        return got;
+    };
+    in = grow(seed, false);
+    for (int id : in) { const Unit& u = us[static_cast<size_t>(id)]; L = std::min(L, u.l); B = std::min(B, u.b); R = std::max(R, u.r); T = std::max(T, u.t); }
+    // A formula LaTeX wrapped onto a second line of a table's cell: what was taken in runs over two lines of text, and
+    // the lines' fractions and powers interleave. The lines are told apart by the baselines of the full-size text; each
+    // part joins only parts on its own line. The clicked formula is read on its line, and with the start of the next
+    // line when it ends in "=" or a sign (the wrap), or with the end of the line before when that one does.
+    std::vector<int> second;   // the other line's part of it, if any
+    bool secondFirst = false;  // that part comes first (the line above)
+    {
+        // The baselines of the lines: full-size text that is not the top or bottom of a fraction (TeX sets those full
+        // size too), and full-size fractions by their bars (on the line's axis).
+        auto radical = [](const Unit& u) { return u.chars.find(0x221A) != std::wstring::npos; };   // set raised, hanging below
+        auto full = [&](const Unit& u) { return u.text && !u.big && !radical(u) && !u.accentMark && std::fabs(u.size - size) < 0.12 * size; };
+        auto barY = [](const Unit& v) { return (v.b + v.t) / 2; };
+        // a fraction's bar (not a table's rule across the page)
+        auto thinBar = [&](const Unit& v) { return !v.text && (v.t - v.b) <= 0.3 * size && v.r - v.l > 0.3 * size && v.r - v.l < 20 * size; };
+        // u is in the top or the bottom of the fraction of bar v (directly over or under it, or higher up in a top that
+        // holds a fraction of its own): within the bar's width and less than two and a half lines from it
+        auto overUnder = [&](const Unit& u, const Unit& v) {
+            if (!thinBar(v)) return false;
+            const double cx = (u.l + u.r) / 2, cy = (u.b + u.t) / 2, y = barY(v);
+            return cx > v.l && cx < v.r && std::fabs(cy - y) > 0.1 * size && std::fabs(cy - y) < 2.5 * size;
+        };
+        // a bar inside another fraction's top or bottom (a fraction in a fraction) is not on the line
+        auto innerBar = [&](const Unit& v, const std::vector<int>& among) {
+            for (int o : among) {
+                const Unit& w = us[static_cast<size_t>(o)];
+                if (&w == &v || !thinBar(w) || w.r - w.l <= v.r - v.l) continue;
+                const double cx = (v.l + v.r) / 2;
+                if (cx > w.l && cx < w.r && std::fabs(barY(v) - barY(w)) < 2.5 * size && std::fabs(barY(v) - barY(w)) > 0.1 * size) return true;
+            }
+            return false;
+        };
+        // what is near: the mathematics a few lines up and down, across about the cell's width
+        std::vector<int> pool;
+        // The column it is in: between the ordinary text on the rows around it (the names on its left, the conditions on
+        // its right), or about a cell's width each way.
+        double colL = L - 25 * size, colR = R + 25 * size;
+        {
+            const Unit& s0 = us[static_cast<size_t>(seed)];
+            auto wordy = [](const std::wstring& t) {   // a word (two letters running), not a bracket or a digit of a formula
+                for (size_t i = 0; i + 1 < t.size(); ++i) if (iswalpha(t[i]) && iswalpha(t[i + 1])) return true;
+                return false;
+            };
+            for (const Unit& u : us) {
+                // (full size: a word set small under a letter, as in p_{abs}, is a formula's)
+                if (!u.text || u.used || mathish(u) || !wordy(u.chars) || std::fabs(u.y - s0.y) > 4 * size || u.size < 0.88 * size) continue;
+                if (u.r <= L) colL = std::max(colL, u.r);          // (outside what was taken in: a column's edge is not
+                else if (u.l >= R) colR = std::min(colR, u.l);     // inside the formula)
+            }
+        }
+        {
+            const double y0 = us[static_cast<size_t>(seed)].y;
+            for (size_t k = 0; k < us.size(); ++k) {
+                const Unit& u = us[k];
+                if (u.ours || std::fabs((u.text ? u.y : (u.b + u.t) / 2) - y0) > 5 * size || u.r <= colL + 1 || u.l >= colR - 1) continue;
+                if (!u.text || mathish(u) || u.used) pool.push_back(static_cast<int>(k));
+            }
+        }
+        std::vector<double> ys;
+        for (int id : pool) {
+            const Unit& u = us[static_cast<size_t>(id)];
+            if (full(u)) {
+                bool part = false;
+                for (int b2 : pool) if (overUnder(u, us[static_cast<size_t>(b2)])) { part = true; break; }
+                if (!part) ys.push_back(u.y);
+            } else if (thinBar(u) && !innerBar(u, pool)) {   // a fraction with full-size text over and under its bar
+                bool over = false, under = false;
+                for (int t2 : pool) {
+                    const Unit& w = us[static_cast<size_t>(t2)];
+                    if (!full(w) || !overUnder(w, u)) continue;
+                    if (w.b >= barY(u) - 0.3 * size) over = true; else under = true;
+                }
+                if (over && under) ys.push_back(barY(u) - axisOf(size));
+            }
+        }
+        std::sort(ys.rbegin(), ys.rend());
+        std::vector<double> lines;
+        for (double y : ys) if (lines.empty() || lines.back() - y > 0.7 * size) lines.push_back(y);
+        if (std::getenv("FEATHER_TRACE_EQ")) { std::fprintf(stderr, "lines:"); for (double y : lines) std::fprintf(stderr, " %.1f", y); std::fprintf(stderr, " (from %zu)\n", ys.size()); }
+        if (lines.size() > 1) {
+            // every part on the page near the formula belongs to the line whose baseline is nearest
+            for (size_t k = 0; k < us.size(); ++k) {   // (across the neighbourhood the lines were found in)
+                const Unit& u = us[k];
+                if (std::fabs((u.text ? u.y : (u.b + u.t) / 2) - us[static_cast<size_t>(seed)].y) > 5 * size || u.r <= colL + 1 || u.l >= colR - 1) continue;
+                // (a tall bracket, root or integral of TeX's stands on the line's axis; its origin is at its top)
+                const double y = !u.text ? (u.b + u.t) / 2 : (u.big || radical(u)) ? (u.b + u.t) / 2 - axisOf(size) : u.y;
+                double best = 1e18;
+                for (size_t q = 0; q < lines.size(); ++q) if (std::fabs(y - lines[q]) < best) { best = std::fabs(y - lines[q]); bandOf[k] = static_cast<int>(q); }
+            }
+            // the top and bottom of a fraction (a small one in a power too) are on the line of its bar (a fraction's: with
+            // text over it and under it; a root's line has text only under it)
+            std::vector<char> fractionBar(us.size(), 0);
+            for (size_t q = 0; q < us.size(); ++q) {
+                const Unit& v = us[q];
+                if (v.text || bandOf[q] < 0 || (v.t - v.b) > 0.3 * size) continue;
+                bool over = false, under = false;
+                for (const Unit& u : us) {
+                    if (!u.text || u.r <= v.l || u.l >= v.r) continue;
+                    const double y = barY(v), us0 = std::max(u.size, 1.0);
+                    if (u.b >= y - 0.3 * us0 && u.b - y < 0.6 * us0) over = true;
+                    else if (u.t <= y + 0.3 * us0 && y - u.t < 0.6 * us0) under = true;
+                }
+                fractionBar[q] = over && under;
+            }
+            for (size_t k = 0; k < us.size(); ++k) {
+                const Unit& u = us[k];
+                if (!u.text || bandOf[k] < 0) continue;
+                double best = 1e18;
+                for (size_t q = 0; q < us.size(); ++q) {
+                    const Unit& v = us[q];
+                    if (!fractionBar[q] || u.r <= v.l || u.l >= v.r) continue;
+                    const double y = barY(v), us0 = std::max(u.size, 1.0);
+                    const double d = u.b >= y - 0.3 * us0 ? u.b - y : y - u.t;   // over it, or under it
+                    if (d > -0.3 * us0 && d < 0.6 * us0 && d < best) { best = d; bandOf[k] = bandOf[q]; }
+                }
+            }
+            if (std::getenv("FEATHER_TRACE_EQ")) {
+                std::fprintf(stderr, "col %.1f-%.1f\n", colL, colR);
+                for (int id : in) std::fprintf(stderr, "  first %s '%s' y=%.1f band %d\n", us[static_cast<size_t>(id)].text ? "text" : "line", platform::utf8(us[static_cast<size_t>(id)].chars).c_str(), us[static_cast<size_t>(id)].y, bandOf[static_cast<size_t>(id)]);
+            }
+            for (Unit& u : us) u.used = false;
+            in = grow(seed, true);
+            const int band = bandOf[static_cast<size_t>(seed)];
+            auto extent = [&](const std::vector<int>& ids, double& l, double& r) {
+                l = 1e18; r = -1e18;
+                for (int id : ids) { l = std::min(l, us[static_cast<size_t>(id)].l); r = std::max(r, us[static_cast<size_t>(id)].r); }
+            };
+            // ends in a sign that a formula cannot end with: the rest is on the next line
+            auto endsOpen = [&](const std::vector<int>& ids) {
+                int last = -1;
+                for (int id : ids) {
+                    const Unit& u = us[static_cast<size_t>(id)];
+                    if (u.text && bandOf[static_cast<size_t>(id)] >= 0 && std::fabs(u.size - size) < 0.12 * size && (last < 0 || u.r > us[static_cast<size_t>(last)].r)) last = id;
+                }
+                if (last < 0) return false;
+                std::wstring t = us[static_cast<size_t>(last)].chars;
+                while (!t.empty() && t.back() == L' ') t.pop_back();
+                return !t.empty() && std::wstring(L"=+-\x2212\x00D7\x00B7\x00F7<>\x2264\x2265\x2248\x2260\x00B1\x2192\x21D2").find(t.back()) != std::wstring::npos;
+            };
+            // the first (or last) formula of another line, within the cell's width
+            auto partOn = [&](int line, bool first) {
+                int pick = -1;
+                for (size_t k = 0; k < us.size(); ++k) {
+                    const Unit& u = us[k];
+                    if (u.used || bandOf[k] != line || !u.text || std::fabs(u.size - size) >= 0.12 * size || !mathish(u)) continue;
+                    if (u.r <= colL + 1 || u.l >= colR - 1) continue;
+                    if (first && u.l > L + 0.5 * size) continue;   // the next line's part starts under the formula's start or left of it
+                    if (pick < 0 || (first ? u.l < us[static_cast<size_t>(pick)].l : u.r > us[static_cast<size_t>(pick)].r)) pick = static_cast<int>(k);
+                }
+                return pick >= 0 ? grow(pick, true) : std::vector<int>{};
+            };
+            double ml, mr;
+            extent(in, ml, mr);
+            if (band + 1 < static_cast<int>(lines.size()) && endsOpen(in)) {
+                std::vector<int> next = partOn(band + 1, true);
+                double nl, nr;
+                extent(next, nl, nr);
+                if (!next.empty() && nl <= ml + 0.5 * size) second = next;   // it starts the next line, under or left of it
+                else for (int id : next) us[static_cast<size_t>(id)].used = false;
+            } else if (band > 0 && [&] {   // (only when it starts its line: nothing of a formula before it in the cell)
+                           for (size_t k = 0; k < us.size(); ++k)
+                               if (!us[k].used && bandOf[k] == band && us[k].text && mathish(us[k]) && us[k].r <= ml && us[k].l > colL) return false;
+                           return true;
+                       }()) {
+                std::vector<int> prev = partOn(band - 1, false);
+                double pl, pr;
+                extent(prev, pl, pr);
+                // (more than a lone sign: the end of a formula, its start or its name with it)
+                size_t letters = 0;
+                for (int id : prev) for (wchar_t ch : us[static_cast<size_t>(id)].chars) if (iswalnum(ch)) ++letters;
+                if (!prev.empty() && letters > 0 && endsOpen(prev) && ml <= pl + 0.5 * size) { second = prev; secondFirst = true; }
+                else for (int id : prev) us[static_cast<size_t>(id)].used = false;
+            }
+            if (std::getenv("FEATHER_TRACE_EQ")) {
+                std::fprintf(stderr, "wrap: band %d open %d main %.1f-%.1f second %zu first %d:", band, endsOpen(in) ? 1 : 0, ml, mr, second.size(), secondFirst ? 1 : 0);
+                for (int id : second) std::fprintf(stderr, " '%s'", platform::utf8(us[static_cast<size_t>(id)].chars).c_str());
+                std::fprintf(stderr, "\n");
+            }
+            L = 1e9; B = 1e9; R = -1e9; T = -1e9;
+            for (int id : in) { const Unit& u = us[static_cast<size_t>(id)]; L = std::min(L, u.l); B = std::min(B, u.b); R = std::max(R, u.r); T = std::max(T, u.t); }
         }
     }
     // Mathematics inside a sentence (a variable in a paragraph of a LaTeX paper, "the range of K"): ordinary text on its
@@ -1446,6 +1776,31 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     f.size = mainSize;
     f.baseline = base;
     f.uncertain = rd.twoLines;
+    if (!second.empty()) {   // the two lines of a wrapped formula, read each on its own and put together
+        Reader r2{us, {}};
+        double size2 = mainSize, base2 = base;
+        const std::wstring more = r2.build(second, &size2, &base2);
+        if (!more.empty()) {
+            double l2 = 1e18;
+            for (int id : second) l2 = std::min(l2, us[static_cast<size_t>(id)].l);
+            double l1 = 1e18;
+            for (int id : in) l1 = std::min(l1, us[static_cast<size_t>(id)].l);
+            rd.barsUsed.insert(rd.barsUsed.end(), r2.barsUsed.begin(), r2.barsUsed.end());
+            if (secondFirst) {
+                f.source = more + L" " + f.source;
+                f.wrapX = l1; f.wrapBaseline = base;   // the clicked part is the second line
+                f.baseline = base2;
+                f.startX = l2;
+            } else {
+                f.source += L" " + more;
+                f.wrapX = l2; f.wrapBaseline = base2;
+                f.startX = l1;
+            }
+            f.wrapped = true;
+            f.uncertain = rd.twoLines || r2.twoLines;
+            in.insert(in.end(), second.begin(), second.end());
+        }
+    }
     std::vector<bool> isBar(us.size(), false);
     for (int bId : rd.barsUsed) isBar[static_cast<size_t>(bId)] = true;
     L = 1e9; B = 1e9; R = -1e9; T = -1e9;
@@ -1456,6 +1811,7 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
         f.objects.push_back(u.idx);
         L = std::min(L, u.l); B = std::min(B, u.b); R = std::max(R, u.r); T = std::max(T, u.t);
         if (u.text && !colour) { f.color = u.color; colour = true; }
+        if (u.text && u.tex) f.tex = true;   // set again in Latin Modern, as TeX set it
     }
     std::sort(f.objects.begin(), f.objects.end());
     f.objects.erase(std::unique(f.objects.begin(), f.objects.end()), f.objects.end());
@@ -1465,10 +1821,59 @@ Found at(Document& d, int page, double x, double y, bool anyText) {
     return f;
 }
 
+namespace {
+// Where an equation written in the notation may be broken onto a second line: after a relation or a sign that is not
+// inside braces or \left ... \right (and not a power's or an index's sign).
+std::vector<size_t> breaks(const std::wstring& src) {
+    std::vector<size_t> out;
+    int depth = 0;
+    static const std::wstring kSigns = L"=+-\x2212<>\x2264\x2265\x2248\x2260\x00B1\x00D7\x00B7\x2192";
+    static const wchar_t* const kCommands[] = {L"le", L"ge", L"leq", L"geq", L"ne", L"neq", L"approx", L"times", L"cdot", L"pm", L"to", L"equiv"};
+    wchar_t prev = 0;
+    for (size_t i = 0; i < src.size(); ++i) {
+        const wchar_t c = src[i];
+        if (c == L'\\') {
+            size_t j = i + 1;
+            while (j < src.size() && iswalpha(src[j])) ++j;
+            const std::wstring name = src.substr(i + 1, j - i - 1);
+            if (name == L"left") ++depth;
+            else if (name == L"right") --depth;
+            else if (depth == 0 && prev != L'^' && prev != L'_')
+                for (const wchar_t* k : kCommands) if (name == k) { out.push_back(j); break; }
+            i = j > i + 1 ? j - 1 : i + 1;   // (a sign after the backslash: \{ \})
+            prev = L'a';
+            continue;
+        }
+        if (c == L'{' || c == L'(' || c == L'[') ++depth;   // (not inside brackets either: TeX breaks between terms)
+        else if (c == L'}' || c == L')' || c == L']') --depth;
+        // (a sign straight after a relation or another sign is a leading minus or plus: no break after it)
+        else if (depth == 0 && i > 0 && kSigns.find(c) != std::wstring::npos && prev != L'^' && prev != L'_' && kSigns.find(prev) == std::wstring::npos)
+            out.push_back(i + 1);
+        if (c != L' ') prev = c;
+    }
+    while (!out.empty() && src.find_first_not_of(L" ", out.back()) == std::wstring::npos) out.pop_back();   // (one at the very end)
+    return out;
+}
+} // namespace
+
+// Whether the page's text is mostly in TeX's fonts (a LaTeX document): a new equation there is set in Latin Modern.
+bool pageIsTex(Document& d, int page) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    int tex = 0, other = 0;
+    for (int i = 0, n = api.FPDFPage_CountObjects(pg); i < n; ++i) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        if (!o || api.FPDFPageObj_GetType(o) != FPDF_PAGEOBJ_TEXT) continue;
+        (texFontName(pageobj::baseFontName(api.FPDFTextObj_GetFont(o))) ? tex : other) += 1;
+    }
+    return tex > 0 && tex >= other;
+}
+
 bool replace(Document& d, const Found& f, const std::wstring& source, double size, std::wstring* why) {
     Layout L;
     const bool remove = source.find_first_not_of(L" \t\r\n") == std::wstring::npos;
-    if (!remove && !layout(source, size, L, why)) return false;
+    if (!remove && !layout(source, size, L, why, f.tex)) return false;
     FPDF_PAGE pg = d.page(f.page);
     if (!pg) return false;
     const auto& api = pdfium::api();
@@ -1501,7 +1906,7 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
                 if (xs <= f.right + 2 || count < std::max(8, most * 3 / 10)) continue;
                 bool crossed = false;
                 for (const auto& q : nearby) if (q[0] < xs - 2 && q[2] > xs + 2) { crossed = true; break; }
-                if (!crossed) { limit = column ? std::max(limit, xs - 2.0) : xs - 2.0; column = true; break; }
+                if (!crossed) { limit = column ? std::max(limit, xs - 0.8 * size) : xs - 0.8 * size; column = true; break; }   // (a clear gap kept: TeX leaves an em or more between columns)
             }
         }
     }
@@ -1515,7 +1920,47 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
         if (o && api.FPDFPage_RemoveObject(pg, o)) api.FPDFPageObj_Destroy(o);
     }
     double setSize = size;   // what it is set at (smaller when it would not fit its column)
-    if (!remove) {
+    bool placed = false;
+    if (!remove && f.wrapped && !f.centred) {
+        // A formula on two lines of its cell: on one line when it now fits, else broken again at the last relation or
+        // sign that keeps its first line inside the cell, the rest where the second line was. Both lines are one
+        // equation (one mark, with where the second line starts).
+        FPDF_FONT texFonts[3] = {};
+        if (L.tex) for (int k = 0; k < 3; ++k) texFonts[k] = d.embeddedFont(kTexFontKey + k, mathfonts::kFonts[k].data, mathfonts::kFonts[k].size);
+        const double x1 = f.startX, room = limit - x1;
+        bool ok = true;
+        if (L.width <= room + 0.5) {
+            ok = place(d.handle(), pg, L, x1, f.baseline, f.color, source, size, true, texFonts);
+        } else {
+            const std::vector<size_t> cuts = breaks(source);
+            Layout A, Bl;
+            size_t cut = std::wstring::npos;
+            for (size_t c : cuts) {   // (the first part grows with each later place)
+                Layout t;
+                if (!layout(source.substr(0, c), size, t, nullptr, f.tex)) continue;
+                if (t.width <= room + 0.5) { cut = c; A = t; continue; }   // fits: a later place may too
+                if (cut == std::wstring::npos) { cut = c; A = t; }          // none fits: broken as early as it can be
+                break;
+            }
+            if (cut != std::wstring::npos && layout(source.substr(cut), size, Bl, nullptr, f.tex)) {
+                char wrap[64];
+                std::snprintf(wrap, sizeof wrap, "%.3f %.3f", f.wrapX - x1, f.wrapBaseline - f.baseline);
+                const std::string id = newId();
+                ok = place(d.handle(), pg, A, x1, f.baseline, f.color, source, size, true, texFonts, id, wrap) &&
+                     place(d.handle(), pg, Bl, f.wrapX, f.wrapBaseline, f.color, source, size, true, texFonts, id, wrap);
+            } else {
+                ok = place(d.handle(), pg, L, x1, f.baseline, f.color, source, size, true, texFonts);   // nowhere to break it
+            }
+        }
+        if (!ok) {
+            d.rollbackChange();
+            d.resetText(f.page);
+            if (why) *why = L"The equation could not be set on the page.";
+            return false;
+        }
+        placed = true;
+    }
+    if (!remove && !placed) {
         const double x = f.centred ? (f.left + f.right) / 2 - L.width / 2 : f.left;
         // A wider equation pushes what follows it on its line (the next equation of a table's cell, a word) to the right,
         // as far as the edge of its cell: they would overlap.
@@ -1564,7 +2009,7 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
             if (column && reach + grow > limit + 0.5) {
                 const double fit = std::max(0.75, (L.width - (reach + grow - limit - 0.5)) / L.width);
                 Layout smaller;
-                if (fit < 0.995 && layout(source, size * fit, smaller, nullptr)) {
+                if (fit < 0.995 && layout(source, size * fit, smaller, nullptr, f.tex)) {
                     L = std::move(smaller);
                     setSize = size * fit;
                     shift = std::max(0.0, x + L.width - f.right);
@@ -1573,7 +2018,9 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
             if (std::getenv("FEATHER_TRACE_EQ")) std::fprintf(stderr, "push: grow %.1f limit %.1f column %d after %zu move %zu reach %.1f size %.2f\n", shift, limit, column, after.size(), move.size(), reach, setSize);
             if (shift > 0.3) for (FPDF_PAGEOBJECT o : move) api.FPDFPageObj_Transform(o, 1, 0, 0, 1, shift, 0);   // the gap stays as it was
         }
-        if (!place(d.handle(), pg, L, x, f.baseline, f.color, source, setSize, true)) {
+        FPDF_FONT texFonts[3] = {};
+        if (L.tex) for (int k = 0; k < 3; ++k) texFonts[k] = d.embeddedFont(kTexFontKey + k, mathfonts::kFonts[k].data, mathfonts::kFonts[k].size);
+        if (!place(d.handle(), pg, L, x, f.baseline, f.color, source, setSize, true, texFonts)) {
             d.rollbackChange();
             d.resetText(f.page);
             if (why) *why = L"The equation could not be set on the page.";
@@ -1592,12 +2039,14 @@ bool replace(Document& d, const Found& f, const std::wstring& source, double siz
 
 bool insert(Document& d, int page, double x, double baseline, const std::wstring& source, double size, COLORREF color, std::wstring* why) {
     Layout L;
-    if (!layout(source, size, L, why)) return false;
+    if (!layout(source, size, L, why, pageIsTex(d, page))) return false;
     if (source.find_first_not_of(L" \t\r\n") == std::wstring::npos) { if (why) *why = L"Type the equation first."; return false; }
     FPDF_PAGE pg = d.page(page);
     if (!pg) return false;
     d.beginChange(L"Insert an equation");
-    if (!place(d.handle(), pg, L, x, baseline, color, source, size, true) || !contentgen::generate(d, pg)) {
+    FPDF_FONT texFonts[3] = {};
+    if (L.tex) for (int k = 0; k < 3; ++k) texFonts[k] = d.embeddedFont(kTexFontKey + k, mathfonts::kFonts[k].data, mathfonts::kFonts[k].size);
+    if (!place(d.handle(), pg, L, x, baseline, color, source, size, true, texFonts) || !contentgen::generate(d, pg)) {
         d.rollbackChange();
         d.resetText(page);
         if (why) *why = L"The equation could not be set on the page.";
@@ -1607,9 +2056,9 @@ bool insert(Document& d, int page, double x, double baseline, const std::wstring
     return true;
 }
 
-bool preview(const std::wstring& source, double size, double scale, std::vector<unsigned char>& bgra, int& w, int& h, std::wstring* error) {
+bool preview(const std::wstring& source, double size, double scale, std::vector<unsigned char>& bgra, int& w, int& h, std::wstring* error, bool tex) {
     Layout L;
-    if (!layout(source, size, L, error)) return false;
+    if (!layout(source, size, L, error, tex)) return false;
     const auto& api = pdfium::api();
     const double pad = 0.25 * size;
     const double pw = std::max(L.width, 0.5 * size) + 2 * pad, ph = std::max(L.ascent + L.descent, 0.8 * size) + 2 * pad;
@@ -1619,7 +2068,9 @@ bool preview(const std::wstring& source, double size, double scale, std::vector<
     FPDF_DOCUMENT doc = api.FPDF_CreateNewDocument();
     if (!doc) return false;
     FPDF_PAGE pg = api.FPDFPage_New(doc, 0, pw, ph);
-    bool ok = pg && place(doc, pg, L, pad, pad + std::max(L.descent, 0.2 * size), RGB(0, 0, 0), source, size, false);
+    FPDF_FONT texFonts[3] = {};
+    if (L.tex) for (int k = 0; k < 3; ++k) texFonts[k] = api.FPDFText_LoadFont(doc, mathfonts::kFonts[k].data, static_cast<uint32_t>(mathfonts::kFonts[k].size), FPDF_FONT_TRUETYPE, 1);
+    bool ok = pg && place(doc, pg, L, pad, pad + std::max(L.descent, 0.2 * size), RGB(0, 0, 0), source, size, false, texFonts);
     if (ok) {
         FPDF_BITMAP bmp = api.FPDFBitmap_CreateEx(w, h, FPDFBitmap_BGRA, nullptr, 0);
         ok = bmp != nullptr;
@@ -1634,6 +2085,7 @@ bool preview(const std::wstring& source, double size, double scale, std::vector<
         }
     }
     if (pg) api.FPDF_ClosePage(pg);
+    for (FPDF_FONT f : texFonts) if (f) api.FPDFFont_Close(f);
     api.FPDF_CloseDocument(doc);
     return ok;
 }

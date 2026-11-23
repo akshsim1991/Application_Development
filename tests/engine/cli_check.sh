@@ -742,5 +742,24 @@ check "a drawing inside a form is picked and resized" "grep -q '^scale ok shape'
 "$prog" --edit "$W/spot.pdf" "$W/spot4.pdf" move 1 100 695 0 -8 </dev/null >/dev/null 2>&1
 check "the spot-coloured title moves" "grep -q '^move ok paragraph' '$W/spot4.pdf.txt'"
 
+# A page set by TeX (its text in Computer Modern): a new equation there is set in Latin Modern (the bundled fonts,
+# embedded once), reads back as Latin Modern, and a page in other fonts still gets Times.
+python3 - "$W/tex.pdf" <<'PY'
+import sys, pikepdf
+from pikepdf import Name, Dictionary
+pdf = pikepdf.new()
+page = pdf.add_blank_page(page_size=(595, 842))
+cm = Dictionary(Type=Name.Font, Subtype=Name.Type1, BaseFont=Name('/CMR10'), Encoding=Name.WinAnsiEncoding)
+page.obj.Resources = Dictionary(Font=Dictionary(F1=cm))
+page.obj.Contents = pikepdf.Stream(pdf, b"BT /F1 10 Tf 72 760 Td (Bernoulli's equation along a streamline.) Tj ET")
+pdf.save(sys.argv[1])
+PY
+"$prog" --edit "$W/tex.pdf" "$W/tex1.pdf" eqins 1 72 700 '\frac{p}{\rho g} + \frac{V^{2}}{2g} + z = H' eq 1 80 703 read </dev/null >/dev/null 2>&1
+check "an equation on a TeX page is set in Latin Modern" "pdffonts '$W/tex1.pdf' | grep -q FeatherLMMath-Italic && pdffonts '$W/tex1.pdf' | grep -q FeatherLMMath-Regular"
+check "it reads back whole" "grep -q 'ours=1 .*src: .*frac{V^{2}}{2g} + z = H' '$W/tex1.pdf.txt'"
+"$prog" --edit "$W/tex1.pdf" "$W/tex2.pdf" eq 1 80 703 set 'x^{2} + y^{2}' </dev/null >/dev/null 2>&1
+check "edited again, still one copy of each font" "[ \$(pdffonts '$W/tex2.pdf' | grep -c FeatherLMMath-Italic) -eq 1 ]"
+check "a page in other fonts gets Times" "! pdffonts '$W/rich.pdf' 2>/dev/null | grep -q FeatherLMMath"
+
 [ -n "${FEATHER_CLI_WORK:-}" ] || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

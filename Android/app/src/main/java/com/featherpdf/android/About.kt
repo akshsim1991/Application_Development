@@ -70,7 +70,7 @@ object About {
         val intro = "Feather PDF uses these open-source parts, under the licences listed (tap one to read it):\n" +
             "PDFium (BSD-3-Clause, Apache-2.0) with FreeType, libjpeg-turbo, libpng, zlib, OpenJPEG, Little CMS, " +
             "Anti-Grain Geometry, ICU, Abseil, fast_float, simdutf; and the C++ library of the Android NDK (libc++, Apache-2.0 " +
-            "with LLVM exception)."
+            "with LLVM exception); and fonts made from Latin Modern Math for equations in TeX documents (GUST Font License)."
         val names = files.map { it.substringBeforeLast('.').replace('_', ' ') }.toTypedArray()
         AlertDialog.Builder(a).setTitle("Open-source licences")
             .setMessage(if (files.isEmpty()) "$intro\n\n(The licence texts are not in this build.)" else null)

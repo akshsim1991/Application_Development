@@ -12,6 +12,7 @@ add_executable(FeatherPDF WIN32
   src/formdialog.cpp
   ${SHARED}/pageobjects.cpp
   ${SHARED}/equation.cpp
+  ${SHARED}/mathfonts.cpp
   ${SHARED}/exporter.cpp
   src/speech.cpp
   ${SHARED}/redact.cpp

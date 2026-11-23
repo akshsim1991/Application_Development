@@ -18,6 +18,7 @@ using form::ws;
 namespace {
 std::wstring g_pending;        // Insert Equation: set where the page is clicked next
 double g_pendingSize = 12;
+bool g_previewTex = false;   // the open sheet shows the equation in Latin Modern (a document made with LaTeX)
 const unichar kSlot = 1;       // in a template: where the selected text (or the caret) goes
 
 struct Template { NSString* label; NSString* insert; NSString* tip; };
@@ -68,7 +69,7 @@ bool FPEquationPlace(Document& d, int page, double x, double y, std::wstring& wh
     int w = 0, h = 0;
     NSImage* img = nil;
     const double backing = self.panel.backingScaleFactor > 0 ? self.panel.backingScaleFactor : 2;
-    if (src.find_first_not_of(L" \t") != std::wstring::npos && equation::preview(src, [self sizeValue], 2.0 * backing, px, w, h, &err)) {
+    if (src.find_first_not_of(L" \t") != std::wstring::npos && equation::preview(src, [self sizeValue], 2.0 * backing, px, w, h, &err, g_previewTex)) {
         NSBitmapImageRep* rep = [[NSBitmapImageRep alloc] initWithBitmapDataPlanes:nullptr pixelsWide:w pixelsHigh:h bitsPerSample:8 samplesPerPixel:4
                                                                         hasAlpha:YES isPlanar:NO colorSpaceName:NSDeviceRGBColorSpace bytesPerRow:w * 4 bitsPerPixel:32];
         unsigned char* out = rep.bitmapData;
@@ -231,6 +232,7 @@ static FPEquationSheet* g_sheet = nil;
     if (!d) return;
     const equation::Found f = found;
     __weak FPWindowController* weak = self;
+    g_previewTex = f.tex;
     [self equationSheet:(f.uncertain ? @"Equation Editor — this formula runs over two lines and may be read wrongly: check it before applying" : @"Equation Editor") source:f.source size:f.size existing:YES done:[weak, d, f](const std::wstring& src, double size, bool remove) {
         FPWindowController* me = weak;
         if (!me || me.pdf != d) return;
@@ -244,6 +246,7 @@ static FPEquationSheet* g_sheet = nil;
 - (IBAction)insertEquation:(id)sender {
     if (!self.pdf) return;
     __weak FPWindowController* weak = self;
+    g_previewTex = equation::pageIsTex(*self.pdf, [self.pageView currentPage]);
     [self equationSheet:@"Insert Equation" source:L"" size:12 existing:NO done:[weak](const std::wstring& src, double size, bool) {
         FPWindowController* me = weak;
         if (!me || src.find_first_not_of(L" ") == std::wstring::npos) return;

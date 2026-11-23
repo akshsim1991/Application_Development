@@ -4,7 +4,7 @@
         xmlns:c="clr-namespace:FeatherView.Controls"
         xmlns:v="clr-namespace:FeatherView.Views"
         xmlns:s="clr-namespace:FeatherView.Services"
-        Title="Feather View" Width="1280" Height="800" MinWidth="980" MinHeight="520"
+        Title="Feather View" Icon="pack://application:,,,/Assets/app.ico" Width="1280" Height="800" MinWidth="980" MinHeight="520"
         Background="{DynamicResource BgBrush}" AllowDrop="True" UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Ideal" FontFamily="Segoe UI Variable, Segoe UI" FontSize="13">
     <WindowChrome.WindowChrome>
@@ -85,9 +85,7 @@
         <!-- Title bar (dragging comes from WindowChrome.CaptionHeight) -->
         <Grid x:Name="TitleBar" Grid.Row="0" Height="40" Visibility="{Binding ShowChrome, Converter={StaticResource B2V}}" SizeChanged="TitleBar_SizeChanged">
             <StackPanel Orientation="Horizontal" Margin="16,0,0,0" VerticalAlignment="Center">
-                <Viewbox Width="22" Height="22">
-                    <Canvas Width="24" Height="24"><Path Data="{StaticResource IconFeather}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.8" StrokeLineJoin="Round" StrokeStartLineCap="Round" StrokeEndLineCap="Round" Fill="{DynamicResource AccentSoftBrush}" /></Canvas>
-                </Viewbox>
+                <Image Source="pack://application:,,,/Assets/logo.png" Width="22" Height="22" RenderOptions.BitmapScalingMode="HighQuality" />
             </StackPanel>
             <StackPanel x:Name="TabStrip" Orientation="Horizontal" Margin="52,0,150,0" VerticalAlignment="Center" HorizontalAlignment="Left" WindowChrome.IsHitTestVisibleInChrome="True">
                 <ItemsControl ItemsSource="{Binding Tabs.Items}">

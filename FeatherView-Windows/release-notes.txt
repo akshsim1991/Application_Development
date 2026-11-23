@@ -1,6 +1,8 @@
-Feather View 0.1.1
-- Full screen now covers the whole screen (Esc or F11 to leave); in videos the controls hide until you move the mouse
-- Space plays/pauses videos; option to keep a video playing when you switch tabs
-- Folder list and Up button in the gallery; Include subfolders option (drives with pictures in sub-folders)
+Feather View 2.1.0
+- New app icon: a feather over a picture
+- Opening a folder or drive shows every picture from all folders underneath in one go (scan runs in the background with a live count)
+- Full screen covers the whole screen (Esc or F11 to leave); in videos the controls hide until you move the mouse; Space plays/pauses
+- Option to keep a video playing when you switch tabs
+- Smaller update downloads: a small installer (a couple of MB) for PCs that have the .NET 10 Desktop Runtime, and updates then stay small
 - Tabs, details cards (camera, location, EXIF, histogram, text in picture), compare, slideshow shuffle
-- Automatic update checks now read this repository's releases
+- Automatic update checks read this repository's releases

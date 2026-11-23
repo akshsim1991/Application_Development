@@ -1,5 +1,7 @@
 # Feather View
 
+Current version: **2.1.0** (numbering: MAJOR.MINOR.PATCH; see `docs/UPDATES.md`). Logo sources are in `assets/` (`logo.svg`, `logo-small.svg`).
+
 A lightweight photo (and soon video) viewer for Windows. Offline, no ads, no telemetry, no account.
 C# / .NET 10 / WPF, MVVM. Designed and developed by Akshaya Simha.
 

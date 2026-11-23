@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#4F9BFF"/><stop offset="1" stop-color="#1D4FD8"/></linearGradient>
+  </defs>
+  <rect x="6" y="6" width="244" height="244" rx="56" fill="url(#bg)"/>
+  <!-- simplified for 16-32 px: bold photo (sun + mountain) and a big feather, no fine detail -->
+  <rect x="26" y="70" width="140" height="124" rx="18" fill="#FFFFFF"/>
+  <circle cx="132" cy="102" r="15" fill="#FFC857"/>
+  <path d="M26 176 L26 150 L66 108 L96 140 L116 124 L166 168 L166 194 L44 194 Q26 194 26 176 Z" fill="#2C6BE0"/>
+  <g transform="translate(176 128) rotate(32) scale(1.12)">
+    <path d="M0 -104 C 40 -76 54 -24 32 28 C 20 56 7 80 0 98 C -7 80 -20 56 -32 28 C -54 -24 -40 -76 0 -104 Z" fill="#FFFFFF" stroke="#1D4FD8" stroke-width="7" stroke-linejoin="round"/>
+    <path d="M0 -92 L0 118" stroke="#6E9BEA" stroke-width="9" stroke-linecap="round" fill="none"/>
+  </g>
+</svg>

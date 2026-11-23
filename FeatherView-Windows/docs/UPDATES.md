@@ -1,3 +1,7 @@
+# Version numbers
+
+Feather View uses MAJOR.MINOR.PATCH and starts at **2.1.0** (matching the V2.1 roadmap). Bug fixes are 2.1.1, 2.1.2, ...; the next feature release is 2.2.0; V3 becomes 3.0.0. The number must always increase, or installed copies will not see an update.
+
 # Releasing an update
 
 Installed copies read `latest.json` from the newest normal (not pre-release) GitHub Release of this repository:
@@ -8,12 +12,12 @@ To publish an update:
 2. Push with `[release]` in the commit message. CI builds the installer, creates `latest.json` (version, notes, installer URL, size, SHA-256) and publishes the release `featherview-v<version>` with the installer, ZIPs and `latest.json`.
 3. Installed copies notice it within a day (5 seconds after start-up, at most once every 24 hours) or at once through Settings > Updates > Check for updates now. They ask first, download from github.com, verify size and SHA-256, then run the installer silently and restart.
 
-Copies older than 0.1.1 looked at a different address and cannot update themselves: install 0.1.1 once by hand.
+Copies older than 2.1.0 (the early 0.1.x test builds) looked at a different address and cannot update themselves: install 2.1.0 once by hand.
 
 `latest.json`:
 ```json
-{ "version": "0.1.1", "date": "2026-11-23", "notes": "What's new",
-  "win64": { "url": "https://github.com/akshsim1991/Application_Development/releases/download/featherview-v0.1.1/FeatherView-Setup-0.1.1.exe", "size": 45655590, "sha256": "<hex>" } }
+{ "version": "2.1.0", "date": "2026-11-23", "notes": "What's new",
+  "win64": { "url": "https://github.com/akshsim1991/Application_Development/releases/download/featherview-v2.1.0/FeatherView-Setup-2.1.0.exe", "size": 45655590, "sha256": "<hex>" } }
 ```
 Allowed hosts: raw.githubusercontent.com, github.com, objects.githubusercontent.com, release-assets.githubusercontent.com. Anything else is refused.
 

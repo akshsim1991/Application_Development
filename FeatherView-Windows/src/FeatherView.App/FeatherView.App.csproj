@@ -9,7 +9,8 @@
     <AssemblyName>FeatherView</AssemblyName>
     <RootNamespace>FeatherView</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.1</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Version>2.1.0</Version>
     <Product>Feather View</Product>
     <Company>Akshaya Simha</Company>
     <Description>Lightweight photo and video viewer</Description>
@@ -21,6 +22,10 @@
     <!-- A possible null dereference is how a start-up crash slipped in once; make these build errors. -->
     <WarningsAsErrors>$(WarningsAsErrors);CS8600;CS8601;CS8602;CS8603;CS8604;CS0108;CS0105</WarningsAsErrors>
   </PropertyGroup>
+  <ItemGroup>
+    <Resource Include="Assets\logo.png" />
+    <Resource Include="Assets\app.ico" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\FeatherView.Core\FeatherView.Core.csproj" />
   </ItemGroup>

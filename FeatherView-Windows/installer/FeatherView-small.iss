@@ -1,5 +1,5 @@
 ; Small installer: no .NET runtime inside (a couple of MB). Needs the free ".NET 10 Desktop Runtime" (x64) on the PC.
-; Build: iscc /DAppVersion=0.1.1 installer\FeatherView-small.iss     (uses publish\fxdep from the framework-dependent publish)
+; Build: iscc /DAppVersion=2.1.0 installer\FeatherView-small.iss     (uses publish\fxdep from the framework-dependent publish)
 #ifndef AppVersion
   #define AppVersion "0.1.0"
 #endif
@@ -17,6 +17,7 @@ OutputBaseFilename=FeatherView-Setup-small-{#AppVersion}
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=..\src\FeatherView.App\Assets\app.ico
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequiredOverridesAllowed=dialog

@@ -90,7 +90,7 @@ jobs:
 
           Installer SHA-256: $hash
 
-          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 0.1.1 and later check this release for updates automatically (Settings > Updates). Download only the one installer you need, not the CI artifact bundle.
+          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 2.1.0 and later check this release for updates automatically (Settings > Updates). Download only the one installer you need, not the CI artifact bundle.
           "@
           # A re-run replaces the release so its tag points at the commit that was just built.
           gh release view $tag *> $null

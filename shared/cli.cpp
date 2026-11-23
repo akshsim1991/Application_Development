@@ -3,6 +3,7 @@
 // Windows-only use parts of the engine that have no Mac version yet (macOS/PORTING.md).
 #include "cli.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <memory>
 #include <cstdio>
@@ -594,6 +595,39 @@ int run(std::vector<std::wstring> files) {
         std::string rep = "pictures=" + std::to_string(keep.size()) + "\n";
         Document::writeFile(files[2] + L".txt", std::vector<unsigned char>(rep.begin(), rep.end()));
         return Document::writeFile(files[2], out) == SaveResult::Ok ? 0 : 4;
+    }
+    if (!files.empty() && files[0] == L"--timing") {   // --timing in.pdf out.txt : how long opening, edit mode's outlines and a click take, page by page
+        if (files.size() < 3) return 2;
+        using clk = std::chrono::steady_clock;
+        auto ms = [](clk::time_point a, clk::time_point b) { return std::chrono::duration<double, std::milli>(b - a).count(); };
+        const auto t0 = clk::now();
+        Document doc;
+        if (doc.open(files[1]) != OpenResult::Ok) return 3;
+        std::string rep;
+        char line[200];
+        std::snprintf(line, sizeof line, "open %.1f ms\n", ms(t0, clk::now()));
+        rep += line;
+        double total = 0, worst = 0;
+        for (int p = 0; p < doc.pageCount(); ++p) {
+            const auto a = clk::now();
+            const auto blocks = pageobj::editableBlocks(doc, p);
+            const auto b = clk::now();
+            double click = 0;
+            for (const auto& bl : blocks)
+                if (bl.kind == pageobj::EditBlock::Text) {   // a click on the page's first text block
+                    pageobj::paragraphAt(doc, p, (bl.left + bl.right) / 2, bl.top - 2);
+                    click = ms(b, clk::now());
+                    break;
+                }
+            std::snprintf(line, sizeof line, "page %d blocks %zu outlines %.1f ms click %.1f ms\n", p + 1, blocks.size(), ms(a, b), click);
+            rep += line;
+            total += ms(a, b);
+            worst = std::max(worst, std::max(ms(a, b), click));
+        }
+        std::snprintf(line, sizeof line, "outlines total %.1f ms, slowest step %.1f ms\n", total, worst);
+        rep += line;
+        Document::writeFile(files[2], std::vector<unsigned char>(rep.begin(), rep.end()));
+        return 0;
     }
     if (!files.empty() && files[0] == L"--blocks") {   // --blocks in.pdf out.txt [page] : what edit mode outlines, and whether a click in each text block edits that block
         if (files.size() < 3) return 2;

@@ -6,8 +6,10 @@
 #include <cwchar>
 #include <array>
 #include <cmath>
+#include <cstdint>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <numeric>
 #include <set>
 
@@ -138,12 +140,34 @@ void collectPictureLines(Document& d, int page, std::vector<Seg>& hs, std::vecto
         api().FPDF_DeviceToPage(pg, 0, 0, W, H, 0, dx, dy, &ox, &oy);
     };
     const int minRun = static_cast<int>(40 * k);   // 40 points: shorter dark runs are letters
+    // A rule is thin: a little way above and below it (or left and right) the page is mostly light. A dark area (a photo,
+    // a filled box) has dark runs in every row; taking them for rules gave thousands of lines and made every click on
+    // such a page take a second or more.
+    const int side = 4;   // pixels, about 3 points: more than a rule's width
+    auto thinAcross = [&](int y, int x0, int x1) {   // a horizontal run [x0, x1) on row y
+        for (int yy : {y - side, y + side}) {
+            if (yy < 0 || yy >= H) continue;
+            int d = 0;
+            for (int x = x0; x < x1; ++x) d += dark(x, yy);
+            if (d * 2 > x1 - x0) return false;
+        }
+        return true;
+    };
+    auto thinDown = [&](int x, int y0, int y1) {   // a vertical run [y0, y1) in column x
+        for (int xx : {x - side, x + side}) {
+            if (xx < 0 || xx >= W) continue;
+            int d = 0;
+            for (int y = y0; y < y1; ++y) d += dark(xx, y);
+            if (d * 2 > y1 - y0) return false;
+        }
+        return true;
+    };
     for (int y = 0; y < H; ++y)
         for (int x = 0; x < W;) {
             if (!dark(x, y)) { ++x; continue; }
             int e = x;
             while (e < W && (dark(e, y) || (e + 1 < W && dark(e + 1, y)))) ++e;   // one-pixel gaps are noise
-            if (e - x >= minRun) {
+            if (e - x >= minRun && thinAcross(y, x, e)) {
                 double ax, ay, bx, by;
                 toPage(x, y + 0.5, ax, ay); toPage(e, y + 0.5, bx, by);
                 hs.push_back({std::min(ax, bx), std::max(ax, bx), ay, 0.75, RGB(0, 0, 0), {-1}});
@@ -155,7 +179,7 @@ void collectPictureLines(Document& d, int page, std::vector<Seg>& hs, std::vecto
             if (!dark(x, y)) { ++y; continue; }
             int e = y;
             while (e < H && (dark(x, e) || (e + 1 < H && dark(x, e + 1)))) ++e;
-            if (e - y >= minRun) {
+            if (e - y >= minRun && thinDown(x, y, e)) {
                 double ax, ay, bx, by;
                 toPage(x + 0.5, y, ax, ay); toPage(x + 0.5, e, bx, by);
                 vs.push_back({std::min(ay, by), std::max(ay, by), ax, 0.75, RGB(0, 0, 0), {-1}});
@@ -757,7 +781,52 @@ std::vector<std::pair<std::vector<Seg>, std::vector<Seg>>> splitStacked(const st
     return {{ch, cv}};
 }
 
+namespace {
+std::vector<Table> detectUncached(Document& d, int page);
+
+// What a page holds, to tell whether it changed: its objects (each one's identity, type and box), in order.
+unsigned long long fingerprint(FPDF_PAGE pg) {
+    unsigned long long h = 1469598103934665603ULL;
+    auto mix = [&](unsigned long long v) { h ^= v; h *= 1099511628211ULL; };
+    const int n = api().FPDFPage_CountObjects(pg);
+    mix(static_cast<unsigned long long>(n));
+    for (int i = 0; i < n; ++i) {
+        FPDF_PAGEOBJECT o = api().FPDFPage_GetObject(pg, i);
+        mix(reinterpret_cast<uintptr_t>(o));
+        if (!o) continue;
+        mix(static_cast<unsigned long long>(api().FPDFPageObj_GetType(o)));
+        float l = 0, b = 0, r = 0, t = 0;
+        api().FPDFPageObj_GetBounds(o, &l, &b, &r, &t);
+        for (float v : {l, b, r, t}) mix(static_cast<unsigned long long>(std::llround(v * 64.0)));
+    }
+    return h;
+}
+} // namespace
+
+// The tables of a page, kept for the page as it is: edit mode outlines a page and each click looks again at the same
+// page, and finding the tables (lines read from a scan, a grid's rows and columns, the text in each cell) is the slow
+// part. Any change to the page's objects (an edit, a move, an object replaced) finds them again.
 std::vector<Table> detect(Document& d, int page) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return {};
+    struct Entry { const void* doc; FPDF_PAGE pg; int page; unsigned long long print; std::vector<Table> tables; };
+    static std::mutex lock;
+    static std::vector<Entry> kept;   // the few pages looked at last
+    const unsigned long long print = fingerprint(pg);
+    {
+        std::lock_guard<std::mutex> g(lock);
+        for (const Entry& e : kept)
+            if (e.doc == d.handle() && e.pg == pg && e.page == page && e.print == print) return e.tables;
+    }
+    std::vector<Table> found = detectUncached(d, page);
+    std::lock_guard<std::mutex> g(lock);
+    if (kept.size() >= 8) kept.erase(kept.begin());
+    kept.push_back({d.handle(), pg, page, print, found});
+    return found;
+}
+
+namespace {
+std::vector<Table> detectUncached(Document& d, int page) {
     std::vector<Table> found;
     FPDF_PAGE pg = d.page(page);
     if (!pg) return found;
@@ -778,6 +847,7 @@ std::vector<Table> detect(Document& d, int page) {
     }
     if (scanned) collectPictureLines(d, page, hs0, vs0);
     const std::vector<Seg> hs = joinLines(hs0, 1.0), vs = joinLines(vs0, 1.0);
+    if (std::getenv("FEATHER_TRACE_TABLES")) std::fprintf(stderr, "tables: page %d scanned %d lines %zu+%zu joined %zu+%zu\n", page, scanned, hs0.size(), vs0.size(), hs.size(), vs.size());
     const PageText pt = readText(d, page);
 
     // 1. ruled tables: horizontal and vertical lines that cross form a grid
@@ -958,6 +1028,7 @@ std::vector<Table> detect(Document& d, int page) {
     });
     return out;
 }
+} // namespace
 
 namespace {
 

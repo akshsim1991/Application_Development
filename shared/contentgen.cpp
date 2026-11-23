@@ -223,53 +223,66 @@ Shot draw(FPDF_PAGE pg, double scale) {
     return s;
 }
 
-// Each pixel the average of the 3 x 3 around it: the same drawing smoothed differently (a picture of an object shown
-// smaller, letters a fraction of a pixel apart) then reads the same; a missing fill, letter or hairline does not.
-Shot softened(const Shot& s) {
-    Shot o = s;
-    for (int y = 0; y < s.h; ++y)
-        for (int x = 0; x < s.w; ++x) {
-            int sum[3] = {0, 0, 0}, n = 0;
-            for (int dy = -1; dy <= 1; ++dy)
-                for (int dx = -1; dx <= 1; ++dx) {
-                    const int xx = x + dx, yy = y + dy;
-                    if (xx < 0 || yy < 0 || xx >= s.w || yy >= s.h) continue;
-                    const uint8_t* c = &s.px[(static_cast<size_t>(yy) * s.w + xx) * 4];
-                    for (int k = 0; k < 3; ++k) sum[k] += c[k];
-                    ++n;
-                }
-            uint8_t* d = &o.px[(static_cast<size_t>(y) * s.w + x) * 4];
-            for (int k = 0; k < 3; ++k) d[k] = static_cast<uint8_t>(sum[k] / n);
-        }
-    return o;
-}
-
 // The pixels that differ clearly: in the softened drawings, a pixel counts when no pixel next to it (or itself) in the
 // other drawing is close to it.
-std::vector<uint8_t> differences(const Shot& a0, const Shot& b0, int& count) {
+std::vector<uint8_t> differences(const Shot& a0, const Shot& b0, int& count, int stopAbove = -1) {
     count = 0;
     std::vector<uint8_t> m;
     if (a0.w != b0.w || a0.h != b0.h || a0.px.empty()) { count = -1; return m; }
-    if (a0.px == b0.px) { m.assign(static_cast<size_t>(a0.w) * a0.h, 0); return m; }
-    const Shot a = softened(a0), b = softened(b0);
-    const int w = a.w, h = a.h;
-    m.assign(static_cast<size_t>(w) * h, 0);
-    auto unmatched = [&](const Shot& p, const Shot& q, int x, int y) {   // p's pixel has nothing close to it around q's
-        const uint8_t* c = &p.px[(static_cast<size_t>(y) * w + x) * 4];
-        for (int dy = -1; dy <= 1; ++dy)
-            for (int dx = -1; dx <= 1; ++dx) {
-                const int xx = x + dx, yy = y + dy;
-                if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
-                const uint8_t* e = &q.px[(static_cast<size_t>(yy) * w + xx) * 4];
+    const int W = a0.w, H = a0.h;
+    const bool mask = stopAbove < 0;   // with a limit only the count matters (up to just past it): no mask is made
+    if (mask) m.assign(static_cast<size_t>(W) * H, 0);
+    if (a0.px == b0.px) return m;
+    // Only where the drawings differ at all is worth softening and comparing: a pixel more than two away from any raw
+    // difference has the same surroundings in both, so the same softened value and its match. (Softening the whole page
+    // for every check made each edit of a large page take a second or more.)
+    int x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (int y = 0; y < H; ++y) {
+        const uint8_t* ra = &a0.px[static_cast<size_t>(y) * W * 4];
+        const uint8_t* rb = &b0.px[static_cast<size_t>(y) * W * 4];
+        if (std::memcmp(ra, rb, static_cast<size_t>(W) * 4) == 0) continue;
+        for (int x = 0; x < W; ++x)
+            if (std::memcmp(ra + x * 4, rb + x * 4, 3) != 0) { x0 = std::min(x0, x); x1 = std::max(x1, x); y0 = std::min(y0, y); y1 = std::max(y1, y); }
+    }
+    if (x1 < 0) return m;
+    x0 = std::max(0, x0 - 3); y0 = std::max(0, y0 - 3); x1 = std::min(W - 1, x1 + 3); y1 = std::min(H - 1, y1 + 3);
+    // the softened drawings over that box (each pixel the average of the 3 x 3 around it, read from the whole drawing)
+    const int bw = x1 - x0 + 1, bh = y1 - y0 + 1;
+    auto soften = [&](const Shot& sh) {
+        std::vector<uint8_t> o(static_cast<size_t>(bw) * bh * 3);
+        for (int y = y0; y <= y1; ++y)
+            for (int x = x0; x <= x1; ++x) {
+                int sum[3] = {0, 0, 0}, n = 0;
+                for (int yy = std::max(0, y - 1); yy <= std::min(H - 1, y + 1); ++yy)
+                    for (int xx = std::max(0, x - 1); xx <= std::min(W - 1, x + 1); ++xx) {
+                        const uint8_t* c = &sh.px[(static_cast<size_t>(yy) * W + xx) * 4];
+                        sum[0] += c[0]; sum[1] += c[1]; sum[2] += c[2];
+                        ++n;
+                    }
+                uint8_t* d = &o[(static_cast<size_t>(y - y0) * bw + (x - x0)) * 3];
+                for (int k = 0; k < 3; ++k) d[k] = static_cast<uint8_t>(sum[k] / n);
+            }
+        return o;
+    };
+    const std::vector<uint8_t> a = soften(a0), b = soften(b0);
+    // a pixel counts when no pixel next to it (or itself) in the other softened drawing is close to it
+    auto unmatched = [&](const std::vector<uint8_t>& p, const std::vector<uint8_t>& q, int x, int y) {
+        const uint8_t* c = &p[(static_cast<size_t>(y) * bw + x) * 3];
+        for (int yy = std::max(0, y - 1); yy <= std::min(bh - 1, y + 1); ++yy)
+            for (int xx = std::max(0, x - 1); xx <= std::min(bw - 1, x + 1); ++xx) {
+                const uint8_t* e = &q[(static_cast<size_t>(yy) * bw + xx) * 3];
                 if (std::abs(c[0] - e[0]) <= 28 && std::abs(c[1] - e[1]) <= 28 && std::abs(c[2] - e[2]) <= 28) return false;
             }
         return true;
     };
-    for (int y = 0; y < h; ++y)
-        for (int x = 0; x < w; ++x) {
-            const size_t i = static_cast<size_t>(y) * w + x;
-            if (std::memcmp(&a.px[i * 4], &b.px[i * 4], 3) == 0) continue;
-            if (unmatched(a, b, x, y) || unmatched(b, a, x, y)) { m[i] = 1; ++count; }
+    for (int y = 0; y < bh; ++y)
+        for (int x = 0; x < bw; ++x) {
+            const size_t i = (static_cast<size_t>(y) * bw + x) * 3;
+            if (a[i] == b[i] && a[i + 1] == b[i + 1] && a[i + 2] == b[i + 2]) continue;
+            if (unmatched(a, b, x, y) || unmatched(b, a, x, y)) {
+                if (mask) m[static_cast<size_t>(y + y0) * W + (x + x0)] = 1;
+                if (++count > stopAbove && !mask) return m;
+            }
         }
     return m;
 }
@@ -492,7 +505,7 @@ bool writtenFaithfully(Document& d, FPDF_PAGE pg, int index, double scale, const
     bool same = false;
     if (pdfium::api().FPDFPage_GenerateContent(pg)) {
         int count = 0;
-        differences(want, drawWritten(d, index, scale), count);
+        differences(want, drawWritten(d, index, scale), count, 4);
         same = count >= 0 && count <= 4;
     }
     activate(all, nullptr);

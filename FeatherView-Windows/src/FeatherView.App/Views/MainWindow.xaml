@@ -115,9 +115,9 @@
                 <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconPlus}" ToolTip="New tab (Ctrl+T)" Command="{Binding Tabs.NewTabCommand}" AutomationProperties.Name="New tab" Margin="4,0,0,0" />
             </StackPanel>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" WindowChrome.IsHitTestVisibleInChrome="True">
-                <Button Style="{StaticResource CaptionButton}" Tag="M2 6h8" ToolTip="Minimize" Click="Minimize_Click" AutomationProperties.Name="Minimize" />
-                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Tag="M2 2h8v8H2z" ToolTip="Maximize" Click="Maximize_Click" AutomationProperties.Name="Maximize or restore" />
-                <Button Style="{StaticResource CloseCaptionButton}" Tag="M2 2l8 8M10 2l-8 8" ToolTip="Close" Click="Close_Click" AutomationProperties.Name="Close" />
+                <Button Style="{StaticResource CaptionButton}" Tag="{StaticResource CaptionMinimize}" ToolTip="Minimize" Click="Minimize_Click" AutomationProperties.Name="Minimize" />
+                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Tag="{StaticResource CaptionMaximize}" ToolTip="Maximize" Click="Maximize_Click" AutomationProperties.Name="Maximize or restore" />
+                <Button Style="{StaticResource CloseCaptionButton}" Tag="{StaticResource CaptionClose}" ToolTip="Close" Click="Close_Click" AutomationProperties.Name="Close" />
             </StackPanel>
         </Grid>
 
@@ -332,11 +332,8 @@
                                     <Viewbox Width="12" Height="12"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconChevronDown}" Stroke="{DynamicResource SubtleTextBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" /></Canvas></Viewbox>
                                 </StackPanel>
                             </Button>
-                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFit}" ToolTip="Fit to window (0)" Command="{Binding FitCommand}" AutomationProperties.Name="Fit to window (0)" Margin="6,0,1,0"/>
                             <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)" IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" AutomationProperties.Name="Gallery" Margin="6,0,1,0" />
                             <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" AutomationProperties.Name="Rotate right (R)" Margin="6,0,1,0"/>
-                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconTarget}" ToolTip="Actual size (1)" Command="{Binding ActualSizeCommand}" AutomationProperties.Name="Actual size (1)" Margin="6,0,1,0"/>
-                            <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFlip}" ToolTip="Flip horizontally" Command="{Binding FlipCommand}" AutomationProperties.Name="Flip horizontally" Margin="6,0,1,0"/>
                             <Button ToolTip="Slideshow (S)" Command="{Binding ToggleSlideshowCommand}" Margin="6,0,1,0" AutomationProperties.Name="Slideshow">
                                 <Button.Style>
                                     <Style TargetType="Button" BasedOn="{StaticResource IconButton}">

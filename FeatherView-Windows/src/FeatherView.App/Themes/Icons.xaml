@@ -47,4 +47,8 @@
     <Geometry x:Key="IconCompare">M12 3v18 M3 5h7v14H3z M14 5h7v14h-7z</Geometry>
     <Geometry x:Key="IconShuffle">M16 3h5v5 M4 20L21 3 M21 16v5h-5 M15 15l6 6 M4 4l5 5</Geometry>
     <Geometry x:Key="IconMapPin">M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z M9 10a3 3 0 1 0 6 0 3 3 0 1 0-6 0</Geometry>
+    <Geometry x:Key="CaptionMinimize">M2 6h8</Geometry>
+    <Geometry x:Key="CaptionMaximize">M2 2h8v8H2z</Geometry>
+    <Geometry x:Key="CaptionRestore">M3.5 2h6.5v6.5 M2 3.5h6.5V10H2z</Geometry>
+    <Geometry x:Key="CaptionClose">M2 2l8 8M10 2l-8 8</Geometry>
 </ResourceDictionary>

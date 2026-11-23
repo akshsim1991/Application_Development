@@ -111,7 +111,7 @@ public partial class MainWindow : Window
         bool max = WindowState == WindowState.Maximized;
         // A maximized window with a custom frame overhangs the screen by the resize border: pull the content back in.
         RootGrid.Margin = max && !_vm.IsFullscreen ? SystemParameters.WindowResizeBorderThickness : new Thickness(0);
-        MaximizeButton.Tag = max ? "M3.5 2h6.5v6.5 M2 3.5h6.5V10H2z" : "M2 2h8v8H2z";
+        MaximizeButton.Tag = (Geometry)FindResource(max ? "CaptionRestore" : "CaptionMaximize");
         MaximizeButton.ToolTip = max ? "Restore" : "Maximize";
     }
 
@@ -195,6 +195,8 @@ public partial class MainWindow : Window
         menu.Items.Add(recent);
         menu.Items.Add(new Separator());
         menu.Items.Add(Item("Rotate left", () => _vm.RotateLeftCommand.Execute(null), gesture: "L"));
+        menu.Items.Add(Item("Flip horizontally", () => _vm.FlipCommand.Execute(null)));
+        menu.Items.Add(Item("Actual size (100%)", () => _vm.ActualSizeCommand.Execute(null), gesture: "1"));
         menu.Items.Add(Item("Copy image", () => _vm.CopyCommand.Execute(null), gesture: "Ctrl+C"));
         menu.Items.Add(Item("Delete (Recycle Bin)...", () => _vm.DeleteCommand.Execute(null), gesture: "Del"));
         menu.Items.Add(Item("Reload folder", () => _vm.ReloadCommand.Execute(null), gesture: "F5"));

@@ -17,6 +17,7 @@ public sealed class MediaFoundationEngine : IVideoEngine
         LoadedBehavior = MediaState.Manual, UnloadedBehavior = MediaState.Manual, ScrubbingEnabled = true, Stretch = Stretch.Uniform,
         Focusable = false, Volume = 0.8
     };
+    private double _lastX = -1, _lastY = -1;
     private bool _playing, _loop, _opened;
     private double _startAt;
     private bool _autoplay;
@@ -41,6 +42,11 @@ public sealed class MediaFoundationEngine : IVideoEngine
         _me.MediaFailed += (_, e) => { _opened = false; _playing = false; Failed?.Invoke(e.ErrorException?.Message ?? "The video could not be played."); };
         _me.MouseLeftButtonDown += (_, e) => { if (e.ClickCount >= 2) SurfaceDoubleClicked?.Invoke(); else SurfaceClicked?.Invoke(); };
         _me.MouseWheel += (_, e) => { SurfaceWheel?.Invoke(e.Delta); e.Handled = true; };
+        _me.MouseMove += (_, e) =>
+        {
+            var p = e.GetPosition(_me);
+            if (Math.Abs(p.X - _lastX) >= 1 || Math.Abs(p.Y - _lastY) >= 1) { _lastX = p.X; _lastY = p.Y; SurfaceMoved?.Invoke(); }
+        };
     }
 
     public string Name => "Windows Media Foundation (built in)";
@@ -50,6 +56,9 @@ public sealed class MediaFoundationEngine : IVideoEngine
     public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked;
     public event Action<string>? Failed;
     public event Action<int>? SurfaceWheel;
+    public event Action? SurfaceMoved;
+    public void SetVideoVisible(bool visible) { }
+    public void SetCursorHidden(bool hidden) => _me.Cursor = hidden ? Cursors.None : null;
 
     public void Open(string path, double startSeconds, bool autoplay)
     {

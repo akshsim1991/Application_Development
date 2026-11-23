@@ -12,6 +12,9 @@ public sealed class TabItemViewModel : ObservableObject
     public TabItemViewModel(Guid id) { Id = id; }
     public Guid Id { get; }
     public string Title { get => _title; set => Set(ref _title, value); }
+    private bool _playing;
+    /// <summary>True while a video that belongs to this tab is playing (shown as a small speaker on the tab).</summary>
+    public bool IsPlaying { get => _playing; set => Set(ref _playing, value); }
     public bool IsActive { get => _active; set => Set(ref _active, value); }
 }
 
@@ -25,6 +28,7 @@ public sealed class TabsViewModel : ObservableObject
     private readonly IDialogService _dialogs;
     private TabManager _m = new();
     private double _available = 600;
+    private Guid? _playingTab;
 
     public TabsViewModel(MainViewModel host, IDialogService dialogs)
     {
@@ -50,7 +54,10 @@ public sealed class TabsViewModel : ObservableObject
     public RelayCommand RenameTabCommand { get; }
     public RelayCommand CloseOtherTabsCommand { get; }
 
+    public Guid ActiveId => _m.Active.Id;
     public bool CanReopen => _m.CanReopen;
+
+    public void SetPlayingTab(Guid? id) { _playingTab = id; foreach (var i in Items) i.IsPlaying = id != null && i.Id == id; }
     public int Count => _m.Tabs.Count;
 
     /// <summary>Width of each tab chip: they share the space in the title bar.</summary>
@@ -66,6 +73,8 @@ public sealed class TabsViewModel : ObservableObject
             Items.Add(new TabItemViewModel(_m.Tabs[i].Id) { Title = TabManager.TitleOf(_m.Tabs[i]), IsActive = i == _m.ActiveIndex });
         OnPropertyChanged(nameof(TabWidth)); OnPropertyChanged(nameof(CanReopen)); OnPropertyChanged(nameof(Count));
         ReopenTabCommand.RaiseCanExecuteChanged();
+        SetPlayingTab(_playingTab);
+        _host.ValidateVideoOwner(_m.Tabs.Select(t => t.Id).ToList());
     }
 
     /// <summary>Called by the main view-model after it loads a folder, so the active tab's title follows what it shows.</summary>

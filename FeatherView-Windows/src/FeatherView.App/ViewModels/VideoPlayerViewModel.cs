@@ -40,6 +40,8 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     private string? _notice, _status;
     private bool _noticeCanInstall;
     private System.Windows.FrameworkElement? _surface;
+    private bool _fullscreen, _controlsVisible = true;
+    private int _idleTicks;
 
     public event Action<IReadOnlyList<(string Label, string Value)>>? InfoReady;
     public event Action? ToggleFullscreenRequested;
@@ -97,7 +99,15 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     // ---- state for the view ----
     public System.Windows.FrameworkElement? Surface { get => _surface; private set => Set(ref _surface, value); }
     private bool Active => _file != null;
+    /// <summary>The control bar. In full screen it hides after a few seconds of no activity while a video plays.</summary>
+    public bool ControlsVisible { get => _controlsVisible; private set { if (Set(ref _controlsVisible, value)) _engine?.SetCursorHidden(!value); } }
+    /// <summary>Full screen starts with the controls (and the mouse pointer) hidden; moving the mouse brings them back.</summary>
+    public void SetFullscreen(bool on) { _fullscreen = on; _idleTicks = 0; ControlsVisible = !on; }
+    public void RegisterActivity() { _idleTicks = 0; if (!_controlsVisible) ControlsVisible = true; }
     public bool HasMedia => _file != null;
+    public bool IsCurrent(MediaFile f) => _file != null && string.Equals(_file.Path, f.Path, StringComparison.OrdinalIgnoreCase);
+    public void SetBackground(bool background) => _engine?.SetVideoVisible(!background);
+    public void RefreshInfo() { if (_engine != null && _file != null) InfoReady?.Invoke(_engine.GetInfo()); }
 
     private void RaiseCommands()
     {
@@ -234,12 +244,12 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     private void Hook(IVideoEngine e)
     {
         e.Opened += OnOpened; e.Ended += OnEnded; e.Failed += OnFailed;
-        e.SurfaceClicked += OnSurfaceClicked; e.SurfaceDoubleClicked += OnSurfaceDoubleClicked; e.SurfaceWheel += OnSurfaceWheel;
+        e.SurfaceClicked += OnSurfaceClicked; e.SurfaceDoubleClicked += OnSurfaceDoubleClicked; e.SurfaceWheel += OnSurfaceWheel; e.SurfaceMoved += RegisterActivity;
     }
     private void Unhook(IVideoEngine e)
     {
         e.Opened -= OnOpened; e.Ended -= OnEnded; e.Failed -= OnFailed;
-        e.SurfaceClicked -= OnSurfaceClicked; e.SurfaceDoubleClicked -= OnSurfaceDoubleClicked; e.SurfaceWheel -= OnSurfaceWheel;
+        e.SurfaceClicked -= OnSurfaceClicked; e.SurfaceDoubleClicked -= OnSurfaceDoubleClicked; e.SurfaceWheel -= OnSurfaceWheel; e.SurfaceMoved -= RegisterActivity;
     }
 
     private void OnSurfaceClicked() => TogglePlay();
@@ -302,6 +312,8 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         if (_engine.Duration > 0) Duration = _engine.Duration;
         IsPlaying = _engine.IsPlaying;
         if (IsPlaying && ++_ticks % 60 == 0) SaveProgress(flush: false);
+        if (_fullscreen) { if (++_idleTicks >= Math.Max(8, _settings().FullscreenControlsHideSeconds * 4) && _controlsVisible) ControlsVisible = false; }   // 4 ticks per second
+        else { _idleTicks = 0; if (!_controlsVisible) ControlsVisible = true; }
     }
 
     public void TogglePlay() { if (_engine == null || _file == null) return; if (_engine.IsPlaying) { _engine.Pause(); SaveProgress(flush: true); } else _engine.Play(); IsPlaying = _engine.IsPlaying; }

@@ -90,13 +90,10 @@ jobs:
 
           Status: pre-release. The app starts and its unit tests pass on a Windows runner in CI, but the installer and most screens have not yet been tested by hand. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning.
           "@
-          $exists = $false
-          gh release view $tag *> $null; if ($LASTEXITCODE -eq 0) { $exists = $true }
-          if ($exists) {
-            gh release upload $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --clobber
-          } else {
-            gh release create $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --prerelease --target ${{ github.sha }}
-          }
+          # A re-run replaces the release so its tag points at the commit that was just built.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
+          gh release create $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --prerelease --target ${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:

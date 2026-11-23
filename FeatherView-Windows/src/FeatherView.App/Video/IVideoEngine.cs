@@ -28,6 +28,10 @@ public interface IVideoEngine : IDisposable
     event Action? SurfaceClicked;
     event Action? SurfaceDoubleClicked;
     event Action<int>? SurfaceWheel;
+    event Action? SurfaceMoved;
+    void SetCursorHidden(bool hidden);
+    /// <summary>False while the player is not on screen (another tab): the picture is not decoded, the sound keeps going.</summary>
+    void SetVideoVisible(bool visible);
 
     void Open(string path, double startSeconds, bool autoplay);
     void Stop();

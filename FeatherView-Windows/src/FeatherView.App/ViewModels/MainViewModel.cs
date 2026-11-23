@@ -62,6 +62,7 @@ public sealed class MainViewModel : ObservableObject
     private string _zoomText = "";
     private bool _isSlideshow, _isFullscreen, _showInfo;
     private string _folderPath = "";
+    private Guid _videoOwner;      // the tab that last showed the video that is loaded in the player
 
     public MainViewModel(AppSettings settings, SettingsService settingsService, ThumbnailService thumbs,
                          IDialogService dialogs, ThemeService theme, ILog log, Func<MainViewModel, VideoPlayerViewModel> videoFactory)
@@ -74,6 +75,11 @@ public sealed class MainViewModel : ObservableObject
         Tabs = new TabsViewModel(this, dialogs);
         Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
         Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
+        Video.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(VideoPlayerViewModel.IsPlaying) or nameof(VideoPlayerViewModel.HasMedia))
+                Tabs.SetPlayingTab(Video.HasMedia && Video.IsPlaying ? _videoOwner : null);
+        };
         _showInfo = settings.ShowInfoPanelOnOpen;
         _slideTimer.Tick += (_, _) => SlideTick();
 
@@ -146,7 +152,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<InfoLine> Info { get; } = new();
     public ObservableCollection<string> RecentFiles { get; } = new();
 
-    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); OnPropertyChanged(nameof(FilmstripVisible)); if (value != ViewMode.Photo && _compare) IsCompare = false; } } }
+    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); OnPropertyChanged(nameof(FilmstripVisible)); if (value != ViewMode.Photo && _compare) IsCompare = false; Video.SetBackground(value != ViewMode.Video); } } }
     public bool IsGallery => _mode == ViewMode.Gallery;
     public bool IsPhoto => _mode == ViewMode.Photo;
     public bool IsVideo => _mode == ViewMode.Video;
@@ -158,7 +164,7 @@ public sealed class MainViewModel : ObservableObject
     public string ZoomText { get => _zoomText; private set => Set(ref _zoomText, value); }
     public bool ShowEmptyState => _files.Count == 0;
     public bool IsSlideshow { get => _isSlideshow; private set { if (Set(ref _isSlideshow, value)) OnPropertyChanged(nameof(SlideshowIcon)); } }
-    public bool IsFullscreen { get => _isFullscreen; set { if (Set(ref _isFullscreen, value)) OnPropertyChanged(nameof(ShowChrome)); } }
+    public bool IsFullscreen { get => _isFullscreen; set { if (Set(ref _isFullscreen, value)) { OnPropertyChanged(nameof(ShowChrome)); OnPropertyChanged(nameof(FilmstripVisible)); Video.SetFullscreen(value); } } }
     public bool ShowChrome => !_isFullscreen;
     public bool ShowInfo { get => _showInfo; set => Set(ref _showInfo, value); }
     public string SlideshowIcon => _isSlideshow ? "Pause" : "Play";
@@ -180,7 +186,7 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedCountText => Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
     public string EmptyMessage { get => _emptyMessage; private set => Set(ref _emptyMessage, value); }
     public bool ShowSidebar => Settings.ShowSidebar;
-    public bool FilmstripVisible => Settings.ShowFilmstrip && _mode != ViewMode.Gallery && _files.Count > 1;
+    public bool FilmstripVisible => Settings.ShowFilmstrip && _mode != ViewMode.Gallery && _files.Count > 1 && !_isFullscreen;
     public bool IsFavorite => Current != null && Settings.IsFavorite(Current.Path);
 
     // ---- details panel ----
@@ -337,13 +343,25 @@ public sealed class MainViewModel : ObservableObject
         RebuildFiles(keep, 0, out var found);
         if (_files.Count == 0)
         {
-            Video.Stop(); StopGif(); CurrentImage = null; Mode = ViewMode.Gallery;
+            StopVideoUnlessBackground(); StopGif(); CurrentImage = null; Mode = ViewMode.Gallery;
             StatusText = _searchText.Length > 0 || _filter != QuickFilter.All ? "Nothing matches this filter" : StatusText;
             EmptyMessage = _searchText.Length > 0 || _filter != QuickFilter.All ? "Nothing matches this filter." : EmptyMessage;
             return;
         }
         if (Mode != ViewMode.Gallery && !found) _ = ShowIndexAsync(_index);   // the open file was filtered out: show the first match instead
         else UpdateStatus();
+    }
+
+    /// <summary>Stops the video unless it is playing for a different tab and background play is on.</summary>
+    private void StopVideoUnlessBackground()
+    {
+        if (BackgroundVideoPolicy.ShouldStopForOtherContent(Settings.KeepVideoPlayingAcrossTabs, Video.HasMedia, _videoOwner, Tabs.ActiveId)) Video.Stop();
+    }
+
+    /// <summary>Called after tabs change: a background video whose tab was closed is stopped.</summary>
+    public void ValidateVideoOwner(IReadOnlyCollection<Guid> openTabs)
+    {
+        if (BackgroundVideoPolicy.OwnerGone(Video.HasMedia, _videoOwner, openTabs)) Video.Stop();
     }
 
     private void ShowSection(string? name)
@@ -370,7 +388,7 @@ public sealed class MainViewModel : ObservableObject
 
     private void LoadCollection(IEnumerable<string> paths, NavSection section, string emptyMessage)
     {
-        StopSlideshow(); Video.Stop(); StopGif();
+        StopSlideshow(); StopGif(); StopVideoUnlessBackground();
         Section = section; ShowSearch = false; _searchText = ""; OnPropertyChanged(nameof(SearchText)); Filter = QuickFilter.All;
         var list = new List<MediaFile>();
         foreach (var p in paths)
@@ -478,7 +496,8 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Shows a tab's saved state: re-reads its folder (cheap) instead of keeping anything heavy in memory.</summary>
     public void RestoreTabState(TabState t)
     {
-        StopSlideshow(); Video.Stop(); StopGif();
+        StopSlideshow(); StopGif();
+        if (BackgroundVideoPolicy.ShouldStopOnTabSwitch(Settings.KeepVideoPlayingAcrossTabs, Video.HasMedia)) Video.Stop();   // otherwise the video carries on (or is simply shown again)
         if (t.Section == nameof(NavSection.Favorites)) { LoadCollection(Settings.Favorites, NavSection.Favorites, "No favorites yet. Press Ctrl+D on a picture or video to add it."); ApplyTabFilter(t); return; }
         if (t.Section == nameof(NavSection.Recent)) { LoadCollection(Settings.RecentFiles, NavSection.Recent, "Nothing opened recently."); ApplyTabFilter(t); return; }
         if (string.IsNullOrEmpty(t.FolderPath) || !Directory.Exists(t.FolderPath)) { ClearView(); return; }
@@ -583,10 +602,12 @@ public sealed class MainViewModel : ObservableObject
             OnPropertyChanged(nameof(HasTaken)); OnPropertyChanged(nameof(HasExif)); OnPropertyChanged(nameof(IsFavorite));
             CameraSummary = ""; LocationText = ""; OcrText = ""; OcrStatus = ""; if (_compare) IsCompare = false;
             Mode = ViewMode.Video;
-            Video.Open(file);
+            _videoOwner = Tabs.ActiveId;
+            if (Video.IsCurrent(file)) Video.RefreshInfo();   // already loaded (it kept playing in the background): just show it again
+            else Video.Open(file);
             return;
         }
-        Video.Stop();
+        StopVideoUnlessBackground();
         if (Mode == ViewMode.Video) Mode = ViewMode.Photo;
         try
         {
@@ -771,6 +792,7 @@ public sealed class MainViewModel : ObservableObject
         SaveSettings();
         OnPropertyChanged(nameof(Settings));
         Video.ApplySettings();
+        if (!s.KeepVideoPlayingAcrossTabs && Video.HasMedia && _videoOwner != Tabs.ActiveId) Video.Stop();   // background play was just switched off
         OnPropertyChanged(nameof(ShowSidebar)); OnPropertyChanged(nameof(FilmstripVisible)); OnPropertyChanged(nameof(IsShuffle));
     }
 

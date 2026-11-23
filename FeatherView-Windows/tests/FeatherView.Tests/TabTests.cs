@@ -113,3 +113,31 @@ public class TabManagerTests
         File.Delete(path);
     }
 }
+
+public class BackgroundVideoPolicyTests
+{
+    private static readonly Guid A = Guid.NewGuid(), B = Guid.NewGuid();
+
+    [Fact] public void TabSwitchStopsOnlyWhenSettingIsOff()
+    {
+        Assert.False(BackgroundVideoPolicy.ShouldStopOnTabSwitch(keepSetting: true, hasVideo: true));
+        Assert.True(BackgroundVideoPolicy.ShouldStopOnTabSwitch(keepSetting: false, hasVideo: true));
+        Assert.False(BackgroundVideoPolicy.ShouldStopOnTabSwitch(keepSetting: false, hasVideo: false));
+    }
+
+    [Fact] public void OtherTabContentDoesNotKillABackgroundVideo()
+    {
+        Assert.False(BackgroundVideoPolicy.ShouldStopForOtherContent(true, true, owner: A, activeTab: B));   // tab B shows a picture: A's video keeps playing
+        Assert.True(BackgroundVideoPolicy.ShouldStopForOtherContent(true, true, owner: A, activeTab: A));    // the owner tab moves on: stop
+        Assert.True(BackgroundVideoPolicy.ShouldStopForOtherContent(false, true, owner: A, activeTab: B));   // setting off: always stop
+        Assert.False(BackgroundVideoPolicy.ShouldStopForOtherContent(true, false, A, A));
+    }
+
+    [Fact] public void ClosedOwnerStopsTheVideo()
+    {
+        Assert.True(BackgroundVideoPolicy.OwnerGone(true, A, new[] { B }));
+        Assert.False(BackgroundVideoPolicy.OwnerGone(true, A, new[] { A, B }));
+        Assert.False(BackgroundVideoPolicy.OwnerGone(false, A, new[] { B }));
+        Assert.False(BackgroundVideoPolicy.OwnerGone(true, Guid.Empty, new[] { B }));
+    }
+}

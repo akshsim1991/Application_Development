@@ -10,7 +10,7 @@ namespace FeatherView.Video;
 public sealed class MpvHost : HwndHost
 {
     private const int WS_CHILD = 0x40000000, WS_VISIBLE = 0x10000000, WS_CLIPCHILDREN = 0x02000000, WS_CLIPSIBLINGS = 0x04000000;
-    private const int WM_NCHITTEST = 0x0084, WM_LBUTTONDOWN = 0x0201, WM_MOUSEWHEEL = 0x020A, WM_SIZE = 0x0005, HTCLIENT = 1;
+    private const int WM_NCHITTEST = 0x0084, WM_LBUTTONDOWN = 0x0201, WM_MOUSEWHEEL = 0x020A, WM_SIZE = 0x0005, WM_MOUSEMOVE = 0x0200, WM_SETCURSOR = 0x0020, HTCLIENT = 1;
 
     private delegate bool EnumProc(IntPtr hwnd, IntPtr lParam);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -21,15 +21,21 @@ public sealed class MpvHost : HwndHost
     [DllImport("user32.dll")] private static extern bool MoveWindow(IntPtr hwnd, int x, int y, int w, int h, bool repaint);
     [DllImport("user32.dll")] private static extern bool GetClientRect(IntPtr hwnd, out RECT r);
     [DllImport("user32.dll")] private static extern uint GetDoubleClickTime();
+    [DllImport("user32.dll")] private static extern IntPtr SetCursor(IntPtr cursor);
+    [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern IntPtr SetFocus(IntPtr hwnd);
     [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
 
     private IntPtr _hwnd;
-    private int _lastClick;
+    private int _lastClick, _lastX = -1, _lastY = -1;
     public new IntPtr Handle => _hwnd;
 
     public event Action<IntPtr>? HandleReady;
     public event Action? Clicked, DoubleClicked;
     public event Action<int>? Wheel;
+    public event Action? Moved;
+    /// <summary>True while full-screen controls are hidden: the mouse pointer disappears too, until the mouse moves.</summary>
+    public bool CursorHidden { get; set; }
 
     protected override HandleRef BuildWindowCore(HandleRef hwndParent)
     {
@@ -56,12 +62,21 @@ public sealed class MpvHost : HwndHost
             case WM_LBUTTONDOWN:
             {
                 int now = Environment.TickCount;
+                var root = GetAncestor(hwnd, 2 /* GA_ROOT */); if (root != IntPtr.Zero) SetFocus(root);   // keep keyboard shortcuts working after a click on the video
                 if (unchecked(now - _lastClick) <= (int)GetDoubleClickTime()) { _lastClick = 0; DoubleClicked?.Invoke(); }
                 else { _lastClick = now; Clicked?.Invoke(); }
                 handled = true; return IntPtr.Zero;
             }
             case WM_MOUSEWHEEL: Wheel?.Invoke((short)((wParam.ToInt64() >> 16) & 0xFFFF)); handled = true; return IntPtr.Zero;
             case WM_SIZE: PrepareChildren(); break;
+            case WM_MOUSEMOVE:
+            {
+                // Windows also sends a move when the layout changes under a still mouse; only real movement counts.
+                long p = lParam.ToInt64(); int x = (short)(p & 0xFFFF), y = (short)((p >> 16) & 0xFFFF);
+                if (x != _lastX || y != _lastY) { _lastX = x; _lastY = y; Moved?.Invoke(); }
+                break;
+            }
+            case WM_SETCURSOR when CursorHidden: SetCursor(IntPtr.Zero); handled = true; return (IntPtr)1;
         }
         return base.WndProc(hwnd, msg, wParam, lParam, ref handled);
     }

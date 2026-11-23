@@ -54,6 +54,14 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 | Text in picture: offline OCR with Windows' built-in recognizer (needs an installed OCR language), runs only on click, copy button | built, untested on Windows |
 | Not adopted: edit tools, AI scene tags, quality score, Copilot/AI search, interactive map, Albums/Projects/Devices | out of scope (editing/AI/cloud) or V3 |
 
+## Full screen and video (fixes after the first hands-on test)
+| Item | Status |
+|---|---|
+| True full screen: covers the whole monitor, hides the taskbar, no borders or margins, black background; Esc or F11 leaves it (works even when focus is inside the video window) | built, untested on Windows after the fix |
+| Full screen: video controls and the mouse pointer start hidden, appear when the mouse moves and hide again after N seconds (Settings, default 5) | built, untested on Windows |
+| Space = play/pause in video mode, also when the video window has focus | built, untested on Windows |
+| Setting "Keep a video playing when I switch to another tab" (default on): the sound continues, the picture is not decoded while hidden, a speaker icon marks the tab, returning to the tab shows the same playback; closing the tab stops it | rules unit-tested (Core); UI untested on Windows |
+
 ## Tabs (V2.1 item brought forward)
 | Item | Status |
 |---|---|

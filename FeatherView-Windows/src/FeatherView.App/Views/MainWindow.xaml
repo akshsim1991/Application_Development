@@ -99,6 +99,9 @@
                                     MouseLeftButtonDown="Tab_MouseLeftButtonDown" MouseDown="Tab_MouseDown" MouseRightButtonUp="Tab_MouseRightButtonUp">
                                 <DockPanel>
                                     <Button DockPanel.Dock="Right" Style="{StaticResource TinyCloseButton}" Tag="{StaticResource IconClose}" ToolTip="Close tab (Ctrl+W)" Click="TabClose_Click" AutomationProperties.Name="Close tab" />
+                                    <Viewbox DockPanel.Dock="Left" Width="13" Height="13" Margin="0,0,6,0" Visibility="{Binding IsPlaying, Converter={StaticResource B2V}}" ToolTip="A video is playing in this tab">
+                                        <Canvas Width="24" Height="24"><Path Data="{StaticResource IconVolume}" Stroke="{DynamicResource AccentBrush}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" /></Canvas>
+                                    </Viewbox>
                                     <TextBlock Text="{Binding Title}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" x:Name="ChipText" />
                                 </DockPanel>
                             </Border>
@@ -121,7 +124,7 @@
             </StackPanel>
         </Grid>
 
-        <Grid Grid.Row="1" Margin="10,0,10,0">
+        <Grid x:Name="BodyGrid" Grid.Row="1" Margin="10,0,10,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />

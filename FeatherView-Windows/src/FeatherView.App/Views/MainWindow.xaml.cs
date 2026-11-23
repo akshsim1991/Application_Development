@@ -2,7 +2,10 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Shell;
+using System.Runtime.InteropServices;
 using FeatherView.Core.Settings;
 using FeatherView.Services;
 using FeatherView.ViewModels;
@@ -16,6 +19,7 @@ public partial class MainWindow : Window
     private readonly ThemeService _theme;
     private WindowState _stateBeforeFullscreen;
     private List<InputBinding>? _savedBindings;
+    private Point _lastMouse;
 
     public MainWindow(MainViewModel vm, ThemeService theme)
     {
@@ -55,6 +59,22 @@ public partial class MainWindow : Window
             _savedBindings = null;
         };
 
+        PreviewKeyDown += (_, _) => vm.Video.RegisterActivity();
+        // Esc and F11 must work even when keyboard focus sits inside a native video window, which WPF key bindings never see.
+        ComponentDispatcher.ThreadPreprocessMessage += (ref MSG msg, ref bool handled) =>
+        {
+            if (handled || msg.message != 0x0100 /* WM_KEYDOWN */ || !IsActive) return;
+            int key = (int)msg.wParam;
+            if (key == 0x1B && _vm.IsFullscreen) { _vm.EscapeCommand.Execute(null); handled = true; }       // Esc leaves full screen (or stops a slideshow first)
+            else if (key == 0x7A) { _vm.ToggleFullscreenCommand.Execute(null); handled = true; }              // F11
+            else if (key == 0x20 && _vm.IsVideo && Keyboard.FocusedElement is not TextBox) { _vm.Video.TogglePlay(); handled = true; }   // Space = play / pause
+        };
+        PreviewMouseMove += (_, e) =>
+        {
+            var p = e.GetPosition(this);
+            if (Math.Abs(p.X - _lastMouse.X) < 2 && Math.Abs(p.Y - _lastMouse.Y) < 2) return;   // ignore moves caused by layout changes
+            _lastMouse = p; vm.Video.RegisterActivity();
+        };
         SourceInitialized += (_, _) => theme.ApplyToWindow(this);
         StateChanged += (_, _) => UpdateMaximizeState();
         Closing += (_, _) => SaveBounds();
@@ -117,7 +137,14 @@ public partial class MainWindow : Window
 
     private void MediaHost_SizeChanged(object sender, SizeChangedEventArgs e)
     {
-        MediaHost.Clip = new RectangleGeometry(new Rect(0, 0, e.NewSize.Width, e.NewSize.Height), 12, 12);   // rounded corners for the picture
+        UpdateMediaClip();
+    }
+
+    private void UpdateMediaClip()
+    {
+        if (_vm.IsFullscreen) { MediaHost.Clip = null; return; }
+        var size = MediaHost.RenderSize;
+        MediaHost.Clip = new RectangleGeometry(new Rect(0, 0, size.Width, size.Height), 12, 12);   // rounded corners for the picture
     }
 
     private void OnDrop(object sender, DragEventArgs e)
@@ -218,20 +245,51 @@ public partial class MainWindow : Window
     }
 
     // ---- full screen and remembered bounds ----
+    [DllImport("user32.dll")] private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint flags);
+    [DllImport("user32.dll")] private static extern bool GetMonitorInfo(IntPtr monitor, ref MONITORINFO info);
+    [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [StructLayout(LayoutKind.Sequential)] private struct RECT { public int Left, Top, Right, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct MONITORINFO { public int Size; public RECT Monitor, Work; public uint Flags; }
+
+    private WindowChrome? _savedChrome;
+    private Rect _savedBounds;
+
+    /// <summary>
+    /// True full screen: no frame, no custom chrome, no margins, black background, and exactly the monitor's pixels
+    /// (a window that fills the monitor without a frame also makes Windows hide the taskbar).
+    /// </summary>
     private void ApplyFullscreen(bool on)
     {
+        var hwnd = new WindowInteropHelper(this).Handle;
         if (on)
         {
             _stateBeforeFullscreen = WindowState;
-            RootGrid.Margin = new Thickness(0);
+            if (WindowState != WindowState.Normal) WindowState = WindowState.Normal;
+            _savedBounds = new Rect(Left, Top, Width, Height);
+            _savedChrome = WindowChrome.GetWindowChrome(this);
+            WindowChrome.SetWindowChrome(this, null);
             WindowStyle = WindowStyle.None; ResizeMode = ResizeMode.NoResize;
-            WindowState = WindowState.Normal; WindowState = WindowState.Maximized; Topmost = true;
+            Background = Brushes.Black;
+            RootGrid.Margin = new Thickness(0); BodyGrid.Margin = new Thickness(0);
+            MediaHost.CornerRadius = new CornerRadius(0); MediaHost.Background = Brushes.Black; MediaHost.Clip = null;
+            Topmost = true;
+            var mi = new MONITORINFO { Size = Marshal.SizeOf<MONITORINFO>() };
+            if (GetMonitorInfo(MonitorFromWindow(hwnd, 2 /* nearest */), ref mi))
+                SetWindowPos(hwnd, new IntPtr(-1) /* topmost */, mi.Monitor.Left, mi.Monitor.Top, mi.Monitor.Right - mi.Monitor.Left, mi.Monitor.Bottom - mi.Monitor.Top, 0x0020 | 0x0040);
+            else WindowState = WindowState.Maximized;
         }
         else
         {
-            Topmost = false; WindowStyle = WindowStyle.SingleBorderWindow; ResizeMode = ResizeMode.CanResize;
+            Topmost = false;
+            WindowChrome.SetWindowChrome(this, _savedChrome);
+            WindowStyle = WindowStyle.SingleBorderWindow; ResizeMode = ResizeMode.CanResize;
+            SetResourceReference(BackgroundProperty, "BgBrush");
+            BodyGrid.Margin = new Thickness(10, 0, 10, 0);
+            MediaHost.CornerRadius = new CornerRadius(12); MediaHost.SetResourceReference(Border.BackgroundProperty, "SurfaceBrush");
+            Left = _savedBounds.Left; Top = _savedBounds.Top; Width = _savedBounds.Width; Height = _savedBounds.Height;
             WindowState = _stateBeforeFullscreen;
             UpdateMaximizeState();
+            UpdateMediaClip();
         }
     }
 

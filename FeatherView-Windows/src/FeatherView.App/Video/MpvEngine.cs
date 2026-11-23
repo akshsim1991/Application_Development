@@ -23,6 +23,7 @@ public sealed class MpvEngine : IVideoEngine
         _host.Clicked += () => SurfaceClicked?.Invoke();
         _host.DoubleClicked += () => SurfaceDoubleClicked?.Invoke();
         _host.Wheel += d => SurfaceWheel?.Invoke(d);
+        _host.Moved += () => SurfaceMoved?.Invoke();
     }
 
     public string Name => "libmpv (extended engine)";
@@ -34,6 +35,9 @@ public sealed class MpvEngine : IVideoEngine
     public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked;
     public event Action<string>? Failed;
     public event Action<int>? SurfaceWheel;
+    public event Action? SurfaceMoved;
+    public void SetVideoVisible(bool visible) => _player?.SetString("vid", visible ? "auto" : "no");
+    public void SetCursorHidden(bool hidden) => _host.CursorHidden = hidden;
 
     private void OnHandleReady(IntPtr hwnd)
     {

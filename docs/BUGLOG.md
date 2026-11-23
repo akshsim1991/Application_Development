@@ -1650,3 +1650,6 @@ the 2.24.1 Windows installer stay one release longer.
 - **Tests:** cli_check: an equation added on a page in CMR10 is in FeatherLMMath and reads back; edited again, one
   copy of each font; other pages keep Times.
 
+
+**Published:** 2.25.0 "Taurus" for Windows, Mac and Android (23 November) from commit 37226a9 (the Mac build from ee73d02,
+which only changes a test). The three downloads match latest.json (size and SHA-256); the 2.24.4 files stay one release longer.

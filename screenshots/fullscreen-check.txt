@@ -1,2 +1,2 @@
 After F11: window 0,0 - 1024,768; screen 1024 x 768
-After Esc: window 78,78 - 1122,866
+After Esc: window 104,104 - 1148,892

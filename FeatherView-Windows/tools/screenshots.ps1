@@ -136,8 +136,28 @@ function Test-Menu($theme) {
   [System.Windows.Forms.SendKeys]::SendWait("{ESC}{ESC}"); Start-Sleep -Milliseconds 500
   try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
 }
+# Keyboard multi-select test (gallery): Shift+Right x3 extends a range, Ctrl+Right moves, Ctrl+Space ticks, Ctrl+A selects all
+function Test-Multiselect {
+  Set-Theme "Dark"
+  $p = Start-Process -FilePath $Exe -ArgumentList "`"$dir`"" -PassThru
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20) { Start-Sleep -Milliseconds 100; $p.Refresh() }
+  Start-Sleep -Seconds 6
+  [W32]::MoveWindow($p.MainWindowHandle, 0, 0, 1280, 800, $true) | Out-Null
+  [W32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 800
+  [System.Windows.Forms.SendKeys]::SendWait("+{RIGHT}+{RIGHT}+{RIGHT}"); Start-Sleep -Seconds 1
+  Capture-Screen "multiselect-shift"
+  [System.Windows.Forms.SendKeys]::SendWait("^{RIGHT}^{RIGHT} "); Start-Sleep -Milliseconds 300
+  [System.Windows.Forms.SendKeys]::SendWait("^ "); Start-Sleep -Seconds 1
+  Capture-Screen "multiselect-ctrl"
+  [System.Windows.Forms.SendKeys]::SendWait("^a"); Start-Sleep -Seconds 1
+  Capture-Screen "multiselect-all"
+  $log = Join-Path $settingsDir "featherview.log"; if (Test-Path $log) { Copy-Item $log (Join-Path $Out "featherview-multiselect.log") -Force; Remove-Item $log -Force }
+  try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
+}
 Test-Menu "Dark"
 Test-Menu "Light"
+Test-Multiselect
 Set-Theme "Dark"
 Test-VideoFullscreen
 Test-Fullscreen "$dir\mountain-lake.jpg"

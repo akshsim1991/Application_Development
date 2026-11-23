@@ -31,15 +31,27 @@ public sealed class WpfDialogService : IDialogService
         return dlg.ShowDialog(Owner) == true ? dlg.FileName : null;
     }
 
+    public string? PickFile(string title, string filter)
+    {
+        var dlg = new OpenFileDialog { Title = title, Filter = filter };
+        return dlg.ShowDialog(Owner) == true ? dlg.FileName : null;
+    }
+
+    public string? Prompt(string title, string message, string defaultValue)
+    {
+        var w = Prepare(new PromptWindow(title, message, defaultValue));
+        return w.ShowDialog() == true ? w.Value : null;
+    }
+
     public string? PickFolder()
     {
         var dlg = new OpenFolderDialog { Title = "Open folder" };
         return dlg.ShowDialog(Owner) == true ? dlg.FolderName : null;
     }
 
-    public AppSettings? ShowSettings(AppSettings current, Func<Task> checkUpdatesNow)
+    public AppSettings? ShowSettings(AppSettings current, Func<Task> checkUpdatesNow, string engineStatus, Func<Task> installEngine)
     {
-        var w = Prepare(new SettingsWindow(current, checkUpdatesNow));
+        var w = Prepare(new SettingsWindow(current, checkUpdatesNow, engineStatus, installEngine));
         return w.ShowDialog() == true ? w.Edited : null;
     }
 

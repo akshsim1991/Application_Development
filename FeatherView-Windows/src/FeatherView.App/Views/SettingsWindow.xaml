@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:s="clr-namespace:FeatherView.Services"
-        Title="Settings" Width="520" Height="640" MinHeight="420" Background="{DynamicResource BgBrush}" FontFamily="Segoe UI Variable, Segoe UI" FontSize="13"
+        Title="Settings" Width="540" Height="700" MinHeight="420" Background="{DynamicResource BgBrush}" FontFamily="Segoe UI Variable, Segoe UI" FontSize="13"
         UseLayoutRounding="True" ShowInTaskbar="False" ResizeMode="CanResize" WindowStartupLocation="CenterOwner">
     <Window.Resources>
         <s:EnumEqualsConverter x:Key="EnumEq" />
@@ -52,6 +52,48 @@
                 <TextBlock Text="Photo viewing" Style="{StaticResource SectionTitle}" />
                 <CheckBox Content="Fit photos to the window when opened" IsChecked="{Binding FitOnOpen}" />
                 <CheckBox Content="Show the details panel when opened" IsChecked="{Binding ShowInfoPanelOnOpen}" />
+
+                <TextBlock Text="Video" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="Playback engine" Margin="0,0,0,2" />
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Automatic" IsChecked="{Binding VideoEngine, Converter={StaticResource EnumEq}, ConverterParameter=Auto}" />
+                    <RadioButton Content="Windows built-in" IsChecked="{Binding VideoEngine, Converter={StaticResource EnumEq}, ConverterParameter=MediaFoundation}" />
+                    <RadioButton Content="Extended (libmpv)" IsChecked="{Binding VideoEngine, Converter={StaticResource EnumEq}, ConverterParameter=Mpv}" />
+                </StackPanel>
+                <TextBlock x:Name="EngineStatus" TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,2,0,6" />
+                <Button Content="Download extended video support" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Click="InstallEngine_Click" />
+                <CheckBox Content="Start playing when a video is opened" IsChecked="{Binding VideoAutoplay}" Margin="0,10,0,0" />
+                <CheckBox Content="Resume where I stopped" IsChecked="{Binding VideoResume}" />
+                <CheckBox Content="Loop videos" IsChecked="{Binding VideoLoop}" />
+                <CheckBox Content="Use hardware decoding when available" IsChecked="{Binding HardwareDecoding}" />
+                <CheckBox Content="Load subtitle files with the same name automatically" IsChecked="{Binding AutoLoadSubtitles}" />
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock Text="Preferred subtitle languages" DockPanel.Dock="Left" Width="190" VerticalAlignment="Center" />
+                    <TextBox Text="{Binding PreferredSubtitleLanguages}" ToolTip="Comma separated, for example: en,eng" Padding="4,3" />
+                </DockPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock Text="Preferred audio languages" DockPanel.Dock="Left" Width="190" VerticalAlignment="Center" />
+                    <TextBox Text="{Binding PreferredAudioLanguages}" ToolTip="Comma separated, for example: en,eng" Padding="4,3" />
+                </DockPanel>
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding SubtitleSize}" />
+                    <TextBlock Text="Subtitle size" DockPanel.Dock="Left" Width="190" VerticalAlignment="Center" />
+                    <Slider Minimum="20" Maximum="120" TickFrequency="2" IsSnapToTickEnabled="True" Value="{Binding SubtitleSize}" />
+                </DockPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding SubtitleBackgroundOpacity, StringFormat={}{0} %}" />
+                    <TextBlock Text="Subtitle background" DockPanel.Dock="Left" Width="190" VerticalAlignment="Center" />
+                    <Slider Minimum="0" Maximum="100" TickFrequency="5" IsSnapToTickEnabled="True" Value="{Binding SubtitleBackgroundOpacity}" />
+                </DockPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding SubtitlePosition}" />
+                    <TextBlock Text="Subtitle position (0 top - 100 bottom)" DockPanel.Dock="Left" Width="190" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <Slider Minimum="0" Maximum="100" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding SubtitlePosition}" />
+                </DockPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock Text="Subtitle colour (hex, e.g. #FFFF00)" DockPanel.Dock="Left" Width="190" TextWrapping="Wrap" VerticalAlignment="Center" />
+                    <TextBox Text="{Binding SubtitleColor}" Padding="4,3" MaxLength="7" />
+                </DockPanel>
 
                 <TextBlock Text="Slideshow" Style="{StaticResource SectionTitle}" />
                 <DockPanel>

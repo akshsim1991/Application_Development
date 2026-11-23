@@ -12,7 +12,7 @@ using FeatherView.Services;
 
 namespace FeatherView.ViewModels;
 
-public enum ViewMode { Photo, Gallery }
+public enum ViewMode { Photo, Gallery, Video }
 
 /// <summary>The view surface (zoom/pan control) as seen by the view-model.</summary>
 public interface IViewport { void ZoomIn(); void ZoomOut(); void Fit(); void ActualSize(); }
@@ -34,7 +34,7 @@ public sealed class MainViewModel : ObservableObject
     private int _rotation;
     private bool _flip, _fullscreenBySlideshow;
 
-    private ViewMode _mode = ViewMode.Gallery;
+    private ViewMode _mode = ViewMode.Gallery, _lastViewMode = ViewMode.Photo;
     private ImageSource? _currentImage;
     private object? _imageId;
     private string? _errorText;
@@ -44,9 +44,12 @@ public sealed class MainViewModel : ObservableObject
     private string _folderPath = "";
 
     public MainViewModel(AppSettings settings, SettingsService settingsService, ThumbnailService thumbs,
-                         IDialogService dialogs, ThemeService theme, ILog log)
+                         IDialogService dialogs, ThemeService theme, ILog log, Func<MainViewModel, VideoPlayerViewModel> videoFactory)
     {
         Settings = settings; _settingsService = settingsService; _thumbs = thumbs; _dialogs = dialogs; _theme = theme; _log = log;
+        Video = videoFactory(this);
+        Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
+        Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
         Gallery = new GalleryViewModel();
         Gallery.SetThumbSize(settings.ThumbnailSize);
         _showInfo = settings.ShowInfoPanelOnOpen;
@@ -57,16 +60,21 @@ public sealed class MainViewModel : ObservableObject
         OpenRecentCommand = new RelayCommand(p => { if (p is string s) OpenPath(s); });
         NextCommand = new RelayCommand(() => Step(1));
         PrevCommand = new RelayCommand(() => Step(-1));
-        UpCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(-1); });
-        DownCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(1); });
+        NextFileCommand = new RelayCommand(() => StepFile(1));
+        PrevFileCommand = new RelayCommand(() => StepFile(-1));
+        SpaceCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.TogglePlay(); else Step(1); });
+        SeekLongBackCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(-30); });
+        SeekLongForwardCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(30); });
+        UpCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(-1); else if (Mode == ViewMode.Video) Video.Volume += 5; });
+        DownCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(1); else if (Mode == ViewMode.Video) Video.Volume -= 5; });
         FirstCommand = new RelayCommand(() => JumpTo(0));
         LastCommand = new RelayCommand(() => JumpTo(_files.Count - 1));
         ToggleGalleryCommand = new RelayCommand(ToggleGallery);
         OpenItemCommand = new RelayCommand(p => { if (p is MediaItemViewModel m) { Gallery.Select(_files.IndexOf(m.File)); OpenSelected(); } });
         SelectItemCommand = new RelayCommand(p => { if (p is MediaItemViewModel m) Gallery.Select(_files.IndexOf(m.File)); });
         OpenSelectedCommand = new RelayCommand(OpenSelected);
-        RotateLeftCommand = new RelayCommand(() => Rotate(-1));
-        RotateRightCommand = new RelayCommand(() => Rotate(1));
+        RotateLeftCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.RotateCommand.Execute(null); else Rotate(-1); });
+        RotateRightCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.RotateCommand.Execute(null); else Rotate(1); });
         FlipCommand = new RelayCommand(Flip);
         DeleteCommand = new RelayCommand(DeleteCurrent);
         CopyCommand = new RelayCommand(CopyImage);
@@ -87,14 +95,16 @@ public sealed class MainViewModel : ObservableObject
     // ---- state exposed to the view ----
     public AppSettings Settings { get; private set; }
     public GalleryViewModel Gallery { get; }
+    public VideoPlayerViewModel Video { get; }
     public IViewport? Viewport { get; set; }
     public UpdateController? Updates { get; set; }
     public ObservableCollection<InfoLine> Info { get; } = new();
     public ObservableCollection<string> RecentFiles { get; } = new();
 
-    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(ShowEmptyState)); } } }
+    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); } } }
     public bool IsGallery => _mode == ViewMode.Gallery;
     public bool IsPhoto => _mode == ViewMode.Photo;
+    public bool IsVideo => _mode == ViewMode.Video;
     public ImageSource? CurrentImage { get => _currentImage; private set => Set(ref _currentImage, value); }
     public object? ImageId { get => _imageId; private set => Set(ref _imageId, value); }
     public string? ErrorText { get => _errorText; private set { Set(ref _errorText, value); OnPropertyChanged(nameof(HasError)); } }
@@ -113,6 +123,11 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand OpenFolderCommand { get; }
     public RelayCommand OpenRecentCommand { get; }
     public RelayCommand NextCommand { get; }
+    public RelayCommand NextFileCommand { get; }
+    public RelayCommand PrevFileCommand { get; }
+    public RelayCommand SpaceCommand { get; }
+    public RelayCommand SeekLongBackCommand { get; }
+    public RelayCommand SeekLongForwardCommand { get; }
     public RelayCommand PrevCommand { get; }
     public RelayCommand UpCommand { get; }
     public RelayCommand DownCommand { get; }
@@ -184,7 +199,14 @@ public sealed class MainViewModel : ObservableObject
     }
 
     // ---- navigation ----
+    /// <summary>Left/Right: previous/next picture, move the gallery selection, or seek inside a video.</summary>
     private void Step(int delta)
+    {
+        if (Mode == ViewMode.Video) { Video.SeekRelative(delta * 5); return; }
+        StepFile(delta);
+    }
+
+    private void StepFile(int delta)
     {
         if (_files.Count == 0) return;
         if (Mode == ViewMode.Gallery) { Gallery.Move(delta); return; }
@@ -201,15 +223,16 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_files.Count == 0) return;
         StopSlideshow();
-        if (Mode == ViewMode.Photo) { Gallery.Select(_index, scroll: true); Mode = ViewMode.Gallery; _gif?.Pause(); }
+        if (Mode != ViewMode.Gallery) { Gallery.Select(_index, scroll: true); _lastViewMode = Mode; Mode = ViewMode.Gallery; _gif?.Pause(); Video.Pause(); }
         else OpenSelected();
     }
 
     private void OpenSelected()
     {
         if (_files.Count == 0 || Gallery.SelectedIndex < 0) return;
+        if (Gallery.SelectedIndex == _index && (CurrentImage != null || (Current?.Kind == MediaKind.Video && Video.HasMedia)))
+        { Mode = Current?.Kind == MediaKind.Video ? ViewMode.Video : ViewMode.Photo; _gif?.Resume(); UpdateStatus(); return; }
         Mode = ViewMode.Photo;
-        if (Gallery.SelectedIndex == _index && CurrentImage != null) { _gif?.Resume(); UpdateStatus(); return; }
         _ = ShowIndexAsync(Gallery.SelectedIndex);
     }
 
@@ -217,7 +240,7 @@ public sealed class MainViewModel : ObservableObject
     {
         if (IsSlideshow) StopSlideshow();
         else if (IsFullscreen) IsFullscreen = false;
-        else if (Mode == ViewMode.Gallery && CurrentImage != null) OpenSelected();
+        else if (Mode == ViewMode.Gallery && (CurrentImage != null || Video.HasMedia)) OpenSelected();
     }
 
     // ---- showing a photo ----
@@ -237,9 +260,12 @@ public sealed class MainViewModel : ObservableObject
         if (file.Kind == MediaKind.Video)
         {
             _base = null; CurrentImage = null; ImageId = file.Path; Info.Clear();
-            ErrorText = "Video playback is not available yet in this version.";
+            Mode = ViewMode.Video;
+            Video.Open(file);
             return;
         }
+        Video.Stop();
+        if (Mode == ViewMode.Video) Mode = ViewMode.Photo;
         try
         {
             var li = await Task.Run(() => ImageLoader.Load(file.Path), ct);
@@ -316,7 +342,7 @@ public sealed class MainViewModel : ObservableObject
         try
         {
             int idx = _files.IndexOf(f);
-            if (idx == _index) { StopGif(); _base = null; CurrentImage = null; }
+            if (idx == _index) { StopGif(); _base = null; CurrentImage = null; Video.Stop(); }
             FileOperations.Recycle(f.Path);
             _files.RemoveAt(idx);
             Gallery.SetItems(_files.Select(x => new MediaItemViewModel(x, _thumbs)), Math.Min(idx, _files.Count - 1));
@@ -365,13 +391,16 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_files.Count == 0) { StopSlideshow(); return; }
         if (_index >= _files.Count - 1 && !Settings.SlideshowLoop) { StopSlideshow(); return; }
-        _ = ShowIndexAsync((_index + 1) % _files.Count);
+        int next = (_index + 1) % _files.Count;
+        for (int guard = 0; guard < _files.Count && _files[next].Kind == MediaKind.Video; guard++) next = (next + 1) % _files.Count;   // slideshows show pictures only
+        if (_files[next].Kind == MediaKind.Video) { StopSlideshow(); return; }
+        _ = ShowIndexAsync(next);
     }
 
     // ---- settings ----
     private void OpenSettings()
     {
-        var edited = _dialogs.ShowSettings(Settings.Clone(), () => Updates?.CheckAsync(true) ?? Task.CompletedTask);
+        var edited = _dialogs.ShowSettings(Settings.Clone(), () => Updates?.CheckAsync(true) ?? Task.CompletedTask, Video.EngineStatusText, () => Video.InstallEngineCommand.CanExecute(null) ? RunAsync(Video.InstallEngineCommand) : Task.CompletedTask);
         if (edited == null) return;
         ApplySettings(edited);
     }
@@ -391,8 +420,13 @@ public sealed class MainViewModel : ObservableObject
         if (sortChanged && !string.IsNullOrEmpty(_folderPath)) Reload();
         SaveSettings();
         OnPropertyChanged(nameof(Settings));
+        Video.ApplySettings();
     }
 
+    private static Task RunAsync(AsyncRelayCommand c) { c.Execute(null); return Task.CompletedTask; }
+
     public void SaveSettings() => _settingsService.Save(Settings);
+
+    public void Shutdown() { Video.Dispose(); SaveSettings(); }
     public void RefreshRecent() { RecentFiles.Clear(); foreach (var p in Settings.RecentFiles.Where(File.Exists)) RecentFiles.Add(p); }
 }

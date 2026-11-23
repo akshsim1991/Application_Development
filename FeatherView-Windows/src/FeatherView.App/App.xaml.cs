@@ -2,6 +2,7 @@ using System.IO;
 using System.Windows;
 using FeatherView.Core.Infrastructure;
 using FeatherView.Core.Settings;
+using FeatherView.Core.Video;
 using FeatherView.Services;
 using FeatherView.ViewModels;
 using FeatherView.Views;
@@ -34,7 +35,10 @@ public partial class App : Application
         theme.Apply(settings.Theme);
         var thumbs = new ThumbnailService(settings.ThumbnailSize, settings.ThumbnailCacheItems, settings.ThumbnailParallelism, log);
         var dialogs = new WpfDialogService(theme);
-        var vm = new MainViewModel(settings, settingsService, thumbs, dialogs, theme, log);
+        var history = new PlaybackHistory(Path.Combine(appData, "FeatherView", "playback.json"), log);
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var vm = new MainViewModel(settings, settingsService, thumbs, dialogs, theme, log,
+            main => new VideoPlayerViewModel(() => main.Settings, dialogs, history, localAppData, log));
         vm.Updates = new UpdateController(dialogs, settingsService, () => vm.Settings, version, log);
         vm.RefreshRecent();
 

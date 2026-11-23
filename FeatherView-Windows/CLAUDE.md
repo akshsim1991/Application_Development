@@ -4,4 +4,6 @@
 - Dev container cannot build WPF (no Windows SDK). Verified locally: `dotnet test tests/FeatherView.Tests -p:FV_TFM=net8.0`. WPF compiled in CI (windows-latest, .NET 10).
 - Update scheme mirrors FileGlade/FeatherPDF (latest.json + SHA-256). Releases repo: akshsim1991/FeatherView-releases.
 - Status of every feature is tracked in CHECKLIST.md; do not mark a feature done until it exists.
-- Next: Phase 3 video (Media Foundation via MediaElement/MediaPlayer, libmpv optional), filtering, persistent thumbnail cache, key remapping.
+- Video: `IVideoEngine` with MediaFoundationEngine (built in) and MpvEngine (optional libmpv, never bundled). libmpv wrapper (`Core/Video/MpvPlayer`) is tested here against the system libmpv: `FV_TEST_MEDIA=/tmp/media dotnet test -p:FV_TFM=net8.0` (tests skip when libmpv/media are absent). WPF native-window embedding (HwndHost) means no WPF overlay may sit on top of the video (airspace).
+- Local WPF type-check: compile App sources against NuGet Microsoft.WindowsDesktop.App.Ref with ImplicitUsings off (WPF SDK has no System.IO/System.Net.Http implicit usings; .NET 10 adds System.Windows.ThemeMode).
+- Next: V2 plan in docs/V2-SPEC.md (architecture split of MainViewModel, filtering/search, persistent thumbnail cache, key remapping).

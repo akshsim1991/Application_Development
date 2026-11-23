@@ -5,6 +5,9 @@ namespace FeatherView.Core.Settings;
 [JsonConverter(typeof(JsonStringEnumConverter<AppTheme>))]
 public enum AppTheme { System, Light, Dark }
 
+[JsonConverter(typeof(JsonStringEnumConverter<VideoEnginePreference>))]
+public enum VideoEnginePreference { Auto, MediaFoundation, Mpv }
+
 [JsonConverter(typeof(JsonStringEnumConverter<SortMode>))]
 public enum SortMode { Name, Date, Size, Type }
 
@@ -40,6 +43,22 @@ public sealed class AppSettings
     public bool SlideshowLoop { get; set; } = true;
     public bool SlideshowFullscreen { get; set; } = true;
 
+    // Video
+    public VideoEnginePreference VideoEngine { get; set; } = VideoEnginePreference.Auto;
+    public bool VideoAutoplay { get; set; } = true;
+    public bool VideoResume { get; set; } = true;
+    public bool VideoLoop { get; set; }
+    public int VideoVolume { get; set; } = 80;            // 0-200 (above 100 amplifies)
+    public bool VideoMuted { get; set; }
+    public bool HardwareDecoding { get; set; } = true;
+    public bool AutoLoadSubtitles { get; set; } = true;
+    public string PreferredSubtitleLanguages { get; set; } = "";   // e.g. "en,eng"
+    public string PreferredAudioLanguages { get; set; } = "";
+    public int SubtitleSize { get; set; } = 42;           // mpv sub-font-size
+    public string SubtitleColor { get; set; } = "#FFFFFF";
+    public int SubtitleBackgroundOpacity { get; set; }    // 0-100 %
+    public int SubtitlePosition { get; set; } = 100;      // 0 top .. 100 bottom
+
     // Performance
     public int ThumbnailCacheItems { get; set; } = 600;
     public int ThumbnailParallelism { get; set; } = 2;
@@ -59,6 +78,13 @@ public sealed class AppSettings
         ThumbnailCacheItems = Math.Clamp(ThumbnailCacheItems, 50, 5000);
         ThumbnailParallelism = Math.Clamp(ThumbnailParallelism, 1, 8);
         MaxRecentFiles = Math.Clamp(MaxRecentFiles, 0, 50);
+        VideoVolume = Math.Clamp(VideoVolume, 0, 200);
+        SubtitleSize = Math.Clamp(SubtitleSize, 20, 120);
+        SubtitleBackgroundOpacity = Math.Clamp(SubtitleBackgroundOpacity, 0, 100);
+        SubtitlePosition = Math.Clamp(SubtitlePosition, 0, 100);
+        if (!Enum.IsDefined(VideoEngine)) VideoEngine = VideoEnginePreference.Auto;
+        if (string.IsNullOrWhiteSpace(SubtitleColor) || !System.Text.RegularExpressions.Regex.IsMatch(SubtitleColor, "^#[0-9A-Fa-f]{6}$")) SubtitleColor = "#FFFFFF";
+        PreferredSubtitleLanguages ??= ""; PreferredAudioLanguages ??= "";
         if (!Enum.IsDefined(Theme)) Theme = AppTheme.System;
         if (!Enum.IsDefined(Sort)) Sort = SortMode.Name;
         if (!(WindowWidth >= 400)) WindowWidth = 1100;

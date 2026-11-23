@@ -30,6 +30,7 @@ public partial class MainWindow : Window
         GalleryList.SizeChanged += (_, e) => vm.Gallery.SetViewportWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 20);
         SourceInitialized += (_, _) => theme.ApplyToWindow(this);
         Closing += (_, _) => SaveBounds();
+        Closed += (_, _) => vm.Shutdown();
         Drop += OnDrop;
         DragOver += (_, e) => { e.Effects = e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None; e.Handled = true; };
     }

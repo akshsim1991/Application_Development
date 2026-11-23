@@ -6,13 +6,20 @@ namespace FeatherView.Views;
 
 public partial class SettingsWindow : Window
 {
-    private readonly Func<Task> _checkNow;
+    private readonly Func<Task> _checkNow, _installEngine;
     public AppSettings Edited { get; }
 
-    public SettingsWindow(AppSettings settings, Func<Task> checkNow)
+    public SettingsWindow(AppSettings settings, Func<Task> checkNow, string engineStatus, Func<Task> installEngine)
     {
         InitializeComponent();
-        Edited = settings; _checkNow = checkNow; DataContext = settings;
+        Edited = settings; _checkNow = checkNow; _installEngine = installEngine; DataContext = settings;
+        EngineStatus.Text = engineStatus;
+    }
+
+    private async void InstallEngine_Click(object sender, RoutedEventArgs e)
+    {
+        var b = (System.Windows.Controls.Button)sender; b.IsEnabled = false;
+        try { await _installEngine(); } finally { b.IsEnabled = true; }
     }
 
     private void Save_Click(object sender, RoutedEventArgs e) => DialogResult = true;

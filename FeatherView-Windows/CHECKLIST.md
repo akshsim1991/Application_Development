@@ -28,8 +28,27 @@ Nothing below is marked done unless the code exists. "Verified" means the Core t
 | Corrupted/unsupported file handled with a message, not a crash | built, untested on Windows |
 | SVG, RAW | planned |
 
-## Phase 3 - Video playback: **planned** (Media Foundation first, optional libmpv later)
-Play/pause, seeking, volume, speed, frame step, screenshots, subtitles, audio tracks, resume, loop, info. Video files already appear in the gallery and show a clear "not available yet" message.
+## Phase 3 - Video playback (engine option A: Windows built-in + optional libmpv)
+`built, untested on Windows` = code complete; the libmpv wrapper itself **is** tested against a real libmpv 0.37 in the dev container (load, tracks, info, exact seek, frame step, speed, A-B, volume, subtitles/audio selection, EOF/error events). The WPF player UI and window embedding have never run.
+
+| Item | Built-in (Media Foundation) | Extended (libmpv, optional download) |
+|---|---|---|
+| Play/pause, seek bar, volume, mute, loop, speed 0.25x-4x | built, untested on Windows | built, untested on Windows |
+| Frame-accurate seek, frame step back/forward | no (engine limitation) | built, untested on Windows |
+| A-B repeat | no | built, untested on Windows |
+| Subtitles (SRT/ASS/SSA/VTT/SUB), embedded + external, delay, size/colour/position/background | no | built, untested on Windows |
+| Audio track selection, external audio, audio delay | no | built, untested on Windows |
+| Volume above 100% (to 200%) | no | built, untested on Windows |
+| Chapters (list, next/previous) | no | built, untested on Windows |
+| Screenshot (saved to Pictures\Feather View) | built (renders the player surface) | built (video frame only) |
+| Rotate, aspect ratio | rotate only | built, untested on Windows |
+| Info panel (codec, bitrate, fps, HDR flag, tracks, container...) | size/duration only | built, untested on Windows |
+| Hardware decoding (D3D11VA auto-safe), HDR flag display | automatic in Windows | built, untested on Windows (real HDR output not verified) |
+| Resume position, playback history, volume memory | built, tested (Core) | built, tested (Core) |
+| Direct time entry (Ctrl+T), mouse-wheel volume, click = play/pause, double-click = full screen | built, untested on Windows | built, untested on Windows |
+| Automatic fallback: built-in engine fails -> libmpv if installed; otherwise a clear message with a download button | built, untested on Windows | |
+| Extended-engine download (HTTPS, host allow-list, SHA-256, safe unzip) | built, tested (Core, stub server) | needs `engine.json` + ZIP published in the releases repo (see docs/UPDATES.md) |
+| Auto-hiding controls, timeline thumbnails, picture-in-picture, multi-monitor choice, deinterlace options, audio device choice | planned (V2.1/2.2) | planned |
 
 ## Phase 4 - Gallery and browsing
 | Item | Status |

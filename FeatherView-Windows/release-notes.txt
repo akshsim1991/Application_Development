@@ -1,3 +1,6 @@
+Feather View 2.1.5
+- FIXED: GIF files showed "This file could not be opened" (the animation data was used from the wrong thread); animated GIFs open and play again
+
 Feather View 2.1.4
 - FIXED: clicking a point on the video seek bar now really jumps there and stays (before, the click only moved the marker and it snapped back)
 - NEW: quiet-audio boost button ("Boost") in the video bar, and volume up to 300% (extended video engine) for videos and movies that are hardly audible

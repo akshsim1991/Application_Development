@@ -6,7 +6,7 @@ using System.Windows.Media.Imaging;
 namespace FeatherView.Services;
 
 public sealed record LoadedImage(BitmapSource Image, int PixelWidth, int PixelHeight, string Format,
-                                 IReadOnlyList<InfoLine> Exif, GifBitmapDecoder? Gif, double DpiX, double DpiY, int BitsPerPixel, ImageMeta Meta);
+                                 IReadOnlyList<InfoLine> Exif, GifData? Gif, double DpiX, double DpiY, int BitsPerPixel, ImageMeta Meta);
 
 /// <summary>Decodes images with the Windows Imaging Component. The file is released as soon as decoding ends.</summary>
 public static class ImageLoader
@@ -21,7 +21,11 @@ public static class ImageLoader
         var src = ApplyOrientation(frame, ExifReader.ReadOrientation(frame));
         src.Freeze();
         var format = decoder.CodecInfo?.FriendlyName ?? Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
-        var gif = decoder is GifBitmapDecoder g && g.Frames.Count > 1 ? g : null;
+        GifData? gif = null;
+        if (decoder is GifBitmapDecoder g && g.Frames.Count > 1)
+        {
+            try { gif = GifData.From(g); } catch { gif = null; }   // still show the first frame if the animation cannot be prepared
+        }
         return new LoadedImage(src, frame.PixelWidth, frame.PixelHeight, format, exif, gif, frame.DpiX, frame.DpiY, frame.Format.BitsPerPixel, ExifReader.ReadMeta(frame));
     }
 

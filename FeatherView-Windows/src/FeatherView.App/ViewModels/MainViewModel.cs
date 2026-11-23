@@ -702,17 +702,17 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             if (ct.IsCancellationRequested) return;
-            _log.Warn($"Could not open an image ({ex.GetType().Name}).");
+            _log.Error($"Could not open an image ({ex.GetType().Name}: {ex.Message}).", ex);
             _base = null; CurrentImage = null; ImageId = file.Path; Info.Clear();
             ErrorText = "This file could not be opened. It may be damaged, or use a format this version of Windows cannot decode.";
         }
     }
 
-    private void StartGif(GifBitmapDecoder decoder)
+    private void StartGif(GifData data)
     {
         try
         {
-            _gif = new GifAnimator(decoder);
+            _gif = new GifAnimator(data);
             _gif.FrameReady += f => { _gifFrame = f; CurrentImage = ImageLoader.Transform(f, _rotation, _flip); };
             _gif.Start();
         }

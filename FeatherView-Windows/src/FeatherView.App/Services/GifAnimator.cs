@@ -5,10 +5,44 @@ using System.Windows.Threading;
 
 namespace FeatherView.Services;
 
+public sealed record GifFrame(BitmapSource Image, int DelayMs, int Disposal, Int32Rect Rect);
+/// <summary>All frames of an animated GIF, decoded and frozen on the loading thread so the UI thread can use them.</summary>
+public sealed record GifData(int Width, int Height, IReadOnlyList<GifFrame> Frames)
+{
+    public static GifData From(GifBitmapDecoder decoder)
+    {
+        int w = 0, h = 0;
+        try { if (decoder.Metadata is BitmapMetadata m) { w = Convert.ToInt32(m.GetQuery("/logscrdesc/Width") ?? 0); h = Convert.ToInt32(m.GetQuery("/logscrdesc/Height") ?? 0); } }
+        catch { }
+        if (w <= 0) w = decoder.Frames[0].PixelWidth;
+        if (h <= 0) h = decoder.Frames[0].PixelHeight;
+        var list = new List<GifFrame>();
+        foreach (var f in decoder.Frames)
+        {
+            int delay = 100, disposal = 0, left = 0, top = 0;
+            try
+            {
+                if (f.Metadata is BitmapMetadata m)
+                {
+                    if (m.GetQuery("/grctlext/Delay") is ushort d) delay = d <= 1 ? 100 : d * 10;
+                    if (m.GetQuery("/grctlext/Disposal") is byte dp) disposal = dp;
+                    if (m.GetQuery("/imgdesc/Left") is ushort l) left = l;
+                    if (m.GetQuery("/imgdesc/Top") is ushort t) top = t;
+                }
+            }
+            catch { }
+            BitmapSource img = f;
+            if (!img.IsFrozen) { img = new WriteableBitmap(f); img.Freeze(); }
+            list.Add(new GifFrame(img, delay, disposal, new Int32Rect(left, top, Math.Max(1, Math.Min(f.PixelWidth, w - left)), Math.Max(1, Math.Min(f.PixelHeight, h - top)))));
+        }
+        return new GifData(w, h, list);
+    }
+}
+
 /// <summary>Plays an animated GIF by compositing frames (WPF returns raw partial frames) at the file's own timing.</summary>
 public sealed class GifAnimator : IDisposable
 {
-    private readonly GifBitmapDecoder _decoder;
+    private readonly GifData _data;
     private readonly DispatcherTimer _timer = new();
     private readonly int _w, _h;
     private int _index = -1;
@@ -19,14 +53,10 @@ public sealed class GifAnimator : IDisposable
     public event Action<BitmapSource>? FrameReady;
     public bool IsPaused { get; private set; }
 
-    public GifAnimator(GifBitmapDecoder decoder)
+    public GifAnimator(GifData data)
     {
-        _decoder = decoder;
-        int w = 0, h = 0;
-        try { if (decoder.Metadata is BitmapMetadata m) { w = Convert.ToInt32(m.GetQuery("/logscrdesc/Width") ?? 0); h = Convert.ToInt32(m.GetQuery("/logscrdesc/Height") ?? 0); } }
-        catch { }
-        _w = w > 0 ? w : decoder.Frames[0].PixelWidth;
-        _h = h > 0 ? h : decoder.Frames[0].PixelHeight;
+        _data = data;
+        _w = data.Width; _h = data.Height;
         _timer.Tick += (_, _) => Advance();
     }
 
@@ -38,9 +68,10 @@ public sealed class GifAnimator : IDisposable
     private void Advance()
     {
         _timer.Stop();
-        _index = (_index + 1) % _decoder.Frames.Count;
-        var frame = _decoder.Frames[_index];
-        var (delay, disposal, rect) = ReadInfo(frame);
+        _index = (_index + 1) % _data.Frames.Count;
+        var gf = _data.Frames[_index];
+        var frame = gf.Image;
+        var (delay, disposal, rect) = (gf.DelayMs, gf.Disposal, gf.Rect);
         var full = new Rect(0, 0, _w, _h);
 
         var dv = new DrawingVisual();
@@ -67,22 +98,5 @@ public sealed class GifAnimator : IDisposable
         _canvas = rtb; _prevDisposal = disposal; _prevRect = rect;
         FrameReady?.Invoke(rtb);
         if (!IsPaused) { _timer.Interval = TimeSpan.FromMilliseconds(delay); _timer.Start(); }
-    }
-
-    private (int delayMs, int disposal, Int32Rect rect) ReadInfo(BitmapFrame f)
-    {
-        int delay = 100, disposal = 0, left = 0, top = 0;
-        try
-        {
-            if (f.Metadata is BitmapMetadata m)
-            {
-                if (m.GetQuery("/grctlext/Delay") is ushort d) delay = d <= 1 ? 100 : d * 10;
-                if (m.GetQuery("/grctlext/Disposal") is byte dp) disposal = dp;
-                if (m.GetQuery("/imgdesc/Left") is ushort l) left = l;
-                if (m.GetQuery("/imgdesc/Top") is ushort t) top = t;
-            }
-        }
-        catch { }
-        return (delay, disposal, new Int32Rect(left, top, Math.Min(f.PixelWidth, _w - left), Math.Min(f.PixelHeight, _h - top)));
     }
 }

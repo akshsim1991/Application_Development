@@ -755,11 +755,17 @@ page.obj.Contents = pikepdf.Stream(pdf, b"BT /F1 10 Tf 72 760 Td (Bernoulli's eq
 pdf.save(sys.argv[1])
 PY
 "$prog" --edit "$W/tex.pdf" "$W/tex1.pdf" eqins 1 72 700 '\frac{p}{\rho g} + \frac{V^{2}}{2g} + z = H' eq 1 80 703 read </dev/null >/dev/null 2>&1
-check "an equation on a TeX page is set in Latin Modern" "pdffonts '$W/tex1.pdf' | grep -q FeatherLMMath-Italic && pdffonts '$W/tex1.pdf' | grep -q FeatherLMMath-Regular"
+fonts() { python3 -c "
+import sys,pikepdf
+p=pikepdf.open(sys.argv[1]);seen=[]
+for pg in p.pages:
+    for n,f in (pg.obj.get('/Resources',{}).get('/Font',{}) or {}).items(): seen.append(str(f.get('/BaseFont','')))
+print('\\n'.join(seen))" "$1"; }
+check "an equation on a TeX page is set in Latin Modern" "fonts '$W/tex1.pdf' | grep -q FeatherLMMath-Italic && fonts '$W/tex1.pdf' | grep -q FeatherLMMath-Regular"
 check "it reads back whole" "grep -q 'ours=1 .*src: .*frac{V^{2}}{2g} + z = H' '$W/tex1.pdf.txt'"
 "$prog" --edit "$W/tex1.pdf" "$W/tex2.pdf" eq 1 80 703 set 'x^{2} + y^{2}' </dev/null >/dev/null 2>&1
-check "edited again, still one copy of each font" "[ \$(pdffonts '$W/tex2.pdf' | grep -c FeatherLMMath-Italic) -eq 1 ]"
-check "a page in other fonts gets Times" "! pdffonts '$W/rich.pdf' 2>/dev/null | grep -q FeatherLMMath"
+check "edited again, still one copy of each font" "[ \$(fonts '$W/tex2.pdf' | grep -c FeatherLMMath-Italic) -eq 1 ]"
+check "a page in other fonts gets Times" "[ -s '$W/rich.pdf' ] && ! fonts '$W/rich.pdf' | grep -q FeatherLMMath"
 
 [ -n "${FEATHER_CLI_WORK:-}" ] || rm -rf "$work"
 [ $fail -eq 0 ] && echo "ALL PASSED" || { echo "SOME FAILED"; exit 1; }

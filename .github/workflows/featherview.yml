@@ -72,35 +72,6 @@ jobs:
         shell: pwsh
         run: ./tools/make-latest-json.ps1
 
-      - name: GitHub Release - becomes the 'latest' release that installed apps update from (only when the commit message contains [release])
-        if: contains(github.event.head_commit.message, '[release]')
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $v = (Get-Content VERSION).Trim()
-          $tag = "featherview-v$v"
-          $setup = "dist/FeatherView-Setup-$v.exe"
-          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
-          $notes = @"
-          Feather View $v
-
-          Files
-          - FeatherView-Setup-$v.exe: full installer (about 44 MB; 64-bit Windows 10 1809 or later; includes the .NET runtime, no prerequisites)
-          - FeatherView-Setup-small-$v.exe: small installer (a couple of MB) for PCs that have the .NET 10 Desktop Runtime; updates are then tiny too
-          - FeatherView-$v-portable-win-x64.zip: no install needed, unzip and run FeatherView.exe
-          - FeatherView-$v-framework-dependent-win-x64.zip: small download, needs the .NET 10 Desktop Runtime installed
-          - latest.json: update manifest (for the releases repository)
-
-          Installer SHA-256: $hash
-
-          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 2.1.0 and later check this release for updates automatically (Settings > Updates). Download only the one installer you need, not the CI artifact bundle.
-          "@
-          # A re-run replaces the release so its tag points at the commit that was just built.
-          gh release view $tag *> $null
-          if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
-          gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
-
       - name: Publish extended video engine (libmpv, LGPL build) - only when the commit message contains [engine]
         if: contains(github.event.head_commit.message, '[engine]')
         continue-on-error: true
@@ -144,6 +115,35 @@ jobs:
           gh release view featherview-engine *> $null
           if ($LASTEXITCODE -eq 0) { gh release delete featherview-engine --yes --cleanup-tag }
           gh release create featherview-engine $zip (Join-Path $work "engine.json") --title "Extended video engine (libmpv)" --notes "libmpv LGPL build from $src $tag. Feather View downloads this only when you ask for extended video support (Settings > Video). Source: https://github.com/mpv-player/mpv" --target ${{ github.sha }}
+
+      - name: GitHub Release - becomes the 'latest' release that installed apps update from (only when the commit message contains [release])
+        if: contains(github.event.head_commit.message, '[release]')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $v = (Get-Content VERSION).Trim()
+          $tag = "featherview-v$v"
+          $setup = "dist/FeatherView-Setup-$v.exe"
+          $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
+          $notes = @"
+          Feather View $v
+
+          Files
+          - FeatherView-Setup-$v.exe: full installer (about 44 MB; 64-bit Windows 10 1809 or later; includes the .NET runtime, no prerequisites)
+          - FeatherView-Setup-small-$v.exe: small installer (a couple of MB) for PCs that have the .NET 10 Desktop Runtime; updates are then tiny too
+          - FeatherView-$v-portable-win-x64.zip: no install needed, unzip and run FeatherView.exe
+          - FeatherView-$v-framework-dependent-win-x64.zip: small download, needs the .NET 10 Desktop Runtime installed
+          - latest.json: update manifest (for the releases repository)
+
+          Installer SHA-256: $hash
+
+          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 2.1.0 and later check this release for updates automatically (Settings > Updates). Download only the one installer you need, not the CI artifact bundle.
+          "@
+          # A re-run replaces the release so its tag points at the commit that was just built.
+          gh release view $tag *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
+          gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:

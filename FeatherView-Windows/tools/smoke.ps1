@@ -24,6 +24,8 @@ if ($p.HasExited) { Show-Diagnostics; throw "The app exited during start-up (exi
 if ($p.MainWindowHandle -eq 0) { Show-Diagnostics; try { $p.Kill() } catch {}; throw "No window appeared within 20 s." }
 Start-Sleep -Seconds 3
 $p.Refresh()
+$logFile = Join-Path $env:APPDATA "FeatherView\featherview.log"
+if ((Test-Path $logFile) -and (Select-String -Path $logFile -Pattern "ERROR" -Quiet)) { Show-Diagnostics; try { $p.Kill() } catch {}; throw "The app logged an error during start-up (an error dialog may be showing)." }
 $mem = [math]::Round($p.WorkingSet64 / 1MB, 1)
 $cpu = [math]::Round($p.TotalProcessorTime.TotalSeconds, 2)
 $responding = $p.Responding

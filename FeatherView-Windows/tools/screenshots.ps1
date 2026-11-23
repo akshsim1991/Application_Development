@@ -70,8 +70,11 @@ function Take($name, $arg, $waitSeconds) {
   $g.CopyFromScreen([Math]::Max($r.L, 0), [Math]::Max($r.T, 0), 0, 0, $bmp.Size)
   $g.Dispose(); $bmp.Save((Join-Path $Out "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
   Write-Host "Saved $name ($cw x $ch)"
+  $log = Join-Path $settingsDir "featherview.log"
+  if (Test-Path $log) { Copy-Item $log (Join-Path $Out "featherview-$name.log") -Force; Remove-Item $log -Force }
   try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
 }
+Remove-Item (Join-Path $settingsDir "featherview.log") -ErrorAction SilentlyContinue
 Set-Theme "Dark"
 Take "photo-dark" "$dir\mountain-lake.jpg" 6
 Take "gallery-dark" $dir 9

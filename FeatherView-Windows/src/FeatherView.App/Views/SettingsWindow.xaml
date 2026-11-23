@@ -103,6 +103,7 @@
                     <Slider Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding SlideshowSeconds}" />
                 </DockPanel>
                 <CheckBox Content="Start over after the last photo" IsChecked="{Binding SlideshowLoop}" />
+                <CheckBox Content="Shuffle (random order, no repeats until all were shown)" IsChecked="{Binding SlideshowShuffle}" />
                 <CheckBox Content="Play in full screen" IsChecked="{Binding SlideshowFullscreen}" />
 
                 <TextBlock Text="Performance and caching" Style="{StaticResource SectionTitle}" />

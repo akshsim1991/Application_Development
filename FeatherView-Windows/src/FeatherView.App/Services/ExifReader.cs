@@ -1,10 +1,12 @@
 using System.Globalization;
+using FeatherView.Core.Imaging;
 using System.Windows.Media.Imaging;
 
 namespace FeatherView.Services;
 
 public sealed record InfoLine(string Label, string Value);
-public sealed record ImageMeta(string? Taken, string? Camera, string? Lens);
+public sealed record ImageMeta(string? Taken, string? Camera, string? Lens, double? FocalMm = null, double? FNumber = null,
+                               double? ExposureSeconds = null, int? Iso = null, double? Latitude = null, double? Longitude = null);
 
 /// <summary>Reads a few camera details through WIC metadata queries. Location data is intentionally never read.</summary>
 public static class ExifReader
@@ -22,6 +24,7 @@ public static class ExifReader
     public static ImageMeta ReadMeta(BitmapFrame frame)
     {
         string? taken = null, camera = null, lens = null;
+        double? focal = null, fnum = null, exposure = null, lat = null, lon = null; int? iso = null;
         try
         {
             if (frame.Metadata is BitmapMetadata m)
@@ -35,10 +38,20 @@ public static class ExifReader
                 }
                 catch { }
                 try { lens = m.GetQuery("System.Photo.LensModel") as string; if (string.IsNullOrWhiteSpace(lens)) lens = null; } catch { }
+                object? Q(string q) { try { return m.GetQuery(q); } catch { return null; } }
+                static double? Num(object? o) => o switch { double d => d, float f => f, uint u => u, ushort us => us, int i => i, _ => null };
+                focal = Num(Q("System.Photo.FocalLength")); fnum = Num(Q("System.Photo.FNumber")); exposure = Num(Q("System.Photo.ExposureTime"));
+                iso = Num(Q("System.Photo.ISOSpeed")) is double isoValue ? (int)isoValue : null;
+                // Location is read only to show it in the details panel; it never leaves the PC unless the user asks to open a map.
+                lat = GpsMath.FromDegrees(Q("System.GPS.Latitude") as double[], Q("System.GPS.LatitudeRef") as string)
+                      ?? GpsMath.FromRationals(Q("/app1/ifd/gps/{ushort=2}") as ulong[], Q("/app1/ifd/gps/{ushort=1}") as string);
+                lon = GpsMath.FromDegrees(Q("System.GPS.Longitude") as double[], Q("System.GPS.LongitudeRef") as string)
+                      ?? GpsMath.FromRationals(Q("/app1/ifd/gps/{ushort=4}") as ulong[], Q("/app1/ifd/gps/{ushort=3}") as string);
+                if (lat is not double la || lon is not double lo || !GpsMath.IsValid(la, lo)) { lat = null; lon = null; }
             }
         }
         catch { }
-        return new ImageMeta(taken, camera, lens?.Trim());
+        return new ImageMeta(taken, camera, lens?.Trim(), focal, fnum, exposure, iso, lat, lon);
     }
 
     public static List<InfoLine> Read(BitmapFrame frame)

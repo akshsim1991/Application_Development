@@ -43,6 +43,17 @@ All items below are `built, untested on Windows` (the logic parts - aspect ratio
 | Status bar: "248 items - 1 selected", Set as Wallpaper, Print, Open Folder, full screen | Real actions (wallpaper asks first and stores a PNG copy in the app data folder; print uses the Windows print dialog) |
 Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/details toggles (Ctrl+B / T / I).
 
+## Ideas taken from the 'Aura Photos' screenshot (AI/editing/cloud parts deliberately left out)
+| Item | Status |
+|---|---|
+| Floating photo toolbar on the picture: zoom out/in, fit, compare, shuffle | built, untested on Windows |
+| Compare side by side (current + next picture, zoom and pan stay in sync; Esc closes) | built, untested on Windows |
+| Slideshow shuffle (random, no repeats until every picture was shown) | logic tested (Core); UI untested on Windows; also a Settings checkbox |
+| Details panel as collapsible cards: Details, Camera (one-line summary + date/camera/lens), Location, EXIF Data, Histogram, Text in picture | built, untested on Windows; camera summary and GPS maths tested |
+| Location card: coordinates from the picture's metadata; the map opens in the browser only after you click and confirm | built, untested on Windows |
+| Text in picture: offline OCR with Windows' built-in recognizer (needs an installed OCR language), runs only on click, copy button | built, untested on Windows |
+| Not adopted: edit tools, AI scene tags, quality score, Copilot/AI search, interactive map, Albums/Projects/Devices | out of scope (editing/AI/cloud) or V3 |
+
 ## Tabs (V2.1 item brought forward)
 | Item | Status |
 |---|---|

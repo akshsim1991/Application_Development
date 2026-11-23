@@ -16,7 +16,6 @@ namespace FeatherView.ViewModels;
 
 public enum ViewMode { Photo, Gallery, Video }
 public enum NavSection { Gallery, Folders, Favorites, Recent, Search }
-public enum InfoTabKind { Info, Histogram, Exif }
 
 /// <summary>The view surface (zoom/pan control) as seen by the view-model.</summary>
 public interface IViewport { void ZoomIn(); void ZoomOut(); void Fit(); void ActualSize(); void ZoomTo(double factor); }
@@ -36,7 +35,14 @@ public sealed class MainViewModel : ObservableObject
     private string _searchText = "";
     private bool _showSearch;
     private NavSection _section = NavSection.Gallery;
-    private InfoTabKind _infoTab = InfoTabKind.Info;
+    private bool _xDetails = true, _xCamera = true, _xLocation = true, _xExif, _xHist, _xText;
+    private string _cameraSummary = "", _locationText = "", _ocrText = "", _ocrStatus = "", _compareName = "";
+    private string? _locationUrl;
+    private bool _compare;
+    private ImageSource? _compareImage;
+    private object? _compareId;
+    private CancellationTokenSource? _cmpCts;
+    private readonly ShuffleOrder _shuffle = new();
     private Dictionary<QuickFilter, int> _counts = Enum.GetValues<QuickFilter>().ToDictionary(k => k, _ => 0);
     private string _emptyMessage = "Open a photo or a folder, or drop them here.";
     private string _infoTitle = "", _infoSubtitle = "", _infoDimensions = "";
@@ -120,7 +126,11 @@ public sealed class MainViewModel : ObservableObject
             if (t == "fit") Viewport?.Fit();
             else if (double.TryParse(t, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var z)) Viewport?.ZoomTo(z);
         });
-        SelectInfoTabCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<InfoTabKind>(n, out var t)) ActiveInfoTab = t; });
+        CompareCommand = new RelayCommand(() => { if (Mode == ViewMode.Photo) IsCompare = !IsCompare; });
+        ToggleShuffleCommand = new RelayCommand(() => { Settings.SlideshowShuffle = !Settings.SlideshowShuffle; _shuffle.Reset(); OnPropertyChanged(nameof(IsShuffle)); SaveSettings(); });
+        ExtractTextCommand = new AsyncRelayCommand(ExtractTextAsync);
+        CopyOcrTextCommand = new RelayCommand(() => { if (_ocrText.Length > 0) { try { Clipboard.SetText(_ocrText); StatusText = "Text copied"; } catch { } } });
+        OpenLocationCommand = new RelayCommand(OpenLocation);
         ShowInExplorerCommand = new RelayCommand(() => { if (Current != null) FileOperations.ShowInExplorer(Current.Path); });
         SettingsCommand = new RelayCommand(OpenSettings);
         CheckUpdatesCommand = new AsyncRelayCommand(() => Updates?.CheckAsync(true) ?? Task.CompletedTask);
@@ -137,7 +147,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<InfoLine> Info { get; } = new();
     public ObservableCollection<string> RecentFiles { get; } = new();
 
-    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); OnPropertyChanged(nameof(FilmstripVisible)); } } }
+    public ViewMode Mode { get => _mode; private set { if (Set(ref _mode, value)) { OnPropertyChanged(nameof(IsGallery)); OnPropertyChanged(nameof(IsPhoto)); OnPropertyChanged(nameof(IsVideo)); OnPropertyChanged(nameof(ShowEmptyState)); OnPropertyChanged(nameof(FilmstripVisible)); if (value != ViewMode.Photo && _compare) IsCompare = false; } } }
     public bool IsGallery => _mode == ViewMode.Gallery;
     public bool IsPhoto => _mode == ViewMode.Photo;
     public bool IsVideo => _mode == ViewMode.Video;
@@ -175,7 +185,35 @@ public sealed class MainViewModel : ObservableObject
     public bool IsFavorite => Current != null && Settings.IsFavorite(Current.Path);
 
     // ---- details panel ----
-    public InfoTabKind ActiveInfoTab { get => _infoTab; set { if (Set(ref _infoTab, value) && value == InfoTabKind.Histogram) _ = RefreshHistogramAsync(); } }
+    public bool ExpandDetails { get => _xDetails; set => Set(ref _xDetails, value); }
+    public bool ExpandCamera { get => _xCamera; set => Set(ref _xCamera, value); }
+    public bool ExpandLocation { get => _xLocation; set => Set(ref _xLocation, value); }
+    public bool ExpandExif { get => _xExif; set => Set(ref _xExif, value); }
+    public bool ExpandHistogram { get => _xHist; set { if (Set(ref _xHist, value) && value) _ = RefreshHistogramAsync(); } }
+    public bool ExpandText { get => _xText; set => Set(ref _xText, value); }
+    public string CameraSummary { get => _cameraSummary; private set { Set(ref _cameraSummary, value); OnPropertyChanged(nameof(HasCameraCard)); } }
+    public bool HasCameraCard => _cameraSummary.Length > 0 || TakenLines.Count > 0;
+    public string LocationText { get => _locationText; private set { Set(ref _locationText, value); OnPropertyChanged(nameof(HasLocation)); } }
+    public bool HasLocation => _locationText.Length > 0;
+    public string OcrText { get => _ocrText; private set { Set(ref _ocrText, value); OnPropertyChanged(nameof(HasOcrText)); } }
+    public bool HasOcrText => _ocrText.Length > 0;
+    public string OcrStatus { get => _ocrStatus; private set => Set(ref _ocrStatus, value); }
+
+    // ---- side-by-side comparison and shuffle ----
+    public bool IsCompare
+    {
+        get => _compare;
+        set
+        {
+            if (!Set(ref _compare, value)) return;
+            if (value) _ = LoadCompareAsync();
+            else { _cmpCts?.Cancel(); CompareImage = null; CompareId = null; CompareName = ""; }
+        }
+    }
+    public ImageSource? CompareImage { get => _compareImage; private set => Set(ref _compareImage, value); }
+    public object? CompareId { get => _compareId; private set => Set(ref _compareId, value); }
+    public string CompareName { get => _compareName; private set => Set(ref _compareName, value); }
+    public bool IsShuffle => Settings.SlideshowShuffle;
     public string InfoTitle { get => _infoTitle; private set => Set(ref _infoTitle, value); }
     public string InfoSubtitle { get => _infoSubtitle; private set => Set(ref _infoSubtitle, value); }
     public string InfoDimensions { get => _infoDimensions; private set => Set(ref _infoDimensions, value); }
@@ -229,7 +267,11 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ToggleFilmstripCommand { get; }
     public RelayCommand ToggleSidebarCommand { get; }
     public RelayCommand ZoomPresetCommand { get; }
-    public RelayCommand SelectInfoTabCommand { get; }
+    public RelayCommand CompareCommand { get; }
+    public RelayCommand ToggleShuffleCommand { get; }
+    public AsyncRelayCommand ExtractTextCommand { get; }
+    public RelayCommand CopyOcrTextCommand { get; }
+    public RelayCommand OpenLocationCommand { get; }
     public RelayCommand ShowInExplorerCommand { get; }
     public RelayCommand SettingsCommand { get; }
     public AsyncRelayCommand CheckUpdatesCommand { get; }
@@ -377,10 +419,45 @@ public sealed class MainViewModel : ObservableObject
         catch (Exception ex) { _log.Warn($"Print failed ({ex.GetType().Name})."); _dialogs.Error("Print", "The picture could not be printed."); }
     }
 
+    private async Task LoadCompareAsync()
+    {
+        _cmpCts?.Cancel();
+        var cts = _cmpCts = new CancellationTokenSource();
+        int partner = -1;
+        for (int k = 1; k < _files.Count; k++) { int i = (_index + k) % _files.Count; if (_files[i].Kind == MediaKind.Image) { partner = i; break; } }
+        if (partner < 0) { IsCompare = false; StatusText = "Comparing needs at least two pictures"; return; }
+        var f = _files[partner];
+        try
+        {
+            var li = await Task.Run(() => ImageLoader.Load(f.Path), cts.Token);
+            if (cts.IsCancellationRequested || !_compare) return;
+            CompareImage = li.Image; CompareId = f.Path; CompareName = f.Name;
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { _log.Warn($"Compare picture failed ({ex.GetType().Name})."); CompareImage = null; CompareName = f.Name + " (cannot open)"; }
+    }
+
+    private async Task ExtractTextAsync()
+    {
+        if (CurrentImage is not BitmapSource bs) { OcrStatus = "Open a picture first."; return; }
+        OcrStatus = "Reading text..."; OcrText = "";
+        var r = await OcrService.RecognizeAsync(bs);
+        OcrText = r.Text ?? "";
+        OcrStatus = r.Error ?? "Text found. Select it, or copy it with the button.";
+    }
+
+    private void OpenLocation()
+    {
+        if (_locationUrl == null) return;
+        if (!_dialogs.Confirm("Open map", "This opens the picture's location in your web browser (OpenStreetMap) and tells that website the coordinates. Continue?", "Open map")) return;
+        try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_locationUrl) { UseShellExecute = true }); }
+        catch (Exception ex) { _log.Warn($"Map not opened ({ex.GetType().Name})."); }
+    }
+
     private async Task RefreshHistogramAsync()
     {
         _histCts?.Cancel();
-        if (_infoTab != InfoTabKind.Histogram || CurrentImage is not BitmapSource bs) { Histogram = null; return; }
+        if (!_xHist || CurrentImage is not BitmapSource bs) { Histogram = null; return; }
         var cts = _histCts = new CancellationTokenSource();
         var shapes = await Task.Run(() => HistogramService.Compute(bs));
         if (!cts.IsCancellationRequested) Histogram = shapes;
@@ -480,7 +557,8 @@ public sealed class MainViewModel : ObservableObject
 
     private void Escape()
     {
-        if (IsSlideshow) StopSlideshow();
+        if (IsCompare) IsCompare = false;
+        else if (IsSlideshow) StopSlideshow();
         else if (IsFullscreen) IsFullscreen = false;
         else if (Mode == ViewMode.Gallery && (CurrentImage != null || Video.HasMedia)) OpenSelected();
     }
@@ -504,6 +582,7 @@ public sealed class MainViewModel : ObservableObject
             _base = null; CurrentImage = null; ImageId = file.Path; Info.Clear(); TakenLines.Clear(); ExifLines.Clear(); Histogram = null;
             InfoTitle = file.Name; InfoSubtitle = $"{Path.GetExtension(file.Name).TrimStart('.').ToUpperInvariant()}  •  {FormatSize(file.Length)}"; InfoDimensions = "";
             OnPropertyChanged(nameof(HasTaken)); OnPropertyChanged(nameof(HasExif)); OnPropertyChanged(nameof(IsFavorite));
+            CameraSummary = ""; LocationText = ""; OcrText = ""; OcrStatus = ""; if (_compare) IsCompare = false;
             Mode = ViewMode.Video;
             Video.Open(file);
             return;
@@ -519,6 +598,7 @@ public sealed class MainViewModel : ObservableObject
             ImageId = file.Path;
             BuildInfo(file, li);
             UpdateStatus(li.PixelWidth, li.PixelHeight);
+            if (_compare) _ = LoadCompareAsync();
             if (li.Gif != null) StartGif(li.Gif);
         }
         catch (OperationCanceledException) { }
@@ -563,6 +643,11 @@ public sealed class MainViewModel : ObservableObject
         if (li.Meta.Camera != null) TakenLines.Add(new InfoLine("Camera", li.Meta.Camera));
         if (li.Meta.Lens != null) TakenLines.Add(new InfoLine("Lens", li.Meta.Lens));
         OnPropertyChanged(nameof(HasTaken));
+        CameraSummary = FeatherView.Core.Imaging.CameraSummary.Build(li.Meta.Camera, li.Meta.FocalMm, li.Meta.FNumber, li.Meta.ExposureSeconds, li.Meta.Iso);
+        if (li.Meta.Latitude is double la && li.Meta.Longitude is double lo)
+        { LocationText = FeatherView.Core.Imaging.GpsMath.Format(la, lo); _locationUrl = FeatherView.Core.Imaging.GpsMath.MapUrl(la, lo); }
+        else { LocationText = ""; _locationUrl = null; }
+        OcrText = ""; OcrStatus = "";
         ExifLines.Clear();
         ExifLines.Add(new InfoLine("Format", li.Format));
         ExifLines.Add(new InfoLine("Modified", f.LastWriteUtc.ToLocalTime().ToString("g")));
@@ -651,6 +736,12 @@ public sealed class MainViewModel : ObservableObject
     {
         if (_files.Count == 0) { StopSlideshow(); return; }
         if (_index >= _files.Count - 1 && !Settings.SlideshowLoop) { StopSlideshow(); return; }
+        if (Settings.SlideshowShuffle)
+        {
+            var pick = _shuffle.Next(_files.Count, _index, i => _files[i].Kind != MediaKind.Video);
+            if (pick is int p) _ = ShowIndexAsync(p); else StopSlideshow();
+            return;
+        }
         int next = (_index + 1) % _files.Count;
         for (int guard = 0; guard < _files.Count && _files[next].Kind == MediaKind.Video; guard++) next = (next + 1) % _files.Count;   // slideshows show pictures only
         if (_files[next].Kind == MediaKind.Video) { StopSlideshow(); return; }
@@ -681,7 +772,7 @@ public sealed class MainViewModel : ObservableObject
         SaveSettings();
         OnPropertyChanged(nameof(Settings));
         Video.ApplySettings();
-        OnPropertyChanged(nameof(ShowSidebar)); OnPropertyChanged(nameof(FilmstripVisible));
+        OnPropertyChanged(nameof(ShowSidebar)); OnPropertyChanged(nameof(FilmstripVisible)); OnPropertyChanged(nameof(IsShuffle));
     }
 
     private static Task RunAsync(AsyncRelayCommand c) { c.Execute(null); return Task.CompletedTask; }

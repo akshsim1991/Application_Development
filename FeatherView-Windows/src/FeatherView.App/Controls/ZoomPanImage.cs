@@ -20,6 +20,9 @@ public sealed class ZoomPanImage : FrameworkElement, FeatherView.ViewModels.IVie
     public bool FitOnOpen { get => (bool)GetValue(FitOnOpenProperty); set => SetValue(FitOnOpenProperty, value); }
 
     public event Action<double>? ZoomChanged;
+    /// <summary>Raised after the user changes zoom/pan (or fit mode); a second pane in compare mode follows through <see cref="ApplyView"/>.</summary>
+    public event Action<double, Vector, bool>? ViewChanged;
+    private bool _applying;
 
     private double _zoom = 1;          // 1.0 = one image pixel per screen pixel
     private Vector _pan;               // offset of the image centre from the control centre, in DIPs
@@ -109,7 +112,14 @@ public sealed class ZoomPanImage : FrameworkElement, FeatherView.ViewModels.IVie
         _pan = new Vector(Math.Clamp(_pan.X, -mx, mx), Math.Clamp(_pan.Y, -my, my));
     }
 
-    private void Redraw() => InvalidateVisual();
+    private void Redraw() { InvalidateVisual(); if (!_applying) ViewChanged?.Invoke(_zoom, _pan, _fit); }
+
+    public void ApplyView(double zoom, Vector pan, bool fit)
+    {
+        _applying = true;
+        try { if (fit) FitInternal(); else { _fit = false; SetZoom(zoom, null); _pan = pan; ClampPan(); InvalidateVisual(); } }
+        finally { _applying = false; }
+    }
 
     // ---- mouse ----
     protected override void OnMouseWheel(MouseWheelEventArgs e)

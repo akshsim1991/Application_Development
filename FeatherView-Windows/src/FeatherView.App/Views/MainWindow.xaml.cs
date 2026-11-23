@@ -26,6 +26,8 @@ public partial class MainWindow : Window
 
         vm.Viewport = Viewer;
         Viewer.ZoomChanged += vm.ReportZoom;
+        Viewer.ViewChanged += (z, p, fit) => Viewer2.ApplyView(z, p, fit);     // compare mode: both panes zoom and pan together
+        Viewer2.ViewChanged += (z, p, fit) => Viewer.ApplyView(z, p, fit);
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.IsFullscreen)) ApplyFullscreen(vm.IsFullscreen); };
         vm.Gallery.ScrollToRow += row =>
         {

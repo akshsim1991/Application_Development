@@ -45,6 +45,7 @@ public sealed class AppSettings
     // Slideshow
     public int SlideshowSeconds { get; set; } = 4;
     public bool SlideshowLoop { get; set; } = true;
+    public bool SlideshowShuffle { get; set; }
     public bool SlideshowFullscreen { get; set; } = true;
 
     // Video

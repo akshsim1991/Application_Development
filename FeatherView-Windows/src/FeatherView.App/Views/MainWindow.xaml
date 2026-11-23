@@ -358,8 +358,39 @@
                 <!-- Media area -->
                 <Border x:Name="MediaHost" Grid.Row="2" CornerRadius="12" Background="{DynamicResource SurfaceBrush}" SizeChanged="MediaHost_SizeChanged">
                     <Grid>
-                        <c:ZoomPanImage x:Name="Viewer" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}"
-                            Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}" />
+                        <Grid x:Name="PhotoArea" Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <c:ZoomPanImage x:Name="Viewer" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}">
+                                <c:ZoomPanImage.Style>
+                                    <Style TargetType="c:ZoomPanImage">
+                                        <Setter Property="Grid.ColumnSpan" Value="2" />
+                                        <Style.Triggers><DataTrigger Binding="{Binding IsCompare}" Value="True"><Setter Property="Grid.ColumnSpan" Value="1" /></DataTrigger></Style.Triggers>
+                                    </Style>
+                                </c:ZoomPanImage.Style>
+                            </c:ZoomPanImage>
+                            <c:ZoomPanImage x:Name="Viewer2" Grid.Column="1" Source="{Binding CompareImage}" ImageId="{Binding CompareId}" FitOnOpen="True" Margin="3,0,0,0"
+                                            Visibility="{Binding IsCompare, Converter={StaticResource B2V}}" />
+                            <TextBlock Grid.Column="1" Text="{Binding CompareName}" Visibility="{Binding IsCompare, Converter={StaticResource B2V}}" Margin="16,0,0,12" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                       Foreground="White" FontSize="12" Background="#99000000" Padding="8,3" />
+                            <TextBlock Text="{Binding InfoTitle}" Visibility="{Binding IsCompare, Converter={StaticResource B2V}}" Margin="16,0,0,12" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                       Foreground="White" FontSize="12" Background="#99000000" Padding="8,3" />
+                        </Grid>
+                        <!-- Floating photo toolbar -->
+                        <Border HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,12,12,0" Padding="4,3" CornerRadius="10" Background="{DynamicResource SurfaceBrush}" Opacity="0.96">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                    <Style.Triggers><DataTrigger Binding="{Binding IsPhoto}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel Orientation="Horizontal">
+                                <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconZoomOut}" ToolTip="Zoom out (-)" Command="{Binding ZoomOutCommand}" AutomationProperties.Name="Zoom out (-)" />
+                                <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconZoomIn}" ToolTip="Zoom in (+)" Command="{Binding ZoomInCommand}" AutomationProperties.Name="Zoom in (+)" />
+                                <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFit}" ToolTip="Fit to window (0)" Command="{Binding FitCommand}" AutomationProperties.Name="Fit to window (0)" />
+                                <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconCompare}" ToolTip="Compare with the next picture side by side (Esc to close)" IsChecked="{Binding IsCompare, Mode=OneWay}" Command="{Binding CompareCommand}" AutomationProperties.Name="Compare side by side" />
+                                <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconShuffle}" ToolTip="Shuffle slideshow order" IsChecked="{Binding IsShuffle, Mode=OneWay}" Command="{Binding ToggleShuffleCommand}" AutomationProperties.Name="Shuffle slideshow" />
+                            </StackPanel>
+                        </Border>
             <TextBlock Text="{Binding ErrorText}" Visibility="{Binding HasError, Converter={StaticResource B2V}}" Foreground="{DynamicResource SubtleTextBrush}"
                        FontSize="15" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460" VerticalAlignment="Center" HorizontalAlignment="Center" />
                         <ListBox x:Name="GalleryList" ItemsSource="{Binding Gallery.Rows}" Visibility="{Binding IsGallery, Converter={StaticResource B2V}}"
@@ -461,82 +492,43 @@
                     </Style>
                 </Border.Style>
                 <DockPanel>
-                    <Grid DockPanel.Dock="Top" Margin="18,6,8,0">
-                        <StackPanel Orientation="Horizontal">
-                    <Button Content="Info" Command="{Binding SelectInfoTabCommand}" CommandParameter="Info">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Info">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button Content="Histogram" Command="{Binding SelectInfoTabCommand}" CommandParameter="Histogram">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Histogram">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button Content="EXIF" Command="{Binding SelectInfoTabCommand}" CommandParameter="Exif">
-                        <Button.Style>
-                            <Style TargetType="Button" BasedOn="{StaticResource InfoTab}">
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding ActiveInfoTab}" Value="Exif">
-                                        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
-                                        <Setter Property="FontWeight" Value="SemiBold" />
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                        </StackPanel>
+                    <Grid DockPanel.Dock="Top" Margin="18,10,8,6">
+                        <TextBlock Text="Details" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <Button HorizontalAlignment="Right" Style="{StaticResource IconButton}" Tag="{StaticResource IconClose}" ToolTip="Close details" Command="{Binding ToggleInfoCommand}" AutomationProperties.Name="Close details" />
                     </Grid>
-                    <Rectangle DockPanel.Dock="Top" Height="1" Fill="{DynamicResource BorderBrushSoft}" />
-                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="18,14,10,14">
-                        <Grid>
-                            <!-- Info tab -->
-                            <StackPanel>
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Info"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
-                                </StackPanel.Style>
-                                <Border CornerRadius="6" ClipToBounds="True" HorizontalAlignment="Left" MaxWidth="180" MaxHeight="100" Margin="0,0,0,12">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,4,8,14">
+                        <StackPanel>
+                            <StackPanel Margin="4,0,4,14">
+                                <Border CornerRadius="6" ClipToBounds="True" HorizontalAlignment="Left" MaxWidth="180" MaxHeight="100" Margin="0,0,0,10">
                                     <Image Source="{Binding Gallery.Selected.Thumbnail}" Stretch="Uniform" />
                                 </Border>
                                 <TextBlock Text="{Binding InfoTitle}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding InfoSubtitle}" Margin="0,4,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
+                                <TextBlock Text="{Binding InfoSubtitle}" Margin="0,3,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
                                 <TextBlock Text="{Binding InfoDimensions}" Margin="0,2,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
-                                <Button Content="Show in Explorer" Style="{StaticResource TextButton}" Command="{Binding ShowInExplorerCommand}" HorizontalAlignment="Left" Padding="12,5" Margin="0,12,0,0" />
-                                <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,16,0,14" />
-                                <TextBlock Text="Details" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
+                                <Button Content="Show in Explorer" Style="{StaticResource TextButton}" Command="{Binding ShowInExplorerCommand}" HorizontalAlignment="Left" Padding="12,5" Margin="0,10,0,0" />
+                            </StackPanel>
+
+                            <Expander Header="Details" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandDetails, Mode=TwoWay}">
                                 <ItemsControl ItemsSource="{Binding Info}">
                                     <ItemsControl.ItemTemplate>
                                         <DataTemplate>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="108" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                            <Grid Margin="0,0,0,7">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="104" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                                 <TextBlock Text="{Binding Label}" Foreground="{DynamicResource SubtleTextBrush}" />
                                                 <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
                                             </Grid>
                                         </DataTemplate>
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
-                                <StackPanel Visibility="{Binding HasTaken, Converter={StaticResource B2V}}">
-                                    <Rectangle Height="1" Fill="{DynamicResource BorderBrushSoft}" Margin="0,8,0,14" />
-                                    <TextBlock Text="Taken On" FontWeight="SemiBold" Margin="0,0,0,8" />
+                            </Expander>
+
+                            <Expander Header="Camera" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandCamera, Mode=TwoWay}" Visibility="{Binding HasCameraCard, Converter={StaticResource B2V}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding CameraSummary}" TextWrapping="Wrap" Margin="0,0,0,8" />
                                     <ItemsControl ItemsSource="{Binding TakenLines}">
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,7">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
                                                     <Viewbox Width="16" Height="16" VerticalAlignment="Top" Margin="0,1,10,0">
                                                         <Canvas Width="24" Height="24">
                                                             <Path StrokeThickness="2" Stroke="{DynamicResource SubtleTextBrush}" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round">
@@ -552,60 +544,68 @@
                                                             </Path>
                                                         </Canvas>
                                                     </Viewbox>
-                                                    <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxWidth="240" />
+                                                    <TextBlock Text="{Binding Value}" TextWrapping="Wrap" MaxWidth="230" />
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
                                 </StackPanel>
-                            </StackPanel>
+                            </Expander>
 
-                            <!-- Histogram tab -->
-                            <StackPanel>
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Histogram"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
-                                </StackPanel.Style>
-                                <TextBlock Text="Brightness and colour" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                <Border Background="{DynamicResource BgBrush}" CornerRadius="8" Height="150" Padding="6">
-                                    <Grid>
-                                        <Path Data="{Binding Histogram.Luma}" Fill="#44FFFFFF" Stretch="Fill" />
-                                        <Path Data="{Binding Histogram.Red}" Fill="#55FF4D4D" Stretch="Fill" />
-                                        <Path Data="{Binding Histogram.Green}" Fill="#5547D16B" Stretch="Fill" />
-                                        <Path Data="{Binding Histogram.Blue}" Fill="#554D8DFF" Stretch="Fill" />
-                                    </Grid>
-                                </Border>
-                                <Grid Margin="2,6,2,0"><TextBlock Text="Dark" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" /><TextBlock Text="Light" FontSize="11" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
-                                <TextBlock Text="Open a picture to see its histogram." Margin="0,10,0,0" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding HasHistogram}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
+                            <Expander Header="Location" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandLocation, Mode=TwoWay}" Visibility="{Binding HasLocation, Converter={StaticResource B2V}}">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding LocationText}" TextWrapping="Wrap" />
+                                    <TextBlock Text="Stored in the picture. Nothing is sent anywhere unless you open the map." FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" Margin="0,4,0,8" />
+                                    <Button Content="Open map in browser" Style="{StaticResource TextButton}" Command="{Binding OpenLocationCommand}" HorizontalAlignment="Left" Padding="12,5" />
+                                </StackPanel>
+                            </Expander>
 
-                            <!-- EXIF tab -->
-                            <StackPanel>
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ActiveInfoTab}" Value="Exif"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
-                                </StackPanel.Style>
-                                <TextBlock Text="File and camera details" FontSize="15" FontWeight="SemiBold" Margin="0,0,0,10" />
-                                <ItemsControl ItemsSource="{Binding ExifLines}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,0,0,8">
-                                                <Grid.ColumnDefinitions><ColumnDefinition Width="108" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                                                <TextBlock Text="{Binding Label}" Foreground="{DynamicResource SubtleTextBrush}" />
-                                                <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                                <TextBlock Text="No camera details are stored in this file." Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" Margin="0,4,0,0">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding HasExif}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                        </Grid>
+                            <Expander Header="EXIF Data" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandExif, Mode=TwoWay}">
+                                <StackPanel>
+                                    <ItemsControl ItemsSource="{Binding ExifLines}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="104" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="{Binding Label}" Foreground="{DynamicResource SubtleTextBrush}" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
+                                                </Grid>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                    <TextBlock Text="No camera details are stored in this file." Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding HasExif}" Value="False"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Histogram" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandHistogram, Mode=TwoWay}">
+                                <StackPanel>
+                                    <Border Background="{DynamicResource SurfaceBrush}" CornerRadius="8" Height="130" Padding="6">
+                                        <Grid>
+                                            <Path Data="{Binding Histogram.Luma}" Fill="#44FFFFFF" Stretch="Fill" />
+                                            <Path Data="{Binding Histogram.Red}" Fill="#55FF4D4D" Stretch="Fill" />
+                                            <Path Data="{Binding Histogram.Green}" Fill="#5547D16B" Stretch="Fill" />
+                                            <Path Data="{Binding Histogram.Blue}" Fill="#554D8DFF" Stretch="Fill" />
+                                        </Grid>
+                                    </Border>
+                                    <Grid Margin="2,6,2,0"><TextBlock Text="Dark" FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" /><TextBlock Text="Light" FontSize="11" HorizontalAlignment="Right" Foreground="{DynamicResource SubtleTextBrush}" /></Grid>
+                                </StackPanel>
+                            </Expander>
+
+                            <Expander Header="Text in picture" Style="{StaticResource SectionExpander}" IsExpanded="{Binding ExpandText, Mode=TwoWay}">
+                                <StackPanel>
+                                    <TextBlock Text="Finds printed text with Windows' built-in recognizer. It works offline and only when you click." FontSize="11" Foreground="{DynamicResource SubtleTextBrush}" TextWrapping="Wrap" Margin="0,0,0,8" />
+                                    <Button Content="Extract text" Style="{StaticResource TextButton}" Command="{Binding ExtractTextCommand}" HorizontalAlignment="Left" Padding="12,5" />
+                                    <TextBlock Text="{Binding OcrStatus}" TextWrapping="Wrap" Margin="0,8,0,0" Foreground="{DynamicResource SubtleTextBrush}" />
+                                    <TextBox Text="{Binding OcrText, Mode=OneWay}" IsReadOnly="True" TextWrapping="Wrap" AcceptsReturn="True" MaxHeight="170" VerticalScrollBarVisibility="Auto" Padding="8,6" Margin="0,8,0,0"
+                                             Visibility="{Binding HasOcrText, Converter={StaticResource B2V}}" AutomationProperties.Name="Recognized text" />
+                                    <Button Content="Copy text" Style="{StaticResource TextButton}" Command="{Binding CopyOcrTextCommand}" HorizontalAlignment="Left" Padding="12,5" Margin="0,8,0,0" Visibility="{Binding HasOcrText, Converter={StaticResource B2V}}" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
                     </ScrollViewer>
                 </DockPanel>
             </Border>

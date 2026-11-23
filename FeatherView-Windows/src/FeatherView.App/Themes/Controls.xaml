@@ -297,4 +297,41 @@
             </Setter.Value>
         </Setter>
     </Style>
+    <!-- Collapsible card for the details panel -->
+    <Style x:Key="SectionExpander" TargetType="Expander">
+        <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+        <Setter Property="Margin" Value="0,0,0,8" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Expander">
+                    <Border CornerRadius="10" Background="{DynamicResource BgBrush}" Padding="14,10">
+                        <DockPanel>
+                            <ToggleButton DockPanel.Dock="Top" Focusable="False" Cursor="Hand" IsChecked="{Binding IsExpanded, RelativeSource={RelativeSource TemplatedParent}, Mode=TwoWay}"
+                                          Content="{TemplateBinding Header}" AutomationProperties.Name="{Binding Header, RelativeSource={RelativeSource TemplatedParent}}">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <DockPanel Background="Transparent">
+                                            <Viewbox DockPanel.Dock="Right" Width="13" Height="13">
+                                                <Canvas Width="24" Height="24">
+                                                    <Path x:Name="Chev" Data="M6 9l6 6 6-6" Stroke="{DynamicResource SubtleTextBrush}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                            <ContentPresenter TextElement.FontWeight="SemiBold" TextElement.Foreground="{DynamicResource TextBrush}" VerticalAlignment="Center" />
+                                        </DockPanel>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chev" Property="Data" Value="M6 15l6-6 6 6" /></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                            <ContentPresenter x:Name="Body" Margin="0,10,0,0" Visibility="Collapsed" />
+                        </DockPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsExpanded" Value="True"><Setter TargetName="Body" Property="Visibility" Value="Visible" /></Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
 </ResourceDictionary>

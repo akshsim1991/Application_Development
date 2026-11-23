@@ -157,7 +157,7 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement { DataContext: MediaItemViewModel item })
         {
-            if (e.ClickCount >= 2) _vm.OpenItemCommand.Execute(item); else _vm.SelectItemCommand.Execute(item);
+            if (e.ClickCount >= 2) _vm.OpenItemCommand.Execute(item); else _vm.ClickItem(item, Keyboard.Modifiers);
             e.Handled = true;
         }
     }

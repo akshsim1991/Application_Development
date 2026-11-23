@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Windows;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
@@ -94,15 +95,15 @@ public sealed class MainViewModel : ObservableObject
         NextFileCommand = new RelayCommand(() => StepFile(1));
         PrevFileCommand = new RelayCommand(() => StepFile(-1));
         SpaceCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.TogglePlay(); else Step(1); });
-        SeekLongBackCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(-30); });
-        SeekLongForwardCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(30); });
+        SeekLongBackCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(-30); else MoveCursor("L"); });
+        SeekLongForwardCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.SeekRelative(30); else MoveCursor("R"); });
         UpCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(-1); else if (Mode == ViewMode.Video) Video.Volume += 5; });
         DownCommand = new RelayCommand(() => { if (Mode == ViewMode.Gallery) Gallery.MoveRows(1); else if (Mode == ViewMode.Video) Video.Volume -= 5; });
         FirstCommand = new RelayCommand(() => JumpTo(0));
         LastCommand = new RelayCommand(() => JumpTo(_files.Count - 1));
         ToggleGalleryCommand = new RelayCommand(ToggleGallery);
         OpenItemCommand = new RelayCommand(p => { if (p is MediaItemViewModel m) { Gallery.Select(_files.IndexOf(m.File)); OpenSelected(); } });
-        SelectItemCommand = new RelayCommand(p => { if (p is MediaItemViewModel m) Gallery.Select(_files.IndexOf(m.File)); });
+        SelectItemCommand = new RelayCommand(p => { if (p is MediaItemViewModel m) { _anchor = _files.IndexOf(m.File); Gallery.Select(_anchor); } });
         OpenSelectedCommand = new RelayCommand(OpenSelected);
         RotateLeftCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.RotateCommand.Execute(null); else Rotate(-1); });
         RotateRightCommand = new RelayCommand(() => { if (Mode == ViewMode.Video) Video.RotateCommand.Execute(null); else Rotate(1); });
@@ -628,6 +629,66 @@ public sealed class MainViewModel : ObservableObject
 
     // ---- navigation ----
     /// <summary>Left/Right: previous/next picture, move the gallery selection, or seek inside a video.</summary>
+    // ---- multi-selection in the gallery (Explorer-style: Ctrl+click toggles, Shift+click / Shift+arrows select a range) ----
+    private int _anchor = -1;
+
+    private void SetRange(int a, int b)
+    {
+        int lo = Math.Min(a, b), hi = Math.Max(a, b);
+        var items = Gallery.Items;
+        for (int i = 0; i < items.Count; i++) items[i].IsChecked = i >= lo && i <= hi;
+    }
+
+    /// <summary>Click on a gallery tile with the current keyboard modifiers.</summary>
+    public void ClickItem(MediaItemViewModel m, ModifierKeys mods)
+    {
+        int idx = _files.IndexOf(m.File);
+        if (idx < 0) return;
+        if (_anchor < 0) _anchor = Math.Max(0, Gallery.SelectedIndex);
+        if (mods.HasFlag(ModifierKeys.Shift)) { SetRange(_anchor, idx); Gallery.Select(idx); }
+        else if (mods.HasFlag(ModifierKeys.Control))
+        {
+            if (CheckedCount == 0 && Gallery.Selected is { } cur && cur != m) cur.IsChecked = true;   // the tile you were on becomes part of the selection
+            m.IsChecked = !m.IsChecked; _anchor = idx; Gallery.Select(idx);
+        }
+        else { if (HasChecked) ClearCheckedCommand.Execute(null); _anchor = idx; Gallery.Select(idx); }
+    }
+
+    /// <summary>Shift+arrow keys: move the cursor and extend the selection from the anchor. "L","R" = one tile; "U","D" = one row; "H","E" = first/last.</summary>
+    public void ExtendSelection(string how)
+    {
+        if (Mode != ViewMode.Gallery || _files.Count == 0) return;
+        if (_anchor < 0 || _anchor >= _files.Count) _anchor = Math.Max(0, Gallery.SelectedIndex);
+        switch (how)
+        {
+            case "L": Gallery.Move(-1); break;
+            case "R": Gallery.Move(1); break;
+            case "U": Gallery.MoveRows(-1); break;
+            case "D": Gallery.MoveRows(1); break;
+            case "H": Gallery.Select(0, scroll: true); break;
+            case "E": Gallery.Select(_files.Count - 1, scroll: true); break;
+        }
+        SetRange(_anchor, Gallery.SelectedIndex);
+    }
+
+    /// <summary>Ctrl+arrow keys: move the cursor without changing the selection.</summary>
+    public void MoveCursor(string how)
+    {
+        if (Mode != ViewMode.Gallery || _files.Count == 0) return;
+        switch (how) { case "L": Gallery.Move(-1); break; case "R": Gallery.Move(1); break; case "U": Gallery.MoveRows(-1); break; case "D": Gallery.MoveRows(1); break; }
+    }
+
+    private void ToggleCursorChecked()
+    {
+        if (Mode != ViewMode.Gallery || Gallery.Selected is not { } s) return;
+        s.IsChecked = !s.IsChecked; _anchor = Gallery.SelectedIndex;
+    }
+
+    public RelayCommand ExtendSelectionCommand => _extCmd ??= new RelayCommand(p => ExtendSelection(p as string ?? ""));
+    public RelayCommand MoveCursorCommand => _curCmd ??= new RelayCommand(p => MoveCursor(p as string ?? ""));
+    public RelayCommand ToggleCursorCheckedCommand => _tglCmd ??= new RelayCommand(ToggleCursorChecked);
+    private RelayCommand? _extCmd, _curCmd, _tglCmd;
+
     private void Step(int delta)
     {
         if (Mode == ViewMode.Video) { Video.SeekRelative(delta * 5); return; }

@@ -1,3 +1,6 @@
+Feather View 2.1.10
+- Gallery multi-select like Explorer: Ctrl+click adds or removes a picture, Shift+click selects a range; Shift+arrows (and Shift+Home or End) extend the selection, Ctrl+arrows move without selecting, Ctrl+Space ticks the current picture, Ctrl+A selects all
+
 Feather View 2.1.9
 - NEW: Group by (... menu > Group by): None, Folder, File type, Date (year, month or day) and File size. Groups get a title with the number of files
 - FIXED: video thumbnails now show the preview picture Windows makes for the video (with a play badge) instead of a blank "VIDEO" tile

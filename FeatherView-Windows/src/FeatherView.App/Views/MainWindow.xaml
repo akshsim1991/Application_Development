@@ -15,6 +15,15 @@
         <s:EnumEqualsConverter x:Key="EnumEq" />
     </Window.Resources>
     <Window.InputBindings>
+        <KeyBinding Key="Left" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="L" />
+        <KeyBinding Key="Right" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="R" />
+        <KeyBinding Key="Up" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="U" />
+        <KeyBinding Key="Down" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="D" />
+        <KeyBinding Key="Home" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="H" />
+        <KeyBinding Key="End" Modifiers="Shift" Command="{Binding ExtendSelectionCommand}" CommandParameter="E" />
+        <KeyBinding Key="Up" Modifiers="Ctrl" Command="{Binding MoveCursorCommand}" CommandParameter="U" />
+        <KeyBinding Key="Down" Modifiers="Ctrl" Command="{Binding MoveCursorCommand}" CommandParameter="D" />
+        <KeyBinding Key="Space" Modifiers="Ctrl" Command="{Binding ToggleCursorCheckedCommand}" />
         <KeyBinding Key="Right" Command="{Binding NextCommand}" />
         <KeyBinding Key="Left" Command="{Binding PrevCommand}" />
         <KeyBinding Key="Down" Command="{Binding DownCommand}" />

@@ -76,6 +76,13 @@ public partial class MainWindow : Window
             if (Math.Abs(p.X - _lastMouse.X) < 2 && Math.Abs(p.Y - _lastMouse.Y) < 2) return;   // ignore moves caused by layout changes
             _lastMouse = p; vm.Video.RegisterActivity();
         };
+        // On narrow windows the Details panel would push the right-hand toolbar buttons (delete, favourite, menu) out of view: hide it, bring it back when the window is wide again
+        SizeChanged += (_, e) =>
+        {
+            if (e.NewSize.Width < 1250 && vm.ShowInfo) { _autoHidInfo = true; vm.ShowInfo = false; }
+            else if (e.NewSize.Width >= 1250 && _autoHidInfo) { _autoHidInfo = false; vm.ShowInfo = true; }
+        };
+        vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.ShowInfo) && vm.ShowInfo && ActualWidth < 1250) _autoHidInfo = false; };   // the user opened it on purpose
         SourceInitialized += (_, _) => theme.ApplyToWindow(this);
         StateChanged += (_, _) => UpdateMaximizeState();
         Closing += (_, _) => SaveBounds();
@@ -147,6 +154,8 @@ public partial class MainWindow : Window
         var size = MediaHost.RenderSize;
         MediaHost.Clip = new RectangleGeometry(new Rect(0, 0, size.Width, size.Height), 12, 12);   // rounded corners for the picture
     }
+
+    private bool _autoHidInfo;
 
     private void OnDrop(object sender, DragEventArgs e)
     {

@@ -1,3 +1,6 @@
+Feather View 2.1.11
+- On narrow windows the Details panel hides itself so all toolbar buttons (delete, favourite, menu) stay visible; it returns when the window is wide again
+
 Feather View 2.1.10
 - Gallery multi-select like Explorer: Ctrl+click adds or removes a picture, Shift+click selects a range; Shift+arrows (and Shift+Home or End) extend the selection, Ctrl+arrows move without selecting, Ctrl+Space ticks the current picture, Ctrl+A selects all
 

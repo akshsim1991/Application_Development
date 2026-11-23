@@ -10,20 +10,36 @@ namespace FeatherView.Views;
 /// <summary>View-only code: the seek bar's drag handling and the drop-down menus (built from the view-model's current tracks).</summary>
 public partial class VideoPlayerView : UserControl
 {
-    private bool _dragging;
+    private bool _dragging, _trackDrag;
 
     public VideoPlayerView()
     {
         InitializeComponent();
-        Seek.PreviewMouseLeftButtonDown += (_, _) =>
+        // WPF's Slider marks a click on the TRACK as handled (move-to-point), so a normal "+=" handler never saw it: the thumb jumped
+        // and the next timer tick moved it straight back. handledEventsToo makes sure every press is seen.
+        Seek.AddHandler(PreviewMouseLeftButtonDownEvent, new MouseButtonEventHandler((_, e) =>
         {
-            if (Vm is not { } vm) return;
+            if (Vm is not { } vm || _dragging) return;
             _dragging = true; vm.BeginSeek();
-            Dispatcher.BeginInvoke(new Action(() => { if (_dragging) vm.SeekTo(Seek.Value); }));
+            if (e.Handled)                       // click on the track: the slider does not start a thumb drag, so follow the mouse ourselves
+            {
+                _trackDrag = true;
+                Seek.CaptureMouse();
+            }
+            Dispatcher.BeginInvoke(new Action(() => { if (_dragging) Vm?.SeekTo(Seek.Value); }));
+        }), true);
+        Seek.PreviewMouseMove += (_, e) =>
+        {
+            if (!_trackDrag || !_dragging || e.LeftButton != MouseButtonState.Pressed) return;
+            if (Seek.Template.FindName("PART_Track", Seek) is Track track)
+            {
+                var v = track.ValueFromPoint(e.GetPosition(track));
+                if (!double.IsNaN(v) && !double.IsInfinity(v)) Seek.SetCurrentValue(RangeBase.ValueProperty, Math.Clamp(v, Seek.Minimum, Seek.Maximum));
+            }
         };
         Seek.ValueChanged += (_, e) => { if (_dragging) Vm?.SeekTo(e.NewValue); };
-        Seek.PreviewMouseLeftButtonUp += (_, _) => EndDrag();
-        Seek.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => EndDrag()));
+        Seek.AddHandler(PreviewMouseLeftButtonUpEvent, new MouseButtonEventHandler((_, _) => EndDrag()), true);
+        Seek.AddHandler(Thumb.DragCompletedEvent, new DragCompletedEventHandler((_, _) => EndDrag()), true);
         Seek.LostMouseCapture += (_, _) => EndDrag();
     }
 
@@ -34,6 +50,7 @@ public partial class VideoPlayerView : UserControl
         if (!_dragging) return;
         _dragging = false;
         Vm?.EndSeek(Seek.Value);
+        if (_trackDrag) { _trackDrag = false; Seek.ReleaseMouseCapture(); }
     }
 
     private static MenuItem Item(string header, Action action, bool check = false, bool enabled = true)

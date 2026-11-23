@@ -349,7 +349,7 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
             // right after a seek the player still reports the OLD position for a moment: keep showing the target until it arrives
             if (_seekTarget is double target)
             {
-                if (Math.Abs(p - target) < 2.0 || Environment.TickCount64 - _seekStamp > 6000) _seekTarget = null; else p = target;
+                if (Math.Abs(p - target) < 2.0 || Environment.TickCount64 - _seekStamp > 15000) _seekTarget = null; else p = target;
             }
             Position = p;
         }

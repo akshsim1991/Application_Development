@@ -18,6 +18,8 @@
     <ServerGarbageCollector>false</ServerGarbageCollector>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <!-- A possible null dereference is how a start-up crash slipped in once; make these build errors. -->
+    <WarningsAsErrors>$(WarningsAsErrors);CS8600;CS8601;CS8602;CS8603;CS8604;CS0108;CS0105</WarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\FeatherView.Core\FeatherView.Core.csproj" />

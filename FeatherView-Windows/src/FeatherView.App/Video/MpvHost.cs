@@ -25,7 +25,7 @@ public sealed class MpvHost : HwndHost
 
     private IntPtr _hwnd;
     private int _lastClick;
-    public IntPtr Handle => _hwnd;
+    public new IntPtr Handle => _hwnd;
 
     public event Action<IntPtr>? HandleReady;
     public event Action? Clicked, DoubleClicked;

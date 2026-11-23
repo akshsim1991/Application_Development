@@ -9,7 +9,6 @@ using FeatherView.Core.Media;
 using FeatherView.Core.Mvvm;
 using FeatherView.Core.Settings;
 using FeatherView.Core.Tabs;
-using System.Windows.Media;
 using FeatherView.Services;
 
 namespace FeatherView.ViewModels;
@@ -68,13 +67,13 @@ public sealed class MainViewModel : ObservableObject
                          IDialogService dialogs, ThemeService theme, ILog log, Func<MainViewModel, VideoPlayerViewModel> videoFactory)
     {
         Settings = settings; _settingsService = settingsService; _thumbs = thumbs; _dialogs = dialogs; _theme = theme; _log = log;
+        Gallery = new GalleryViewModel();
+        Gallery.SetThumbSize(settings.ThumbnailSize);
+        Gallery.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex)) OnPropertyChanged(nameof(SelectedCountText)); };
         Video = videoFactory(this);
         Tabs = new TabsViewModel(this, dialogs);
         Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
         Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
-        Gallery.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex)) OnPropertyChanged(nameof(SelectedCountText)); };
-        Gallery = new GalleryViewModel();
-        Gallery.SetThumbSize(settings.ThumbnailSize);
         _showInfo = settings.ShowInfoPanelOnOpen;
         _slideTimer.Tick += (_, _) => SlideTick();
 

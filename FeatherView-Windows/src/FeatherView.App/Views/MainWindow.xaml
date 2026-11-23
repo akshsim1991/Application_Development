@@ -393,7 +393,29 @@
                         </Border>
             <TextBlock Text="{Binding ErrorText}" Visibility="{Binding HasError, Converter={StaticResource B2V}}" Foreground="{DynamicResource SubtleTextBrush}"
                        FontSize="15" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="460" VerticalAlignment="Center" HorizontalAlignment="Center" />
-                        <ListBox x:Name="GalleryList" ItemsSource="{Binding Gallery.Rows}" Visibility="{Binding IsGallery, Converter={StaticResource B2V}}"
+                        <Grid x:Name="GalleryArea" Visibility="{Binding IsGallery, Converter={StaticResource B2V}}">
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="*" /></Grid.RowDefinitions>
+                            <!-- Folders inside this folder, with an Up button: lets you move around a drive or folder tree -->
+                            <Border Grid.Row="0" Padding="14,12,14,2" Visibility="{Binding ShowFolderStrip, Converter={StaticResource B2V}}">
+                                <StackPanel>
+                                    <DockPanel Margin="0,0,0,8">
+                                        <Button DockPanel.Dock="Left" Style="{StaticResource StatusButton}" Tag="{StaticResource IconUp}" Content="Up" Command="{Binding GoUpCommand}" Margin="0,0,10,0" ToolTip="Go to the parent folder" AutomationProperties.Name="Up one folder" />
+                                        <TextBlock Text="{Binding FolderDisplay}" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}" TextTrimming="CharacterEllipsis" />
+                                    </DockPanel>
+                                    <ScrollViewer MaxHeight="124" VerticalScrollBarVisibility="Auto" Focusable="False">
+                                        <ItemsControl ItemsSource="{Binding SubFolders}">
+                                            <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Style="{StaticResource FolderChip}" Tag="{StaticResource IconFolder}" Content="{Binding Name}" ToolTip="{Binding Path}"
+                                                            Command="{Binding DataContext.OpenFolderPathCommand, RelativeSource={RelativeSource AncestorType=Window}}" CommandParameter="{Binding Path}" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </StackPanel>
+                            </Border>
+                            <ListBox x:Name="GalleryList" Grid.Row="1" ItemsSource="{Binding Gallery.Rows}" 
                      Background="Transparent" BorderThickness="0" Padding="10,8" Focusable="False" SelectionMode="Single"
                      ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.CanContentScroll="True"
                      VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling" VirtualizingPanel.ScrollUnit="Pixel">
@@ -418,7 +440,7 @@
                                     <Border x:Name="Tile" Margin="2" Padding="6" CornerRadius="8" Background="Transparent" BorderThickness="2" BorderBrush="Transparent"
                                             Width="{Binding DataContext.Gallery.TileWidth, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             Height="{Binding DataContext.Gallery.TileHeight, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            MouseLeftButtonDown="Tile_MouseLeftButtonDown" ToolTip="{Binding Name}">
+                                            MouseLeftButtonDown="Tile_MouseLeftButtonDown" ToolTip="{Binding File.Path}">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="*" />
@@ -461,8 +483,9 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+                        </Grid>
                         <v:VideoPlayerView DataContext="{Binding Video}" Visibility="{Binding DataContext.IsVideo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource B2V}}" />
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Visibility="{Binding ShowEmptyState, Converter={StaticResource B2V}}">
+                        <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,60" Visibility="{Binding ShowEmptyState, Converter={StaticResource B2V}}">
                             <TextBlock Text="Feather View" FontSize="30" FontWeight="Light" HorizontalAlignment="Center" />
                             <TextBlock Text="{Binding EmptyMessage}" Margin="0,6,0,18" Foreground="{DynamicResource SubtleTextBrush}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">

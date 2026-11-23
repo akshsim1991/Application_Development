@@ -34,6 +34,7 @@ public sealed class AppSettings
     public SortMode Sort { get; set; } = SortMode.Name;
     public bool SortDescending { get; set; }
     public int ThumbnailSize { get; set; } = 160;
+    public bool IncludeSubfolders { get; set; }          // show pictures from all folders underneath, not just the opened one
 
     // Photo viewing
     public bool FitOnOpen { get; set; } = true;

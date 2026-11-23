@@ -75,7 +75,31 @@ function Take($name, $arg, $waitSeconds) {
   try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
 }
 Remove-Item (Join-Path $settingsDir "featherview.log") -ErrorAction SilentlyContinue
+function Capture-Screen($name) {
+  $bmp = New-Object System.Drawing.Bitmap $scr.Width, $scr.Height
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.CopyFromScreen(0, 0, 0, 0, $bmp.Size); $g.Dispose()
+  $bmp.Save((Join-Path $Out "$name.png"), [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+}
+# Full screen test: F11 on a picture, whole-screen shot, then Esc and another whole-screen shot
+function Test-Fullscreen($arg) {
+  $p = Start-Process -FilePath $Exe -ArgumentList "`"$arg`"" -PassThru
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20) { Start-Sleep -Milliseconds 100; $p.Refresh() }
+  Start-Sleep -Seconds 4
+  [W32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 3
+  $r = New-Object W32+RECT; [W32]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null
+  Write-Host "After F11: window $($r.L),$($r.T) - $($r.R),$($r.B); screen $($scr.Width) x $($scr.Height)"
+  "After F11: window $($r.L),$($r.T) - $($r.R),$($r.B); screen $($scr.Width) x $($scr.Height)" | Out-File (Join-Path $Out "fullscreen-check.txt")
+  Capture-Screen "photo-fullscreen"
+  [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 3
+  [W32]::GetWindowRect($p.MainWindowHandle, [ref]$r) | Out-Null
+  "After Esc: window $($r.L),$($r.T) - $($r.R),$($r.B)" | Out-File (Join-Path $Out "fullscreen-check.txt") -Append
+  Capture-Screen "photo-after-esc"
+  try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
+}
 Set-Theme "Dark"
+Test-Fullscreen "$dir\mountain-lake.jpg"
 Take "photo-dark" "$dir\mountain-lake.jpg" 6
 Take "gallery-dark" $dir 9
 Set-Theme "Light"

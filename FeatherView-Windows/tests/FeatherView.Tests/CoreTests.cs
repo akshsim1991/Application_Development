@@ -158,3 +158,42 @@ public class UpdateTests
         Directory.Delete(dir, true);
     }
 }
+
+public class FolderNavigationTests
+{
+    private static string MakeTree()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "fv-tree-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Trips", "Italy")); Directory.CreateDirectory(Path.Combine(root, "Family")); Directory.CreateDirectory(Path.Combine(root, ".hidden"));
+        File.SetAttributes(Path.Combine(root, ".hidden"), FileAttributes.Hidden | FileAttributes.Directory);
+        File.WriteAllText(Path.Combine(root, "top.jpg"), "x"); File.WriteAllText(Path.Combine(root, "Trips", "a.png"), "x");
+        File.WriteAllText(Path.Combine(root, "Trips", "Italy", "b.jpg"), "x"); File.WriteAllText(Path.Combine(root, "Family", "c.mp4"), "x");
+        return root;
+    }
+
+    [Fact] public void ListsSubfoldersWithoutHiddenOnes()
+    {
+        var root = MakeTree();
+        Assert.Equal(new[] { "Family", "Trips" }, MediaScanner.ListFolders(root));
+        Assert.Empty(MediaScanner.ListFolders(Path.Combine(root, "nope")));
+        Directory.Delete(root, true);
+    }
+
+    [Fact] public void FlatScanSeesOnlyTheFolderAndRecursiveScanSeesTheTree()
+    {
+        var root = MakeTree();
+        Assert.Equal(new[] { "top.jpg" }, MediaScanner.Scan(root).Select(f => f.Name));
+        var all = MediaScanner.ScanDetailed(root, recurse: true);
+        Assert.Equal(new[] { "a.png", "b.jpg", "c.mp4", "top.jpg" }, all.Files.Select(f => f.Name).OrderBy(n => n, StringComparer.Ordinal));
+        Assert.False(all.Truncated);
+        Directory.Delete(root, true);
+    }
+
+    [Fact] public void RecursiveScanStopsAtTheLimit()
+    {
+        var root = MakeTree();
+        var r = MediaScanner.ScanDetailed(root, recurse: true, maxFiles: 2);
+        Assert.Equal(2, r.Files.Count); Assert.True(r.Truncated);
+        Directory.Delete(root, true);
+    }
+}

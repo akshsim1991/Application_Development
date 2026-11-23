@@ -234,6 +234,7 @@ public partial class MainWindow : Window
         sort.Items.Add(Item("Ascending", () => _vm.SetSort(_vm.Settings.Sort, false), check: !_vm.Settings.SortDescending));
         sort.Items.Add(Item("Descending", () => _vm.SetSort(_vm.Settings.Sort, true), check: _vm.Settings.SortDescending));
         menu.Items.Add(sort);
+        menu.Items.Add(Item("Include subfolders", () => _vm.ToggleSubfoldersCommand.Execute(null), check: _vm.IncludeSubfolders));
         menu.Items.Add(Item("Sidebar", () => _vm.ToggleSidebarCommand.Execute(null), check: _vm.ShowSidebar, gesture: "Ctrl+B"));
         menu.Items.Add(Item("Thumbnail strip", () => _vm.ToggleFilmstripCommand.Execute(null), check: _vm.Settings.ShowFilmstrip, gesture: "T"));
         menu.Items.Add(Item("Details panel", () => _vm.ToggleInfoCommand.Execute(null), check: _vm.ShowInfo, gesture: "I"));

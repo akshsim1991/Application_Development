@@ -62,6 +62,13 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 | Space = play/pause in video mode, also when the video window has focus | built, untested on Windows |
 | Setting "Keep a video playing when I switch to another tab" (default on): the sound continues, the picture is not decoded while hidden, a speaker icon marks the tab, returning to the tab shows the same playback; closing the tab stops it | rules unit-tested (Core); UI untested on Windows |
 
+## Folders and drives
+| Item | Status |
+|---|---|
+| Folders inside the opened folder are listed above the pictures; click one to go in; Up button and the folder path | built, untested on Windows |
+| "Include subfolders" (menu and Settings): shows pictures from the whole tree, stops after 50,000 files or 4 seconds and says so | scanner tested (Core); UI untested on Windows |
+| Opening a drive or a folder that holds only sub-folders now explains this instead of showing an empty window | built, untested on Windows |
+
 ## Tabs (V2.1 item brought forward)
 | Item | Status |
 |---|---|

@@ -14,6 +14,7 @@ using FeatherView.Services;
 namespace FeatherView.ViewModels;
 
 public enum ViewMode { Photo, Gallery, Video }
+public sealed record FolderItem(string Name, string Path);
 public enum NavSection { Gallery, Folders, Favorites, Recent, Search }
 
 /// <summary>The view surface (zoom/pan control) as seen by the view-model.</summary>
@@ -62,6 +63,7 @@ public sealed class MainViewModel : ObservableObject
     private string _zoomText = "";
     private bool _isSlideshow, _isFullscreen, _showInfo;
     private string _folderPath = "";
+    private bool _folderTruncated;
     private Guid _videoOwner;      // the tab that last showed the video that is loaded in the player
 
     public MainViewModel(AppSettings settings, SettingsService settingsService, ThumbnailService thumbs,
@@ -117,6 +119,9 @@ public sealed class MainViewModel : ObservableObject
         ReloadCommand = new RelayCommand(Reload);
         AboutCommand = new RelayCommand(() => _dialogs.Info("Feather View", $"Feather View {typeof(MainViewModel).Assembly.GetName().Version?.ToString(3)}\n\nA lightweight, offline photo and video viewer. No ads, no telemetry.\nDesigned and developed by Akshaya Simha."));
         OpenFolderInNewTabCommand = new RelayCommand(() => { var p = _dialogs.PickFolder(); if (p != null) Tabs.OpenInNewTab(p); });
+        OpenFolderPathCommand = new RelayCommand(p => { if (p is string path && Directory.Exists(path)) LoadFolder(path, null, gallery: true); });
+        GoUpCommand = new RelayCommand(GoUp, () => CanGoUp);
+        ToggleSubfoldersCommand = new RelayCommand(() => { Settings.IncludeSubfolders = !Settings.IncludeSubfolders; SaveSettings(); OnPropertyChanged(nameof(IncludeSubfolders)); Reload(); });
         ShowSectionCommand = new RelayCommand(p => ShowSection(p as string));
         SetFilterCommand = new RelayCommand(p => { if (p is string n && Enum.TryParse<QuickFilter>(n, out var f)) { Filter = f; ApplyFilter(); } });
         ClearSearchCommand = new RelayCommand(() => { SearchText = ""; ShowSearch = false; Section = NavSection.Gallery; });
@@ -144,6 +149,12 @@ public sealed class MainViewModel : ObservableObject
     // ---- state exposed to the view ----
     public AppSettings Settings { get; private set; }
     public GalleryViewModel Gallery { get; }
+    /// <summary>Folders inside the opened folder, shown above the pictures so you can go into them.</summary>
+    public ObservableCollection<FolderItem> SubFolders { get; } = new();
+    public bool ShowFolderStrip => !string.IsNullOrEmpty(_folderPath) && Section == NavSection.Gallery;
+    public string FolderDisplay => _folderPath;
+    public bool CanGoUp => !string.IsNullOrEmpty(_folderPath) && Path.GetDirectoryName(_folderPath.TrimEnd('\\', '/')) is { Length: > 0 };
+    public bool IncludeSubfolders => Settings.IncludeSubfolders;
     public VideoPlayerViewModel Video { get; }
     public TabsViewModel Tabs { get; }
     public string? SessionPath { get; set; }
@@ -262,6 +273,9 @@ public sealed class MainViewModel : ObservableObject
     public RelayCommand ActualSizeCommand { get; }
     public RelayCommand ReloadCommand { get; }
     public RelayCommand AboutCommand { get; }
+    public RelayCommand OpenFolderPathCommand { get; }
+    public RelayCommand GoUpCommand { get; }
+    public RelayCommand ToggleSubfoldersCommand { get; }
     public RelayCommand OpenFolderInNewTabCommand { get; }
     public RelayCommand ShowSectionCommand { get; }
     public RelayCommand SetFilterCommand { get; }
@@ -305,17 +319,25 @@ public sealed class MainViewModel : ObservableObject
         _folderPath = folder;
         Section = NavSection.Gallery; ShowSearch = false; _searchText = ""; OnPropertyChanged(nameof(SearchText));
         Filter = QuickFilter.All;
-        var list = MediaScanner.Scan(folder, Settings.Sort, Settings.SortDescending);
+        var scan = MediaScanner.ScanDetailed(folder, Settings.Sort, Settings.SortDescending, recurse: Settings.IncludeSubfolders);
+        var list = scan.Files;
+        _folderTruncated = scan.Truncated;
+        SubFolders.Clear();
+        foreach (var name in MediaScanner.ListFolders(folder)) SubFolders.Add(new FolderItem(name, Path.Combine(folder, name)));
+        OnPropertyChanged(nameof(ShowFolderStrip)); OnPropertyChanged(nameof(FolderDisplay)); OnPropertyChanged(nameof(CanGoUp)); GoUpCommand.RaiseCanExecuteChanged();
         if (selectFile != null && !list.Any(f => f.Path.Equals(selectFile, StringComparison.OrdinalIgnoreCase)) && MediaTypes.Classify(selectFile) != MediaKind.Unknown)
         {
             var fi = new FileInfo(selectFile);   // file the scanner skipped (e.g. hidden)
             list.Insert(0, new MediaFile(fi.FullName, fi.Name, fi.Length, fi.LastWriteTimeUtc, MediaTypes.Classify(selectFile)));
         }
         _source = list;
-        EmptyMessage = "Open a photo or a folder, or drop them here.";
+        EmptyMessage = SubFolders.Count > 0 && !Settings.IncludeSubfolders
+            ? "There are no pictures or videos directly in this folder. Open one of the folders above, or turn on 'Include subfolders' in the ... menu."
+            : "Open a photo or a folder, or drop them here.";
         int idx = RebuildFiles(selectFile, 0, out _);
         Tabs.UpdateActiveTitle();
-        if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = "No photos or videos in this folder"; return; }
+        if (_files.Count == 0) { Mode = ViewMode.Gallery; CurrentImage = null; StatusText = SubFolders.Count > 0 ? $"{SubFolders.Count} folders here, no pictures directly in this one" : "No photos or videos in this folder"; return; }
+        if (_folderTruncated) StatusText = $"Showing the first {_files.Count:N0} items; the scan stopped early. Open a smaller folder to see everything.";
         if (gallery) { Mode = ViewMode.Gallery; _index = idx; UpdateStatus(); }
         else { Mode = ViewMode.Photo; _ = ShowIndexAsync(idx); }
     }
@@ -526,6 +548,13 @@ public sealed class MainViewModel : ObservableObject
         Info.Clear(); TakenLines.Clear(); ExifLines.Clear(); Histogram = null; InfoTitle = InfoSubtitle = InfoDimensions = "";
         OnPropertyChanged(nameof(HasTaken)); OnPropertyChanged(nameof(HasExif)); OnPropertyChanged(nameof(IsFavorite));
         Tabs.UpdateActiveTitle();
+    }
+
+    private void GoUp()
+    {
+        if (string.IsNullOrEmpty(_folderPath)) return;
+        var parent = Path.GetDirectoryName(_folderPath.TrimEnd('\\', '/'));
+        if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent)) LoadFolder(parent, null, gallery: true);
     }
 
     private void Reload()

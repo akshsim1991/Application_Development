@@ -29,31 +29,35 @@ public static class ImageLoader
         return new LoadedImage(src, frame.PixelWidth, frame.PixelHeight, format, exif, gif, frame.DpiX, frame.DpiY, frame.Format.BitsPerPixel, ExifReader.ReadMeta(frame));
     }
 
+    // WIC transforms are applied one at a time (a single rotation or flip each); each transform is frozen so the result can be frozen too.
+    private static BitmapSource Step(BitmapSource s, System.Windows.Media.Transform t)
+    {
+        t.Freeze();
+        var r = new TransformedBitmap(s, t); r.Freeze(); return r;
+    }
+
     public static BitmapSource ApplyOrientation(BitmapSource s, ushort o)
     {
-        if (o == 1) return s;
-        var t = new TransformGroup();
         switch (o)
         {
-            case 2: t.Children.Add(new ScaleTransform(-1, 1)); break;
-            case 3: t.Children.Add(new RotateTransform(180)); break;
-            case 4: t.Children.Add(new ScaleTransform(1, -1)); break;
-            case 5: t.Children.Add(new RotateTransform(90)); t.Children.Add(new ScaleTransform(-1, 1)); break;
-            case 6: t.Children.Add(new RotateTransform(90)); break;
-            case 7: t.Children.Add(new RotateTransform(270)); t.Children.Add(new ScaleTransform(-1, 1)); break;
-            case 8: t.Children.Add(new RotateTransform(270)); break;
+            case 2: return Step(s, new ScaleTransform(-1, 1));
+            case 3: return Step(s, new RotateTransform(180));
+            case 4: return Step(s, new ScaleTransform(1, -1));
+            case 5: return Step(Step(s, new RotateTransform(90)), new ScaleTransform(-1, 1));
+            case 6: return Step(s, new RotateTransform(90));
+            case 7: return Step(Step(s, new RotateTransform(270)), new ScaleTransform(-1, 1));
+            case 8: return Step(s, new RotateTransform(270));
+            default: return s;
         }
-        var r = new TransformedBitmap(s, t); r.Freeze(); return r;
     }
 
     /// <summary>User rotation (quarter turns clockwise) and horizontal flip applied on top of the decoded image.</summary>
     public static BitmapSource Transform(BitmapSource s, int quarterTurns, bool flipH)
     {
         quarterTurns = ((quarterTurns % 4) + 4) % 4;
-        if (quarterTurns == 0 && !flipH) return s;
-        var t = new TransformGroup();
-        if (flipH) t.Children.Add(new ScaleTransform(-1, 1));
-        if (quarterTurns != 0) t.Children.Add(new RotateTransform(quarterTurns * 90));
-        var r = new TransformedBitmap(s, t); r.Freeze(); return r;
+        var r = s;
+        if (flipH) r = Step(r, new ScaleTransform(-1, 1));
+        if (quarterTurns != 0) r = Step(r, new RotateTransform(quarterTurns * 90));
+        return r;
     }
 }

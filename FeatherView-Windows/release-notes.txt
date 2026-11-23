@@ -1,3 +1,6 @@
+Feather View 2.1.12
+- FIXED: rotate and flip no longer show "Something unexpected happened" (the picture transform was not frozen); the same fix also covers photos that carry a camera rotation flag
+
 Feather View 2.1.11
 - On narrow windows the Details panel hides itself so all toolbar buttons (delete, favourite, menu) stay visible; it returns when the window is wide again
 

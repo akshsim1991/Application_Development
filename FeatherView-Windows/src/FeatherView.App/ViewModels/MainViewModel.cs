@@ -849,7 +849,8 @@ public sealed class MainViewModel : ObservableObject
     {
         var src = _gifFrame ?? _base;
         if (src == null) return;
-        CurrentImage = ImageLoader.Transform(src, _rotation, _flip);   // view only: the original file is never modified
+        try { CurrentImage = ImageLoader.Transform(src, _rotation, _flip); }   // view only: the original file is never modified
+        catch (Exception ex) { _log.Error("Rotate/flip failed", ex); _dialogs.Error("Rotate", "This picture could not be rotated or flipped."); }
     }
 
     // ---- file operations ----

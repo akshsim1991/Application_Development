@@ -35,11 +35,11 @@ public class SettingsTests
     [Fact] public void RoundTrip()
     {
         var dir = Tmp(); var svc = new SettingsService(Path.Combine(dir, "s.json"));
-        var s = new AppSettings { Theme = ThemeMode.Dark, SlideshowSeconds = 9, ThumbnailSize = 200 };
+        var s = new AppSettings { Theme = AppTheme.Dark, SlideshowSeconds = 9, ThumbnailSize = 200 };
         s.AddRecent("C:\\a.jpg");
         Assert.True(svc.Save(s));
         var r = svc.Load();
-        Assert.Equal(ThemeMode.Dark, r.Theme); Assert.Equal(9, r.SlideshowSeconds); Assert.Equal(200, r.ThumbnailSize);
+        Assert.Equal(AppTheme.Dark, r.Theme); Assert.Equal(9, r.SlideshowSeconds); Assert.Equal(200, r.ThumbnailSize);
         Assert.Single(r.RecentFiles);
         Directory.Delete(dir, true);
     }
@@ -48,7 +48,7 @@ public class SettingsTests
         var dir = Tmp(); Directory.CreateDirectory(dir); var p = Path.Combine(dir, "s.json");
         File.WriteAllText(p, "{ not json");
         var r = new SettingsService(p).Load();
-        Assert.Equal(ThemeMode.System, r.Theme); Assert.True(File.Exists(p + ".corrupt"));
+        Assert.Equal(AppTheme.System, r.Theme); Assert.True(File.Exists(p + ".corrupt"));
         Directory.Delete(dir, true);
     }
     [Fact] public void ValuesAreClamped()

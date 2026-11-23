@@ -9,22 +9,22 @@ namespace FeatherView.Services;
 /// <summary>Swaps the Dark/Light resource dictionary at runtime and follows the Windows setting in System mode.</summary>
 public sealed class ThemeService
 {
-    private ThemeMode _mode = ThemeMode.System;
+    private AppTheme _mode = AppTheme.System;
     public bool IsDark { get; private set; } = true;
 
     public ThemeService()
     {
         SystemEvents.UserPreferenceChanged += (_, e) =>
         {
-            if (_mode == ThemeMode.System && e.Category == UserPreferenceCategory.General)
+            if (_mode == AppTheme.System && e.Category == UserPreferenceCategory.General)
                 Application.Current?.Dispatcher.BeginInvoke(() => Apply(_mode));
         };
     }
 
-    public void Apply(ThemeMode mode)
+    public void Apply(AppTheme mode)
     {
         _mode = mode;
-        IsDark = mode switch { ThemeMode.Dark => true, ThemeMode.Light => false, _ => !SystemUsesLightTheme() };
+        IsDark = mode switch { AppTheme.Dark => true, AppTheme.Light => false, _ => !SystemUsesLightTheme() };
         var dict = new ResourceDictionary { Source = new Uri($"Themes/{(IsDark ? "Dark" : "Light")}.xaml", UriKind.Relative) };
         var merged = Application.Current.Resources.MergedDictionaries;
         if (merged.Count > 0) merged[0] = dict; else merged.Insert(0, dict);

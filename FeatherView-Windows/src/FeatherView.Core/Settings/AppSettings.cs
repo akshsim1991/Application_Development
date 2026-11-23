@@ -2,8 +2,8 @@ using System.Text.Json.Serialization;
 
 namespace FeatherView.Core.Settings;
 
-[JsonConverter(typeof(JsonStringEnumConverter<ThemeMode>))]
-public enum ThemeMode { System, Light, Dark }
+[JsonConverter(typeof(JsonStringEnumConverter<AppTheme>))]
+public enum AppTheme { System, Light, Dark }
 
 [JsonConverter(typeof(JsonStringEnumConverter<SortMode>))]
 public enum SortMode { Name, Date, Size, Type }
@@ -14,7 +14,7 @@ public sealed class AppSettings
     public int SchemaVersion { get; set; } = 1;
 
     // Appearance
-    public ThemeMode Theme { get; set; } = ThemeMode.System;
+    public AppTheme Theme { get; set; } = AppTheme.System;
 
     // General
     public bool RememberWindow { get; set; } = true;
@@ -59,7 +59,7 @@ public sealed class AppSettings
         ThumbnailCacheItems = Math.Clamp(ThumbnailCacheItems, 50, 5000);
         ThumbnailParallelism = Math.Clamp(ThumbnailParallelism, 1, 8);
         MaxRecentFiles = Math.Clamp(MaxRecentFiles, 0, 50);
-        if (!Enum.IsDefined(Theme)) Theme = ThemeMode.System;
+        if (!Enum.IsDefined(Theme)) Theme = AppTheme.System;
         if (!Enum.IsDefined(Sort)) Sort = SortMode.Name;
         if (!(WindowWidth >= 400)) WindowWidth = 1100;
         if (!(WindowHeight >= 300)) WindowHeight = 720;

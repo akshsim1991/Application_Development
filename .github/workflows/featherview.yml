@@ -67,7 +67,7 @@ jobs:
         shell: pwsh
         run: ./tools/make-latest-json.ps1
 
-      - name: GitHub Release (only when the commit message contains [release])
+      - name: GitHub Release - becomes the 'latest' release that installed apps update from (only when the commit message contains [release])
         if: contains(github.event.head_commit.message, '[release]')
         shell: pwsh
         env:
@@ -78,7 +78,7 @@ jobs:
           $setup = "dist/FeatherView-Setup-$v.exe"
           $hash = (Get-FileHash $setup -Algorithm SHA256).Hash.ToLower()
           $notes = @"
-          Feather View $v - pre-release build from CI.
+          Feather View $v
 
           Files
           - FeatherView-Setup-$v.exe: installer (64-bit Windows 10 1809 or later; includes the .NET runtime, no prerequisites)
@@ -88,12 +88,12 @@ jobs:
 
           Installer SHA-256: $hash
 
-          Status: pre-release. The app starts and its unit tests pass on a Windows runner in CI, but the installer and most screens have not yet been tested by hand. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning.
+          Early version: the app starts, its unit tests pass and full screen was checked on a Windows runner in CI; other screens have had limited hands-on testing. The installer is not code-signed, so Windows SmartScreen may show an "unknown publisher" warning. Installed copies of 0.1.1 and later check this release for updates automatically (Settings > Updates).
           "@
           # A re-run replaces the release so its tag points at the commit that was just built.
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
-          gh release create $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --prerelease --target ${{ github.sha }}
+          gh release create $tag $setup "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
 
       - uses: actions/upload-artifact@v4
         with:

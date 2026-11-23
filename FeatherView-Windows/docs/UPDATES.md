@@ -1,14 +1,19 @@
 # Releasing an update
 
-1. Bump `VERSION` (and keep `Version` in `FeatherView.App.csproj` in step), push; CI builds `dist/FeatherView-Setup-<v>.exe` and `dist/latest.json`.
-2. In the public repository `akshsim1991/FeatherView-releases` (create it once): publish a GitHub Release tagged `v<version>` with the installer attached,
-   and commit `latest.json` to the repository root on `main`.
-3. Installed copies pick it up within a day (or via Settings > Check for updates now).
+Installed copies read `latest.json` from the newest normal (not pre-release) GitHub Release of this repository:
+`https://github.com/akshsim1991/Application_Development/releases/latest/download/latest.json`.
+
+To publish an update:
+1. Put the new version number in `VERSION` and `Version` in `src/FeatherView.App/FeatherView.App.csproj` (it must be higher than the installed one) and write the changes in `release-notes.txt`.
+2. Push with `[release]` in the commit message. CI builds the installer, creates `latest.json` (version, notes, installer URL, size, SHA-256) and publishes the release `featherview-v<version>` with the installer, ZIPs and `latest.json`.
+3. Installed copies notice it within a day (5 seconds after start-up, at most once every 24 hours) or at once through Settings > Updates > Check for updates now. They ask first, download from github.com, verify size and SHA-256, then run the installer silently and restart.
+
+Copies older than 0.1.1 looked at a different address and cannot update themselves: install 0.1.1 once by hand.
 
 `latest.json`:
 ```json
-{ "version": "0.2.0", "date": "2026-12-01", "notes": "What's new",
-  "win64": { "url": "https://github.com/akshsim1991/FeatherView-releases/releases/download/v0.2.0/FeatherView-Setup-0.2.0.exe", "size": 61234567, "sha256": "<hex>" } }
+{ "version": "0.1.1", "date": "2026-11-23", "notes": "What's new",
+  "win64": { "url": "https://github.com/akshsim1991/Application_Development/releases/download/featherview-v0.1.1/FeatherView-Setup-0.1.1.exe", "size": 45655590, "sha256": "<hex>" } }
 ```
 Allowed hosts: raw.githubusercontent.com, github.com, objects.githubusercontent.com, release-assets.githubusercontent.com. Anything else is refused.
 

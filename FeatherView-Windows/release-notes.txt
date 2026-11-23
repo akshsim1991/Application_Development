@@ -1,0 +1,6 @@
+Feather View 0.1.1
+- Full screen now covers the whole screen (Esc or F11 to leave); in videos the controls hide until you move the mouse
+- Space plays/pauses videos; option to keep a video playing when you switch tabs
+- Folder list and Up button in the gallery; Include subfolders option (drives with pictures in sub-folders)
+- Tabs, details cards (camera, location, EXIF, histogram, text in picture), compare, slideshow shuffle
+- Automatic update checks now read this repository's releases

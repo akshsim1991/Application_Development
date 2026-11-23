@@ -9,7 +9,7 @@
     <AssemblyName>FeatherView</AssemblyName>
     <RootNamespace>FeatherView</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>0.1.0</Version>
+    <Version>0.1.1</Version>
     <Product>Feather View</Product>
     <Company>Akshaya Simha</Company>
     <Description>Lightweight photo and video viewer</Description>

@@ -45,8 +45,9 @@ public sealed class UpdateException : Exception { public UpdateException(string 
 
 public sealed class UpdateService
 {
+    /// <summary>latest.json attached to the newest (non pre-release) GitHub Release of this repository.</summary>
     public static readonly Uri DefaultManifest =
-        new("https://raw.githubusercontent.com/akshsim1991/FeatherView-releases/main/latest.json");
+        new("https://github.com/akshsim1991/Application_Development/releases/latest/download/latest.json");
     public static readonly IReadOnlySet<string> DefaultHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     { "raw.githubusercontent.com", "github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com" };
 

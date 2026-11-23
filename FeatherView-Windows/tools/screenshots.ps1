@@ -119,6 +119,25 @@ function Test-VideoFullscreen {
   try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
   $log = Join-Path $settingsDir "featherview.log"; if (Test-Path $log) { Copy-Item $log (Join-Path $Out "featherview-video-fs.log") -Force; Remove-Item $log -Force }
 }
+# Menu rendering test: F10 opens the ... menu; Down x10 + Right opens "Sort by" (dark and light theme)
+function Test-Menu($theme) {
+  Set-Theme $theme
+  $p = Start-Process -FilePath $Exe -ArgumentList "`\"$dir\mountain-lake.jpg`\"" -PassThru
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20) { Start-Sleep -Milliseconds 100; $p.Refresh() }
+  Start-Sleep -Seconds 4
+  [W32]::MoveWindow($p.MainWindowHandle, 0, 0, 1024, 768, $true) | Out-Null
+  [W32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 800
+  [System.Windows.Forms.SendKeys]::SendWait("{F10}"); Start-Sleep -Seconds 1
+  Capture-Screen "menu-$theme"
+  for ($i = 0; $i -lt 10; $i++) { [System.Windows.Forms.SendKeys]::SendWait("{DOWN}"); Start-Sleep -Milliseconds 150 }
+  [System.Windows.Forms.SendKeys]::SendWait("{RIGHT}"); Start-Sleep -Seconds 1
+  Capture-Screen "menu-sort-$theme"
+  [System.Windows.Forms.SendKeys]::SendWait("{ESC}{ESC}"); Start-Sleep -Milliseconds 500
+  try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
+}
+Test-Menu "Dark"
+Test-Menu "Light"
 Set-Theme "Dark"
 Test-VideoFullscreen
 Test-Fullscreen "$dir\mountain-lake.jpg"

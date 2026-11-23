@@ -63,8 +63,9 @@ public partial class MainWindow : Window
         // Esc and F11 must work even when keyboard focus sits inside a native video window, which WPF key bindings never see.
         ComponentDispatcher.ThreadPreprocessMessage += (ref MSG msg, ref bool handled) =>
         {
-            if (handled || msg.message != 0x0100 /* WM_KEYDOWN */ || !IsActive) return;
+            if (handled || (msg.message != 0x0100 /* WM_KEYDOWN */ && msg.message != 0x0104 /* WM_SYSKEYDOWN */) || !IsActive) return;
             int key = (int)msg.wParam;
+            if (key == 0x79 /* F10 */) { MoreButton_Click(MoreButton, new RoutedEventArgs()); handled = true; return; }   // F10 opens the ... menu (also for keyboard-only use)
             if (key == 0x1B && _vm.IsFullscreen) { _vm.EscapeCommand.Execute(null); handled = true; }       // Esc leaves full screen (or stops a slideshow first)
             else if (key == 0x7A) { _vm.ToggleFullscreenCommand.Execute(null); handled = true; }              // F11
             else if (key == 0x20 && _vm.IsVideo && Keyboard.FocusedElement is not TextBox) { _vm.Video.TogglePlay(); handled = true; }   // Space = play / pause

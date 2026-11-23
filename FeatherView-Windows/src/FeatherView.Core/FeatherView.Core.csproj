@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!-- FV_TFM lets a machine without the .NET 10 SDK type-check the library (e.g. -p:FV_TFM=net8.0). -->
+    <TargetFramework Condition="'$(FV_TFM)' == ''">net10.0</TargetFramework>
+    <TargetFramework Condition="'$(FV_TFM)' != ''">$(FV_TFM)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>FeatherView.Core</RootNamespace>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+</Project>

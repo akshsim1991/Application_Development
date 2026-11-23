@@ -1,0 +1,54 @@
+name: FeatherView
+
+on:
+  push:
+    paths: ['FeatherView-Windows/**', '.github/workflows/featherview.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: FeatherView-Windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Unit tests
+        run: dotnet test tests/FeatherView.Tests -c Release --logger "trx;LogFileName=results.trx"
+
+      - name: Publish (self-contained, ReadyToRun)
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION).Trim()
+          dotnet publish src/FeatherView.App -c Release -r win-x64 --self-contained true -p:PublishReadyToRun=true -p:DebugType=none -p:Version=$v -o publish/win-x64
+          dotnet publish src/FeatherView.App -c Release -r win-x64 --self-contained false -p:DebugType=none -p:Version=$v -o publish/fxdep
+
+      - name: Smoke test (start-up time, memory, responsiveness)
+        shell: pwsh
+        run: ./tools/smoke.ps1
+
+      - name: Installer and portable ZIP
+        shell: pwsh
+        run: |
+          $v = (Get-Content VERSION).Trim()
+          choco install innosetup -y --no-progress | Out-Null
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=$v" installer\FeatherView.iss
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path publish\win-x64\* -DestinationPath "dist\FeatherView-$v-portable-win-x64.zip" -Force
+          Compress-Archive -Path publish\fxdep\* -DestinationPath "dist\FeatherView-$v-framework-dependent-win-x64.zip" -Force
+          Get-ChildItem dist | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}} | Format-Table | Out-String | Write-Host
+
+      - name: Update manifest (latest.json for the releases repo)
+        shell: pwsh
+        run: ./tools/make-latest-json.ps1
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FeatherView-${{ github.run_number }}
+          path: |
+            FeatherView-Windows/dist/*
+            FeatherView-Windows/tests/FeatherView.Tests/TestResults/results.trx

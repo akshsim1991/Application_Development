@@ -1,0 +1,92 @@
+<Window x:Class="FeatherView.Views.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:s="clr-namespace:FeatherView.Services"
+        Title="Settings" Width="520" Height="640" MinHeight="420" Background="{DynamicResource BgBrush}" FontFamily="Segoe UI Variable, Segoe UI" FontSize="13"
+        UseLayoutRounding="True" ShowInTaskbar="False" ResizeMode="CanResize" WindowStartupLocation="CenterOwner">
+    <Window.Resources>
+        <s:EnumEqualsConverter x:Key="EnumEq" />
+        <Style TargetType="RadioButton">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Margin" Value="0,3,18,3" />
+        </Style>
+        <Style x:Key="Value" TargetType="TextBlock">
+            <Setter Property="Width" Value="46" /><Setter Property="TextAlignment" Value="Right" />
+            <Setter Property="VerticalAlignment" Value="Center" /><Setter Property="Foreground" Value="{DynamicResource SubtleTextBrush}" />
+        </Style>
+    </Window.Resources>
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource BorderBrushSoft}" BorderThickness="0,1,0,0" Padding="20,12">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Cancel" Style="{StaticResource TextButton}" Margin="0,0,8,0" IsCancel="True" Click="Cancel_Click" />
+                <Button Content="Save" Style="{StaticResource PrimaryButton}" IsDefault="True" Click="Save_Click" />
+            </StackPanel>
+        </Border>
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Margin="28,6,28,20">
+                <TextBlock Text="Appearance" Style="{StaticResource SectionTitle}" />
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Match Windows" IsChecked="{Binding Theme, Converter={StaticResource EnumEq}, ConverterParameter=System}" />
+                    <RadioButton Content="Light" IsChecked="{Binding Theme, Converter={StaticResource EnumEq}, ConverterParameter=Light}" />
+                    <RadioButton Content="Dark" IsChecked="{Binding Theme, Converter={StaticResource EnumEq}, ConverterParameter=Dark}" />
+                </StackPanel>
+
+                <TextBlock Text="General" Style="{StaticResource SectionTitle}" />
+                <CheckBox Content="Remember window size and position" IsChecked="{Binding RememberWindow}" />
+
+                <TextBlock Text="Browsing" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="Sort files by" Margin="0,0,0,2" />
+                <StackPanel Orientation="Horizontal">
+                    <RadioButton Content="Name" IsChecked="{Binding Sort, Converter={StaticResource EnumEq}, ConverterParameter=Name}" />
+                    <RadioButton Content="Date" IsChecked="{Binding Sort, Converter={StaticResource EnumEq}, ConverterParameter=Date}" />
+                    <RadioButton Content="Size" IsChecked="{Binding Sort, Converter={StaticResource EnumEq}, ConverterParameter=Size}" />
+                    <RadioButton Content="Type" IsChecked="{Binding Sort, Converter={StaticResource EnumEq}, ConverterParameter=Type}" />
+                </StackPanel>
+                <CheckBox Content="Newest / largest / Z-A first (descending)" IsChecked="{Binding SortDescending}" />
+                <DockPanel Margin="0,8,0,0">
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding ThumbnailSize, StringFormat={}{0} px}" />
+                    <TextBlock Text="Thumbnail size" DockPanel.Dock="Left" Width="130" VerticalAlignment="Center" />
+                    <Slider Minimum="96" Maximum="320" TickFrequency="16" IsSnapToTickEnabled="True" Value="{Binding ThumbnailSize}" />
+                </DockPanel>
+
+                <TextBlock Text="Photo viewing" Style="{StaticResource SectionTitle}" />
+                <CheckBox Content="Fit photos to the window when opened" IsChecked="{Binding FitOnOpen}" />
+                <CheckBox Content="Show the details panel when opened" IsChecked="{Binding ShowInfoPanelOnOpen}" />
+
+                <TextBlock Text="Slideshow" Style="{StaticResource SectionTitle}" />
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding SlideshowSeconds, StringFormat={}{0} s}" />
+                    <TextBlock Text="Seconds per photo" DockPanel.Dock="Left" Width="130" VerticalAlignment="Center" />
+                    <Slider Minimum="1" Maximum="30" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding SlideshowSeconds}" />
+                </DockPanel>
+                <CheckBox Content="Start over after the last photo" IsChecked="{Binding SlideshowLoop}" />
+                <CheckBox Content="Play in full screen" IsChecked="{Binding SlideshowFullscreen}" />
+
+                <TextBlock Text="Performance and caching" Style="{StaticResource SectionTitle}" />
+                <DockPanel>
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding ThumbnailCacheItems}" />
+                    <TextBlock Text="Thumbnails kept in memory" DockPanel.Dock="Left" Width="170" VerticalAlignment="Center" />
+                    <Slider Minimum="100" Maximum="2000" TickFrequency="50" IsSnapToTickEnabled="True" Value="{Binding ThumbnailCacheItems}" />
+                </DockPanel>
+                <DockPanel Margin="0,6,0,0">
+                    <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding ThumbnailParallelism}" />
+                    <TextBlock Text="Background decoders" DockPanel.Dock="Left" Width="170" VerticalAlignment="Center" />
+                    <Slider Minimum="1" Maximum="8" TickFrequency="1" IsSnapToTickEnabled="True" Value="{Binding ThumbnailParallelism}" />
+                </DockPanel>
+
+                <TextBlock Text="Updates" Style="{StaticResource SectionTitle}" />
+                <CheckBox Content="Check for updates automatically (at most once a day)" IsChecked="{Binding AutoUpdateCheck}" />
+                <TextBlock Text="Feather View asks before it downloads anything and verifies every update. It never sends your files or personal data." TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,2,0,8" />
+                <Button Content="Check for updates now" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Click="CheckNow_Click" />
+
+                <TextBlock Text="Keyboard shortcuts" Style="{StaticResource SectionTitle}" />
+                <TextBlock TextWrapping="Wrap" LineHeight="20" Foreground="{DynamicResource SubtleTextBrush}"
+                           Text="Left / Right: previous / next      Home / End: first / last&#10;G: gallery      S: slideshow      I: details      F or F11: full screen&#10;R / L: rotate right / left      + / -: zoom      0: fit      1: actual size&#10;Ctrl+O: open file      Ctrl+Shift+O: open folder      Ctrl+C: copy image&#10;Del: delete to Recycle Bin      F5: reload folder      Esc: back / exit full screen" />
+
+                <TextBlock Text="File associations" Style="{StaticResource SectionTitle}" />
+                <TextBlock Text="The installer adds Feather View to the 'Open with' list. Windows lets only you choose the default app." TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,0,0,8" />
+                <Button Content="Open Windows default apps" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Click="DefaultApps_Click" />
+            </StackPanel>
+        </ScrollViewer>
+    </DockPanel>
+</Window>

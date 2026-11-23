@@ -72,7 +72,7 @@ Not done: dragging tabs to reorder, separate windows, tab-specific zoom position
 | Info panel (codec, bitrate, fps, HDR flag, tracks, container...) | size/duration only | built, untested on Windows |
 | Hardware decoding (D3D11VA auto-safe), HDR flag display | automatic in Windows | built, untested on Windows (real HDR output not verified) |
 | Resume position, playback history, volume memory | built, tested (Core) | built, tested (Core) |
-| Direct time entry (Ctrl+T), mouse-wheel volume, click = play/pause, double-click = full screen | built, untested on Windows | built, untested on Windows |
+| Direct time entry (Ctrl+J), mouse-wheel volume, click = play/pause, double-click = full screen | built, untested on Windows | built, untested on Windows |
 | Automatic fallback: built-in engine fails -> libmpv if installed; otherwise a clear message with a download button | built, untested on Windows | |
 | Extended-engine download (HTTPS, host allow-list, SHA-256, safe unzip) | built, tested (Core, stub server) | needs `engine.json` + ZIP published in the releases repo (see docs/UPDATES.md) |
 | Auto-hiding controls, timeline thumbnails, picture-in-picture, multi-monitor choice, deinterlace options, audio device choice | planned (V2.1/2.2) | planned |

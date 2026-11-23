@@ -98,7 +98,29 @@ function Test-Fullscreen($arg) {
   Capture-Screen "photo-after-esc"
   try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
 }
+# Full screen VIDEO test: controls start hidden, appear when the mouse moves, hide again after the idle time (default 5 s)
+function Test-VideoFullscreen {
+  $vdir = Join-Path $env:RUNNER_TEMP "fv-shots\Video test"; New-Item -ItemType Directory -Force $vdir | Out-Null
+  $bytes = New-Object byte[] 4096; (New-Object Random 1).NextBytes($bytes); [IO.File]::WriteAllBytes("$vdir\clip.mp4", $bytes)   # not a playable video, which is fine: the player screen and its controls still show
+  $p = Start-Process -FilePath $Exe -ArgumentList "`"$vdir\clip.mp4`"" -PassThru
+  $sw = [System.Diagnostics.Stopwatch]::StartNew()
+  while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20) { Start-Sleep -Milliseconds 100; $p.Refresh() }
+  Start-Sleep -Seconds 5
+  [W32]::SetForegroundWindow($p.MainWindowHandle) | Out-Null; Start-Sleep -Milliseconds 500
+  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(500, 400)
+  [System.Windows.Forms.SendKeys]::SendWait("{F11}"); Start-Sleep -Seconds 2
+  Capture-Screen "video-fs-1-entered"
+  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(520, 420); Start-Sleep -Milliseconds 200
+  [System.Windows.Forms.Cursor]::Position = New-Object System.Drawing.Point(560, 450); Start-Sleep -Seconds 1
+  Capture-Screen "video-fs-2-after-mouse-move"
+  Start-Sleep -Seconds 8
+  Capture-Screen "video-fs-3-after-8s-idle"
+  [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Seconds 2
+  try { $p.CloseMainWindow() | Out-Null; if (-not $p.WaitForExit(4000)) { $p.Kill() } } catch {}
+  $log = Join-Path $settingsDir "featherview.log"; if (Test-Path $log) { Copy-Item $log (Join-Path $Out "featherview-video-fs.log") -Force; Remove-Item $log -Force }
+}
 Set-Theme "Dark"
+Test-VideoFullscreen
 Test-Fullscreen "$dir\mountain-lake.jpg"
 Take "photo-dark" "$dir\mountain-lake.jpg" 6
 Take "gallery-dark" $dir 9

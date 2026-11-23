@@ -23,12 +23,8 @@ Allowed hosts: raw.githubusercontent.com, github.com, objects.githubusercontent.
 
 # Extended video engine (libmpv) package
 
-Feather View can play more formats with the open-source libmpv library. It is **not bundled**; the user downloads it from Settings > Video (or the player's notice bar), or copies `libmpv-2.dll` into `%LOCALAPPDATA%\FeatherView\engine\` (or an `engine` folder next to the app for portable use).
+Feather View plays more formats and gets audio tracks, frame stepping, A-B repeat, chapters and ASS subtitles with the open-source libmpv library. It is **not bundled**: the user downloads it from Settings > Video (or the player's notice bar), or copies `libmpv-2.dll` into `%LOCALAPPDATA%\FeatherView\engine\` (or an `engine` folder next to the app for portable use).
 
-Publish `engine.json` at the root of `akshsim1991/FeatherView-releases` (branch `main`) and attach the ZIP to a release:
-```json
-{ "version": "0.37.0", "license": "LGPL-2.1-or-later", "notes": "mpv/FFmpeg build",
-  "win64": { "url": "https://github.com/akshsim1991/FeatherView-releases/releases/download/engine-0.37.0/libmpv-win64.zip",
-             "size": 31234567, "sha256": "<hex>", "file": "libmpv-2.dll" } }
-```
-Rules: the ZIP must contain the named DLL (any folder) and may contain LICENSE/COPYING/README text files; nothing else is extracted. **Use an LGPL build (not GPL), keep dynamic linking, ship the licence texts and a source offer.** Codec patent and licence obligations differ by country; get legal review before publishing.
+The download comes from the release `featherview-engine` of this repository (`engine.json` + `libmpv-win64.zip`). It is created by the build when a commit message contains `[engine]`: the workflow fetches an **LGPL** libmpv build from its upstream project, adds the licence texts, and publishes it with a SHA-256. The app checks size and SHA-256 and extracts only `libmpv-2.dll` and licence text files.
+
+Rules: use an LGPL build (not GPL), keep dynamic linking, ship the licence texts and a source link. Codec patent and licence obligations differ by country; get legal review before wide distribution.

@@ -1,8 +1,8 @@
-Feather View 2.1.0
+Feather View 2.1.1
+- Video: subtitles (SRT, VTT, ASS) now work in the built-in player, incl. automatic loading of a subtitle file with the same name; delay, size, colour, background and position are adjustable
+- Video: aspect ratio (16:9, 4:3, 21:9, 1:1) now works in the built-in player
+- Video: "Download extended video support" now works (open-source libmpv, checked before it is installed)
+- Full screen video: the control bar and mouse pointer hide after the number of seconds set in Settings (default 5)
+- Opening a folder or drive shows all pictures from all folders underneath in one go
 - New app icon: a feather over a picture
-- Opening a folder or drive shows every picture from all folders underneath in one go (scan runs in the background with a live count)
-- Full screen covers the whole screen (Esc or F11 to leave); in videos the controls hide until you move the mouse; Space plays/pauses
-- Option to keep a video playing when you switch tabs
-- Smaller update downloads: a small installer (a couple of MB) for PCs that have the .NET 10 Desktop Runtime, and updates then stay small
-- Tabs, details cards (camera, location, EXIF, histogram, text in picture), compare, slideshow shuffle
-- Automatic update checks read this repository's releases
+- Smaller update downloads with the small installer (needs the .NET 10 Desktop Runtime)

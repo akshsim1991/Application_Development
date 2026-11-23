@@ -51,7 +51,8 @@ public static class EngineLocator
 /// </summary>
 public sealed class EngineDownloader
 {
-    public static readonly Uri DefaultManifest = new("https://raw.githubusercontent.com/akshsim1991/FeatherView-releases/main/engine.json");
+    /// <summary>engine.json attached to the "featherview-engine" release of this repository (see the [engine] step of the build).</summary>
+    public static readonly Uri DefaultManifest = new("https://github.com/akshsim1991/Application_Development/releases/download/featherview-engine/engine.json");
     private readonly HttpClient _http;
     private readonly Uri _manifest;
     private readonly IReadOnlySet<string> _hosts;

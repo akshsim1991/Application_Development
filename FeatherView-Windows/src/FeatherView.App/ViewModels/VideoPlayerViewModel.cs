@@ -100,10 +100,17 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     public System.Windows.FrameworkElement? Surface { get => _surface; private set => Set(ref _surface, value); }
     private bool Active => _file != null;
     /// <summary>The control bar. In full screen it hides after a few seconds of no activity while a video plays.</summary>
-    public bool ControlsVisible { get => _controlsVisible; private set { if (Set(ref _controlsVisible, value)) _engine?.SetCursorHidden(!value); } }
+    private long _toggleStamp;
+    public bool ControlsVisible { get => _controlsVisible; private set { if (Set(ref _controlsVisible, value)) { _toggleStamp = Environment.TickCount64; _engine?.SetCursorHidden(!value); } } }
     /// <summary>Full screen starts with the controls (and the mouse pointer) hidden; moving the mouse brings them back.</summary>
     public void SetFullscreen(bool on) { _fullscreen = on; _idleTicks = 0; ControlsVisible = !on; }
-    public void RegisterActivity() { _idleTicks = 0; if (!_controlsVisible) ControlsVisible = true; }
+    public void RegisterActivity()
+    {
+        // hiding the bar changes the layout, and Windows can answer with a phantom mouse move: ignore moves in the first moments after hiding
+        if (!_controlsVisible && _fullscreen && Environment.TickCount64 - _toggleStamp < 700) return;
+        _idleTicks = 0;
+        if (!_controlsVisible) ControlsVisible = true;
+    }
     public bool HasMedia => _file != null;
     public bool IsCurrent(MediaFile f) => _file != null && string.Equals(_file.Path, f.Path, StringComparison.OrdinalIgnoreCase);
     public void SetBackground(bool background) => _engine?.SetVideoVisible(!background);

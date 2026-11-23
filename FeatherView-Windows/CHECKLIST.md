@@ -69,6 +69,14 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 | Opening a folder or drive shows the pictures of ALL folders underneath in one go (on by default; menu/Settings switch). Runs in the background with a live count, never freezes the window; up to 200,000 items; pictures stay grouped by folder; single files opened from Explorer still open instantly | scanner (cancel, progress, grouping, limit) tested in Core; UI being verified in CI |
 | Opening a drive or a folder that holds only sub-folders now explains this instead of showing an empty window | built, untested on Windows |
 
+## Video fixes after hands-on testing (2.1.1)
+| Item | Status |
+|---|---|
+| Subtitles in the built-in player (SRT, VTT, ASS text): auto-load next to the video, load file, delay, size/colour/background/position | parser tested (Core, 6 tests); on-screen drawing untested on Windows |
+| Aspect ratio (original, 16:9, 4:3, 21:9, 1:1) in the built-in player | built, untested on Windows |
+| "Download extended video support" works: the build publishes an LGPL libmpv build as release `featherview-engine` (commit message tag [engine]) | being verified in CI |
+| Full-screen video controls hide after N seconds (Settings, default 5); phantom mouse-move guard; CI test with screenshots (entered / after mouse move / after 8 s idle) | being verified in CI |
+
 ## Tabs (V2.1 item brought forward)
 | Item | Status |
 |---|---|

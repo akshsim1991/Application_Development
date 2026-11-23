@@ -97,6 +97,50 @@ jobs:
           if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
           gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
 
+      - name: Publish extended video engine (libmpv, LGPL build) - only when the commit message contains [engine]
+        if: contains(github.event.head_commit.message, '[engine]')
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch an open-source LGPL libmpv build from its upstream release, re-publish it with a SHA-256 so the app can verify it.
+          $repos = @("zhongfly/mpv-winbuild", "shinchiro/mpv-winbuild-cmake")
+          $asset = $null; $src = $null; $tag = $null
+          foreach ($r in $repos) {
+            $names = gh api "repos/$r/releases/latest" --jq '.assets[].name' 2>$null
+            Write-Host "$r assets:"; $names | ForEach-Object { Write-Host "  $_" }
+            $pick = $names | Where-Object { $_ -match '^mpv-dev-lgpl-x86_64-\d.*\.7z$' } | Select-Object -First 1
+            if ($pick) { $asset = $pick; $src = $r; $tag = (gh api "repos/$r/releases/latest" --jq .tag_name); break }
+          }
+          if (-not $asset) { throw "No LGPL mpv-dev package was found upstream." }
+          Write-Host "Using $src $tag : $asset"
+          $work = Join-Path $env:RUNNER_TEMP "mpv"; New-Item -ItemType Directory -Force $work | Out-Null
+          gh release download $tag -R $src --pattern $asset --dir $work
+          7z x (Join-Path $work $asset) "-o$work\x" -y | Out-Null
+          $dll = Get-ChildItem "$work\x" -Recurse -Filter "libmpv-2.dll" | Select-Object -First 1
+          if (-not $dll) { $dll = Get-ChildItem "$work\x" -Recurse -Filter "mpv-2.dll" | Select-Object -First 1 }
+          if (-not $dll) { Get-ChildItem "$work\x" -Recurse | Select-Object -First 40 FullName | Format-Table | Out-String | Write-Host; throw "libmpv-2.dll not found in the package." }
+          $pkg = Join-Path $work "pkg"; New-Item -ItemType Directory -Force $pkg | Out-Null
+          Copy-Item $dll.FullName (Join-Path $pkg "libmpv-2.dll")
+          Get-ChildItem "$work\x" -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING)' } | ForEach-Object { Copy-Item $_.FullName (Join-Path $pkg $_.Name) -Force }
+          @"
+          libmpv (mpv player library), LGPL build, unmodified.
+          Source and licence: https://github.com/mpv-player/mpv and https://github.com/$src (release $tag).
+          This file is downloaded by Feather View only when the user asks for extended video support. The library is loaded dynamically.
+          Video codecs may be covered by patents in some countries; the user is responsible for lawful use.
+          "@ | Set-Content (Join-Path $pkg "README-libmpv.txt") -Encoding UTF8
+          $zip = Join-Path $work "libmpv-win64.zip"
+          Compress-Archive -Path "$pkg\*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower(); $size = (Get-Item $zip).Length
+          $url = "https://github.com/akshsim1991/Application_Development/releases/download/featherview-engine/libmpv-win64.zip"
+          $json = [ordered]@{ version = "$tag"; license = "LGPL-2.1-or-later (mpv LGPL build)"; notes = "libmpv from $src $tag"; win64 = [ordered]@{ url = $url; size = $size; sha256 = $hash; file = "libmpv-2.dll" } } | ConvertTo-Json -Depth 4
+          Set-Content (Join-Path $work "engine.json") $json -Encoding UTF8
+          Write-Host $json
+          gh release view featherview-engine *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete featherview-engine --yes --cleanup-tag }
+          gh release create featherview-engine $zip (Join-Path $work "engine.json") --title "Extended video engine (libmpv)" --notes "libmpv LGPL build from $src $tag. Feather View downloads this only when you ask for extended video support (Settings > Video). Source: https://github.com/mpv-player/mpv" --target ${{ github.sha }}
+
       - uses: actions/upload-artifact@v4
         with:
           name: FeatherView-${{ github.run_number }}

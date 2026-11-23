@@ -1,3 +1,6 @@
+Feather View 2.1.13
+- Much faster video thumbnails: videos no longer queue behind pictures, Windows' own thumbnail cache is used first, and each generated preview is remembered on disk (LocalAppData\FeatherView\thumbs) so the second visit is instant
+
 Feather View 2.1.12
 - FIXED: rotate and flip no longer show "Something unexpected happened" (the picture transform was not frozen); the same fix also covers photos that carry a camera rotation flag
 

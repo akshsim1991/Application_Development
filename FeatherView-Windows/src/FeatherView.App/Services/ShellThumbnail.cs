@@ -21,9 +21,10 @@ public static class ShellThumbnail
 
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr h);
 
-    private const int ResizeToFit = 0x0, BiggerSizeOk = 0x1, ThumbnailOnly = 0x8;
+    private const int ResizeToFit = 0x0, BiggerSizeOk = 0x1, ThumbnailOnly = 0x8, InCacheOnly = 0x10;
 
-    public static BitmapSource? Get(string path, int size)
+    /// <param name="cacheOnly">true: only return a picture Windows already has cached (Explorer's thumbnail cache) - returns at once; false: let Windows generate it (can take a second or more per video).</param>
+    public static BitmapSource? Get(string path, int size, bool cacheOnly = false)
     {
         IntPtr hbm = IntPtr.Zero;
         try
@@ -33,7 +34,7 @@ public static class ShellThumbnail
             try
             {
                 // THUMBNAILONLY: no generic file icon when Windows cannot make a preview (we then show our own VIDEO tile)
-                if (factory.GetImage(new SIZE { cx = size, cy = size }, ResizeToFit | ThumbnailOnly | BiggerSizeOk, out hbm) != 0 || hbm == IntPtr.Zero) return null;
+                if (factory.GetImage(new SIZE { cx = size, cy = size }, ResizeToFit | ThumbnailOnly | BiggerSizeOk | (cacheOnly ? InCacheOnly : 0), out hbm) != 0 || hbm == IntPtr.Zero) return null;
                 var src = Imaging.CreateBitmapSourceFromHBitmap(hbm, IntPtr.Zero, Int32Rect.Empty, BitmapSizeOptions.FromEmptyOptions());
                 src.Freeze();
                 return src;

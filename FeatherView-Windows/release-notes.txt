@@ -1,3 +1,6 @@
+Feather View 2.1.8
+- Multi-select: a check box in the top-left corner of every thumbnail (thumbnail strip and gallery). Tick several files, then Delete moves them all to the Recycle Bin in one go. Ctrl+A selects all, Esc clears the selection; the status bar shows "N selected"
+
 Feather View 2.1.7
 - Settings > General: option to turn off the "delete this file?" question (files still go to the Recycle Bin)
 

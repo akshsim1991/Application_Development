@@ -54,6 +54,7 @@
         <KeyBinding Key="R" Modifiers="Shift" Command="{Binding RotateLeftCommand}" />
         <KeyBinding Key="L" Command="{Binding RotateLeftCommand}" />
         <KeyBinding Key="Delete" Command="{Binding DeleteCommand}" />
+        <KeyBinding Key="A" Modifiers="Ctrl" Command="{Binding SelectAllCommand}" />
         <KeyBinding Key="F5" Command="{Binding ReloadCommand}" />
         <KeyBinding Key="O" Modifiers="Ctrl" Command="{Binding OpenFileCommand}" />
         <KeyBinding Key="O" Modifiers="Ctrl+Shift" Command="{Binding OpenFolderCommand}" />
@@ -470,6 +471,8 @@
                                             <Border CornerRadius="6" Background="{DynamicResource SurfaceBrush}">
                                                 <Grid>
                                                     <Image Source="{Binding Thumbnail}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Margin="2" />
+                                                    <CheckBox Style="{StaticResource ThumbCheck}" IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,6,0,0" Focusable="False" ToolTip="Select this file (Ctrl+A selects all)" Panel.ZIndex="5"
+                                          AutomationProperties.Name="Select file" />
                                                     <TextBlock Text="VIDEO" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
@@ -699,6 +702,8 @@
                                 MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" ToolTip="{Binding Name}">
                             <Grid>
                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                                <CheckBox Style="{StaticResource ThumbCheck}" IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" Focusable="False" ToolTip="Select this file (Ctrl+A selects all)" Panel.ZIndex="5"
+                                          AutomationProperties.Name="Select file" />
                                 <TextBlock Text="VIDEO" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}">
                                     <TextBlock.Style>
                                         <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsVideo}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>

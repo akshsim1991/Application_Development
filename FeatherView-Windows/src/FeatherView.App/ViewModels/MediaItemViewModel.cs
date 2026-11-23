@@ -20,6 +20,10 @@ public sealed class MediaItemViewModel : ObservableObject
     public string Name => File.Name;
     public bool IsVideo => File.Kind == MediaKind.Video;
     public bool Failed { get => _failed; private set => Set(ref _failed, value); }
+    /// <summary>Ticked with the check box in the thumbnail (multi-selection for batch actions).</summary>
+    public bool IsChecked { get => _checked; set { if (Set(ref _checked, value)) CheckedChanged?.Invoke(); } }
+    private bool _checked;
+    public static event Action? CheckedChanged;
     public bool IsSelected { get => _selected; set => Set(ref _selected, value); }
 
     public ImageSource? Thumbnail

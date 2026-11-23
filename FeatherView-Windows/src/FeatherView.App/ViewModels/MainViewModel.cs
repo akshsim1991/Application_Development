@@ -72,6 +72,7 @@ public sealed class MainViewModel : ObservableObject
         Settings = settings; _settingsService = settingsService; _thumbs = thumbs; _dialogs = dialogs; _theme = theme; _log = log;
         Gallery = new GalleryViewModel();
         Gallery.SetThumbSize(settings.ThumbnailSize);
+        MediaItemViewModel.CheckedChanged += () => { OnPropertyChanged(nameof(SelectedCountText)); OnPropertyChanged(nameof(CheckedCount)); OnPropertyChanged(nameof(HasChecked)); };
         Gallery.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(GalleryViewModel.SelectedIndex)) OnPropertyChanged(nameof(SelectedCountText)); };
         Video = videoFactory(this);
         Tabs = new TabsViewModel(this, dialogs);
@@ -196,7 +197,12 @@ public sealed class MainViewModel : ObservableObject
     public int CountVideo => _counts[QuickFilter.Video];
     public int CountOther => _counts[QuickFilter.Other];
     public string ItemCountText => _files.Count == 1 ? "1 item" : $"{_files.Count} items";
-    public string SelectedCountText => Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
+    public string SelectedCountText => CheckedCount > 0 ? $"{CheckedCount} selected" : Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
+    public int CheckedCount => Gallery.Items.Count(i => i.IsChecked);
+    public bool HasChecked => CheckedCount > 0;
+    public RelayCommand SelectAllCommand => _selAll ??= new RelayCommand(() => { foreach (var i in Gallery.Items) i.IsChecked = true; });
+    public RelayCommand ClearCheckedCommand => _clrChk ??= new RelayCommand(() => { foreach (var i in Gallery.Items) i.IsChecked = false; });
+    private RelayCommand? _selAll, _clrChk;
     public string EmptyMessage { get => _emptyMessage; private set => Set(ref _emptyMessage, value); }
     public bool ShowSidebar => Settings.ShowSidebar;
     public bool FilmstripVisible => Settings.ShowFilmstrip && _mode != ViewMode.Gallery && _files.Count > 1 && !_isFullscreen;
@@ -652,7 +658,8 @@ public sealed class MainViewModel : ObservableObject
 
     private void Escape()
     {
-        if (IsCompare) IsCompare = false;
+        if (HasChecked) ClearCheckedCommand.Execute(null);
+        else if (IsCompare) IsCompare = false;
         else if (IsSlideshow) StopSlideshow();
         else if (IsFullscreen) IsFullscreen = false;
         else if (Mode == ViewMode.Gallery && (CurrentImage != null || Video.HasMedia)) OpenSelected();
@@ -777,8 +784,30 @@ public sealed class MainViewModel : ObservableObject
     }
 
     // ---- file operations ----
+    private void DeleteChecked()
+    {
+        var files = Gallery.Items.Where(i => i.IsChecked).Select(i => i.File).ToList();
+        if (files.Count == 0) return;
+        if (Settings.ConfirmDelete && !_dialogs.Confirm("Delete files", $"Move {files.Count} selected file{(files.Count == 1 ? "" : "s")} to the Recycle Bin?\n\nYou can turn off this question in Settings.", "Delete")) return;
+        int firstIdx = files.Min(f => _files.IndexOf(f));
+        StopGif(); _base = null; CurrentImage = null; Video.Stop();
+        int failed = 0;
+        foreach (var f in files)
+        {
+            try { FileOperations.Recycle(f.Path); _source.Remove(f); }
+            catch (Exception ex) when (ex is not OperationCanceledException) { failed++; _log.Warn($"Delete failed ({ex.GetType().Name})."); }
+        }
+        RebuildFiles(null, Math.Max(0, firstIdx), out _);
+        if (_files.Count == 0) { _index = -1; Mode = ViewMode.Gallery; StatusText = "No more photos or videos here"; }
+        else if (Mode == ViewMode.Gallery) UpdateStatus();
+        else { _index = Math.Min(Math.Max(0, firstIdx), _files.Count - 1); _ = ShowIndexAsync(_index); }
+        OnPropertyChanged(nameof(SelectedCountText)); OnPropertyChanged(nameof(HasChecked));
+        if (failed > 0) _dialogs.Error("Delete", $"{failed} file(s) could not be moved to the Recycle Bin.");
+    }
+
     private void DeleteCurrent()
     {
+        if (HasChecked) { DeleteChecked(); return; }
         var f = Mode == ViewMode.Gallery ? Gallery.Selected?.File : Current;
         if (f == null) return;
         if (Settings.ConfirmDelete && !_dialogs.Confirm("Delete file", $"Move \"{f.Name}\" to the Recycle Bin?\n\nYou can turn off this question in Settings.", "Delete")) return;

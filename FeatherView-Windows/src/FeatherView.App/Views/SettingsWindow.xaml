@@ -53,6 +53,7 @@
 
                 <TextBlock Text="Photo viewing" Style="{StaticResource SectionTitle}" />
                 <CheckBox Content="Fit photos to the window when opened" IsChecked="{Binding FitOnOpen}" />
+                <CheckBox Content="Ask for confirmation before deleting a file (files always go to the Recycle Bin)" IsChecked="{Binding ConfirmDelete}" />
                 <CheckBox Content="Show the details panel when opened" IsChecked="{Binding ShowInfoPanelOnOpen}" />
 
                 <TextBlock Text="Video" Style="{StaticResource SectionTitle}" />

@@ -39,6 +39,7 @@ public sealed class AppSettings
 
     // Photo viewing
     public bool FitOnOpen { get; set; } = true;
+    public bool ConfirmDelete { get; set; } = true;     // ask before moving a file to the Recycle Bin
     public bool ShowInfoPanelOnOpen { get; set; } = true;
     public bool ShowFilmstrip { get; set; } = true;
     public bool ShowSidebar { get; set; } = true;

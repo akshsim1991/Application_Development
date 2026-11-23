@@ -781,7 +781,7 @@ public sealed class MainViewModel : ObservableObject
     {
         var f = Mode == ViewMode.Gallery ? Gallery.Selected?.File : Current;
         if (f == null) return;
-        if (!_dialogs.Confirm("Delete file", $"Move \"{f.Name}\" to the Recycle Bin?", "Delete")) return;
+        if (Settings.ConfirmDelete && !_dialogs.Confirm("Delete file", $"Move \"{f.Name}\" to the Recycle Bin?\n\nYou can turn off this question in Settings.", "Delete")) return;
         try
         {
             int idx = _files.IndexOf(f);

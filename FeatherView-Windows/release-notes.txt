@@ -1,3 +1,6 @@
+Feather View 2.1.7
+- Settings > General: option to turn off the "delete this file?" question (files still go to the Recycle Bin)
+
 Feather View 2.1.6
 - Rotate left, rotate right, flip, copy and delete are now always in the toolbar, with colour-coded icons (amber rotate, purple flip, teal copy, red delete, gold favourite, green slideshow)
 

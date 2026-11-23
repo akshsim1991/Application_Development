@@ -48,7 +48,7 @@ public sealed class ThumbnailService
         try
         {
             ct.ThrowIfCancellationRequested();
-            var bmp = await Task.Run(() => Decode(f.Path, size), ct).ConfigureAwait(false);
+            var bmp = await Task.Run(() => f.Kind == MediaKind.Video ? ShellThumbnail.Get(f.Path, size) : Decode(f.Path, size), ct).ConfigureAwait(false);
             if (bmp != null) cache.Set(key, bmp);
             return bmp;
         }

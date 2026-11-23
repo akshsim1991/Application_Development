@@ -453,6 +453,8 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
+                        <StackPanel>
+                        <TextBlock Text="{Binding Header}" Visibility="{Binding HasHeader, Converter={StaticResource B2V}}" FontSize="15" FontWeight="SemiBold" Margin="8,16,0,6" Foreground="{DynamicResource AccentBrush}" />
                         <ItemsControl ItemsSource="{Binding Items}" Focusable="False">
                             <ItemsControl.ItemsPanel>
                                 <ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate>
@@ -471,13 +473,18 @@
                                             <Border CornerRadius="6" Background="{DynamicResource SurfaceBrush}">
                                                 <Grid>
                                                     <Image Source="{Binding Thumbnail}" Stretch="Uniform" RenderOptions.BitmapScalingMode="HighQuality" Margin="2" />
+                                                <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                                        Visibility="{Binding ShowPlayBadge, Converter={StaticResource B2V}}">
+                                    <Viewbox Width="14" Height="14" Margin="2,0,0,0"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconPlay}" Fill="White" /></Canvas></Viewbox>
+                                </Border>
+
                                                     <CheckBox Style="{StaticResource ThumbCheck}" IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="6,6,0,0" Focusable="False" ToolTip="Select this file (Ctrl+A selects all)" Panel.ZIndex="5"
                                           AutomationProperties.Name="Select file" />
                                                     <TextBlock Text="VIDEO" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                         <TextBlock.Style>
                                                             <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}">
                                                                 <Setter Property="Visibility" Value="Collapsed" />
-                                                                <Style.Triggers><DataTrigger Binding="{Binding IsVideo}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
+                                                                <Style.Triggers><DataTrigger Binding="{Binding ShowVideoLabel}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers>
                                                             </Style>
                                                         </TextBlock.Style>
                                                     </TextBlock>
@@ -504,6 +511,7 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+                        </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
@@ -702,11 +710,16 @@
                                 MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" ToolTip="{Binding Name}">
                             <Grid>
                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
+                                <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"
+                                        Visibility="{Binding ShowPlayBadge, Converter={StaticResource B2V}}">
+                                    <Viewbox Width="14" Height="14" Margin="2,0,0,0"><Canvas Width="24" Height="24"><Path Data="{StaticResource IconPlay}" Fill="White" /></Canvas></Viewbox>
+                                </Border>
+
                                 <CheckBox Style="{StaticResource ThumbCheck}" IsChecked="{Binding IsChecked}" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4,4,0,0" Focusable="False" ToolTip="Select this file (Ctrl+A selects all)" Panel.ZIndex="5"
                                           AutomationProperties.Name="Select file" />
                                 <TextBlock Text="VIDEO" FontSize="11" FontWeight="SemiBold" HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{DynamicResource SubtleTextBrush}">
                                     <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding IsVideo}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource {x:Type TextBlock}}"><Setter Property="Visibility" Value="Collapsed" /><Style.Triggers><DataTrigger Binding="{Binding ShowVideoLabel}" Value="True"><Setter Property="Visibility" Value="Visible" /></DataTrigger></Style.Triggers></Style>
                                     </TextBlock.Style>
                                 </TextBlock>
                             </Grid>

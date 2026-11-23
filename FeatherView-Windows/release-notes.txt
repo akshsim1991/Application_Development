@@ -1,3 +1,7 @@
+Feather View 2.1.9
+- NEW: Group by (... menu > Group by): None, Folder, File type, Date (year, month or day) and File size. Groups get a title with the number of files
+- FIXED: video thumbnails now show the preview picture Windows makes for the video (with a play badge) instead of a blank "VIDEO" tile
+
 Feather View 2.1.8
 - Multi-select: a check box in the top-left corner of every thumbnail (thumbnail strip and gallery). Tick several files, then Delete moves them all to the Recycle Bin in one go. Ctrl+A selects all, Esc clears the selection; the status bar shows "N selected"
 

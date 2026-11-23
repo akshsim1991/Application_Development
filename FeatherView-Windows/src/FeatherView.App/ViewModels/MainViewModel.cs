@@ -403,9 +403,17 @@ public sealed class MainViewModel : ObservableObject
         _files = _source.Where(f => MediaFilter.Matches(f, _filter, _searchText)).ToList();
         _counts = MediaFilter.Count(_source);
         int idx = keepPath == null ? -1 : _files.FindIndex(f => f.Path.Equals(keepPath, StringComparison.OrdinalIgnoreCase));
+        List<string>? labels = null;
+        if (Settings.GroupBy != GroupMode.None)
+        {
+            var keep = keepPath ?? (fallbackIndex >= 0 && fallbackIndex < _files.Count ? _files[fallbackIndex].Path : null);
+            var g = MediaGrouping.Apply(_files, Settings.GroupBy, Settings.SortDescending);
+            _files = g.Files; labels = g.Labels;
+            if (keep != null) { idx = _files.FindIndex(f => f.Path.Equals(keep, StringComparison.OrdinalIgnoreCase)); if (keepPath == null && idx >= 0) fallbackIndex = idx; }
+        }
         found = idx >= 0;
         if (!found) idx = Math.Clamp(fallbackIndex, 0, Math.Max(0, _files.Count - 1));
-        Gallery.SetItems(_files.Select(f => new MediaItemViewModel(f, _thumbs)), idx);
+        Gallery.SetItems(_files.Select(f => new MediaItemViewModel(f, _thumbs)), idx, labels);
         _index = _files.Count == 0 ? -1 : idx;
         foreach (var n in new[] { nameof(CountAll), nameof(CountJpg), nameof(CountPng), nameof(CountGif), nameof(CountVideo), nameof(CountOther), nameof(ItemCountText),
                                   nameof(SelectedCountText), nameof(ShowEmptyState), nameof(FilmstripVisible), nameof(IsFavorite) })
@@ -908,6 +916,15 @@ public sealed class MainViewModel : ObservableObject
     {
         Settings.Sort = mode; if (descending is bool d) Settings.SortDescending = d;
         SaveSettings(); Reload();
+    }
+
+    public void SetGroup(GroupMode mode)
+    {
+        Settings.GroupBy = mode; SaveSettings();
+        var keep = Current?.Path ?? Gallery.Selected?.File.Path;
+        RebuildFiles(keep, 0, out _);
+        if (Mode == ViewMode.Gallery) UpdateStatus();
+        StatusText = mode == GroupMode.None ? "Grouping off" : $"Grouped by {mode}";
     }
 
     public void SaveSettings() => _settingsService.Save(Settings);

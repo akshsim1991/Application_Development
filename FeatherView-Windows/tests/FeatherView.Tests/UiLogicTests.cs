@@ -1,3 +1,4 @@
+using FeatherView.Core.Settings;
 using FeatherView.Core.Imaging;
 using FeatherView.Core.Media;
 using Xunit;
@@ -61,5 +62,49 @@ public class HistogramTests
         var bins = new int[256]; bins[10] = 1_000_000; for (int i = 20; i < 200; i++) bins[i] = 50;
         var n = HistogramData.Normalize(bins);
         Assert.All(n, v => Assert.InRange(v, 0, 1)); Assert.Equal(1, n[10]);
+    }
+}
+
+public class GroupingTests
+{
+    private static MediaFile F(string path, long len, DateTime utc, MediaKind k = MediaKind.Image) =>
+        new(path, System.IO.Path.GetFileName(path), len, utc, k);
+
+    [Fact]
+    public void GroupsByTypeAndKeepsOrderInsideGroups()
+    {
+        var files = new List<MediaFile>
+        {
+            F("/p/a.jpg", 10, new DateTime(2024, 1, 1)), F("/p/b.png", 10, new DateTime(2024, 1, 1)),
+            F("/p/c.jpg", 10, new DateTime(2024, 1, 1)), F("/p/d.mp4", 10, new DateTime(2024, 1, 1), MediaKind.Video),
+        };
+        var g = MediaGrouping.Apply(files, GroupMode.Type, false);
+        Assert.Equal(new[] { "a.jpg", "c.jpg", "b.png", "d.mp4" }, g.Files.Select(f => f.Name));
+        Assert.StartsWith("JPG", g.Labels![0]); Assert.StartsWith("JPG", g.Labels[1]); Assert.StartsWith("PNG", g.Labels[2]); Assert.StartsWith("MP4", g.Labels[3]);
+    }
+
+    [Fact]
+    public void DateGroupsFollowDescendingChoice()
+    {
+        var files = new List<MediaFile> { F("/p/a.jpg", 1, new DateTime(2022, 6, 15, 12, 0, 0, DateTimeKind.Utc)), F("/p/b.jpg", 1, new DateTime(2024, 6, 15, 12, 0, 0, DateTimeKind.Utc)) };
+        Assert.Equal("a.jpg", MediaGrouping.Apply(files, GroupMode.Year, false).Files[0].Name);
+        Assert.Equal("b.jpg", MediaGrouping.Apply(files, GroupMode.Year, true).Files[0].Name);
+    }
+
+    [Fact]
+    public void SizeBucketsAndNoGrouping()
+    {
+        var files = new List<MediaFile> { F("/p/a.jpg", 50L << 20, DateTime.UtcNow), F("/p/b.jpg", 10 * 1024, DateTime.UtcNow) };
+        var g = MediaGrouping.Apply(files, GroupMode.Size, false);
+        Assert.Equal("b.jpg", g.Files[0].Name);
+        Assert.Null(MediaGrouping.Apply(files, GroupMode.None, false).Labels);
+    }
+
+    [Fact]
+    public void FolderGroupsUseFolderName()
+    {
+        var files = new List<MediaFile> { F("/x/Holiday/a.jpg", 1, DateTime.UtcNow), F("/x/Art/b.jpg", 1, DateTime.UtcNow) };
+        var g = MediaGrouping.Apply(files, GroupMode.Folder, false);
+        Assert.Equal(new[] { "Art", "Holiday" }, g.Labels);
     }
 }

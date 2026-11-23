@@ -235,6 +235,10 @@ public partial class MainWindow : Window
         sort.Items.Add(Item("Ascending", () => _vm.SetSort(_vm.Settings.Sort, false), check: !_vm.Settings.SortDescending));
         sort.Items.Add(Item("Descending", () => _vm.SetSort(_vm.Settings.Sort, true), check: _vm.Settings.SortDescending));
         menu.Items.Add(sort);
+        var group = new MenuItem { Header = "Group by" };
+        foreach (var (mode, label) in new[] { (GroupMode.None, "None"), (GroupMode.Folder, "Folder"), (GroupMode.Type, "File type"), (GroupMode.Year, "Date: year"), (GroupMode.Month, "Date: month"), (GroupMode.Day, "Date: day"), (GroupMode.Size, "File size") })
+        { var m = mode; group.Items.Add(Item(label, () => _vm.SetGroup(m), check: _vm.Settings.GroupBy == m)); }
+        menu.Items.Add(group);
         menu.Items.Add(Item("Include subfolders", () => _vm.ToggleSubfoldersCommand.Execute(null), check: _vm.IncludeSubfolders));
         menu.Items.Add(Item("Sidebar", () => _vm.ToggleSidebarCommand.Execute(null), check: _vm.ShowSidebar, gesture: "Ctrl+B"));
         menu.Items.Add(Item("Thumbnail strip", () => _vm.ToggleFilmstripCommand.Execute(null), check: _vm.Settings.ShowFilmstrip, gesture: "T"));

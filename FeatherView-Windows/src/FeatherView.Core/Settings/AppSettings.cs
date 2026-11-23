@@ -8,6 +8,9 @@ public enum AppTheme { System, Light, Dark }
 [JsonConverter(typeof(JsonStringEnumConverter<VideoEnginePreference>))]
 public enum VideoEnginePreference { Auto, MediaFoundation, Mpv }
 
+[JsonConverter(typeof(JsonStringEnumConverter<GroupMode>))]
+public enum GroupMode { None, Folder, Type, Year, Month, Day, Size }
+
 [JsonConverter(typeof(JsonStringEnumConverter<SortMode>))]
 public enum SortMode { Name, Date, Size, Type }
 
@@ -33,6 +36,7 @@ public sealed class AppSettings
 
     // Browsing
     public SortMode Sort { get; set; } = SortMode.Name;
+    public GroupMode GroupBy { get; set; } = GroupMode.None;   // gallery grouping with headers
     public bool SortDescending { get; set; }
     public int ThumbnailSize { get; set; } = 160;
     public bool IncludeSubfolders { get; set; } = true;  // opening a folder or drive shows the pictures of all folders underneath, in one go
@@ -99,6 +103,7 @@ public sealed class AppSettings
         PreferredSubtitleLanguages ??= ""; PreferredAudioLanguages ??= "";
         if (!Enum.IsDefined(Theme)) Theme = AppTheme.System;
         if (!Enum.IsDefined(Sort)) Sort = SortMode.Name;
+        if (!Enum.IsDefined(GroupBy)) GroupBy = GroupMode.None;
         if (!(WindowWidth >= 400)) WindowWidth = 1100;
         if (!(WindowHeight >= 300)) WindowHeight = 720;
         RecentFiles ??= new();

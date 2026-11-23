@@ -14,7 +14,8 @@ public enum SortMode { Name, Date, Size, Type }
 /// <summary>User settings persisted as JSON. Plain data only; validated by <see cref="Normalize"/>.</summary>
 public sealed class AppSettings
 {
-    public int SchemaVersion { get; set; } = 1;
+    public int SchemaVersion { get; set; } = CurrentSchema;
+    public const int CurrentSchema = 2;
 
     // Appearance
     public AppTheme Theme { get; set; } = AppTheme.System;

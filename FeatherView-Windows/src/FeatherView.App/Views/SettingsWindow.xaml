@@ -44,7 +44,7 @@
                     <RadioButton Content="Type" IsChecked="{Binding Sort, Converter={StaticResource EnumEq}, ConverterParameter=Type}" />
                 </StackPanel>
                 <CheckBox Content="Newest / largest / Z-A first (descending)" IsChecked="{Binding SortDescending}" />
-                <CheckBox Content="Show pictures from all folders underneath when I open a folder or drive (up to 200,000)" IsChecked="{Binding IncludeSubfolders}" />
+                <CheckBox IsChecked="{Binding IncludeSubfolders}"><TextBlock TextWrapping="Wrap" Text="Show pictures from all folders underneath when I open a folder or drive (up to 200,000)" /></CheckBox>
                 <DockPanel Margin="0,8,0,0">
                     <TextBlock DockPanel.Dock="Right" Style="{StaticResource Value}" Text="{Binding ThumbnailSize, StringFormat={}{0} px}" />
                     <TextBlock Text="Thumbnail size" DockPanel.Dock="Left" Width="130" VerticalAlignment="Center" />

@@ -495,6 +495,22 @@
                             <TextBlock Text="Feather View" FontSize="30" FontWeight="Light" HorizontalAlignment="Center" />
                             <TextBlock Text="{Binding EmptyMessage}" Margin="0,6,0,18" Foreground="{DynamicResource SubtleTextBrush}" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="420" />
                             <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                <Button Content="Show pictures from all subfolders" Style="{StaticResource PrimaryButton}" Command="{Binding ToggleSubfoldersCommand}" Margin="0,0,8,0">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding ShowFolderChips}" Value="True" />
+                                                        <Condition Binding="{Binding HasSubFolders}" Value="True" />
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible" />
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                                 <Button Content="Open file" Style="{StaticResource PrimaryButton}" Command="{Binding OpenFileCommand}" Margin="0,0,8,0" />
                                 <Button Content="Open folder" Style="{StaticResource TextButton}" Command="{Binding OpenFolderCommand}" />
                             </StackPanel>

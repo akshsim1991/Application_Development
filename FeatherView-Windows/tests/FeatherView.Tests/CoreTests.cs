@@ -262,3 +262,22 @@ public class ScanControlTests
 
     private sealed class SyncProgress : IProgress<int> { private readonly List<int> _l; public SyncProgress(List<int> l) { _l = l; } public void Report(int v) => _l.Add(v); }
 }
+
+public class SettingsMigrationTests
+{
+    private static string Tmp() => Path.Combine(Path.GetTempPath(), "fv-mig-" + Guid.NewGuid().ToString("N"));
+
+    [Fact] public void OldFilesGetTheNewSubfolderDefaultOnce()
+    {
+        var dir = Tmp(); Directory.CreateDirectory(dir); var p = Path.Combine(dir, "s.json");
+        File.WriteAllText(p, "{ \"SchemaVersion\": 1, \"IncludeSubfolders\": false, \"Theme\": \"Light\" }");   // what an early build saved
+        var svc = new SettingsService(p);
+        var s = svc.Load();
+        Assert.True(s.IncludeSubfolders); Assert.Equal(2, s.SchemaVersion); Assert.Equal(AppTheme.Light, s.Theme);
+        s.IncludeSubfolders = false; svc.Save(s);                         // the user turns it off again: that choice must stay
+        Assert.False(svc.Load().IncludeSubfolders);
+        Directory.Delete(dir, true);
+    }
+
+    [Fact] public void FreshSettingsHaveTheDefaults() { var s = new AppSettings(); Assert.True(s.IncludeSubfolders); Assert.Equal(AppSettings.CurrentSchema, s.SchemaVersion); }
+}

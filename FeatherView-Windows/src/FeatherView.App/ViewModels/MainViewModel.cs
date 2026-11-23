@@ -153,6 +153,7 @@ public sealed class MainViewModel : ObservableObject
     public ObservableCollection<FolderItem> SubFolders { get; } = new();
     public bool ShowFolderStrip => !string.IsNullOrEmpty(_folderPath) && Section == NavSection.Gallery;
     public bool ShowFolderChips => !Settings.IncludeSubfolders;
+    public bool HasSubFolders => SubFolders.Count > 0;
     public string FolderDisplay => _folderPath;
     public bool CanGoUp => !string.IsNullOrEmpty(_folderPath) && Path.GetDirectoryName(_folderPath.TrimEnd('\\', '/')) is { Length: > 0 };
     public bool IncludeSubfolders => Settings.IncludeSubfolders;
@@ -331,7 +332,7 @@ public sealed class MainViewModel : ObservableObject
         Filter = QuickFilter.All;
         SubFolders.Clear();
         foreach (var name in MediaScanner.ListFolders(folder)) SubFolders.Add(new FolderItem(name, Path.Combine(folder, name)));
-        OnPropertyChanged(nameof(ShowFolderStrip)); OnPropertyChanged(nameof(FolderDisplay)); OnPropertyChanged(nameof(CanGoUp)); GoUpCommand.RaiseCanExecuteChanged();
+        OnPropertyChanged(nameof(ShowFolderStrip)); OnPropertyChanged(nameof(FolderDisplay)); OnPropertyChanged(nameof(CanGoUp)); OnPropertyChanged(nameof(HasSubFolders)); GoUpCommand.RaiseCanExecuteChanged();
         bool recurse = recursive ?? Settings.IncludeSubfolders;
 
         if (!recurse)

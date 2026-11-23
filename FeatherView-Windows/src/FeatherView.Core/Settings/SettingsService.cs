@@ -19,7 +19,7 @@ public sealed class SettingsService
             if (File.Exists(_path))
             {
                 var s = SettingsJson.Deserialize(File.ReadAllText(_path));
-                if (s != null) { s.Normalize(); return s; }
+                if (s != null) { Migrate(s); s.Normalize(); return s; }
             }
         }
         catch (Exception ex)
@@ -28,6 +28,16 @@ public sealed class SettingsService
             TryBackupCorrupt();
         }
         var d = new AppSettings(); d.Normalize(); return d;
+    }
+
+    /// <summary>
+    /// Settings files written by older versions keep their saved values, so a new default would never reach them.
+    /// Schema 2: "show pictures from all folders underneath" became the default and is switched on once for existing files.
+    /// </summary>
+    internal static void Migrate(AppSettings s)
+    {
+        if (s.SchemaVersion < 2) s.IncludeSubfolders = true;
+        s.SchemaVersion = AppSettings.CurrentSchema;
     }
 
     public bool Save(AppSettings settings)

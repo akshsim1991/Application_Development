@@ -122,7 +122,7 @@ function Test-VideoFullscreen {
 # Menu rendering test: F10 opens the ... menu; Down x10 + Right opens "Sort by" (dark and light theme)
 function Test-Menu($theme) {
   Set-Theme $theme
-  $p = Start-Process -FilePath $Exe -ArgumentList "`\"$dir\mountain-lake.jpg`\"" -PassThru
+  $p = Start-Process -FilePath $Exe -ArgumentList "`"$dir\mountain-lake.jpg`"" -PassThru
   $sw = [System.Diagnostics.Stopwatch]::StartNew()
   while ($p.MainWindowHandle -eq 0 -and $sw.Elapsed.TotalSeconds -lt 20) { Start-Sleep -Milliseconds 100; $p.Refresh() }
   Start-Sleep -Seconds 4

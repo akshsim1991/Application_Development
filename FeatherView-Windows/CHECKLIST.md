@@ -57,7 +57,7 @@ Not in the mockup but added: Favorites toggle (star, Ctrl+D), sidebar/filmstrip/
 ## Full screen and video (fixes after the first hands-on test)
 | Item | Status |
 |---|---|
-| True full screen: covers the whole monitor, hides the taskbar, no borders or margins, black background; Esc or F11 leaves it (works even when focus is inside the video window) | built, untested on Windows after the fix |
+| True full screen: covers the whole monitor, hides the taskbar, no borders or margins, black background; Esc or F11 leaves it (works even when focus is inside the video window) | **verified on a Windows 1024x768 CI machine (F11 fills the screen exactly, Esc restores)**; video full screen not yet verified |
 | Full screen: video controls and the mouse pointer start hidden, appear when the mouse moves and hide again after N seconds (Settings, default 5) | built, untested on Windows |
 | Space = play/pause in video mode, also when the video window has focus | built, untested on Windows |
 | Setting "Keep a video playing when I switch to another tab" (default on): the sound continues, the picture is not decoded while hidden, a speaker icon marks the tab, returning to the tab shows the same playback; closing the tab stops it | rules unit-tested (Core); UI untested on Windows |

@@ -126,6 +126,31 @@ def content_types():
             '</Types>').encode("utf-8")
 
 
+def write_zip64(path, entries):
+    """A ZIP as makeappx writes one: version 4.5 (ZIP64) and the ZIP64 end records, which Windows' package reader
+    requires (a plain ZIP is refused as "bad format"). entries: (name, data, compress)."""
+    import struct, zlib
+    out = bytearray()
+    central = bytearray()
+    for name, data, compress in entries:
+        raw = name.encode("utf-8")
+        body = zlib.compress(data, 9)[2:-4] if compress else data   # raw deflate
+        method = 8 if compress else 0
+        crc = zlib.crc32(data) & 0xFFFFFFFF
+        offset = len(out)
+        out += struct.pack("<IHHHHHIIIHH", 0x04034B50, 45, 0, method, 0, 0x5C21, crc, len(body), len(data), len(raw), 0) + raw + body
+        central += struct.pack("<IHHHHHHIIIHHHHHII", 0x02014B50, 45, 45, 0, method, 0, 0x5C21, crc, len(body), len(data),
+                               len(raw), 0, 0, 0, 0, 0, offset) + raw
+    cd_at, cd_size, n = len(out), len(central), len(entries)
+    out += central
+    z64_at = len(out)
+    out += struct.pack("<IQHHIIQQQQ", 0x06064B50, 44, 45, 45, 0, 0, n, n, cd_size, cd_at)   # ZIP64 end of central directory
+    out += struct.pack("<IIQI", 0x07064B50, 0, z64_at, 1)                                   # its locator
+    # the plain end record points to the ZIP64 ones (as makeappx writes it; osslsigncode keeps them only then)
+    out += struct.pack("<IHHHHIIH", 0x06054B50, 0, 0, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0)
+    open(path, "wb").write(bytes(out))
+
+
 def stored(zf, name, data, compress=False):
     info = zipfile.ZipInfo(name, date_time=(2026, 1, 1, 0, 0, 0))
     info.compress_type = zipfile.ZIP_DEFLATED if compress else zipfile.ZIP_STORED
@@ -142,13 +167,10 @@ def main():
         for name, path in sorted(logos(work).items()):
             files.append((name, open(path, "rb").read()))
         unsigned = os.path.join(work, "unsigned.msix")
-        with zipfile.ZipFile(unsigned, "w") as zf:
-            for name, data in files:
-                stored(zf, name.replace("\\", "/"), data)
-            stored(zf, "AppxBlockMap.xml", block_map(files))
-            # (compressed, as makeappx writes it: osslsigncode rewrites it compressed when signing, and kept the
-            # "stored" mark of a stored one, which made the package unreadable)
-            stored(zf, "[Content_Types].xml", content_types(), compress=True)
+        # (the content types compressed, as makeappx writes them: osslsigncode rewrites that file compressed when
+        # signing, and kept the "stored" mark of a stored one, which made the package unreadable)
+        write_zip64(unsigned, [(name.replace("\\", "/"), data, False) for name, data in files] +
+                    [("AppxBlockMap.xml", block_map(files), False), ("[Content_Types].xml", content_types(), True)])
         # a certificate for this build only; its key is deleted below
         key, cert = os.path.join(work, "key.pem"), os.path.join(work, "cert.pem")
         subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-sha256", "-days", "3650",

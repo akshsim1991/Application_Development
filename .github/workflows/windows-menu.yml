@@ -46,7 +46,13 @@ jobs:
         run: |
           $d = (Resolve-Path menu).Path
           Import-Certificate -FilePath "$d\FeatherPDF-package.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
-          Add-AppxPackage -Path "$d\FeatherPDF.msix" -ExternalLocation $d
+          try { Add-AppxPackage -Path "$d\FeatherPDF.msix" -ExternalLocation $d -ErrorAction Stop }
+          catch {
+            $_ | Out-String | Write-Host
+            if ($_.Exception.Message -match 'ActivityId\]\s*([0-9a-f-]+)') { Get-AppPackageLog -ActivityID $Matches[1] | Out-String -Width 300 | Write-Host }
+            Get-WinEvent -LogName Microsoft-Windows-AppXDeploymentServer/Operational -MaxEvents 15 | Format-List TimeCreated, Message | Out-String -Width 300 | Write-Host
+            throw
+          }
           $p = Get-AppxPackage -Name FeatherPDF.ExplorerMenu
           if (-not $p) { throw "the package was not registered" }
           $p | Format-List Name, Version, Publisher, InstallLocation, Status

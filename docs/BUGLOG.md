@@ -1681,3 +1681,21 @@ which only changes a test). The three downloads match latest.json (size and SHA-
   registers it on a Windows runner, and drives the command: title, icon, shown for three PDFs, hidden for one PDF and for
   a selection with another file, and Invoke hands all three paths to (a stand-in) FeatherPDF.exe.
 
+**Published:** 2.25.1 for Windows, Mac and Android (24 November); the Windows 11 menu package checked on a Windows
+runner (Windows menu check workflow). The three downloads match latest.json.
+
+### B-131 Android lacked the desktop apps' tabs, sidebar, updates and full-screen tap - Medium (Android)
+- **Found:** the user: no tabs, no sidebar with thumbnails and bookmarks, no update in Settings, and a single tap should
+  make the PDF full screen.
+- **Fix:** ViewerActivity is one window (singleTask) holding a tab for each document (Tab: handle, address, name, copy,
+  page, zoom and scroll); new documents arrive through onNewIntent and the tab strip's + (several chosen open one after
+  another); closing asks about unsaved changes, and Back asks about each. A sidebar over the page: thumbnails drawn in
+  the background into a small cache, the current page marked and kept in sight, and the bookmarks list. A tap on the
+  page (READ, not on a note) or beside it toggles full screen (bars hidden with the insets controller, or immersive
+  flags before Android 11). Updater.kt reads latest.json (jsDelivr when GitHub fails), offers a newer version, downloads
+  the APK for the phone's kind, checks size and SHA-256, and opens Android's installer through ShareProvider; the
+  manifest gains INTERNET and REQUEST_INSTALL_PACKAGES. latest.json now also lists the 32-bit APK (android32).
+- **Tests:** the Kotlin is type-checked locally against the Android framework classes (Robolectric's android-all) with
+  the project's Kotlin compiler; the emulator self-test gains a second tab (switch back, close), the sidebar with drawn
+  thumbnails, and full screen on and off.
+

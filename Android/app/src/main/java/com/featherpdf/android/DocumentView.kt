@@ -40,6 +40,8 @@ class DocumentView(context: Context) : View(context) {
         /** A pen stroke ended: its points in page coordinates. */
         fun onStroke(page: Int, points: FloatArray)
         fun onPageChanged(page: Int, count: Int)
+        /** A tap beside the pages (the grey around them). */
+        fun onTapOutside() {}
     }
 
     var listener: Listener? = null
@@ -114,10 +116,29 @@ class DocumentView(context: Context) : View(context) {
     // ---------------------------------------------------------------------------------------------------------------
     // The document
 
+    /** Shows a document (another tab's too): its pages from `firstPage`, at the zoom of the whole width. */
     fun setDocument(handle: Long, firstPage: Int) {
         doc = handle
+        blocks.clear()
+        selection = null
+        selectionRects = FloatArray(0)
+        stroke = null
+        marks = FloatArray(0)
+        currentMark = -1
+        zoom = 1f
+        scrollXf = 0f
+        lastReportedPage = -1
+        clearRenders()   // (the pages drawn are another document's)
         relayout(keepPosition = false)
-        post { goToPage(firstPage) }
+        post { goToPage(firstPage); listener?.onPageChanged(currentPage, pageCount) }
+    }
+
+    /** The current zoom and scroll, kept for a tab while another is shown. */
+    fun viewState(): FloatArray = floatArrayOf(zoom, scrollXf, scrollYf)
+    fun restoreViewState(s: FloatArray) {
+        if (s.size < 3) return
+        zoom = s[0]; scrollXf = s[1]; scrollYf = s[2]
+        clampScroll(); clearRenders(); changed()
     }
 
     /** The document changed (an edit, undo, pages turned or deleted): sizes and drawings are taken again. */
@@ -472,8 +493,8 @@ class DocumentView(context: Context) : View(context) {
             return true
         }
         override fun onSingleTapConfirmed(e: MotionEvent): Boolean {
-            val h = hit(e.x, e.y) ?: return false
-            val p = toPage(h.first, h.second, h.third) ?: return false
+            val h = hit(e.x, e.y) ?: run { listener?.onTapOutside(); return true }
+            val p = toPage(h.first, h.second, h.third) ?: run { listener?.onTapOutside(); return true }
             listener?.onPageTap(h.first, p[0], p[1])
             return true
         }

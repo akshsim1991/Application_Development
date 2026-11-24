@@ -45,8 +45,17 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.concurrent.Executors
 
-/** One open document: reading, finding, editing text, annotating, page tools, saving. */
+/**
+ * The open documents, each in a tab (as in Feather PDF for Windows and macOS): reading, finding, editing text,
+ * annotating, page tools, saving. A sidebar shows the pages as thumbnails and the bookmarks; a tap on the page shows
+ * the page alone, full screen (another tap brings the bars back).
+ */
 class ViewerActivity : Activity(), DocumentView.Listener {
+
+    /** A document open in a tab; the one shown is also in doc, uri, name and localPath below. */
+    private class Tab(var doc: Long, var uri: Uri?, var name: String, var localPath: String?, var page: Int = 0, var view: FloatArray? = null)
+    private val tabs = ArrayList<Tab>()
+    private var current = -1
 
     private var doc = 0L
     private var uri: Uri? = null                // where the document came from (null: opened from a path)
@@ -91,8 +100,27 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             return
         }
         val u = incomingUri(intent) ?: run { fail("There is no document to open."); return }
+        openUri(u)
+        Updater.checkOnOpen(this)
+    }
+
+    /** Another document opened (from the start screen, a file app, a share): in a tab of its own, or its tab if open. */
+    override fun onNewIntent(i: Intent) {
+        super.onNewIntent(i)
+        if (selfTest != null) return
+        incomingUri(i)?.let { openUri(it) }
+    }
+
+    /** Opens `u` in a new tab (its copy read in the background); a document already open shows its tab. */
+    private fun openUri(u: Uri) {
+        if (opening) { if (u !in waiting) waiting.add(u); return }   // one at a time (several chosen at once)
+        tabs.indexOfFirst { it.uri == u }.takeIf { it >= 0 }?.let { switchTo(it); openNext(); return }
+        opening = true
+        stashTab()
         uri = u
         name = displayName(u)
+        localPath = null
+        doc = 0L
         title = name
         busy.visibility = View.VISIBLE
         io.execute {
@@ -144,9 +172,16 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         doc = h
         title = name
         uri?.let { Recents.add(this, it.toString(), name) }
-        view.setDocument(doc, if (Settings.restorePositions(this)) uri?.let { Recents.pageOf(this, it.toString()) } ?: 0 else 0)
+        val first = if (Settings.restorePositions(this)) uri?.let { Recents.pageOf(this, it.toString()) } ?: 0 else 0
+        tabs.add(Tab(doc, uri, name, localPath, first))
+        current = tabs.size - 1
+        closeSearch()
+        view.setDocument(doc, first)
+        refreshTabs()
+        sidebarDocumentChanged()
         updateMenus()
-        selfTest?.start()
+        if (tabs.size == 1) selfTest?.start()   // (the build check runs once, on its first document)
+        openNext()
     }
 
     private fun askPassword(wrong: Boolean) {
@@ -160,15 +195,157 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             .setMessage(if (wrong) "Try again." else "Type its password to open it.")
             .setView(box)
             .setPositiveButton("Open") { _, _ -> openLocal(field.text.toString()) }
-            .setNegativeButton("Cancel") { _, _ -> finish() }
-            .setOnCancelListener { finish() }
+            .setNegativeButton("Cancel") { _, _ -> if (tabs.isEmpty()) finish() else { restoreTab(); openNext() } }
+            .setOnCancelListener { if (tabs.isEmpty()) finish() else { restoreTab(); openNext() } }
             .show()
         field.requestFocus()
     }
 
+    /** A document could not be opened: the window closes when it was the only one; otherwise its tabs stay. */
     private fun fail(message: String) {
+        if (tabs.isNotEmpty()) {
+            restoreTab()
+            openNext()
+            AlertDialog.Builder(this).setTitle("Feather PDF").setMessage(message).setPositiveButton("OK", null).show()
+            return
+        }
         AlertDialog.Builder(this).setTitle("Feather PDF").setMessage(message)
             .setPositiveButton("Close") { _, _ -> finish() }.setOnCancelListener { finish() }.show()
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Tabs
+
+    private var opening = false                 // a document is being opened (read, or its password asked)
+    private val waiting = ArrayList<Uri>()       // the next ones to open
+
+    /** The document being opened is done with (open, refused or failed): the next one chosen. */
+    private fun openNext() {
+        opening = false
+        if (waiting.isNotEmpty()) openUri(waiting.removeAt(0))
+    }
+
+    /** The shown tab's state kept in it (before another is opened or shown). */
+    private fun stashTab() {
+        if (doc == 0L) return   // (another document is being opened: the tab keeps what it has)
+        val t = tabs.getOrNull(current) ?: return
+        t.doc = doc; t.uri = uri; t.name = name; t.localPath = localPath
+        if (doc != 0L) { t.page = view.currentPage; t.view = view.viewState() }
+    }
+
+    /** Back to the shown tab's document (after another could not be opened). */
+    private fun restoreTab() {
+        val t = tabs.getOrNull(current) ?: return
+        doc = t.doc; uri = t.uri; name = t.name; localPath = t.localPath
+        title = name
+        updateMenus()
+    }
+
+    fun switchTo(i: Int) {
+        if (i !in tabs.indices) return
+        if (i == current) return
+        stashTab()
+        current = i
+        val t = tabs[i]
+        doc = t.doc; uri = t.uri; name = t.name; localPath = t.localPath
+        closeSearch()
+        view.setDocument(doc, t.page)
+        t.view?.let { s -> view.post { view.restoreViewState(s) } }
+        refreshTabs()
+        sidebarDocumentChanged()
+        updateMenus()
+    }
+
+    /** Closes tab `i`, asking first about unsaved changes; the last one closes the window. */
+    fun closeTab(i: Int) {
+        if (i !in tabs.indices) return
+        stashTab()
+        val t = tabs[i]
+        if (t.doc != 0L && Engine.isModified(t.doc) && selfTest == null) {
+            if (i != current) switchTo(i)
+            AlertDialog.Builder(this).setTitle("Save the changes to ${t.name}?")
+                .setPositiveButton("Save") { _, _ -> save(null) { dropTab(tabs.indexOf(t)) } }
+                .setNegativeButton("Don\u2019t save") { _, _ -> dropTab(tabs.indexOf(t)) }
+                .setNeutralButton("Cancel", null).show()
+            return
+        }
+        dropTab(i)
+    }
+
+    private fun dropTab(i: Int) {
+        if (i !in tabs.indices) return
+        val t = tabs.removeAt(i)
+        t.uri?.let { Recents.setPage(this, it.toString(), if (i == current) view.currentPage else t.page) }
+        if (t.doc != 0L) Engine.close(t.doc)
+        if (tabs.isEmpty()) { doc = 0L; current = -1; finish(); return }
+        val next = if (i < current) current - 1 else minOf(i, tabs.size - 1).coerceAtLeast(0)
+        current = -1   // (the closed tab's state is not kept)
+        val n = tabs[next]
+        current = next
+        doc = n.doc; uri = n.uri; name = n.name; localPath = n.localPath
+        closeSearch()
+        view.setDocument(doc, n.page)
+        n.view?.let { s -> view.post { view.restoreViewState(s) } }
+        refreshTabs()
+        sidebarDocumentChanged()
+        updateMenus()
+    }
+
+    /** The tab strip: each document's name (a dot while it has unsaved changes), × to close it, and + to open another. */
+    private fun refreshTabs() {
+        if (!::tabStrip.isInitialized) return
+        tabStrip.removeAllViews()
+        val text = Chrome.textColour(this)
+        tabs.forEachIndexed { i, t ->
+            val selected = i == current
+            val modified = (if (selected) doc else t.doc).let { it != 0L && Engine.isModified(it) }
+            val cell = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(dp(12), 0, dp(4), 0)
+                background = GradientDrawable().apply {
+                    setColor(if (selected) Chrome.bottomColour(this@ViewerActivity) else 0x00000000)
+                    cornerRadii = floatArrayOf(dp(8).toFloat(), dp(8).toFloat(), dp(8).toFloat(), dp(8).toFloat(), 0f, 0f, 0f, 0f)
+                }
+                setOnClickListener { switchTo(i) }
+                setOnLongClickListener { closeTab(i); true }
+                contentDescription = "Tab ${i + 1}: ${t.name}"
+            }
+            cell.addView(TextView(this).apply {
+                this.text = (if (modified) "\u2022 " else "") + (if (selected) name else t.name)
+                isSingleLine = true
+                ellipsize = android.text.TextUtils.TruncateAt.MIDDLE
+                maxWidth = dp(180)
+                textSize = 14f
+                setTextColor(if (selected) text else Color.WHITE)
+                typeface = if (selected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            })
+            cell.addView(TextView(this).apply {
+                this.text = "\u00D7"
+                textSize = 18f
+                setPadding(dp(8), 0, dp(6), 0)
+                setTextColor(if (selected) text else Color.WHITE)
+                contentDescription = "Close ${t.name}"
+                setOnClickListener { closeTab(i) }
+            })
+            tabStrip.addView(cell, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(40)).apply { setMargins(dp(2), dp(4), dp(2), 0) })
+        }
+        tabStrip.addView(TextView(this).apply {
+            this.text = "+"
+            textSize = 22f
+            gravity = Gravity.CENTER
+            setTextColor(Color.WHITE)
+            contentDescription = "Open another PDF"
+            setOnClickListener { pickDocument() }
+        }, LinearLayout.LayoutParams(dp(44), dp(40)).apply { setMargins(0, dp(4), 0, 0) })
+        tabScroll.post { tabStrip.getChildAt(current)?.let { c -> tabScroll.requestChildRectangleOnScreen(c, android.graphics.Rect(0, 0, c.width, c.height), false) } }
+    }
+
+    /** + in the tab strip: one or more PDFs, each in a tab. */
+    private fun pickDocument() {
+        val i = Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/pdf")
+            .putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        runCatching { startActivityForResult(i, REQ_OPEN) }.onFailure { Toast.makeText(this, "No app to choose files with.", Toast.LENGTH_LONG).show() }
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -178,6 +355,8 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     private lateinit var header: LinearLayout
     private lateinit var frame: FrameLayout
     private lateinit var toolScroll: HorizontalScrollView
+    private lateinit var tabStrip: LinearLayout
+    private lateinit var tabScroll: HorizontalScrollView
     private var titleBar: android.widget.Toolbar? = null
 
     /** The document's name in the title bar (a dot before it while there are unsaved changes). */
@@ -191,7 +370,17 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         // the title bar, the find row and (unless Settings puts it at the bottom) the tools, all under the status bar
         header = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Chrome.barColour(this@ViewerActivity)) }
         titleBar = Chrome.toolbar(this, name)
+        titleBar?.setNavigationIcon(android.R.drawable.ic_menu_sort_by_size)   // the sidebar (pages and bookmarks)
+        titleBar?.navigationContentDescription = "Pages and bookmarks"
+        titleBar?.setNavigationOnClickListener { toggleSidebar() }
         header.addView(titleBar)
+        // the tabs: one for each open document, as on Windows and macOS
+        tabStrip = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(4), 0, dp(4), 0) }
+        tabScroll = HorizontalScrollView(this).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(tabStrip)
+        }
+        header.addView(tabScroll)
         searchRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -230,6 +419,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         frame.addView(pageLabel, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, dp(12), dp(12)) })
         busy = ProgressBar(this).apply { visibility = View.GONE }
         frame.addView(busy, FrameLayout.LayoutParams(dp(48), dp(48), Gravity.CENTER))
+        buildSidebar()
         root.addView(frame, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         toolRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(dp(4), dp(2), dp(4), dp(2)) }
@@ -338,6 +528,181 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     override fun onPageChanged(page: Int, count: Int) {
         pageLabel.text = "${page + 1} / $count"
+        if (::sidebar.isInitialized && sidebar.visibility == View.VISIBLE) {
+            thumbAdapter.notifyDataSetChanged()
+            val first = pagesList.firstVisiblePosition; val last = pagesList.lastVisiblePosition
+            if (page < first || page > last) pagesList.setSelection(maxOf(0, page - 1))   // (the page shown stays in sight)
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // The sidebar: the pages as thumbnails, and the bookmarks (as in Feather PDF for Windows)
+
+    private lateinit var sidebar: LinearLayout
+    private lateinit var pagesList: android.widget.ListView
+    private lateinit var marksList: android.widget.ListView
+    private lateinit var pagesTab: TextView
+    private lateinit var marksTab: TextView
+    private val thumbs = android.util.LruCache<Int, Bitmap>(64)
+    private val thumbIo = Executors.newSingleThreadExecutor()
+    private val thumbAsked = HashSet<Int>()
+    private var thumbDoc = 0L
+    private var pageSizes = FloatArray(0)
+    private var marks = listOf<Triple<Int, Int, String>>()   // level, page, title
+    private val sidebarWidth get() = minOf(dp(280), (resources.displayMetrics.widthPixels * 0.78f).toInt())
+    private val thumbWidth get() = sidebarWidth - dp(56)
+
+    private fun buildSidebar() {
+        val text = Chrome.textColour(this)
+        sidebar = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Chrome.bottomColour(this@ViewerActivity))
+            elevation = dp(8).toFloat()
+            isClickable = true   // (taps stay in it)
+            visibility = View.GONE
+        }
+        val head = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        fun tabLabel(label: String, which: Int) = TextView(this).apply {
+            this.text = label; textSize = 15f; gravity = Gravity.CENTER; setTextColor(text)
+            setPadding(dp(8), dp(12), dp(8), dp(12))
+            setOnClickListener { showSidebarPage(which) }
+        }
+        pagesTab = tabLabel("Pages", 0)
+        marksTab = tabLabel("Bookmarks", 1)
+        head.addView(pagesTab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(marksTab, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(iconButton(android.R.drawable.ic_menu_close_clear_cancel, "Close the sidebar") { setSidebar(false) })
+        sidebar.addView(head)
+        pagesList = android.widget.ListView(this).apply {
+            divider = null
+            adapter = thumbAdapter
+            setOnItemClickListener { _, _, pos, _ -> view.goToPage(pos); if (!wideScreen()) setSidebar(false) }
+        }
+        marksList = android.widget.ListView(this).apply {
+            setOnItemClickListener { _, _, pos, _ ->
+                val m = marks.getOrNull(pos) ?: return@setOnItemClickListener
+                if (m.second >= 0) { view.goToPage(m.second); if (!wideScreen()) setSidebar(false) }
+            }
+        }
+        sidebar.addView(pagesList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        sidebar.addView(marksList, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        frame.addView(sidebar, FrameLayout.LayoutParams(sidebarWidth, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.START))
+        showSidebarPage(0)
+    }
+
+    private fun wideScreen() = resources.configuration.screenWidthDp >= 600
+
+    private fun showSidebarPage(which: Int) {
+        pagesList.visibility = if (which == 0) View.VISIBLE else View.GONE
+        marksList.visibility = if (which == 1) View.VISIBLE else View.GONE
+        for ((t, on) in listOf(pagesTab to (which == 0), marksTab to (which == 1))) {
+            t.typeface = if (on) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+            t.background = if (on) GradientDrawable().apply { setColor(0x22C62828) } else null
+        }
+    }
+
+    fun toggleSidebar() = setSidebar(sidebar.visibility != View.VISIBLE)
+
+    fun setSidebar(open: Boolean) {
+        if (open && fullScreen) setFullScreen(false)
+        sidebar.visibility = if (open) View.VISIBLE else View.GONE
+        Settings.setSidebarOpen(this, open)
+        if (open) { thumbAdapter.notifyDataSetChanged(); pagesList.setSelection(maxOf(0, view.currentPage - 1)) }
+    }
+
+    /** Another document in the sidebar: its thumbnails and bookmarks. */
+    private fun sidebarDocumentChanged() {
+        if (!::sidebar.isInitialized) return
+        thumbs.evictAll()
+        thumbAsked.clear()
+        thumbDoc = doc
+        pageSizes = if (doc != 0L) Engine.pageSizes(doc) else FloatArray(0)
+        marks = if (doc != 0L) Engine.bookmarks(doc).mapNotNull { row ->
+            val p = row.split('\t', limit = 3)
+            if (p.size < 2) null else Triple(p[0].toIntOrNull() ?: 0, p[1].toIntOrNull() ?: -1, p.getOrElse(2) { "" })
+        } else emptyList()
+        marksList.adapter = android.widget.ArrayAdapter(this, android.R.layout.simple_list_item_1,
+            if (marks.isEmpty()) listOf("This document has no bookmarks.") else marks.map { "\u2003".repeat(it.first.coerceAtMost(6)) + it.third })
+        thumbAdapter.notifyDataSetChanged()
+        if (Settings.sidebarOpen(this) && doc != 0L && !fullScreen) sidebar.visibility = View.VISIBLE
+    }
+
+    private val thumbAdapter = object : android.widget.BaseAdapter() {
+        override fun getCount() = if (doc == 0L) 0 else pageSizes.size / 2
+        override fun getItem(p: Int) = p
+        override fun getItemId(p: Int) = p.toLong()
+        override fun getView(p: Int, convert: View?, parent: ViewGroup?): View {
+            val cell = (convert as? LinearLayout) ?: LinearLayout(this@ViewerActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(dp(8), dp(8), dp(8), dp(4))
+                addView(ImageView(context).apply { scaleType = ImageView.ScaleType.FIT_XY; setBackgroundColor(Color.WHITE) })
+                addView(TextView(context).apply { textSize = 12f; gravity = Gravity.CENTER; setTextColor(Chrome.textColour(this@ViewerActivity)) })
+            }
+            val img = cell.getChildAt(0) as ImageView
+            val w = thumbWidth
+            val h = if (pageSizes.size > 2 * p + 1 && pageSizes[2 * p] > 0) (w * pageSizes[2 * p + 1] / pageSizes[2 * p]).toInt() else (w * 1.41f).toInt()
+            img.layoutParams = LinearLayout.LayoutParams(w, h)
+            val here = p == view.currentPage
+            img.setPadding(if (here) dp(3) else 1, if (here) dp(3) else 1, if (here) dp(3) else 1, if (here) dp(3) else 1)
+            img.setBackgroundColor(if (here) 0xFFC62828.toInt() else 0x33808080)
+            (cell.getChildAt(1) as TextView).text = "${p + 1}"
+            val b = thumbs.get(p)
+            img.setImageBitmap(b)
+            if (b == null) askThumb(p, w, h)
+            return cell
+        }
+    }
+
+    /** A page's thumbnail, drawn in the background. */
+    private fun askThumb(p: Int, w: Int, h: Int) {
+        if (!thumbAsked.add(p)) return
+        val handle = doc
+        val mode = view.colours
+        runCatching {
+            thumbIo.execute {
+                val bmp = runCatching {
+                    val buf = java.nio.ByteBuffer.allocateDirect(w * h * 4)
+                    if (!Engine.render(handle, p, buf, w, h, w * 4, 0, 0, w, h, mode)) null
+                    else Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { buf.position(0); it.copyPixelsFromBuffer(buf) }
+                }.getOrNull()
+                main.post {
+                    if (handle != thumbDoc || bmp == null) return@post
+                    thumbs.put(p, bmp)
+                    thumbAdapter.notifyDataSetChanged()
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------
+    // Full screen: a tap on the page (reading) hides the bars, the tabs, the tools and the sidebar; another brings them back
+
+    private var fullScreen = false
+
+    fun setFullScreen(on: Boolean) {
+        fullScreen = on
+        header.visibility = if (on) View.GONE else View.VISIBLE
+        toolScroll.visibility = if (on) View.GONE else View.VISIBLE
+        if (on) sidebar.visibility = View.GONE else if (Settings.sidebarOpen(this) && doc != 0L) sidebar.visibility = View.VISIBLE
+        if (Build.VERSION.SDK_INT >= 30) {
+            window.insetsController?.let { c ->
+                if (on) {
+                    c.systemBarsBehavior = android.view.WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                    c.hide(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+                } else c.show(android.view.WindowInsets.Type.statusBars() or android.view.WindowInsets.Type.navigationBars())
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val keep = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+            @Suppress("DEPRECATION")
+            window.decorView.systemUiVisibility = if (on) keep or View.SYSTEM_UI_FLAG_FULLSCREEN or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                                                  else keep or (if (Build.VERSION.SDK_INT >= 26 && !isNight()) View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR else 0)
+        }
+    }
+
+    override fun onTapOutside() {
+        if (view.tool == DocumentView.Tool.READ) setFullScreen(!fullScreen)
     }
 
     // ---------------------------------------------------------------------------------------------------------------
@@ -354,7 +719,10 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         menu.add(0, M_SAVE_AS, 4, "Save a copy…")
         menu.add(0, M_SHARE, 5, "Share…")
         menu.add(0, M_GOTO, 6, "Go to page…")
+        menu.add(0, M_PAGES, 7, "Pages")
         menu.add(0, M_BOOKMARKS, 7, "Bookmarks")
+        menu.add(0, M_OPEN, 13, "Open another PDF…")
+        menu.add(0, M_CLOSE_TAB, 14, "Close this tab")
         menu.add(0, M_COLOURS, 8, "Page colours…")
         menu.add(0, M_ROTATE, 9, "Turn this page")
         menu.add(0, M_DELETE, 10, "Delete this page…")
@@ -367,10 +735,11 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     private fun updateMenus() {
         val m = menuRef ?: return
         val open = doc != 0L
-        for (id in listOf(M_FIND, M_SAVE, M_SAVE_AS, M_SHARE, M_GOTO, M_BOOKMARKS, M_ROTATE, M_DELETE)) m.findItem(id)?.isEnabled = open
+        for (id in listOf(M_FIND, M_SAVE, M_SAVE_AS, M_SHARE, M_GOTO, M_BOOKMARKS, M_PAGES, M_ROTATE, M_DELETE, M_CLOSE_TAB)) m.findItem(id)?.isEnabled = open
         m.findItem(M_UNDO)?.isEnabled = open && Engine.canUndo(doc)
         m.findItem(M_REDO)?.isEnabled = open && Engine.canRedo(doc)
         title = if (open && Engine.isModified(doc)) "• $name" else name
+        refreshTabs()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -382,7 +751,10 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             M_SAVE_AS -> saveAs()
             M_SHARE -> share()
             M_GOTO -> askPage()
-            M_BOOKMARKS -> showBookmarks()
+            M_BOOKMARKS -> { setSidebar(true); showSidebarPage(1) }
+            M_PAGES -> { setSidebar(true); showSidebarPage(0) }
+            M_OPEN -> pickDocument()
+            M_CLOSE_TAB -> closeTab(current)
             M_COLOURS -> chooseColours()
             M_ROTATE -> if (Engine.rotatePages(doc, intArrayOf(view.currentPage), 1)) changedDocument()
             M_DELETE -> deletePage()
@@ -396,6 +768,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
     fun changedDocument() {
         view.documentChanged()
         hits = FloatArray(0); view.marks = hits; hitIndex = -1; searchCount.text = ""
+        sidebarDocumentChanged()   // (pages turned, deleted or edited: their thumbnails again)
         updateMenus()
     }
 
@@ -405,14 +778,6 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         AlertDialog.Builder(this).setTitle("Go to page").setView(padded(field))
             .setPositiveButton("Go") { _, _ -> field.text.toString().toIntOrNull()?.let { view.goToPage(it - 1) } }
             .setNegativeButton("Cancel", null).show()
-    }
-
-    private fun showBookmarks() {
-        val rows = Engine.bookmarks(doc)
-        if (rows.isEmpty()) { Toast.makeText(this, "This document has no bookmarks.", Toast.LENGTH_SHORT).show(); return }
-        val parsed = rows.map { val p = it.split('\t', limit = 3); Triple(p[0].toInt(), p[1].toInt(), p.getOrElse(2) { "" }) }
-        val labels = parsed.map { " ".repeat(it.first.coerceAtMost(6)) + it.third }.toTypedArray()
-        AlertDialog.Builder(this).setTitle("Bookmarks").setItems(labels) { _, i -> if (parsed[i].second >= 0) view.goToPage(parsed[i].second) }.show()
     }
 
     fun chooseColours() {
@@ -483,7 +848,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             DocumentView.Tool.ADD_TEXT -> addText(page, x, y)
             DocumentView.Tool.NOTE -> addNote(page, x, y)
             DocumentView.Tool.ERASE -> erase(page, x, y)
-            else -> showAnnotation(page, x, y)
+            else -> if (!showAnnotation(page, x, y) && view.tool == DocumentView.Tool.READ) setFullScreen(!fullScreen)
         }
     }
 
@@ -704,16 +1069,17 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             .setNegativeButton("Cancel", null).show()
     }
 
-    /** Reading: a tap on a note or a commented highlight shows its comment. */
-    private fun showAnnotation(page: Int, x: Float, y: Float) {
+    /** Reading: a tap on a note or a commented highlight shows its comment (true); elsewhere, nothing is shown (false). */
+    private fun showAnnotation(page: Int, x: Float, y: Float): Boolean {
         val kind = arrayOfNulls<String>(2)
         val i = Engine.annotAt(doc, page, x, y, kind)
-        if (i < 0 || kind[1].isNullOrBlank()) return
+        if (i < 0 || kind[1].isNullOrBlank()) return false
         val body = EditText(this).apply { setText(kind[1]); inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE }
         AlertDialog.Builder(this).setTitle(kind[0]?.replaceFirstChar { it.uppercase() } ?: "Note").setView(padded(body))
             .setPositiveButton("Save") { _, _ -> if (body.text.toString() != kind[1] && Engine.setAnnotText(doc, page, i, body.text.toString())) changedDocument() }
             .setNeutralButton("Remove") { _, _ -> if (Engine.removeAnnot(doc, page, i)) changedDocument() }
             .setNegativeButton("Close", null).show()
+        return true
     }
 
     override fun onTextSwept(page: Int, x1: Float, y1: Float, x2: Float, y2: Float) {
@@ -797,6 +1163,17 @@ class ViewerActivity : Activity(), DocumentView.Listener {
             runCatching { contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION) }
             save(u, afterSaveAs)
         }
+        if (requestCode == REQ_OPEN && resultCode == RESULT_OK && data != null) {   // + : each chosen PDF in a tab
+            val chosen = ArrayList<Uri>()
+            data.clipData?.let { c -> for (k in 0 until c.itemCount) c.getItemAt(k).uri?.let { chosen.add(it) } }
+            if (chosen.isEmpty()) data.data?.let { chosen.add(it) }
+            for (u in chosen) {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                runCatching { contentResolver.takePersistableUriPermission(u, flags) }
+                    .onFailure { runCatching { contentResolver.takePersistableUriPermission(u, Intent.FLAG_GRANT_READ_URI_PERMISSION) } }
+                openUri(u)
+            }
+        }
     }
 
     private fun share() {
@@ -812,11 +1189,17 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     @Deprecated("Back handling of the platform")
     override fun onBackPressed() {
+        if (fullScreen) { setFullScreen(false); return }
         if (searchRow.visibility == View.VISIBLE) { closeSearch(); return }
-        if (doc != 0L && Engine.isModified(doc) && selfTest == null) {
+        if (::sidebar.isInitialized && sidebar.visibility == View.VISIBLE && !wideScreen()) { setSidebar(false); return }
+        // leaving: each document with unsaved changes is asked about first (its tab shown)
+        stashTab()
+        val unsaved = if (selfTest == null) tabs.indexOfFirst { it.doc != 0L && Engine.isModified(it.doc) } else -1
+        if (unsaved >= 0) {
+            switchTo(unsaved)
             AlertDialog.Builder(this).setTitle("Save the changes to $name?")
-                .setPositiveButton("Save") { _, _ -> save(null) { finish() } }
-                .setNegativeButton("Don’t save") { _, _ -> finish() }
+                .setPositiveButton("Save") { _, _ -> save(null) { dropTab(current); if (!isFinishing) onBackPressed() } }
+                .setNegativeButton("Don\u2019t save") { _, _ -> dropTab(current); if (!isFinishing) onBackPressed() }
                 .setNeutralButton("Cancel", null).show()
             return
         }
@@ -825,19 +1208,37 @@ class ViewerActivity : Activity(), DocumentView.Listener {
 
     override fun onPause() {
         super.onPause()
-        if (doc != 0L) uri?.let { Recents.setPage(this, it.toString(), view.currentPage) }
+        stashTab()
+        for (t in tabs) if (t.doc != 0L) t.uri?.let { Recents.setPage(this, it.toString(), t.page) }
     }
 
     override fun onDestroy() {
         super.onDestroy()
         io.shutdown()
-        if (doc != 0L) { Engine.close(doc); doc = 0L }
+        thumbIo.shutdown()
+        stashTab()
+        for (t in tabs) if (t.doc != 0L) Engine.close(t.doc)
+        tabs.clear()
+        doc = 0L
     }
 
     // ---------------------------------------------------------------------------------------------------------------
     // For the build check (SelfTest)
 
     val documentHandle: Long get() = doc
+    val tabCount: Int get() = tabs.size
+    val currentTab: Int get() = current
+    val tabStripView: View get() = tabScroll
+    val sidebarView: View get() = sidebar
+    val fullScreenNow: Boolean get() = fullScreen
+    val thumbnailsDrawn: Int get() = thumbs.size()
+    val thumbnailRows: Int get() = thumbAdapter.count
+    /** The build check: a file of the app's own opened in another tab. */
+    fun openPathInTab(path: String) {
+        stashTab()
+        uri = null; name = File(path).name; localPath = path; doc = 0L
+        openLocal("")
+    }
     val headerView: View get() = header
     val titleShown: String get() = titleBar?.title?.toString() ?: ""
     val toolsView: View get() = toolScroll
@@ -858,6 +1259,7 @@ class ViewerActivity : Activity(), DocumentView.Listener {
         private const val M_FIND = 1; private const val M_UNDO = 2; private const val M_REDO = 3; private const val M_SAVE = 4
         private const val M_SAVE_AS = 5; private const val M_SHARE = 6; private const val M_GOTO = 7; private const val M_BOOKMARKS = 8
         private const val M_COLOURS = 9; private const val M_ROTATE = 10; private const val M_DELETE = 11; private const val M_ABOUT = 12
-        private const val M_SETTINGS = 13
+        private const val M_SETTINGS = 13; private const val M_PAGES = 14; private const val M_OPEN = 15; private const val M_CLOSE_TAB = 16
+        private const val REQ_OPEN = 2
     }
 }

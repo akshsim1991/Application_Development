@@ -103,7 +103,7 @@ class SettingsActivity : Activity() {
                 Item(Item.Kind.CHOICE, "Pages kept ready in memory", "More pages make paging back and forth faster and use more memory.",
                      listOf("Few", "Normal", "Many"), get = { Settings.cacheIndex(a) }, set = { Settings.setCacheIndex(a, it) }),
             )),
-            Category("Advanced", "Default app, recent files, versions, reset", listOf(
+            Category("Advanced", "Updates, default app, recent files, reset", listOf(
                 Item(Item.Kind.BUTTON, "Default PDF application", "Opens the phone's settings, where you choose the app that opens PDF files.",
                      listOf("Open settings…"), press = { defaultApps() }),
                 Item(Item.Kind.BUTTON, "Recent files", "The list on the start screen.", listOf("Clear the list"), press = {
@@ -111,10 +111,10 @@ class SettingsActivity : Activity() {
                         .setPositiveButton("Clear") { _, _ -> Recents.clear(a); Toast.makeText(a, "Cleared.", Toast.LENGTH_SHORT).show() }
                         .setNegativeButton("Cancel", null).show()
                 }),
-                Item(Item.Kind.BUTTON, "New versions", "The newest Feather PDF is on its releases page (or on Google Play, when installed from there).",
-                     listOf("Open the releases page"), press = {
-                         runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/akshsim1991/FeatherPDF-releases"))) }
-                     }),
+                Item(Item.Kind.TOGGLE, "Check for new versions when Feather PDF opens", "At most once a day. A new version is offered with what is new in it; nothing is installed without asking.",
+                     get = { if (Settings.checkUpdates(a)) 1 else 0 }, set = { Settings.setCheckUpdates(a, it != 0) }),
+                Item(Item.Kind.BUTTON, "Update to the new version", "Version ${Updater.version(a)} is installed. Checks now; a new version is downloaded, checked and installed by Android (it asks first), keeping your settings and recent files.",
+                     listOf("Check for updates"), press = { Updater.check(a, manual = true) }),
                 Item(Item.Kind.BUTTON, "About", "Who made Feather PDF, privacy, the open-source licences.", listOf("About Feather PDF"),
                      press = { About.show(a) }),
                 Item(Item.Kind.BUTTON, "Reset settings", "Puts every setting on this page and the others back as it was when Feather PDF was installed. Recent files are kept.",

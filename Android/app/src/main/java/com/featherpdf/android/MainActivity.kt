@@ -62,6 +62,7 @@ class MainActivity : Activity() {
         setContentView(outer)
         Chrome.fitSystemBars(this, outer, bar, root)
         FeatherApp.startError?.let { AlertDialog.Builder(this).setTitle("Feather PDF").setMessage(it).setPositiveButton("OK", null).show() }
+        Updater.checkOnOpen(this)   // a new version, at most once a day (Settings > Advanced)
     }
 
     override fun onResume() {

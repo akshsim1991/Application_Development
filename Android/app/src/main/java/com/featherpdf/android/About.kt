@@ -48,7 +48,8 @@ object About {
             "no account, cloud service or tracking.\n\n" +
             Engine.aboutCredits() + "\n\n" +
             "PRIVACY\n" +
-            "Feather PDF does not collect, store or send any personal data. It has no permission to use the internet; your " +
+            "Feather PDF does not collect, store or send any personal data. It uses the internet only to see whether a new version " +
+            "is out (a small version file; Settings > Advanced turns it off) and to download one when you choose to; your " +
             "documents are opened only when you choose them, and stay on your phone. The privacy policy: $PRIVACY_URL"
         AlertDialog.Builder(a).setTitle("Feather PDF")
             .setView(scrollingText(a, text))

@@ -145,6 +145,35 @@ class SelfTest(private val a: ViewerActivity, private val out: File) {
             check("redo", Engine.redo(doc))
             a.changedDocument()
         }
+        // as on Windows and macOS: tabs, the sidebar (thumbnails and bookmarks) and a tap for full screen
+        step("tabs") {
+            check("one tab, shown in the tab strip", a.tabCount == 1 && a.tabStripView.visibility == android.view.View.VISIBLE && a.tabStripView.height > 0)
+            a.intent.getStringExtra(ViewerActivity.EXTRA_PATH)?.let { a.openPathInTab(it) }
+        }
+        step("a second tab") {
+            check("a second document opens in a second tab", a.tabCount == 2 && a.currentTab == 1 && a.documentHandle != doc)
+            shot("10-two-tabs")
+            a.switchTo(0)
+            check("the first tab shows its own document again", a.currentTab == 0 && a.documentHandle == doc)
+            a.closeTab(1)
+            check("closing the second tab leaves the first", a.tabCount == 1 && a.documentHandle == doc)
+            a.setSidebar(true)
+        }
+        step("sidebar") {
+            check("the sidebar is shown, a row for each page", a.sidebarView.visibility == android.view.View.VISIBLE && a.thumbnailRows == Engine.pageCount(doc))
+        }
+        step("sidebar thumbnails") {
+            check("page thumbnails are drawn (${a.thumbnailsDrawn})", a.thumbnailsDrawn > 0)
+            shot("11-sidebar")
+            a.setSidebar(false)
+            a.setFullScreen(true)
+        }
+        step("full screen") {
+            check("full screen: the title bar, tabs and tools are hidden", a.fullScreenNow && a.headerView.visibility == android.view.View.GONE && a.toolsView.visibility == android.view.View.GONE)
+            shot("12-full-screen")
+            a.setFullScreen(false)
+            check("and shown again", !a.fullScreenNow && a.headerView.visibility == android.view.View.VISIBLE)
+        }
         step("save") {
             val bytes = Engine.bytesToSave(doc)
             check("the document is written", bytes != null && bytes.size > 500)

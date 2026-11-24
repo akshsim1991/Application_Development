@@ -80,6 +80,16 @@ object Settings {
         return minOf(mb shl 20, Runtime.getRuntime().maxMemory() / 3)
     }
 
+    // ---- Viewing: the sidebar (page thumbnails and bookmarks), shown or not
+    fun sidebarOpen(c: Context) = bool(c, "sidebarOpen", c.resources.configuration.screenWidthDp >= 600)
+    fun setSidebarOpen(c: Context, v: Boolean) = put(c, "sidebarOpen", v)
+
+    // ---- Advanced: new versions (Updater)
+    fun checkUpdates(c: Context) = bool(c, "checkUpdates", true)
+    fun setCheckUpdates(c: Context, v: Boolean) = put(c, "checkUpdates", v)
+    fun lastUpdateCheck(c: Context) = p(c).getLong("lastUpdateCheck", 0L)
+    fun setLastUpdateCheck(c: Context, v: Long) = p(c).edit().putLong("lastUpdateCheck", v).apply()
+
     /** Every setting back as it was when the app was installed (recent files are kept). */
     fun reset(c: Context) { p(c).edit().clear().apply() }
 

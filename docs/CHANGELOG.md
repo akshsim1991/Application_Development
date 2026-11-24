@@ -2,6 +2,26 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.26.0 "Mondeo" (24 November 2026)
+
+Android, as Feather PDF for Windows and macOS:
+
+- New: tabs. Every PDF opens in a tab of one window (the strip under the title bar: tap to switch, × or a long
+  press to close, + to open more, several at once). A document already open shows its tab. Leaving asks about each
+  document with unsaved changes.
+- New: the sidebar (the button at the left of the title bar, or Pages / Bookmarks in the menu): thumbnails of every
+  page, the one shown marked and kept in sight, and the document's bookmarks; a tap goes there. On a phone it closes
+  after a tap; on a tablet it stays open, and it is remembered.
+- New: a tap on the page while reading shows it full screen (no title bar, tabs, tools or system bars); another tap,
+  or Back, brings them back. A tap on a note still opens the note.
+- New: updates as on Windows and macOS. Settings > Advanced: "Check for new versions when Feather PDF opens" (on, at
+  most once a day) and "Update to the new version". A new version is offered with what is new; Update now downloads the
+  APK for the phone (64-bit, or 32-bit on older phones), checks its size and SHA-256, and hands it to Android's
+  installer, which asks before it installs over this one (settings and recent files are kept). Android asks once
+  whether Feather PDF may install its updates. Installed from Google Play, updates come from there.
+- Privacy: the Android app now connects to the internet only for this (the version file, and a download you choose);
+  the privacy policy and About say so.
+
 ## 2.25.1 (24 November 2026)
 
 - Fixed (Windows): choosing many PDFs at once to add or combine (20 certificates with long names) failed with "You can

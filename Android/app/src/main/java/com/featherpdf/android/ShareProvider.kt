@@ -12,7 +12,7 @@ import java.io.FileNotFoundException
 
 /**
  * Lends the copies in cache/share to the app a document is shared with (content://com.featherpdf.android.share/<name>),
- * read only, for the permission the share grants.
+ * read only, for the permission the share grants; and a downloaded update to Android's installer (Updater).
  */
 class ShareProvider : ContentProvider() {
     private fun fileOf(uri: Uri): File {
@@ -25,7 +25,7 @@ class ShareProvider : ContentProvider() {
     }
 
     override fun onCreate() = true
-    override fun getType(uri: Uri) = "application/pdf"
+    override fun getType(uri: Uri) = if (uri.lastPathSegment?.endsWith(".apk", true) == true) APK else "application/pdf"
     override fun openFile(uri: Uri, mode: String): ParcelFileDescriptor =
         ParcelFileDescriptor.open(fileOf(uri), ParcelFileDescriptor.MODE_READ_ONLY)
 
@@ -43,5 +43,6 @@ class ShareProvider : ContentProvider() {
 
     companion object {
         const val AUTHORITY = "com.featherpdf.android.share"
+        const val APK = "application/vnd.android.package-archive"   // an update downloaded by Updater
     }
 }

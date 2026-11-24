@@ -27,14 +27,16 @@ done
 cp "$root/releases/$win" "$root/releases/$mac" "$root/releases/$apk" "$dest/"
 [ -f "$root/releases/$apk32" ] && cp "$root/releases/$apk32" "$dest/"
 cp "$root/docs/PRIVACY.md" "$dest/PRIVACY.md"   # the privacy policy Google Play and the apps link to
-python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" <<'PY'
+python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" "$apk32" <<'PY'
 import hashlib, json, os, sys, datetime
-dest, version, notes, base, win, mac, apk = sys.argv[1:]
+dest, version, notes, base, win, mac, apk, apk32 = sys.argv[1:]
 def pkg(name):
     data = open(os.path.join(dest, name), 'rb').read()
     return {"url": f"{base}/{name}", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
 latest = {"version": version, "date": datetime.date.today().strftime("%-d %B %Y"), "notes": notes,
           "windows": pkg(win), "mac": pkg(mac), "android": pkg(apk)}
+if os.path.exists(os.path.join(dest, apk32)):
+    latest["android32"] = pkg(apk32)   # older 32-bit phones (the Android app's updater takes it there)
 open(os.path.join(dest, "latest.json"), "w").write(json.dumps(latest, indent=2, ensure_ascii=True) + "\n")
 print(json.dumps(latest, indent=2))
 PY
@@ -60,7 +62,8 @@ If a download does not start, your network may block raw.githubusercontent.com (
 mirror link beside it, which serves the same file (its SHA-256 is in latest.json).
 
 Installed copies on Windows and macOS find new versions themselves (Help > Update to new version) and ask whether to
-update now or later. On Android, download the new APK and open it: it installs over the old one, keeping your settings.
+update now or later. So does the Android app (Settings > Advanced > Update to the new version, and a check when it opens):
+it downloads the APK, checks it and hands it to Android's installer, which installs it over the old one, keeping your settings.
 MD
 cd "$dest"
 git add -A

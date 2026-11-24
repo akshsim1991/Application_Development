@@ -31,3 +31,6 @@ phase3.cpp (org info, perf sample, storage trend, WU registry status, RunCapture
 
 ## 3.7 (stabilize, part 1)
 device.cpp: DiagnoseDevice (problem code, DEVPKEY_Device_ProblemStatus decoded, driver service state/file, Kernel-PnP 410/411/441/442 events, filters) and FixDevice (rescan / restart / enable / enableService / reinstall, re-checked and journaled). webui: device.diagnose, device.fix, system.restart/cancelRestart; device.fix is on the administrator-helper whitelist. UI: Drivers > Problems tab (what Windows reports, why it cannot start, automatic fix, manual steps, ignore), theme switch (auto/light/dark). UI tests: 102 checks.
+
+## 3.7.1 (stabilize, part 2)
+Update: HttpErr text for WinHTTP codes, ApplyUserProxy, long timeouts for installers, retry + jsDelivr mirror, update.openDownload, channel (latest-beta.json), rollback via manifest "previous". What's new (data/whatsnew.json embedded) and Help & FAQ modals. WebView2-missing prompt in main.cpp (Win10/11: offer Microsoft page; Win7/8: explain classic window). clean.runById lets the administrator helper run its own scan and clean selected ids. UI tests: 108 checks.

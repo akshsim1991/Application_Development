@@ -1,0 +1,1 @@
+Update downloads are more robust (your proxy settings, longer waits, retries, mirror, plain-language errors and a Download in browser button). Update channel (stable or beta) and roll back to the previous version. What's new and Help pages. The administrator helper now also covers Clean items. Clear prompt when the WebView2 runtime is missing.

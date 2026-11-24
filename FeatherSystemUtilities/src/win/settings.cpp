@@ -50,6 +50,7 @@ void LoadSettings() {
         else if (k.rfind("excl.", 0) == 0) { if (g_cfg.exclusions.size() < 100 && !v.empty()) g_cfg.exclusions.push_back(FromUtf8(v)); }
         else if (k.rfind("ign.", 0) == 0) { if (g_cfg.ignored.size() < 500 && !v.empty()) g_cfg.ignored.push_back(FromUtf8(v)); }
         else if (k.rfind("verify.", 0) == 0) { if (g_cfg.pendingVerify.size() < 50 && !v.empty()) g_cfg.pendingVerify.push_back(FromUtf8(v)); }
+        else if (k == "updateChannel") g_cfg.updateChannel = v == "beta" ? L"beta" : L"stable"; else if (k == "lastSeenVersion") g_cfg.lastSeenVersion = FromUtf8(v); else if (k == "webviewPrompt") g_cfg.webviewPrompt = n != 0;
         else if (k == "uiTheme") { g_cfg.uiTheme = (v == "light" || v == "dark") ? FromUtf8(v) : L"auto"; }
         else if (k == "betaFeatures") g_cfg.betaFeatures = n != 0; else if (k.rfind("flag.", 0) == 0) { if (g_cfg.flags.size() < 40) g_cfg.flags[k.substr(5)] = n != 0; }
         else if (k == "liveMetrics") g_cfg.liveMetrics = n != 0;
@@ -71,7 +72,7 @@ void SaveSettings() {
     std::ostringstream o;
     o << "theme=" << g_cfg.theme << "\ndensity=" << g_cfg.density << "\nhideSystem=" << g_cfg.hideSystem << "\nconfirmBatch=" << g_cfg.confirmBatch << "\nautoUpdate=" << g_cfg.autoUpdate << "\nlastUpdateCheck=" << g_cfg.lastUpdateCheck << "\nkeepRecent=" << g_cfg.keepRecent << "\nlargeMinMB=" << g_cfg.largeMinMB << "\ndupMinKB=" << g_cfg.dupMinKB << "\nstartPage=" << g_cfg.startPage
       << "\nmaximized=" << g_cfg.maximized << "\nwinX=" << g_cfg.winX << "\nwinY=" << g_cfg.winY << "\nwinW=" << g_cfg.winW << "\nwinH=" << g_cfg.winH << "\n";
-    o << "uiTheme=" << ToUtf8(g_cfg.uiTheme) << "\n" << "betaFeatures=" << g_cfg.betaFeatures << "\n"; for (auto& kv : g_cfg.flags) o << "flag." << kv.first << "=" << kv.second << "\n"; o << "liveMetrics=" << g_cfg.liveMetrics << "\nonlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
+    o << "updateChannel=" << ToUtf8(g_cfg.updateChannel) << "\nlastSeenVersion=" << ToUtf8(g_cfg.lastSeenVersion) << "\nwebviewPrompt=" << g_cfg.webviewPrompt << "\n" << "uiTheme=" << ToUtf8(g_cfg.uiTheme) << "\n" << "betaFeatures=" << g_cfg.betaFeatures << "\n"; for (auto& kv : g_cfg.flags) o << "flag." << kv.first << "=" << kv.second << "\n"; o << "liveMetrics=" << g_cfg.liveMetrics << "\nonlineAdvice=" << g_cfg.onlineAdvice << "\nadviceCheck=" << g_cfg.adviceCheck << "\nskipVersion=" << ToUtf8(g_cfg.skipVersion) << "\ndeferUntil=" << g_cfg.deferUntil << "\nlogDays=" << g_cfg.logRetentionDays << "\nquarantine=" << g_cfg.quarantineLeftovers << "\n";
     for (size_t i = 0; i < g_cfg.pendingVerify.size(); ++i) o << "verify." << i << "=" << ToUtf8(g_cfg.pendingVerify[i]) << "\n";
     for (size_t i = 0; i < g_cfg.exclusions.size(); ++i) o << "excl." << i << "=" << ToUtf8(g_cfg.exclusions[i]) << "\n";
     for (size_t i = 0; i < g_cfg.ignored.size(); ++i) o << "ign." << i << "=" << ToUtf8(g_cfg.ignored[i]) << "\n";

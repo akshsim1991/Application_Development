@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.7.0"
+#define FSU_VERSION L"3.7.1"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    std::wstring updateChannel = L"stable", lastSeenVersion; bool webviewPrompt = true;   // update channel; last version whose What's-new was shown; ask about the WebView2 runtime when missing
     std::wstring uiTheme = L"auto";                                     // new UI: auto | light | dark
     bool betaFeatures = false; std::map<std::string, int> flags;          // feature flags: explicit per-flag overrides (0/1); beta flags follow betaFeatures otherwise
     bool liveMetrics = false;                                           // optional low-frequency CPU/RAM/network readout on Today (off by default)
@@ -252,8 +253,8 @@ bool DeleteFilesPermanently(const std::vector<std::wstring>& paths, std::wstring
 std::wstring FileDateText(ULONGLONG ft);
 
 // ---- updates (update.cpp): the only network feature; reads one small manifest over HTTPS ----
-struct UpdateInfo { bool ok = false; std::wstring version, date, notes, url, sha256, signer, error; ULONGLONG size = 0; };
-bool FetchLatestVersion(UpdateInfo& u);                                     // manifest like Feather PDF's latest.json
+struct UpdateInfo { bool ok = false; std::wstring version, date, notes, url, sha256, signer, error, prevVersion, prevUrl, prevSha; ULONGLONG size = 0, prevSize = 0; };
+bool FetchLatestVersion(UpdateInfo& u, bool beta = false);   // beta: look for latest-beta.json first                                     // manifest like Feather PDF's latest.json
 bool DownloadUpdate(const UpdateInfo& u, std::wstring& path, std::wstring& err, std::atomic<bool>* cancel, const std::function<void(ULONGLONG, ULONGLONG)>& progress);   // verifies size + SHA-256
 bool LaunchUpdateInstaller(const std::wstring& installerPath, std::wstring& err);   // elevated silent install, then relaunches this app
 bool IsInstalledCopy();

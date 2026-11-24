@@ -22,6 +22,8 @@
 
 extern const unsigned char kUiHtml[];
 extern const unsigned long kUiHtmlSize;
+extern const unsigned char kWhatsNewJson[];
+extern const unsigned long kWhatsNewJsonSize;
 
 namespace fsu {
 using std::wstring; using std::string;
@@ -245,7 +247,7 @@ static std::map<string, Fn>& Handlers() {
     static std::map<string, Fn> h; if (!h.empty()) return h;
 
     h["app.info"] = [](const js::V&) {
-        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).str("uiTheme", U(c.uiTheme)).boolean("helper", BrokerConnected()).boolean("quarantine", c.quarantineLeftovers).boolean("liveMetrics", c.liveMetrics).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
+        auto& c = Cfg(); return js::Obj().boolean("ok", true).str("version", U(FSU_VERSION)).boolean("admin", IsElevated()).num("build", WindowsBuild()).str("dataDir", U(DataDir())).str("built", __DATE__).boolean("autoUpdate", c.autoUpdate).str("channel", U(c.updateChannel)).str("lastSeenVersion", U(c.lastSeenVersion)).str("uiTheme", U(c.uiTheme)).boolean("helper", BrokerConnected()).boolean("quarantine", c.quarantineLeftovers).boolean("liveMetrics", c.liveMetrics).num("safeMode", SafeModeKind()).boolean("onlineAdvice", c.onlineAdvice).str("adviceVersion", U(AdviceStatus().version)).str("adviceSource", U(AdviceStatus().source)).num("logDays", c.logRetentionDays).boolean("startWithWindows", StartWithWindows()).num("ignoredCount", (double)c.ignored.size()).num("exclusionCount", (double)c.exclusions.size()).boolean("keepRecent", c.keepRecent)
             .num("largeMinMB", c.largeMinMB).num("dupMinKB", c.dupMinKB).boolean("confirmBatch", c.confirmBatch).done(); };
     h["app.set"] = [](const js::V& a) {
         auto& c = Cfg(); string k = a.str("key"); double v = a.num("value");
@@ -384,13 +386,13 @@ static std::map<string, Fn>& Handlers() {
         if (!found) return Err(L"Backup not found."); wstring err, sum; bool ok = kind == "registry" ? RestoreRegBackup(p, err, sum) : RestoreBackup(p, err, sum); return ok ? js::Obj().boolean("ok", true).str("summary", U(sum)).done() : Err(err); };
 
     // ---- updates ----
-    h["update.check"] = [](const js::V& a) { UpdateInfo u; if (!FetchLatestVersion(u) || !u.ok) return js::Obj().boolean("ok", false).str("error", U(u.error.empty() ? L"Could not reach the update server." : u.error)).done();
+    h["update.check"] = [](const js::V& a) { UpdateInfo u; if (!FetchLatestVersion(u, Cfg().updateChannel == L"beta") || !u.ok) return js::Obj().boolean("ok", false).str("error", U(u.error.empty() ? L"Could not reach the update server." : u.error)).done();
         bool newer = Newer(u.version), launch = a.boolean("launch"); bool suppressed = false; if (launch && newer) { FILETIME ft; GetSystemTimeAsFileTime(&ft); long long now = (long long)((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 10000000ULL) - 11644473600LL; auto& c = Cfg(); if (c.skipVersion == u.version || now < c.deferUntil) suppressed = true; c.lastUpdateCheck = now; SaveSettings(); }
-        return js::Obj().boolean("ok", true).boolean("newer", newer).boolean("suppressed", suppressed).str("version", U(u.version)).str("date", U(u.date)).str("notes", U(u.notes)).num("size", (double)u.size).done(); };
+        return js::Obj().boolean("ok", true).boolean("newer", newer).boolean("suppressed", suppressed).str("version", U(u.version)).str("date", U(u.date)).str("notes", U(u.notes)).num("size", (double)u.size).str("prevVersion", U(u.prevVersion)).done(); };
     h["update.skip"] = [](const js::V& a) { Cfg().skipVersion = W(a.str("version")); SaveSettings(); return Ok(); };
     h["update.defer"] = [](const js::V& a) { FILETIME ft; GetSystemTimeAsFileTime(&ft); long long now = (long long)((((ULONGLONG)ft.dwHighDateTime << 32) | ft.dwLowDateTime) / 10000000ULL) - 11644473600LL; Cfg().deferUntil = now + (long long)std::clamp(a.num("hours", 24), 1.0, 720.0) * 3600; SaveSettings(); return Ok(); };
     h["update.install"] = [](const js::V&) {
-        UpdateInfo u; if (!FetchLatestVersion(u) || !u.ok || !Newer(u.version)) return Err(L"No newer version is available."); wstring path, err;
+        UpdateInfo u; if (!FetchLatestVersion(u, Cfg().updateChannel == L"beta") || !u.ok || !Newer(u.version)) return Err(L"No newer version is available."); wstring path, err;
         if (!DownloadUpdate(u, path, err, nullptr, [](ULONGLONG got, ULONGLONG all) { Emit("download", js::Obj().num("got", (double)got).num("all", (double)all).done()); })) return Err(err);
         if (!LaunchUpdateInstaller(path, err)) return Err(err); PostMessageW(g_wnd, WM_CLOSE, 0, 0); return Ok(); };
 
@@ -543,6 +545,20 @@ static std::map<string, Fn>& Handlers() {
     h["flags.set"] = [](const js::V& a) { string id = a.str("id"); bool known = false; for (auto& f : FeatureFlags()) if (id == f.id) known = true; if (!known) return Err(L"Unknown feature."); Cfg().flags[id] = a.boolean("on") ? 1 : 0; SaveSettings(); return Ok(); };
     h["broker.start"] = [](const js::V&) { if (!FeatureOn("adminHelper")) return Err(L"The administrator helper is a beta feature. Turn it on in Settings > Beta features."); wstring e; return BrokerStart(e) ? Ok() : Err(e); };
     h["broker.stop"] = [](const js::V&) { BrokerStop(); return Ok(); };
+    h["update.rollback"] = [](const js::V&) {
+        UpdateInfo u; if (!FetchLatestVersion(u, Cfg().updateChannel == L"beta") || !u.ok) return Err(u.error.empty() ? L"Could not reach the update server." : u.error); if (u.prevVersion.empty() || u.prevUrl.empty()) return Err(L"No previous version is published to roll back to.");
+        UpdateInfo p; p.ok = true; p.version = u.prevVersion; p.url = u.prevUrl; p.sha256 = u.prevSha; p.size = u.prevSize; p.signer = u.signer; wstring path, err;
+        if (!DownloadUpdate(p, path, err, nullptr, [](ULONGLONG got, ULONGLONG all) { Emit("download", js::Obj().num("got", (double)got).num("all", (double)all).done()); })) return Err(err);
+        WriteJournal(L"Feather System Utilities", L"application update", FSU_VERSION, p.version, L"rollback started", false); if (!LaunchUpdateInstaller(path, err)) return Err(err); PostMessageW(g_wnd, WM_CLOSE, 0, 0); return Ok(); };
+    h["update.openDownload"] = [](const js::V&) { UpdateInfo u; if (!FetchLatestVersion(u, Cfg().updateChannel == L"beta") || !u.ok || u.url.empty()) { wstring e = L"https://github.com/akshsim1991/FeatherSystemUtilities-releases"; ShellExecuteW(nullptr, L"open", e.c_str(), nullptr, nullptr, SW_SHOWNORMAL); return Ok(); } ShellExecuteW(nullptr, L"open", u.url.c_str(), nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };   // opens the installer link (or the releases page) in the browser
+    h["app.channel"] = [](const js::V& a) { Cfg().updateChannel = a.str("value") == "beta" ? L"beta" : L"stable"; SaveSettings(); return Ok(); };
+    h["whatsnew.get"] = [](const js::V&) { string cur = U(FSU_VERSION), last = U(Cfg().lastSeenVersion); return js::Obj().boolean("ok", true).str("current", cur).str("lastSeen", last).raw("items", string((const char*)kWhatsNewJson, kWhatsNewJsonSize)).done(); };
+    h["whatsnew.seen"] = [](const js::V&) { Cfg().lastSeenVersion = FSU_VERSION; SaveSettings(); return Ok(); };
+    h["clean.runById"] = [](const js::V& a) {   // used by the administrator helper: the elevated process runs its OWN scan and only removes items it finds there, chosen by id
+        std::vector<string> ids = a.strs("ids"); if (ids.empty()) return Err(L"Nothing selected."); CleanScan sc = ScanCleaner(Cfg().keepRecent); std::vector<CleanItem> sel;
+        for (auto& i : sc.items) { string key = U(i.id.empty() ? i.name : i.id); if (std::find(ids.begin(), ids.end(), key) != ids.end()) sel.push_back(i); }
+        if (sel.empty()) return Err(L"None of the selected items were found by the administrator scan. Scan again."); CleanResult r; RunClean(sel, Cfg().keepRecent, r, Cfg().quarantineLeftovers);
+        return js::Obj().boolean("ok", true).num("bytes", (double)r.bytes).num("files", (double)r.files).num("done", r.ok).num("skipped", r.skipped).num("failed", r.failed).num("missing", (double)(ids.size() - sel.size())).str("firstError", U(r.firstErr)).str("backup", U(r.backupPath)).done(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----

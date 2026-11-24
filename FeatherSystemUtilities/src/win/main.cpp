@@ -1331,7 +1331,17 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     if (GetLastError() == ERROR_ALREADY_EXISTS) { if (HWND e = FindWindowW(L"FeatherSystemUtilitiesWnd", nullptr)) PostMessageW(e, WM_ACTIVATE_PAGE, req, 0); return 0; }   // F004
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     LoadSettings(); MigrateLegacyData();
-    if (c.find(L"--classic") == wstring::npos && RunWebUi(inst, show, haveReq ? (int)req : 0, &g_mtx) == 0) return 0;   // new HTML UI (WebView2); falls back to the classic Win32 UI when the runtime is missing
+    if (c.find(L"--classic") == wstring::npos) {
+        int rc = RunWebUi(inst, show, haveReq ? (int)req : 0, &g_mtx); if (rc == 0) return 0;
+        if (Cfg().webviewPrompt) {   // the new interface could not start: say why, offer the Microsoft download, then continue with the classic window
+            bool old = WindowsBuild() && WindowsBuild() < 9600;   // Windows 7 / 8: Microsoft no longer offers the runtime
+            wstring msg = old ? L"The new Feather interface needs the Microsoft Edge WebView2 Runtime, which Microsoft no longer offers for Windows 7 and 8. Feather will open its classic window instead (it has fewer pages).\r\n\r\nShow this message again next time?"
+                              : L"The new Feather interface needs the Microsoft Edge WebView2 Runtime, which was not found (or could not start). Feather will open its classic window for now.\r\n\r\nYes = open Microsoft's runtime download page and continue\r\nNo = continue with the classic window\r\nCancel = continue and do not ask again";
+            int a = MessageBoxW(nullptr, msg.c_str(), L"Feather System Utilities", (old ? MB_YESNO : MB_YESNOCANCEL) | MB_ICONINFORMATION);
+            if (old) { if (a == IDNO) { Cfg().webviewPrompt = false; SaveSettings(); } }
+            else if (a == IDYES) ShellExecuteW(nullptr, L"open", L"https://developer.microsoft.com/microsoft-edge/webview2/", nullptr, nullptr, SW_SHOWNORMAL);
+            else if (a == IDCANCEL) { Cfg().webviewPrompt = false; SaveSettings(); } }
+    }   // new HTML UI (WebView2); falls back to the classic Win32 UI when the runtime is missing
     P = PalFor(Cfg().theme);
     INITCOMMONCONTROLSEX ic{sizeof ic, ICC_LISTVIEW_CLASSES | ICC_BAR_CLASSES | ICC_TAB_CLASSES}; InitCommonControlsEx(&ic);
     DarkModeInit(Cfg().theme); gfx::Init();

@@ -54,6 +54,11 @@ set(ENGINE_SOURCES
 # PDFium for this system (scripts/fetch-pdfium.sh mac|linux puts it here; third_party/pdfium is the Windows one).
 if(ANDROID)
   set(PDFIUM_DIR "${FEATHER_ROOT}/third_party/pdfium-android/${ANDROID_ABI}")
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")   # the phone's, or the simulator's (FEATHER_IOS_SDK=simulator)
+  if(NOT FEATHER_IOS_SDK)
+    set(FEATHER_IOS_SDK device)
+  endif()
+  set(PDFIUM_DIR "${FEATHER_ROOT}/third_party/pdfium-ios/${FEATHER_IOS_SDK}")
 elseif(APPLE)
   set(PDFIUM_DIR "${FEATHER_ROOT}/third_party/pdfium-mac")
 else()

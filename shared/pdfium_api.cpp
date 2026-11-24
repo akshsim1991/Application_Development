@@ -8,6 +8,7 @@
 #include <climits>
 #include <cstdlib>
 #ifdef __APPLE__
+#include <TargetConditionals.h>
 #include <mach-o/dyld.h>
 #endif
 #endif
@@ -71,7 +72,9 @@ bool load(std::wstring& error) {
     const std::string dir = programDir();
     std::vector<std::string> tries;
     if (const char* env = std::getenv("FEATHER_PDFIUM")) tries.push_back(env);
-#ifdef __APPLE__
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+    tries.push_back(dir + "Frameworks/pdfium.framework/pdfium");   // iPhone: Feather PDF.app/Frameworks
+#elif defined(__APPLE__)
     tries.push_back(dir + "../Frameworks/libpdfium.dylib");
     tries.push_back(dir + "libpdfium.dylib");
 #elif defined(__ANDROID__)

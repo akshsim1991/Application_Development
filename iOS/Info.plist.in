@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleDevelopmentRegion</key><string>en</string>
+  <key>CFBundleDisplayName</key><string>Feather PDF</string>
+  <key>CFBundleName</key><string>Feather PDF</string>
+  <key>CFBundleExecutable</key><string>FeatherPDF</string>
+  <key>CFBundleIdentifier</key><string>com.featherpdf.ios</string>
+  <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>${IOS_VERSION}</string>
+  <key>CFBundleVersion</key><string>${IOS_VERSION}</string>
+  <key>FPCodename</key><string>${FEATHER_CODENAME}</string>
+  <key>CFBundleSupportedPlatforms</key><array><string>${IOS_PLATFORM}</string></array>
+  <key>DTPlatformName</key><string>${IOS_PLATFORM_LOWER}</string>
+  <key>MinimumOSVersion</key><string>15.0</string>
+  <key>LSRequiresIPhoneOS</key><true/>
+  <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+  <key>UIRequiredDeviceCapabilities</key><array><string>arm64</string></array>
+  <key>UILaunchScreen</key><dict><key>UIColorName</key><string></string></dict>
+  <key>UIApplicationSupportsIndirectInputEvents</key><true/>
+  <key>UISupportedInterfaceOrientations</key>
+  <array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+  <key>UISupportedInterfaceOrientations~ipad</key>
+  <array><string>UIInterfaceOrientationPortrait</string><string>UIInterfaceOrientationPortraitUpsideDown</string><string>UIInterfaceOrientationLandscapeLeft</string><string>UIInterfaceOrientationLandscapeRight</string></array>
+  <key>CFBundleIcons</key>
+  <dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string></array></dict></dict>
+  <key>CFBundleIcons~ipad</key>
+  <dict><key>CFBundlePrimaryIcon</key><dict><key>CFBundleIconFiles</key><array><string>AppIcon60x60</string><string>AppIcon76x76</string><string>AppIcon83.5x83.5</string></array></dict></dict>
+  <!-- PDFs from Files, Mail and Safari (Share, then Feather PDF), opened where they are and saved back there -->
+  <key>CFBundleDocumentTypes</key>
+  <array><dict>
+    <key>CFBundleTypeName</key><string>PDF document</string>
+    <key>CFBundleTypeRole</key><string>Editor</string>
+    <key>LSHandlerRank</key><string>Alternate</string>
+    <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
+  </dict></array>
+  <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+  <key>UIFileSharingEnabled</key><true/>
+  <key>ITSAppUsesNonExemptEncryption</key><false/>
+</dict>
+</plist>

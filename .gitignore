@@ -4,6 +4,7 @@ third_party/pdfium/
 third_party/pdfium-mac/
 third_party/pdfium-linux/
 third_party/pdfium-android/
+third_party/pdfium-ios/
 Android/.gradle/
 Android/build/
 Android/app/build/

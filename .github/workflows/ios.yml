@@ -1,0 +1,128 @@
+# Builds Feather PDF for iPhone and iPad on a Mac: the app for the phone (an unsigned .ipa, installed from a Mac with
+# Sideloadly, AltStore or Xcode, which sign it with the user's Apple ID), and the same app for the simulator, where its
+# build check runs (FPApp.mm: open, edit, highlight, note, draw, find, night colours, undo, tabs, sidebar, full screen,
+# save) and the saved file is checked from outside. The .ipa is committed to releases/ next to the other downloads.
+name: iOS build
+
+on:
+  push:
+    paths: ["iOS/**", "shared/**", "CMakeLists.txt", "cmake/**", "scripts/fetch-pdfium.sh", "tests/android/make_test_pdf.py", ".github/workflows/ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to commit the .ipa to releases/
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: PDFium for iPhone (the phone's and the simulator's)
+        run: bash scripts/fetch-pdfium.sh ios
+
+      - name: Build the app for the phone
+        run: |
+          cmake -S . -B build-ios -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos \
+                -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DFEATHER_IOS_SDK=device
+          cmake --build build-ios -j 4 -- -k || { echo "=== errors ==="; cmake --build build-ios -j 1 2>&1 | grep -E "error:" | sort -u | head -80; exit 1; }
+          app=build-ios/FeatherPDF.app
+          ls -la "$app" "$app/Frameworks/pdfium.framework"
+          file "$app/FeatherPDF" "$app/Frameworks/pdfium.framework/pdfium"
+          otool -l "$app/FeatherPDF" | grep -A4 LC_BUILD_VERSION | head -6
+          otool -D "$app/Frameworks/pdfium.framework/pdfium"
+          plutil -lint "$app/Info.plist" "$app/Frameworks/pdfium.framework/Info.plist"
+          codesign --verify --deep --strict "$app" && echo "signature ok"
+          cmake --build build-ios --target ipa
+          unzip -l dist/*-ios.ipa | head -20
+
+      - name: Build the app for the simulator
+        run: |
+          cmake -S . -B build-sim -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator \
+                -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_OSX_DEPLOYMENT_TARGET=15.0 -DFEATHER_IOS_SDK=simulator
+          cmake --build build-sim -j 4 -- -k || { echo "=== errors ==="; cmake --build build-sim -j 1 2>&1 | grep -E "error:" | sort -u | head -80; exit 1; }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: The app on an iPhone simulator
+        run: |
+          python3 -m pip install --quiet --only-binary=:all: reportlab pikepdf pdfminer.six pillow
+          udid=$(xcrun simctl list devices available -j | python3 -c "
+          import json, sys
+          d = json.load(sys.stdin)['devices']
+          phones = [x for rt, xs in sorted(d.items(), reverse=True) if 'iOS' in rt for x in xs if x['name'].startswith('iPhone 16') or x['name'].startswith('iPhone 15')]
+          print(phones[0]['udid'])")
+          echo "simulator $udid"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl install "$udid" build-sim/FeatherPDF.app
+          mkdir -p sim-check
+          xcrun simctl launch "$udid" com.featherpdf.ios; sleep 5
+          xcrun simctl io "$udid" screenshot sim-check/00-start-screen.png
+          xcrun simctl terminate "$udid" com.featherpdf.ios || true
+          data=$(xcrun simctl get_app_container "$udid" com.featherpdf.ios data)
+          mkdir -p "$data/Documents"
+          python3 tests/android/make_test_pdf.py "$data/Documents/in.pdf"
+          xcrun simctl launch "$udid" com.featherpdf.ios --selftest
+          done=0
+          for i in $(seq 1 90); do
+            grep -q DONE "$data/Documents/selftest/report.txt" 2>/dev/null && { done=1; break; }
+            [ "$i" = 10 ] && xcrun simctl io "$udid" screenshot sim-check/00-running.png
+            sleep 2
+          done
+          cp -R "$data/Documents/selftest/." sim-check/ 2>/dev/null || true
+          if [ $done = 0 ]; then
+            echo "FAIL the build check did not finish"; cat sim-check/report.txt 2>/dev/null
+            ls ~/Library/Logs/DiagnosticReports/ 2>/dev/null | grep -i feather && head -80 ~/Library/Logs/DiagnosticReports/*Feather* 2>/dev/null
+            xcrun simctl spawn "$udid" log show --last 3m --predicate 'process == "FeatherPDF"' 2>/dev/null | tail -60
+            exit 1
+          fi
+          cat sim-check/report.txt
+          grep -q "^ALL PASSED" sim-check/report.txt
+          python3 - sim-check/saved.pdf <<'PY'
+          import sys, pikepdf
+          from pdfminer.high_level import extract_text
+          p = pikepdf.open(sys.argv[1])
+          kinds = sorted({str(a.Subtype) for page in p.pages for a in page.get("/Annots", [])})
+          text = extract_text(sys.argv[1])
+          ok = "Edited on iPhone." in text and {"/Highlight", "/Text", "/Ink"} <= set(kinds) and len(p.pages) == 3
+          print(("  ok   " if ok else "  FAIL ") + f"the saved file, read by other tools: {len(p.pages)} pages, annotations {kinds}, edit {'found' if 'Edited on iPhone.' in text else 'missing'}")
+          sys.exit(0 if ok else 1)
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: FeatherPDF-ios
+          path: |
+            dist/*-ios.ipa
+            sim-check/
+
+      - name: Put the .ipa in releases/
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          rm -f releases/*-ios.ipa
+          cp dist/*-ios.ipa releases/
+          # the simulator's pictures of the app, small, for the README and for checking the screen by eye
+          mkdir -p docs/ios && rm -f docs/ios/*.png
+          python3 -c "
+          import glob, os
+          from PIL import Image
+          for f in sorted(glob.glob('sim-check/*.png')):
+              im = Image.open(f).convert('RGB'); im.thumbnail((540, 1200))
+              im.save('docs/ios/' + os.path.basename(f), optimize=True)
+          "
+          git config user.name "Feather PDF iOS build"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A releases docs/ios
+          git commit -q -m "iOS app built from ${GITHUB_SHA::7}" || { echo "unchanged"; exit 0; }
+          # the Mac or Android build may have committed to the branch meanwhile: take its commit and try again
+          for i in 1 2 3 4; do
+            if git pull -q --rebase -X theirs origin "${GITHUB_REF_NAME}"; then git push origin "HEAD:${GITHUB_REF_NAME}" && exit 0
+            else git rebase --abort 2>/dev/null; fi
+            sleep $((i * 10))
+          done
+          echo "the branch moved on; the next build puts its .ipa in releases/"

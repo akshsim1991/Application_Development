@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # The layout: shared/ is the PDF engine both apps use (tables, header and footer, page objects, forms, ...),
-# Windows/ the Windows app and its installer, macOS/ the Mac app.
+# Windows/ the Windows app and its installer, macOS/ the Mac app, iOS/ the iPhone and iPad app.
 
 # The build date (About, file properties): buildinfo.h is written on every build and changes when the date does.
 add_custom_target(buildinfo ALL
@@ -17,6 +17,9 @@ add_custom_target(buildinfo ALL
 if(WIN32)
   enable_language(RC)
   add_subdirectory(Windows)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  enable_language(OBJCXX)
+  add_subdirectory(iOS)
 elseif(APPLE)
   enable_language(OBJCXX)
   add_subdirectory(macOS)

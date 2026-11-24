@@ -36,6 +36,8 @@ std::vector<TestResult> RunSelfTest(bool network, const std::function<void(const
     check(L"Event log (System)", [](wstring& d) { wstring e; auto ev = QueryEvents(24, {L"System"}, {1, 2, 3}, 30, e); d = ev.empty() ? (e.empty() ? L"0 events in 24 h" : e) : std::to_wstring(ev.size()) + L" events"; return e.empty(); });
     check(L"Boot diagnostics log", [](wstring& d) { wstring e; auto m = StartupImpact(e); d = e.empty() ? std::to_wstring(m.size()) + L" items recorded" : e; return e.empty(); });
     check(L"Installed Windows updates", [](wstring& d) { wstring e; auto v = ListHotfixes(e); d = v.empty() ? e : std::to_wstring(v.size()) + L" updates"; return !v.empty(); });
+    check(L"Security checklist", [](wstring& d) { auto v = SecurityChecklist(); int bad = 0; for (auto& p : v) if (!p.good) ++bad; d = std::to_wstring(v.size()) + L" checks read, " + std::to_wstring(bad) + L" worth reviewing"; return !v.empty(); });
+    check(L"Scheduled tasks list", [](wstring& d) { wstring e; auto v = ListAllTasks(e); d = std::to_wstring(v.size()) + L" tasks" + (e.empty() ? L"" : L" (" + e + L")"); return !v.empty(); });
     check(L"Privacy checklist", [](wstring& d) { d = std::to_wstring(PrivacyChecklist().size()) + L" settings read"; return true; });
     check(L"Browser profiles", [](wstring& d) { auto b = ScanBrowsers(); d = std::to_wstring(b.size()) + L" profiles"; return true; });
     check(L"Performance sample", [](wstring& d) { SamplePerf(); Sleep(300); auto p = SamplePerf(); d = L"cpu " + std::to_wstring((int)p.cpu) + L"%, ram " + FormatBytes(p.memTotal); return p.memTotal > 0; });

@@ -37,3 +37,7 @@ Update: HttpErr text for WinHTTP codes, ApplyUserProxy, long timeouts for instal
 
 ## 3.7.3 (stabilize, part 3)
 log.cpp (app.log, crash filter), selftest.cpp (25+ checks, CLI --selftest), webui ProcessFailed handling, UI: call() timeouts, busy lock, error capture, 1500-row table cap, Settings > Diagnostics. UI tests: 114 checks. The 3.7 stabilize list is complete; remaining stabilization depends on real-PC test results (use the self-test).
+
+## 3.8.0 (roadmap "Important" list, part 1)
+Done: #3 Security posture checklist (phase2.cpp SecurityChecklist, read-only), #7 Scheduled tasks manager (tasks.cpp; disable/enable via SetStartupEnabled so it is journaled; Windows tasks protected except telemetry groups), #11 pattern exclusions (settings.cpp IsExcluded, * and ?).
+Remaining from the list: #1 maintenance plan, #2 disk health, #4 sign-in time per change, #5 per-process network/disk, #6 winget, #8 services profiles, #9 shell extensions, #10 more cleaner categories, #12 large-file tree, #13 driver store cleanup.

@@ -189,3 +189,54 @@ std::vector<Hotfix> ListHotfixes(std::wstring& err) {
 namespace fsu {
 BiosInfo GetBiosInfo() { BiosInfo b; wstring e; Wmi(L"ROOT\\CIMV2", L"SELECT Manufacturer,SMBIOSBIOSVersion,ReleaseDate FROM Win32_BIOS", [&](IWbemClassObject* o) { b.vendor = Get(o, L"Manufacturer"); b.version = Get(o, L"SMBIOSBIOSVersion"); b.date = Get(o, L"ReleaseDate"); if (b.date.size() >= 8) b.date = b.date.substr(0, 4) + L"-" + b.date.substr(4, 2) + L"-" + b.date.substr(6, 2); }, e); return b; }
 }
+
+namespace fsu {
+// ---------------- security posture (read-only) ----------------
+static bool WmiBool(const wchar_t* ns, const wchar_t* q, const wchar_t* prop, int& out) { int v = -1; wstring e; bool ok = Wmi(ns, q, [&](IWbemClassObject* o) { if (v < 0) { VARIANT x; VariantInit(&x); o->Get(prop, 0, &x, nullptr, nullptr); v = x.vt == VT_NULL || x.vt == VT_EMPTY ? -1 : VI(x); VariantClear(&x); } }, e); out = v; return ok && v >= 0; }
+std::vector<PrivacyItem> SecurityChecklist() {
+    std::vector<PrivacyItem> v; DWORD d = 0; int w = 0; bool admin = IsElevated();
+    auto add = [&](const wchar_t* id, const wchar_t* title, const wchar_t* state, const wchar_t* detail, const wchar_t* why, bool good) { PrivacyItem p; p.id = id; p.title = title; p.state = state; p.detail = detail; p.why = why; p.good = good; v.push_back(p); };
+    // Microsoft Defender
+    { int av = -1, rt = -1, age = -1; bool ok = WmiBool(L"root\\Microsoft\\Windows\\Defender", L"SELECT AntivirusEnabled FROM MSFT_MpComputerStatus", L"AntivirusEnabled", av);
+      if (ok) { WmiBool(L"root\\Microsoft\\Windows\\Defender", L"SELECT RealTimeProtectionEnabled FROM MSFT_MpComputerStatus", L"RealTimeProtectionEnabled", rt); WmiBool(L"root\\Microsoft\\Windows\\Defender", L"SELECT AntivirusSignatureAge FROM MSFT_MpComputerStatus", L"AntivirusSignatureAge", age);
+        wchar_t b[160]; swprintf(b, 160, L"Real-time protection %ls; virus definitions %d day(s) old.", rt == 1 ? L"on" : L"off", age < 0 ? 0 : age);
+        bool good = av == 1 && rt == 1 && (age < 0 || age <= 7); add(L"sec-defender", L"Microsoft Defender antivirus", av != 1 ? L"Off" : (rt != 1 ? L"Real-time off" : (age > 7 ? L"Out of date" : L"On")), b, L"Real-time protection and fresh definitions are the main defence against malware. If you use another antivirus, Defender normally turns itself off.", good); }
+      else add(L"sec-defender", L"Microsoft Defender antivirus", L"Unknown", L"Windows did not report Defender status. Another antivirus may be managing protection, or this Windows version has no Defender service.", L"Open Windows Security to confirm that some antivirus is active.", true); }
+    // Firewall (three profiles)
+    { const wchar_t* prof[] = {L"DomainProfile", L"StandardProfile", L"PublicProfile"}; const wchar_t* nm[] = {L"Domain", L"Private", L"Public"}; int off = 0, seen = 0; wstring offList;
+      for (int i = 0; i < 3; ++i) { wstring k = wstring(L"SYSTEM\\CurrentControlSet\\Services\\SharedAccess\\Parameters\\FirewallPolicy\\") + prof[i]; if (RegDw(HKEY_LOCAL_MACHINE, k.c_str(), L"EnableFirewall", d)) { ++seen; if (!d) { ++off; offList += (offList.empty() ? L"" : L", ") + wstring(nm[i]); } } }
+      if (seen) add(L"sec-firewall", L"Windows Firewall", off ? L"Off for some networks" : L"On", off ? (L"Turned off for: " + offList + L".").c_str() : L"On for domain, private and public networks.", L"The firewall blocks unsolicited incoming connections. It should stay on unless another firewall replaces it.", off == 0);
+      else add(L"sec-firewall", L"Windows Firewall", L"Unknown", L"The firewall settings could not be read.", L"Open the firewall page to check.", true); }
+    // UAC
+    if (RegDw(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", L"EnableLUA", d)) { DWORD pr = 5; RegDw(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System", L"ConsentPromptBehaviorAdmin", pr);
+        add(L"sec-uac", L"User Account Control", d ? (pr == 0 ? L"On (never notify)" : L"On") : L"Off", d ? (pr == 0 ? L"UAC is enabled but administrators are elevated without a prompt." : L"Programs must ask before making system-wide changes.") : L"Programs can change the system without asking.", L"UAC is the prompt that stops unwanted programs from changing Windows.", d && pr != 0); }
+    // BitLocker (system drive)
+    { int ps = -1; wchar_t sd[4] = L"C:"; wchar_t win[MAX_PATH]; if (GetWindowsDirectoryW(win, MAX_PATH) >= 2) { sd[0] = win[0]; sd[1] = L':'; sd[2] = 0; } wstring q = wstring(L"SELECT ProtectionStatus FROM Win32_EncryptableVolume WHERE DriveLetter='") + sd + L"'";
+      if (WmiBool(L"root\\CIMV2\\Security\\MicrosoftVolumeEncryption", q.c_str(), L"ProtectionStatus", ps)) add(L"sec-bitlocker", L"Drive encryption (BitLocker)", ps == 1 ? L"On" : L"Off", ps == 1 ? L"The system drive is encrypted and protected." : L"The system drive is not protected by BitLocker.", L"Encryption keeps your files unreadable if the PC is lost or stolen. It is optional on a desktop that never leaves home.", ps == 1);
+      else add(L"sec-bitlocker", L"Drive encryption (BitLocker)", L"Unknown", admin ? L"BitLocker is not available on this edition of Windows." : L"Reading BitLocker needs administrator rights (More > Restart as administrator), or this edition of Windows has no BitLocker.", L"Windows Home uses 'device encryption' instead; open the page to check.", true); }
+    // Secure Boot
+    if (RegDw(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\SecureBoot\\State", L"UEFISecureBootEnabled", d)) add(L"sec-secureboot", L"Secure Boot", d ? L"On" : L"Off", d ? L"Windows only starts with trusted boot software." : L"Secure Boot is supported but turned off in the firmware.", L"Secure Boot blocks boot-time malware. Windows 11 requires it.", d != 0);
+    else add(L"sec-secureboot", L"Secure Boot", L"Not available", L"This PC starts in legacy BIOS mode or the firmware does not support Secure Boot.", L"Windows 11 needs UEFI with Secure Boot. Windows 10 and older run without it.", true);
+    // TPM
+    { int en = -1; wstring ver; wstring e; Wmi(L"root\\CIMV2\\Security\\MicrosoftTpm", L"SELECT IsEnabled_InitialValue, SpecVersion FROM Win32_Tpm", [&](IWbemClassObject* o) { VARIANT x; VariantInit(&x); o->Get(L"IsEnabled_InitialValue", 0, &x, nullptr, nullptr); if (x.vt == VT_BOOL) en = x.boolVal ? 1 : 0; VariantClear(&x); ver = Get(o, L"SpecVersion"); size_t c = ver.find(L','); if (c != wstring::npos) ver.erase(c); }, e);
+      if (en >= 0) add(L"sec-tpm", L"TPM security chip", en ? L"Present and on" : L"Present but off", en ? (L"TPM specification " + ver + L".").c_str() : L"The TPM is turned off in the firmware.", L"A TPM stores encryption keys safely. Windows 11 requires TPM 2.0.", en != 0);
+      else add(L"sec-tpm", L"TPM security chip", L"Unknown", admin ? L"No TPM was reported by Windows." : L"Reading the TPM needs administrator rights, or this PC has no TPM.", L"Windows 11 requires TPM 2.0. Open the TPM console to check.", true); }
+    // SMBv1
+    { DWORD sm = 99; bool has = RegDw(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\LanmanServer\\Parameters", L"SMB1", sm); DWORD st = 4; bool drv = RegDw(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Services\\mrxsmb10", L"Start", st);
+      bool off = (has && sm == 0) || (drv && st == 4) || (!has && WindowsBuild() >= 16299);
+      add(L"sec-smb1", L"SMBv1 file sharing (old protocol)", off ? L"Off" : L"On", off ? L"The insecure SMBv1 protocol is not in use." : L"The old SMBv1 protocol is enabled.", L"SMBv1 was used by the WannaCry ransomware. Disable it unless an old NAS or printer needs it.", off); }
+    // Remote Desktop
+    if (RegDw(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\Terminal Server", L"fDenyTSConnections", d)) add(L"sec-rdp", L"Remote Desktop", d ? L"Off" : L"On", d ? L"Nobody can connect to this PC remotely." : L"This PC accepts Remote Desktop connections.", L"Leave it off unless you use it. An exposed Remote Desktop port is a common way into a PC.", d != 0);
+    // Pending reboot / updates
+    { bool pend = false; HKEY k; if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\WindowsUpdate\\Auto Update\\RebootRequired", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { pend = true; RegCloseKey(k); }
+      if (RegOpenKeyExW(HKEY_LOCAL_MACHINE, L"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Component Based Servicing\\RebootPending", 0, KEY_READ | KEY_WOW64_64KEY, &k) == ERROR_SUCCESS) { pend = true; RegCloseKey(k); }
+      add(L"sec-updates", L"Windows updates", pend ? L"Restart needed" : L"No restart pending", pend ? L"An update is waiting for a restart to finish installing." : L"No update is waiting for a restart. Open Windows Update to see whether more are available.", L"Updates fix security holes. A pending restart leaves the old, vulnerable files in use.", !pend); }
+    (void)w; return v;
+}
+bool OpenSecuritySetting(const wstring& id) {
+    struct M { const wchar_t* id; const wchar_t* file; const wchar_t* args; }; static const M m[] = {
+        {L"sec-defender", L"windowsdefender:", L""}, {L"sec-firewall", L"firewall.cpl", L""}, {L"sec-uac", L"UserAccountControlSettings.exe", L""}, {L"sec-bitlocker", L"control.exe", L"/name Microsoft.BitLockerDriveEncryption"},
+        {L"sec-secureboot", L"msinfo32.exe", L""}, {L"sec-tpm", L"tpm.msc", L""}, {L"sec-smb1", L"optionalfeatures.exe", L""}, {L"sec-rdp", L"SystemPropertiesRemote.exe", L""}, {L"sec-updates", L"ms-settings:windowsupdate", L""} };
+    for (auto& e : m) if (id == e.id) return (INT_PTR)ShellExecuteW(nullptr, L"open", e.file, *e.args ? e.args : nullptr, nullptr, SW_SHOWNORMAL) > 32; return false;
+}
+}

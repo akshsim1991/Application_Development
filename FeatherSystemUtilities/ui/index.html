@@ -116,13 +116,15 @@ const ICON = {
   storage: icon('<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"/>'),
   tools: icon('<path d="M14.7 6.3a4 4 0 0 0-5 5L3 18l3 3 6.7-6.7a4 4 0 0 0 5-5l-2.6 2.6-2.4-.6-.6-2.4z"/>'),
   journal: icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
+  security: icon('<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3M12 15v2"/>'),
+  tasks: icon('<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>'),
   privacy: icon('<path d="M12 3l8 3v6c0 5-3.4 8-8 9-4.6-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/>'),
   trouble: icon('<path d="M10.3 3.9L2.4 18a2 2 0 0 0 1.7 3h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17v.01"/>'),
   recovery: icon('<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>'),
   settings: icon('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'),
   about: icon('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>')
 };
-const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['startup', 'Startup'], ['services', 'Services'], ['drivers', 'Drivers'], ['procs', 'Processes'], ['files', 'Files'], ['storage', 'Storage'], ['tools', 'Tools'], ['privacy', 'Privacy'], ['trouble', 'Troubleshoot'], ['journal', 'Journal'], ['recovery', 'Recovery']];
+const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['startup', 'Startup'], ['services', 'Services'], ['drivers', 'Drivers'], ['procs', 'Processes'], ['files', 'Files'], ['storage', 'Storage'], ['tools', 'Tools'], ['privacy', 'Privacy'], ['security', 'Security'], ['tasks', 'Tasks'], ['trouble', 'Troubleshoot'], ['journal', 'Journal'], ['recovery', 'Recovery']];
 const TITLES = {
   today: ['', 'Nothing is changed without your OK · everything is previewed and can be rolled back'],
   clean: ['Clean', 'Review what can be removed. Each item says why it is safe, and what happens.'],
@@ -134,6 +136,8 @@ const TITLES = {
   files: ['Files', 'Large files, duplicates (proven identical byte-for-byte) and empty folders.'],
   storage: ['Storage', 'See where your space went. Click a block to drill down.'],
   tools: ['Tools', 'System information and Windows’ own repair tools, one click away.'],
+  security: ['Security', 'A read-only check of Windows protection: Defender, firewall, UAC, encryption, boot security and risky features.'],
+  tasks: ['Scheduled tasks', 'Everything in Task Scheduler, not just startup entries. Disabling is reversible; Windows’ own maintenance tasks are protected.'],
   privacy: ['Privacy', 'Review browser data category by category, and check Windows privacy settings. Passwords and bookmarks are never cleared.'],
   trouble: ['Troubleshoot', 'Check what is wrong, read recent errors, and build a diagnostic report that stays on this PC.'],
   recovery: ['Recovery', 'Restore points, quarantined files and backups. Undo what Feather changed.'],
@@ -143,7 +147,7 @@ const TITLES = {
 
 // ======================= state =======================
 const S = { page: 'today', info: {}, today: { ran: false, running: false }, lists: {},
-  clean: { items: null, gen: 0, coverage: '', deep: false }, startup: { items: null, coverage: '' }, programs: { items: null, tab: 'desktop', store: null, hot: null }, services: { items: null, drivers: false },
+  clean: { items: null, gen: 0, coverage: '', deep: false }, startup: { items: null, coverage: '' }, sec: { items: null, admin: false }, tasks: { items: null, err: '' }, programs: { items: null, tab: 'desktop', store: null, hot: null }, services: { items: null, drivers: false },
   drivers: { tab: 'installed', items: null, upd: null, updErr: '', diag: {}, fixLog: {}, fixBusy: null }, procs: { items: null }, files: { mode: 'large', data: {} }, storage: { drives: null, data: null }, sys: null, scan: null,
   journal: { items: null, backups: null }, rec: { points: null, quar: null }, dash: null, live: null, lic: null, wu: null, flags: null, priv: { items: null, gen: 0, sel: new Set(), checklist: null }, trouble: { status: null, events: null, evWarn: '', opts: { hours: 24, levels: [1, 2], logs: ['System', 'Application'], redact: true, maskPaths: false } }, ign: null, excl: null, update: null, busy: null };
 function LS(id) { if (!S.lists[id]) S.lists[id] = { id, sel: new Set(), anchor: -1, focus: null, order: [], sort: DEF_SORT[id.split(':')[0]] || null, q: '', f: {}, csv: null }; return S.lists[id]; }
@@ -548,6 +552,39 @@ PAGES.privacy = () => {
   <div class="toolbar">${searchBox(L, 'Search the checklist')}${chips(L, 'kind', [['all', 'All'], ['attn', 'Worth reviewing'], ['good', 'Looks private']])}</div>${table(L, [{ h: 'Setting', s: 'title' }, { h: 'State', s: 'state' }, { h: 'Why it matters' }, { h: '' }], rows, 'Nothing matches.')}`;
 };
 
+
+// ---------- Security posture ----------
+TOPACT.security = () => `<button class="btn ghost" data-act="secRefresh">Recheck</button>`;
+PAGES.security = () => {
+  const P = S.sec, L = LS('seccheck'); if (!P.items) return '<div class="card empty">Checking Windows protection…</div>';
+  const unk = e => /^(unknown|not available)/i.test(e.state), bad = P.items.filter(e => !e.good), nu = P.items.filter(unk).length;
+  const items = P.items.filter(e => matchQ(L, e.title + ' ' + e.detail) && (!L.f.kind || L.f.kind === 'all' || (L.f.kind === 'attn' ? !e.good : e.good)));
+  const sorted = sortItems(L, items, { title: e => e.title, state: e => e.state });
+  const rows = sorted.map(e => ({ k: e.id, cells: [`<div class="nm">${esc(e.title)}</div><div class="muted">${esc(e.detail)}</div>`, `<span class="pill ${unk(e) ? 'neutral' : e.good ? 'ok' : 'warn'}">${esc(e.state)}</span>`, esc(e.why), `<button class="btn ghost sm" data-act="secOpen" data-id="${esc(e.id)}">Open in Windows</button>`], csv: [e.title, e.state, e.detail] }));
+  return `<div class="card" style="margin-bottom:14px"><b>${bad.length ? plural(bad.length, 'item', 'items') + ' worth reviewing' : 'Nothing needs attention'}</b><div class="muted" style="margin-top:4px">Feather only reads these settings; it never changes them. Use “Open in Windows” to change one yourself. “Worth reviewing” is advice, not an alarm: a desktop that never leaves home may not need encryption, for example.${nu ? ` ${plural(nu, 'check could', 'checks could')} not be read${P.admin ? '' : ' — some need administrator rights (More › Restart as administrator)'}.` : ''}</div></div>
+  <div class="toolbar">${searchBox(L, 'Search the checks')}${chips(L, 'kind', [['all', 'All'], ['attn', 'Worth reviewing'], ['good', 'Looks fine']])}</div>${table(L, [{ h: 'Check', s: 'title' }, { h: 'State', s: 'state' }, { h: 'Why it matters' }, { h: '' }], rows, 'Nothing matches.')}`;
+};
+async function loadSecurity() { const r = await run('Checking Windows protection…', () => call('security.checklist')); if (r.ok) { S.sec.items = r.items; S.sec.admin = r.admin; } else toast(r.error, true); }
+
+// ---------- Scheduled tasks ----------
+TOPACT.tasks = () => `<button class="btn ghost" data-act="tasksRefresh">Refresh</button> <button class="btn ghost" data-act="tasksOpen">Open Task Scheduler</button>`;
+PAGES.tasks = () => {
+  const T = S.tasks, L = LS('tasks'); if (!T.items) return '<div class="card empty">Reading Task Scheduler…</div>';
+  const hide = L.f.hideMs !== false, base = T.items.filter(e => (!hide || !e.microsoft) && matchQ(L, e.name + ' ' + e.command + ' ' + e.author + ' ' + e.folder));
+  const st = { enabled: e => e.enabled, disabled: e => !e.enabled, startup: e => e.startup, failed: e => e.enabled && e.lastResult !== 0 && e.lastResult !== 267009 && e.lastResult !== 267011 && e.lastRun };
+  const cnt = k => base.filter(st[k] || (() => true)).length, fk = L.f.state || 'all'; let list = base.filter(st[fk] || (() => true));
+  list = sortItems(L, list, { name: e => e.name, state: e => e.state, when: e => e.triggers, last: e => e.lastRun, next: e => e.nextRun, folder: e => e.folder });
+  const code = e => e.lastRun ? (e.lastResult === 0 ? 'OK' : '0x' + (e.lastResult >>> 0).toString(16).toUpperCase()) : 'Never run';
+  const rows = list.map(e => ({ k: e.path, cells: [`<div class="nm">${esc(e.name)}${e.hidden ? ' <span class="pill neutral">hidden</span>' : ''}</div><div class="muted cut" title="${esc(e.command)}">${esc(e.command || '—')}</div>`, `<span class="pill ${e.enabled ? 'ok' : 'neutral'}">${esc(e.state)}</span>`, esc(e.triggers || '—'), esc(e.lastRun || '—') + `<div class="muted">${esc(code(e))}</div>`, esc(e.nextRun || '—'), `<span class="cut" title="${esc(e.path)}">${esc(e.folder)}</span>${e.canToggle ? '' : ' <span class="pill neutral" title="Windows’ own maintenance task">protected</span>'}`], csv: [e.name, e.state, e.triggers, e.lastRun, e.nextRun, e.path, e.command] }));
+  const sel = selectedOf(L, T.items, e => e.path), n = sel.length, f = T.items.find(e => e.path === L.focus);
+  const batch = `<button class="btn ghost sm" data-act="taskBatch" data-v="1" ${sel.some(e => !e.enabled) ? '' : 'disabled'}>Enable</button><button class="btn ghost sm" data-act="taskBatch" data-v="0" ${sel.some(e => e.enabled && e.canToggle) ? '' : 'disabled'}>Disable</button>`;
+  const side = n > 1 ? panelMulti(`${n} tasks selected`, [`Enabled: ${sel.filter(e => e.enabled).length} · Disabled: ${sel.filter(e => !e.enabled).length}`, `Protected (cannot be disabled here): ${sel.filter(e => !e.canToggle).length}`]) + '<div class="evid"><b>Undo</b>Disabling a task is reversible: it is journaled and can be switched back on here or in the Journal.</div>' :
+    f ? `<h3>${esc(f.name)}</h3><div class="muted">${esc(f.path)}</div><div class="evid"><b>What it runs</b>${esc(f.command || 'Not a program.')}</div><div class="evid"><b>When</b>${esc(f.triggers || '—')}${f.nextRun ? ' · next ' + esc(f.nextRun) : ''}</div>${f.author ? `<div class="evid"><b>Created by</b>${esc(f.author)}</div>` : ''}${f.why ? `<div class="evid"><b>Description</b>${esc(f.why)}</div>` : ''}<div class="evid"><b>${f.canToggle ? 'Can it be disabled?' : 'Protected'}</b>${f.canToggle ? 'Yes. Disabling keeps the task; it just stops running. If a program stops updating or backing up, switch it back on.' : 'This is one of Windows’ own maintenance tasks. Disabling these can stop updates, security scans or backups, so Feather leaves them alone.'}</div>` : '<div class="muted">Select a task to see what it runs and when.</div>';
+  return `${T.err ? `<div class="muted" style="margin-bottom:8px">${esc(T.err)}</div>` : ''}<div class="toolbar">${searchBox(L, 'Search tasks')}${chips(L, 'state', [['all', 'All', cnt('all')], ['enabled', 'Enabled', cnt('enabled')], ['disabled', 'Disabled', cnt('disabled')], ['startup', 'At startup / sign-in', cnt('startup')], ['failed', 'Last run failed', cnt('failed')]])}<label class="muted"><input type="checkbox" data-fchk="tasks|hideMs" ${hide ? 'checked' : ''}> Hide Microsoft tasks</label></div>
+  ${selBar(L, 'tasks', batch)}${splitView(table(L, [{ h: 'Task', s: 'name' }, { h: 'State', s: 'state' }, { h: 'Runs', s: 'when' }, { h: 'Last run', s: 'last' }, { h: 'Next run', s: 'next' }, { h: 'Folder', s: 'folder' }], rows, 'No tasks match.'), side)}`;
+};
+async function loadTasks() { const r = await run('Reading Task Scheduler…', () => call('tasks.list')); if (r.ok) { S.tasks.items = r.items; S.tasks.err = r.error || ''; } else { S.tasks.items = []; S.tasks.err = r.error || 'Task Scheduler could not be read.'; toast(r.error, true); } }
+
 // ---------- Troubleshoot ----------
 TOPACT.trouble = () => `<button class="btn ghost" data-act="troubleRefresh">Recheck</button>`;
 PAGES.trouble = () => {
@@ -618,7 +655,7 @@ PAGES.settings = () => { const i = S.info; const sw = (k, v) => `<button class="
   <div class="setrow"><div class="grow"><b>License</b><div class="muted">${esc(S.lic ? S.lic.state : 'Checking…')}${S.lic && S.lic.valid ? ' · ' + esc(S.lic.name) : ''}<br>All current features are free. A license is only needed for optional paid features, if and when they are offered.</div></div><button class="btn ghost sm" data-act="licEnter">Enter key…</button>${S.lic && S.lic.valid ? '<button class="btn ghost sm" data-act="licRemove">Remove</button>' : ''}</div>
   <div class="setrow"><div class="grow"><b>Start Feather with Windows</b><div class="muted">Off by default. Adds an entry to your startup list that you can remove here or on the Startup page.</div></div>${sw('startWithWindows', i.startWithWindows)}</div>
   <div class="setrow"><div class="grow"><b>Keep the journal for</b><div class="muted">Older entries are removed when Feather starts. Backups and quarantine are never removed automatically.</div></div><select id="logDays" aria-label="Journal retention">${[[0, 'Forever'], [30, '30 days'], [90, '90 days'], [180, '6 months'], [365, '1 year']].map(([v, l]) => `<option value="${v}" ${+i.logDays === v ? 'selected' : ''}>${l}</option>`).join('')}</select><button class="btn ghost sm" data-act="clearJournal">Clear journal…</button></div>
-  <div class="setrow" style="align-items:flex-start"><div class="grow"><b>Exclusions</b><div class="muted">Folders Feather never scans or cleans.</div>${(S.excl || []).map((p, k) => `<div class="row"><span class="grow cut" title="${esc(p)}">${esc(p)}</span><button class="btn ghost sm" data-act="exclRemove" data-i="${k}">Remove</button></div>`).join('') || '<div class="muted">None.</div>'}</div><button class="btn ghost sm" data-act="exclAdd">Add folder…</button></div>
+  <div class="setrow" style="align-items:flex-start"><div class="grow"><b>Exclusions</b><div class="muted">Folders, files and patterns Feather never scans or cleans. Patterns use * and ?, for example <code>*.bak</code> (any file or folder with that name) or <code>D:\Projects\*\node_modules</code>.</div>${(S.excl || []).map((p, k) => `<div class="row"><span class="grow cut" title="${esc(p)}">${esc(p)}</span><button class="btn ghost sm" data-act="exclRemove" data-i="${k}">Remove</button></div>`).join('') || '<div class="muted">None.</div>'}</div><div style="display:flex;flex-direction:column;gap:6px"><button class="btn ghost sm" data-act="exclAdd">Add folder…</button><input id="exclPat" placeholder="*.bak" aria-label="Exclusion pattern" style="width:150px"><button class="btn ghost sm" data-act="exclPattern">Add pattern</button></div></div>
   <div class="setrow" style="align-items:flex-start"><div class="grow"><b>Ignored findings</b><div class="muted">Hidden from Clean, Startup and Driver updates. Nothing on your PC is changed by ignoring.</div>${(S.ign || []).map(x => `<div class="row"><span class="pill neutral">${esc(x.kind)}</span><span class="grow cut">${esc(x.label)}</span><button class="btn ghost sm" data-act="ignRemove" data-i="${x.i}">Show again</button></div>`).join('') || '<div class="muted">None.</div>'}</div>${(S.ign || []).length ? '<button class="btn ghost sm" data-act="ignClear">Show all again</button>' : ''}</div>
   <div class="setrow"><div class="grow"><b>Large file threshold</b><div class="muted">MB</div></div><input type="number" min="1" id="largeMin" value="${i.largeMinMB}"></div>
   <div class="setrow"><div class="grow"><b>Duplicate minimum size</b><div class="muted">KB (smaller files are ignored)</div></div><input type="number" min="1" id="dupMin" value="${i.dupMinKB}"></div>
@@ -665,6 +702,8 @@ async function loadPage() {
   else if (p === 'tools') { await loadSys(); }
   else if (p === 'journal') { await Promise.all([loadJournal(), loadBackups()]); }
   else if (p === 'privacy') { if (!S.priv.items) draw(); await loadPrivacy(); }
+  else if (p === 'security') { if (!S.sec.items) draw(); await loadSecurity(); }
+  else if (p === 'tasks') { if (!S.tasks.items) draw(); await loadTasks(); }
   else if (p === 'trouble') { if (!S.trouble.status) draw(); await loadTrouble(); }
   else if (p === 'recovery') { if (!S.rec.points) draw(); await loadRecovery(); }
   else if (p === 'files') { await loadScan(); }
@@ -890,6 +929,15 @@ A.quarRestore = async () => { const L = LS('quar'), sel = selectedOf(L, S.rec.qu
 A.quarPurge = async () => { const L = LS('quar'), sel = selectedOf(L, S.rec.quar.items, e => e.id); if (!sel.length) return; if (!await modal({ title: `PERMANENTLY delete ${plural(sel.length, 'quarantined item', 'quarantined items')}?`, body: 'This cannot be undone.', items: sel.map(e => e.orig + ' (' + fmt(e.bytes) + ')'), confirm: 'Delete permanently', danger: true })) return;
   const r = await run('Deleting…', () => call('quarantine.purge', { ids: sel.map(e => e.id) })); toast(r.ok ? `${plural(r.done, 'item', 'items')} deleted.` : `${r.done || 0} deleted, ${r.failed} failed: ${r.error}`, !r.ok); L.sel.clear(); await loadRecovery(); loadJournal(); draw(); };
 A.clearJournal = async () => { if (!await modal({ title: 'Clear the journal?', body: 'The history of what Feather changed is deleted. Backups and quarantined items are not affected, but you lose the record of what they were.', confirm: 'Clear journal', danger: true })) return; const r = await call('journal.clear'); toast(r.ok ? 'Journal cleared.' : r.error, !r.ok); await loadJournal(); draw(); };
+A.secRefresh = async () => { S.sec.items = null; draw(); await loadSecurity(); draw(); };
+A.secOpen = async el => { const r = await call('security.open', { id: el.dataset.id }); if (!r.ok) toast(r.error, true); };
+A.tasksRefresh = async () => { S.tasks.items = null; draw(); await loadTasks(); draw(); };
+A.tasksOpen = () => call('tasks.openScheduler');
+A.taskBatch = async el => { const en = el.dataset.v === '1', L = LS('tasks'), sel = selectedOf(L, S.tasks.items, e => e.path).filter(e => en ? !e.enabled : (e.enabled && e.canToggle)); if (!sel.length) return toast('Nothing to change in the selection.');
+  const items = sel.map(e => ({ ...e, needsAdmin: e.microsoft })); if (!await adminGate(items, en ? 'enable these tasks' : 'disable these tasks')) return;
+  if (!en && !await modal({ title: `Disable ${plural(sel.length, 'task')}?`, body: 'They stay in Task Scheduler but stop running. Switch them back on here or from the Journal.', items: sel.map(e => e.name), confirm: 'Disable' })) return;
+  const r = await run('Applying…', () => call('tasks.set', { paths: sel.map(e => e.path), enable: en })); toast(r.ok ? `${r.done} ${en ? 'enabled' : 'disabled'}. You can reverse this any time.` : `${r.done || 0} done, ${r.failed || 1} failed: ${r.error}`, !r.ok); await loadTasks(); loadJournal(); draw(); };
+A.exclPattern = async () => { const el = $('#exclPat'), r = await call('exclusions.addPattern', { pattern: el ? el.value : '' }); if (!r.ok) return toast(r.error, true); await loadSettingsData(); draw(); toast('Pattern added.'); };
 A.exclAdd = async () => { const r = await call('exclusions.add'); if (!r.ok) toast(r.error, true); await loadSettingsData(); draw(); };
 A.exclRemove = async el => { await call('exclusions.remove', { i: +el.dataset.i }); await loadSettingsData(); draw(); };
 A.ignRemove = async el => { await call('ignore.remove', { i: +el.dataset.i }); S.info.ignoredCount = Math.max(0, (S.info.ignoredCount || 1) - 1); await loadSettingsData(); S.clean.items = null; S.startup.items = null; S.drivers.items = null; draw(); };

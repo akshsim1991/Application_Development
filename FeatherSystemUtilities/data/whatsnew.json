@@ -1,5 +1,14 @@
 [
  {
+  "version": "3.8.0",
+  "date": "November 2026",
+  "items": [
+   "New Security page: a read-only checklist for Defender, firewall, UAC, BitLocker, Secure Boot, TPM, SMBv1, Remote Desktop and pending restarts, each with an Open in Windows button.",
+   "New Tasks page: every Task Scheduler task with state, triggers, last and next run and last result. Disable or enable tasks (reversible, journaled); Windows' own maintenance tasks are protected.",
+   "Exclusions now accept patterns such as *.bak or D:\\Projects\\*\\node_modules (Settings)."
+  ]
+ },
+ {
   "version": "3.7.3",
   "date": "November 2026",
   "items": [

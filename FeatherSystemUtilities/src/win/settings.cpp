@@ -33,9 +33,22 @@ bool FeatureOn(const char* id) {
     for (auto& f : FeatureFlags()) if (!strcmp(f.id, id)) return f.beta ? g_cfg.betaFeatures : true; return false;
 }
 static std::wstring LowerPath(std::wstring s) { for (auto& c : s) c = (wchar_t)towlower(c); while (s.size() > 3 && s.back() == L'\\') s.pop_back(); return s; }
+static bool WildMatch(const wchar_t* p, const wchar_t* s) {   // case-insensitive, * and ? only; iterative so hostile patterns cannot blow the stack
+    const wchar_t *star = nullptr, *ss = s;
+    while (*s) { if (*p == L'?' || towlower(*p) == towlower(*s)) { ++p; ++s; } else if (*p == L'*') { star = p++; ss = s; } else if (star) { p = star + 1; s = ++ss; } else return false; }
+    while (*p == L'*') ++p; return !*p;
+}
 bool IsExcluded(const std::wstring& path) {
     if (g_cfg.exclusions.empty()) return false; std::wstring p = LowerPath(path);
-    for (auto& e : g_cfg.exclusions) { std::wstring x = LowerPath(e); if (!x.empty() && (p == x || p.rfind(x + L"\\", 0) == 0)) return true; } return false;
+    for (auto& e : g_cfg.exclusions) {
+        if (e.find_first_of(L"*?") != std::wstring::npos) {   // pattern: with a backslash it is matched against the whole path (or any parent folder), otherwise against the file or any folder name in the path
+            bool full = e.find(L'\\') != std::wstring::npos; std::wstring pat = e; if (!full) pat = e;
+            if (full) { std::wstring q = p; for (;;) { if (WildMatch(pat.c_str(), q.c_str())) return true; size_t k = q.find_last_of(L'\\'); if (k == std::wstring::npos || k < 3) break; q.erase(k); } }
+            else { size_t b = 0; while (b <= p.size()) { size_t k = p.find(L'\\', b); std::wstring part = p.substr(b, k == std::wstring::npos ? std::wstring::npos : k - b); if (!part.empty() && WildMatch(pat.c_str(), part.c_str())) return true; if (k == std::wstring::npos) break; b = k + 1; } }
+            continue;
+        }
+        std::wstring x = LowerPath(e); if (!x.empty() && (p == x || p.rfind(x + L"\\", 0) == 0)) return true;
+    } return false;
 }
 
 void LoadSettings() {

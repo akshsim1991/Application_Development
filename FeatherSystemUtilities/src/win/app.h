@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.7.3"
+#define FSU_VERSION L"3.8.0"
 
 namespace fsu {
 
@@ -177,6 +177,11 @@ bool ClearBrowserCategory(const BrowserProfile& bp, const BrowserCat& c, ULONGLO
 struct PrivacyItem { std::wstring id, title, state, detail, why; bool good = true; };
 std::vector<PrivacyItem> PrivacyChecklist();
 bool OpenPrivacySetting(const std::wstring& id);
+std::vector<PrivacyItem> SecurityChecklist();
+bool OpenSecuritySetting(const std::wstring& id);
+struct TaskInfo { std::wstring path, name, folder, state, triggers, command, author, lastRun, nextRun, why; long lastResult = 0; bool enabled = true, microsoft = false, startup = false, hidden = false, canToggle = true; };
+std::vector<TaskInfo> ListAllTasks(std::wstring& err);
+bool SetTaskEnabledByPath(const std::wstring& path, bool enable, std::wstring& err);
 bool OpenBrowserPrivacy(const std::wstring& key, std::wstring& err);
 struct EventRec { std::wstring time, log, provider, message; int level = 0; DWORD id = 0; ULONGLONG sort = 0; };
 std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);

@@ -88,6 +88,7 @@
         return t.userInterfaceStyle == UIUserInterfaceStyleDark ? [UIColor colorWithWhite:0.05 alpha:1] : [UIColor colorWithRed:0.81 green:0.85 blue:0.86 alpha:1];
     }];
     self.navigationItem.hidesBackButton = YES;
+    self.navigationItem.largeTitleDisplayMode = UINavigationItemLargeTitleDisplayModeNever;   // (the start screen's large title stays there)
     UIBarButtonItem* home = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"house"] style:UIBarButtonItemStylePlain target:self action:@selector(leave)];
     home.accessibilityLabel = @"Recent documents";
     UIBarButtonItem* side = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"sidebar.left"] style:UIBarButtonItemStylePlain target:self action:@selector(toggleSidebar)];

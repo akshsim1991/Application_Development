@@ -1,6 +1,16 @@
 # Feather PDF: what changed in each version
 
-Free forever. Windows and macOS. Newest first.
+Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
+
+## 2.27.0 "Fiesta" (24 November 2026)
+
+- New: Feather PDF for iPhone and iPad (iOS 15 or later). Read and find; change text (with x² and x₂) and equations
+  (the equation editor with a live picture); add text, highlights, underlines, strike-outs, drawings and notes; erase
+  them; turn and delete pages; undo and redo; page colours (night, dimmed, blackboard). As on the other apps: every PDF
+  in a tab, the sidebar with page thumbnails and bookmarks, and a tap on the page for full screen. Saves back to the
+  file where it was (Files, iCloud Drive, On My iPhone), or a copy, or Share. Recent documents, Settings and About.
+  It is not in the App Store: download FeatherPDF-2.27.0-ios.ipa and install it from a Mac with Sideloadly or AltStore
+  (the releases page says how). It says when a new version is out.
 
 ## 2.26.0 "Mondeo" (24 November 2026)
 

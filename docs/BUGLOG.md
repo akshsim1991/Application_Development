@@ -1702,3 +1702,22 @@ runner (Windows menu check workflow). The three downloads match latest.json.
 
 **Published:** 2.26.0 "Mondeo" for Windows, Mac and Android (24 November); the emulator self-test passed with the new
 tabs, sidebar and full-screen checks. All four downloads (with the 32-bit APK, now in latest.json) match.
+
+### B-132 No Feather PDF for iPhone and iPad - High (iOS)
+- **Found:** the user: an iPhone app was needed, installed from their MacBook (sideloaded).
+- **Fix:** a UIKit app in Objective-C++ (iOS/) on the shared engine, with the Android app's features: tabs, the
+  sidebar (thumbnails and bookmarks), a tap for full screen, the seven tools (read, edit text, add text, highlight,
+  draw, note, erase), find, the paragraph editor with x²/x₂ and the equation editor with a live picture, page colours,
+  turn and delete pages, undo and redo, saving back to the file (or a copy, or Share), recent documents, Settings,
+  About and new-version notices (latest.json's new "ios" entry; a sideloaded app cannot replace itself, so it opens the
+  download and the instructions). Pages are drawn in tiles (CATiledLayer) at any zoom; the engine is used under one
+  lock. PDFium (bblanchon's iOS build) goes into the app as Frameworks/pdfium.framework. The build makes an unsigned
+  .ipa (Payload/FeatherPDF.app) for Sideloadly or AltStore.
+- **Found while testing:** a document opened before the page view had its width crashed (FPPagesView read the page
+  positions, which are only laid out once the view has a width). The page asked for is now kept and shown after the
+  layout, and nothing reads the positions before.
+- **Tests:** a new workflow (iOS build) builds the phone's app and .ipa and the simulator's app on a Mac, then runs the
+  app's build check on an iPhone simulator: open, the bars clear of the notch and home indicator, edit mode, a
+  paragraph changed, highlight, note, pen stroke, find, night colours, undo and redo, a second tab, the sidebar with
+  drawn thumbnails, full screen on and off, save; the saved file is read by pikepdf and pdfminer (3 pages, highlight,
+  ink and note, the edit found). All 26 checks pass; the pictures are in docs/ios.

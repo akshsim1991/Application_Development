@@ -39,7 +39,8 @@ int wmain(int argc, wchar_t** argv) {
     // files to select
     wchar_t tmp[MAX_PATH];
     GetTempPathW(MAX_PATH, tmp);
-    const std::wstring t(tmp);
+    wchar_t longTmp[MAX_PATH * 2];   // (the temporary folder may come in its short 8.3 form; File Explorer gives long names)
+    const std::wstring t(GetLongPathNameW(tmp, longTmp, MAX_PATH * 2) ? longTmp : tmp);
     std::vector<std::wstring> pdfs = {t + L"fp test a.pdf", t + L"fp test b.pdf", t + L"fp test c.PDF"};
     const std::wstring other = t + L"fp test d.exe";
     for (const auto& p : pdfs) { HANDLE h = CreateFileW(p.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, 0, nullptr); CloseHandle(h); }
@@ -70,6 +71,7 @@ int wmain(int argc, wchar_t** argv) {
     bool all = !text.empty();
     for (const auto& p : pdfs) if (text.find(p) == std::wstring::npos) all = false;
     check(all, "FeatherPDF.exe --combine-list got all three files");
+    if (!all) std::wprintf(L"  received: %ls\n", text.c_str());
     std::printf(fails ? "SOME FAILED\n" : "ALL PASSED\n");
     return fails ? 1 : 0;
 }

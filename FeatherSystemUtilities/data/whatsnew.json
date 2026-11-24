@@ -1,5 +1,14 @@
 [
  {
+  "version": "3.7.3",
+  "date": "November 2026",
+  "items": [
+   "Self-test (Settings › Diagnostics, or run the app with --selftest): checks what works on this PC with Windows error codes, ready to copy into a support message.",
+   "Local diagnostics log and crash recording; interface errors are caught instead of freezing silently.",
+   "The window recovers if its page process crashes, long lists are capped for speed, and a second click during a running task is ignored."
+  ]
+ },
+ {
   "version": "3.7.2",
   "date": "November 2026",
   "items": [

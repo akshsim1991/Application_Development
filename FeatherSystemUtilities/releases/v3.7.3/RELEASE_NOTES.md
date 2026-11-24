@@ -1,0 +1,1 @@
+Self-test and local diagnostics log (also: FeatherSystemUtilities.exe --selftest), crash recording, interface errors caught and logged, web view recovery, long-list cap, busy-click protection, Open file location logging.

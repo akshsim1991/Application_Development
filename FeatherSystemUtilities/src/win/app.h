@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.7.2"
+#define FSU_VERSION L"3.7.3"
 
 namespace fsu {
 
@@ -181,6 +181,16 @@ bool OpenBrowserPrivacy(const std::wstring& key, std::wstring& err);
 struct EventRec { std::wstring time, log, provider, message; int level = 0; DWORD id = 0; ULONGLONG sort = 0; };
 std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);
 std::wstring Redact(std::wstring s, bool maskPaths);
+
+// ---- diagnostics: local log, crash filter, self-test (log.cpp, selftest.cpp) ----
+void Log(const char* level, const std::wstring& text);
+std::vector<std::string> LogTail(size_t n);
+void LogClear();
+void InstallCrashLog();
+struct TestResult { std::wstring name, detail; bool ok = false; int ms = 0; };
+std::vector<TestResult> RunSelfTest(bool network, const std::function<void(const std::wstring&)>& progress);
+std::wstring SelfTestReport(const std::vector<TestResult>& r);
+bool WebUiAvailable();
 
 // ---- device diagnosis and repair (device.cpp) ----
 struct DeviceEvent { int id = 0; std::wstring time, problem, status, driver, service; };

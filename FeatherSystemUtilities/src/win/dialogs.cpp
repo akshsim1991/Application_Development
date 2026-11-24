@@ -36,10 +36,10 @@ bool OpenFileLocationEx(const wstring& program, wstring& err) {
     wstring leaf = dir.size() <= 3 ? dir : dir.substr(dir.find_last_of(L'\\') + 1); AllowSetForegroundWindow(ASFW_ANY);
     auto spawn = [](wstring cl) { STARTUPINFOW si{sizeof si}; PROCESS_INFORMATION pi{}; if (!CreateProcessW(nullptr, &cl[0], nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi)) return false; CloseHandle(pi.hThread); CloseHandle(pi.hProcess); return true; };
     if (attr != INVALID_FILE_ATTRIBUTES && !isDir) {   // 1) explorer.exe /select,"file"  (needs no COM and works from any thread)
-        if (spawn(L"explorer.exe /select,\"" + p + L"\"") && ShowExplorerFor(leaf, dir, 3000)) return true;
-        if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(p.c_str())) { HRESULT hr = SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0); ILFree(pidl); if (SUCCEEDED(hr) && ShowExplorerFor(leaf, dir, 2500)) return true; }   // 2) shell API
+        { bool sp = spawn(L"explorer.exe /select,\"" + p + L"\""); if (sp && ShowExplorerFor(leaf, dir, 3000)) { Log("INFO", L"Open location: explorer /select worked for " + p); return true; } Log("WARN", L"Open location: explorer /select " + wstring(sp ? L"started but no window appeared" : L"could not start") + L" for " + p); }
+        if (PIDLIST_ABSOLUTE pidl = ILCreateFromPathW(p.c_str())) { HRESULT hr = SHOpenFolderAndSelectItems(pidl, 0, nullptr, 0); ILFree(pidl); if (SUCCEEDED(hr) && ShowExplorerFor(leaf, dir, 2500)) { Log("INFO", L"Open location: shell API worked for " + p); return true; } Log("WARN", L"Open location: shell API failed (0x" + std::to_wstring((unsigned)hr) + L") for " + p); }   // 2) shell API
     }
-    if (spawn(L"explorer.exe \"" + dir + L"\"") && ShowExplorerFor(leaf, dir, 3000)) return true;   // 3) at least the folder
+    if (spawn(L"explorer.exe \"" + dir + L"\"") && ShowExplorerFor(leaf, dir, 3000)) { Log("INFO", L"Open location: opened the folder only for " + dir); return true; }   // 3) at least the folder
     if ((INT_PTR)ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL) > 32) return true;
     err = L"Explorer could not be opened for:\r\n" + dir; return false;
 }

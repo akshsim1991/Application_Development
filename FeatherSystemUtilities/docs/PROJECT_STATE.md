@@ -34,3 +34,6 @@ device.cpp: DiagnoseDevice (problem code, DEVPKEY_Device_ProblemStatus decoded, 
 
 ## 3.7.1 (stabilize, part 2)
 Update: HttpErr text for WinHTTP codes, ApplyUserProxy, long timeouts for installers, retry + jsDelivr mirror, update.openDownload, channel (latest-beta.json), rollback via manifest "previous". What's new (data/whatsnew.json embedded) and Help & FAQ modals. WebView2-missing prompt in main.cpp (Win10/11: offer Microsoft page; Win7/8: explain classic window). clean.runById lets the administrator helper run its own scan and clean selected ids. UI tests: 108 checks.
+
+## 3.7.3 (stabilize, part 3)
+log.cpp (app.log, crash filter), selftest.cpp (25+ checks, CLI --selftest), webui ProcessFailed handling, UI: call() timeouts, busy lock, error capture, 1500-row table cap, Settings > Diagnostics. UI tests: 114 checks. The 3.7 stabilize list is complete; remaining stabilization depends on real-PC test results (use the self-test).

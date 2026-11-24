@@ -1323,6 +1323,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR cmd, int show) {
     g_inst = inst; wstring c = cmd ? cmd : L"";
+    InstallCrashLog();
+    if (c.find(L"--selftest") != wstring::npos) {   // headless self-test: writes selftest.txt and shows a summary
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); LoadSettings(); auto r = RunSelfTest(c.find(L"--offline") == wstring::npos, nullptr); wstring rep = SelfTestReport(r); wstring path = DataDir() + L"\\selftest.txt"; AtomicWrite(path, ToUtf8(rep)); int bad = 0; for (auto& x : r) if (!x.ok) ++bad;
+        MessageBoxW(nullptr, (std::to_wstring(r.size() - bad) + L" checks passed, " + std::to_wstring(bad) + L" need attention.\r\n\r\nThe full report was saved to:\r\n" + path + L"\r\n\r\nSend that file if something is not working.").c_str(), L"Feather System Utilities self-test", MB_OK | (bad ? MB_ICONWARNING : MB_ICONINFORMATION)); return bad ? 1 : 0; }
     if (c.find(L"--cleanup") != wstring::npos) {   // used by the uninstaller: restore delayed entries, remove our tasks
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); wstring rep; CleanupManagedTasks(rep); return 0; }
     if (c.find(L"--broker") != wstring::npos) { CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); LoadSettings(); return BrokerMain(GetCommandLineW(), BrokerExecute); }   // elevated administrator helper (no window, no single-instance lock)

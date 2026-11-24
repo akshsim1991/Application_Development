@@ -29,7 +29,7 @@ namespace fsu {
 using std::wstring; using std::string;
 
 static HWND g_wnd; static ICoreWebView2Controller* g_ctl; static ICoreWebView2* g_wv; static bool g_ready, g_failed; static HANDLE* g_instMutex;
-enum { WM_WV_POST = WM_APP + 40, WM_WV_FAIL, WM_WV_PAGE };
+enum { WM_WV_POST = WM_APP + 40, WM_WV_FAIL, WM_WV_PAGE, WM_WV_RELOAD }; static wstring g_html;
 static std::mutex g_m;
 static std::atomic<bool> g_cancel{false}; static std::atomic<int> g_stGen{0};
 static StartupScan g_su; static ProgramScan g_pg; static ServiceScan g_sv; static CleanScan g_cl; static int g_clGen; static std::vector<CleanItem> g_left; static int g_leftGen; static FileScan g_fs[4]; static int g_fsGen[4]; static std::vector<BrowserProfile> g_priv; static int g_privGen; static std::set<string> g_store, g_hot; static std::vector<DriverRec> g_drv;
@@ -54,6 +54,7 @@ static void ClassifyStartup(const StartupEntry& e, string& kind, wstring& advice
 static GUID ParseGuid(const char* t) { unsigned a, b, c, d[8]; sscanf(t, "%8x-%4x-%4x-%2x%2x-%2x%2x%2x%2x%2x%2x", &a, &b, &c, &d[0], &d[1], &d[2], &d[3], &d[4], &d[5], &d[6], &d[7]); GUID g{a, (unsigned short)b, (unsigned short)c, {}}; for (int i = 0; i < 8; ++i) g.Data4[i] = (unsigned char)d[i]; return g; }
 template <class T> struct IidOf;
 #define FSU_IID(T, S) template <> struct IidOf<T> { static const GUID& get() { static GUID g = ParseGuid(S); return g; } };
+FSU_IID(ICoreWebView2ProcessFailedEventHandler, "79e0aea4-990b-42d9-aa1d-0fcc2e5bc7f1")
 FSU_IID(ICoreWebView2Settings3, "fdb5ab74-af33-4854-84f0-0a631deb5eba")
 FSU_IID(ICoreWebView2CreateCoreWebView2ControllerCompletedHandler, "6c4819f3-c9b7-4260-8127-c9f5bde7f68c")
 FSU_IID(ICoreWebView2NavigationCompletedEventHandler, "d33a35bf-1c49-4f98-93ab-006e0533fe1c")
@@ -559,6 +560,12 @@ static std::map<string, Fn>& Handlers() {
         for (auto& i : sc.items) { string key = U(i.id.empty() ? i.name : i.id); if (std::find(ids.begin(), ids.end(), key) != ids.end()) sel.push_back(i); }
         if (sel.empty()) return Err(L"None of the selected items were found by the administrator scan. Scan again."); CleanResult r; RunClean(sel, Cfg().keepRecent, r, Cfg().quarantineLeftovers);
         return js::Obj().boolean("ok", true).num("bytes", (double)r.bytes).num("files", (double)r.files).num("done", r.ok).num("skipped", r.skipped).num("failed", r.failed).num("missing", (double)(ids.size() - sel.size())).str("firstError", U(r.firstErr)).str("backup", U(r.backupPath)).done(); };
+    // ---- diagnostics ----
+    h["log.write"] = [](const js::V& a) { static std::atomic<int> n{0}; static std::atomic<ULONGLONG> t0{0}; ULONGLONG now = GetTickCount64(); if (now - t0 > 60000) { t0 = now; n = 0; } if (++n > 40) return Ok(); string lv = a.str("level") == "error" ? "ERROR" : "WARN"; Log(lv.c_str(), L"[ui] " + W(a.str("text").substr(0, 1500))); return Ok(); };
+    h["log.read"] = [](const js::V& a) { js::Arr arr; for (auto& l : LogTail((size_t)std::clamp(a.num("lines", 200), 10.0, 1000.0))) arr.add(Q(Redact(W(l), false))); return js::Obj().boolean("ok", true).raw("lines", arr.done()).done(); };
+    h["log.clear"] = [](const js::V&) { LogClear(); return Ok(); };
+    h["selftest.run"] = [](const js::V& a) { auto r = RunSelfTest(a.boolean("network", true), [](const wstring& n) { Progress(L"Self-test: " + n + L"…"); }); wstring rep = SelfTestReport(r); AtomicWrite(DataDir() + L"\\selftest.txt", U(rep)); js::Arr arr; for (auto& x : r) arr.add(js::Obj().str("name", U(x.name)).boolean("ok", x.ok).num("ms", x.ms).str("detail", U(Redact(x.detail, false))).done()); return js::Obj().boolean("ok", true).raw("items", arr.done()).str("text", U(rep)).str("path", U(DataDir() + L"\\selftest.txt")).done(); };
+    h["app.copy"] = [](const js::V& a) { wstring t = W(a.str("text").substr(0, 200000)); if (!OpenClipboard(g_wnd)) return Err(L"The clipboard is busy."); EmptyClipboard(); HGLOBAL g = GlobalAlloc(GMEM_MOVEABLE, (t.size() + 1) * 2); if (g) { memcpy(GlobalLock(g), t.c_str(), (t.size() + 1) * 2); GlobalUnlock(g); SetClipboardData(CF_UNICODETEXT, g); } CloseClipboard(); return Ok(); };
     h["shell.open"] = [](const js::V& a) { string w = a.str("what"); if (w == "tasks") ShellExecuteW(nullptr, L"open", L"taskschd.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "services") ShellExecuteW(nullptr, L"open", L"services.msc", nullptr, nullptr, SW_SHOWNORMAL); else if (w == "settings-apps") ShellExecuteW(nullptr, L"open", L"ms-settings:appsfeatures", nullptr, nullptr, SW_SHOWNORMAL); return Ok(); };
 
     // ---- driver inventory and updates ----
@@ -687,6 +694,7 @@ static LRESULT CALLBACK HostProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_WV_POST: { std::unique_ptr<wstring> s((wstring*)l); if (g_wv) g_wv->PostWebMessageAsJson(s->c_str()); return 0; }
     case WM_APP + 2: case WM_WV_PAGE: { if (IsIconic(h)) ShowWindow(h, SW_RESTORE); SetForegroundWindow(h); static const char* pages[] = {"today", "speed", "toolbox", "startup", "services", "drivers", "programs", "clean", "large", "dupes", "empty", "history", "settings"};
         if (g_wv && w < 13) { wstring js = L"{\"event\":\"goto\",\"data\":{\"page\":\"" + W(pages[w]) + L"\"}}"; g_wv->PostWebMessageAsJson(js.c_str()); } return 0; }
+    case WM_WV_RELOAD: if (g_wv && !g_html.empty()) { Log("WARN", L"The web view's page process crashed; reloading the interface."); g_ready = false; g_wv->NavigateToString(g_html.c_str()); } return 0;
     case WM_WV_FAIL: g_failed = true; DestroyWindow(h); return 0;
     case WM_TIMER: if (w == 77) { KillTimer(h, 77); if (!g_ready) { g_failed = true; DestroyWindow(h); } } return 0;
     case WM_CLOSE: { auto& c = Cfg(); c.maximized = IsZoomed(h) != 0; if (!c.maximized && !IsIconic(h)) { RECT r; GetWindowRect(h, &r); UINT d = DpiForWindow(h); c.winX = r.left; c.winY = r.top; c.winW = MulDiv(r.right - r.left, 96, d); c.winH = MulDiv(r.bottom - r.top, 96, d); } SaveSettings(); DestroyWindow(h); return 0; }
@@ -726,7 +734,12 @@ int RunWebUi(HINSTANCE inst, int show, int firstPage, HANDLE* instMutex) {   // 
             g_wv->add_NewWindowRequested(new Cb<ICoreWebView2NewWindowRequestedEventHandler, ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs*>([](ICoreWebView2*, ICoreWebView2NewWindowRequestedEventArgs* a) -> HRESULT { a->put_Handled(TRUE); return S_OK; }), &tk);
             g_wv->add_NavigationCompleted(new Cb<ICoreWebView2NavigationCompletedEventHandler, ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*>([firstPage](ICoreWebView2*, ICoreWebView2NavigationCompletedEventArgs*) -> HRESULT {
                 if (!g_ready) { g_ready = true; KillTimer(g_wnd, 77); if (firstPage > 0) PostMessageW(g_wnd, WM_WV_PAGE, (WPARAM)firstPage, 0); } return S_OK; }), &tk);
-            wstring html = FromUtf8(string((const char*)kUiHtml, kUiHtmlSize)); g_wv->NavigateToString(html.c_str()); return S_OK; });
+            g_wv->add_ProcessFailed(new Cb<ICoreWebView2ProcessFailedEventHandler, ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs*>([](ICoreWebView2*, ICoreWebView2ProcessFailedEventArgs* a) -> HRESULT {
+                COREWEBVIEW2_PROCESS_FAILED_KIND k = COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED; a->get_ProcessFailedKind(&k);
+                if (k == COREWEBVIEW2_PROCESS_FAILED_KIND_BROWSER_PROCESS_EXITED) { Log("FATAL", L"The WebView2 browser process exited; switching to the classic window."); PostMessageW(g_wnd, WM_WV_FAIL, 0, 0); }
+                else if (k == COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED) PostMessageW(g_wnd, WM_WV_RELOAD, 0, 0);
+                else Log("WARN", L"The web view's page process is not responding."); return S_OK; }), &tk);
+            g_html = FromUtf8(string((const char*)kUiHtml, kUiHtmlSize)); g_wv->NavigateToString(g_html.c_str()); return S_OK; });
         env->CreateCoreWebView2Controller(g_wnd, onCtl); onCtl->Release(); return S_OK; });
     SetTimer(g_wnd, 77, 25000, nullptr);   // if the web view never comes up (e.g. Safe Mode, broken runtime) fall back to the classic window
     HRESULT hr = create(nullptr, udf.c_str(), nullptr, onEnv); onEnv->Release();

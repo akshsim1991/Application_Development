@@ -805,8 +805,8 @@
                     <TextBlock Text="{Binding SelectedCountText}" Foreground="{DynamicResource SubtleTextBrush}" />
                 </StackPanel>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconMonitor}" Content="Set as Wallpaper" Command="{Binding SetWallpaperCommand}" AutomationProperties.Name="Set as Wallpaper" />
-                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconPrinter}" Content="Print" Command="{Binding PrintCommand}" AutomationProperties.Name="Print" />
+                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconMonitor}" Content="Set as Wallpaper" Command="{Binding SetWallpaperCommand}" Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}" AutomationProperties.Name="Set as Wallpaper" />
+                    <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconPrinter}" Content="Print" Command="{Binding PrintCommand}" Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}" AutomationProperties.Name="Print" />
                     <Button Style="{StaticResource StatusButton}" Tag="{StaticResource IconFolder}" Content="Open Folder" Command="{Binding ShowInExplorerCommand}" AutomationProperties.Name="Open Folder" />
                     <Rectangle Width="1" Margin="8,8" Fill="{DynamicResource BorderBrushSoft}" />
                     <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconFullscreen}" ToolTip="Full screen (F11)" Command="{Binding ToggleFullscreenCommand}" AutomationProperties.Name="Full screen" />

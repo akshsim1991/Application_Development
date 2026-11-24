@@ -1,4 +1,5 @@
 Feather View 2.1.17
+- "Set as Wallpaper" and "Print" in the bottom bar only show while a picture is open
 - The folder path above the gallery is editable: click it, type or paste a path and press Enter (Esc cancels)
 - Settings now use tabs (Appearance, General, Viewing, Video, Performance, Updates, More) instead of one long page
 - New themes: AMOLED (pure black), Midnight blue, Forest green, Sepia and Glass (translucent, acrylic blur on Windows 11)

@@ -44,6 +44,12 @@ public partial class MainWindow : Window
         vm.FocusSearchRequested += () => Dispatcher.BeginInvoke(new Action(() => { SearchBox.Focus(); SearchBox.SelectAll(); }), System.Windows.Threading.DispatcherPriority.Input);
         GalleryList.SizeChanged += (_, e) => vm.Gallery.SetViewportWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 20);
 
+        // Rubber-band selection: press on the gallery and drag a rectangle over thumbnails (hold Ctrl to add to the current selection)
+        GalleryList.PreviewMouseLeftButtonDown += Gallery_MarqueeDown;
+        GalleryList.PreviewMouseMove += Gallery_MarqueeMove;
+        GalleryList.PreviewMouseLeftButtonUp += (_, e) => { if (EndMarquee()) e.Handled = true; };
+        GalleryList.LostMouseCapture += (_, _) => EndMarquee();
+
         // The folder path is editable: Enter goes there, Esc puts the current path back. Shortcuts are paused while typing, like in the search box.
         PathBox.GotKeyboardFocus += (_, _) =>
         {
@@ -185,6 +191,74 @@ public partial class MainWindow : Window
     private void OnDrop(object sender, DragEventArgs e)
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] paths && paths.Length > 0) _vm.OpenPath(paths[0]);
+    }
+
+    // ---- rubber-band (drag rectangle) selection in the gallery ----
+    private Point _mqStart; private bool _mqDown, _mqActive; private HashSet<MediaItemViewModel>? _mqBase;
+
+    private static T? Ancestor<T>(DependencyObject? d) where T : DependencyObject
+    {
+        while (d != null) { if (d is T t) return t; d = d is Visual or System.Windows.Media.Media3D.Visual3D ? VisualTreeHelper.GetParent(d) : LogicalTreeHelper.GetParent(d); }
+        return null;
+    }
+
+    private void Gallery_MarqueeDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount > 1 || Ancestor<ScrollBar>(e.OriginalSource as DependencyObject) != null || Ancestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
+        _mqStart = e.GetPosition(GalleryList); _mqDown = true; _mqActive = false;
+    }
+
+    private void Gallery_MarqueeMove(object sender, MouseEventArgs e)
+    {
+        if (!_mqDown) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { _mqDown = false; return; }
+        var p = e.GetPosition(GalleryList);
+        if (!_mqActive)
+        {
+            if (Math.Abs(p.X - _mqStart.X) < 6 && Math.Abs(p.Y - _mqStart.Y) < 6) return;   // a click, not a drag
+            _mqActive = true; GalleryList.CaptureMouse();
+            bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
+            _mqBase = ctrl ? _vm.Gallery.Items.Where(i => i.IsChecked).ToHashSet() : new HashSet<MediaItemViewModel>();
+            if (!ctrl && _vm.HasChecked) _vm.ClearCheckedCommand.Execute(null);
+        }
+        var rect = new Rect(Math.Min(_mqStart.X, p.X), Math.Min(_mqStart.Y, p.Y), Math.Abs(p.X - _mqStart.X), Math.Abs(p.Y - _mqStart.Y));
+        // the overlay canvas sits in the same cell as the list, so list coordinates are canvas coordinates
+        System.Windows.Controls.Canvas.SetLeft(MarqueeRect, rect.X); System.Windows.Controls.Canvas.SetTop(MarqueeRect, rect.Y);
+        MarqueeRect.Width = rect.Width; MarqueeRect.Height = rect.Height; MarqueeRect.Visibility = Visibility.Visible;
+        MarqueeSelect(rect);
+        e.Handled = true;
+    }
+
+    private void MarqueeSelect(Rect rect)
+    {
+        foreach (var tile in FindTiles(GalleryList))
+        {
+            if (tile.DataContext is not MediaItemViewModel item) continue;
+            var origin = tile.TransformToAncestor(GalleryList).Transform(new Point(0, 0));
+            var bounds = new Rect(origin, new Size(tile.ActualWidth, tile.ActualHeight));
+            bool hit = bounds.IntersectsWith(rect);
+            bool want = hit || (_mqBase?.Contains(item) ?? false);
+            if (item.IsChecked != want) item.IsChecked = want;
+        }
+    }
+
+    private static IEnumerable<Border> FindTiles(DependencyObject root)
+    {
+        int n = VisualTreeHelper.GetChildrenCount(root);
+        for (int i = 0; i < n; i++)
+        {
+            var c = VisualTreeHelper.GetChild(root, i);
+            if (c is Border { Name: "Tile" } b) { yield return b; continue; }
+            foreach (var d in FindTiles(c)) yield return d;
+        }
+    }
+
+    private bool EndMarquee()
+    {
+        bool was = _mqActive;
+        _mqDown = false; _mqActive = false; _mqBase = null;
+        if (was) { MarqueeRect.Visibility = Visibility.Collapsed; GalleryList.ReleaseMouseCapture(); }
+        return was;
     }
 
     private void Tile_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)

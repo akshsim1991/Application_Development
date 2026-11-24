@@ -1,3 +1,6 @@
+Feather View 2.1.18
+- Mouse multi-select in the gallery: press on the gallery and drag a rectangle over thumbnails to select them (hold Ctrl or Shift to add to the current selection). Ctrl+click and Shift+click also work, plus the check boxes
+
 Feather View 2.1.17
 - "Set as Wallpaper" and "Print" in the bottom bar only show while a picture is open
 - The folder path above the gallery is editable: click it, type or paste a path and press Enter (Esc cancels)

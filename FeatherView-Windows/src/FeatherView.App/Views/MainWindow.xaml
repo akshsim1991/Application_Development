@@ -574,6 +574,9 @@
                     </DataTemplate>
                 </ListBox.ItemTemplate>
             </ListBox>
+                            <Canvas Grid.Row="1" IsHitTestVisible="False" ClipToBounds="True">
+                                <Border x:Name="MarqueeRect" Visibility="Collapsed" BorderThickness="1" CornerRadius="2" BorderBrush="{DynamicResource AccentBrush}" Background="{DynamicResource AccentSoftBrush}" Opacity="0.55" />
+                            </Canvas>
                         </Grid>
                         <v:VideoPlayerView DataContext="{Binding Video}" Visibility="{Binding DataContext.IsVideo, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource B2V}}" />
                         <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,60" Visibility="{Binding ShowEmptyState, Converter={StaticResource B2V}}">

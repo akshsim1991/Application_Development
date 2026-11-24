@@ -1,3 +1,6 @@
+Feather View 2.1.19
+- Feather View now appears in the Windows "Open with" menu for pictures AND videos (MP4, MOV, MKV, AVI, WMV, WebM and more) and in Settings > Default apps. It registers itself for your user account at start-up, so installed copies get it by updating; no administrator rights needed
+
 Feather View 2.1.18
 - Mouse multi-select in the gallery: press on the gallery and drag a rectangle over thumbnails to select them (hold Ctrl or Shift to add to the current selection). Ctrl+click and Shift+click also work, plus the check boxes
 

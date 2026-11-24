@@ -48,6 +48,7 @@ public sealed class AppSettings
     public bool ShowTabNumbers { get; set; } = true;        // "1  Holiday" instead of "Holiday"
     public bool ShowTabCloseButton { get; set; } = true;    // off: the close button shows only on the active or hovered tab
     public bool ShowTabPlayingIcon { get; set; } = true;    // speaker icon on the tab that is playing a video
+    public bool RegisterOpenWith { get; set; } = true;     // list Feather View in Windows "Open with" for pictures and videos
     public bool SidebarPinned { get; set; } = true;       // false: compact icon-only sidebar
     public bool QuickAccessExpanded { get; set; } = true;
     public int DetailsWidth { get; set; } = 318;          // Details pane width in pixels (drag its left edge)

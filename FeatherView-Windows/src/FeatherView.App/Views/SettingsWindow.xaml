@@ -192,6 +192,7 @@
 
                 <TextBlock Text="File associations" Style="{StaticResource SectionTitle}" />
                 <TextBlock Text="The installer adds Feather View to the 'Open with' list. Windows lets only you choose the default app." TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,0,0,8" />
+                <CheckBox Content="List Feather View in the Windows &quot;Open with&quot; menu for pictures and videos" IsChecked="{Binding RegisterOpenWith}" />
                 <Button Content="Open Windows default apps" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Click="DefaultApps_Click" />
                     </StackPanel>
                 </ScrollViewer>

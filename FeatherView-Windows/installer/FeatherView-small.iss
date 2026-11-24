@@ -51,7 +51,12 @@ Root: HKA; Subkey: "Software\Classes\.webp\OpenWithProgids"; ValueType: string; 
 Root: HKA; Subkey: "Software\Classes\.ico\OpenWithProgids"; ValueType: string; ValueName: "FeatherView.Image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: assoc
 
 [Run]
+; Register "Open with" for pictures AND videos (per user, no administrator rights needed)
+Filename: "{app}\FeatherView.exe"; Parameters: "--register"; Flags: runhidden runasoriginaluser; Tasks: assoc
 Filename: "{app}\FeatherView.exe"; Description: "Start {#AppName}"; Flags: nowait postinstall runasoriginaluser
+
+[UninstallRun]
+Filename: "{app}\FeatherView.exe"; Parameters: "--unregister"; Flags: runhidden; RunOnceId: "FeatherViewUnregister"
 
 [Code]
 function HasDotNetDesktop10(): Boolean;

@@ -16,6 +16,18 @@ public partial class App : Application
     {
         base.OnStartup(e);
 
+        // Command-line helpers used by the installer / uninstaller: (re)write or remove the "Open with" registration, then exit
+        if (e.Args.Contains("--register") || e.Args.Contains("--unregister"))
+        {
+            try
+            {
+                if (e.Args.Contains("--unregister")) FileAssociations.Unregister();
+                else FileAssociations.Register(Environment.ProcessPath ?? System.Reflection.Assembly.GetExecutingAssembly().Location);
+            }
+            catch (Exception) { /* the registry may be locked down: nothing else to do */ }
+            Shutdown(); return;
+        }
+
         var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         var log = new FileLog(Path.Combine(appData, "FeatherView", "featherview.log"));
         var version = typeof(App).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
@@ -42,6 +54,9 @@ public partial class App : Application
             main => new VideoPlayerViewModel(() => main.Settings, dialogs, history, localAppData, log));
         vm.Updates = new UpdateController(dialogs, settingsService, () => vm.Settings, version, log);
         vm.RefreshRecent(); vm.RefreshQuickAccess();
+        // Make sure Feather View is in the "Open with" list (pictures and videos). Cheap, per user, and repeated after updates so it never goes stale.
+        if (settings.RegisterOpenWith)
+            try { FileAssociations.Register(Environment.ProcessPath ?? ""); } catch (Exception ex) { log.Warn($"Open-with registration skipped ({ex.GetType().Name})."); }
 
         var window = new MainWindow(vm, theme);
         MainWindow = window;

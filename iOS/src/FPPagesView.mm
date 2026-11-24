@@ -64,7 +64,8 @@
     NSMutableArray<FPPageTiles*>* _tiles;
     NSMutableArray<FPOverlay*>* _overlays;
     std::vector<CGSize> _sizes;       // each page, points
-    std::vector<CGFloat> _tops;       // each page's top at zoom 1
+    std::vector<CGFloat> _tops;       // each page's top at zoom 1 (empty until the view has a width)
+    int _pendingPage;                 // the page asked for before then, shown once the pages are laid out
     CGFloat _laidOutWidth;
     int _lastReported;
     // tools
@@ -123,6 +124,7 @@ static const CGFloat kGap = 10, kMargin = 6;
     _selRects = nil; _selPage = -1; _stroke = nil;
     [_blocks removeAllObjects];
     _scroll.zoomScale = 1;
+    _pendingPage = page;
     [self rebuild];
     _lastReported = -1;
     dispatch_async(dispatch_get_main_queue(), ^{ [self goToPage:page]; [self report]; });
@@ -134,6 +136,7 @@ static const CGFloat kGap = 10, kMargin = 6;
     [_tiles removeAllObjects];
     [_overlays removeAllObjects];
     _sizes.clear();
+    _tops.clear();   // (laid out again below, once the view has a width)
     const int n = _doc ? [FPEngine pageCount:_doc] : 0;
     for (int i = 0; i < n; ++i) {
         _sizes.push_back([FPEngine pageSize:_doc page:i]);
@@ -230,8 +233,11 @@ static const CGFloat kGap = 10, kMargin = 6;
 
 - (CGFloat)zoom { return _scroll.zoomScale; }
 
+- (BOOL)laidOut { return !_sizes.empty() && _tops.size() == _sizes.size() + 1; }
+
 - (int)currentPage {
     if (_sizes.empty()) return 0;
+    if (!self.laidOut) return std::max(0, std::min(_pendingPage, self.pageCount - 1));
     const CGFloat mid = (_scroll.contentOffset.y + _scroll.bounds.size.height / 2) / _scroll.zoomScale;
     for (size_t i = 0; i < _sizes.size(); ++i) if (mid < _tops[i + 1]) return static_cast<int>(i);
     return static_cast<int>(_sizes.size()) - 1;
@@ -240,6 +246,7 @@ static const CGFloat kGap = 10, kMargin = 6;
 - (void)goToPage:(int)page {
     if (_sizes.empty()) return;
     page = std::max(0, std::min(page, self.pageCount - 1));
+    if (!self.laidOut) { _pendingPage = page; [self report]; return; }
     CGFloat y = (_tops[page] - kGap / 2) * _scroll.zoomScale;
     y = std::max<CGFloat>(0, std::min(y, _scroll.contentSize.height - _scroll.bounds.size.height));
     [_scroll setContentOffset:CGPointMake(_scroll.contentOffset.x, std::max<CGFloat>(0, y)) animated:NO];

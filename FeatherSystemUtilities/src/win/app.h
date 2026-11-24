@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.6.0"
+#define FSU_VERSION L"3.7.0"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    std::wstring uiTheme = L"auto";                                     // new UI: auto | light | dark
     bool betaFeatures = false; std::map<std::string, int> flags;          // feature flags: explicit per-flag overrides (0/1); beta flags follow betaFeatures otherwise
     bool liveMetrics = false;                                           // optional low-frequency CPU/RAM/network readout on Today (off by default)
     bool onlineAdvice = true; long long adviceCheck = 0;                // download newer startup/service recommendations when online
@@ -178,6 +179,16 @@ bool OpenBrowserPrivacy(const std::wstring& key, std::wstring& err);
 struct EventRec { std::wstring time, log, provider, message; int level = 0; DWORD id = 0; ULONGLONG sort = 0; };
 std::vector<EventRec> QueryEvents(int hours, const std::vector<std::wstring>& logs, const std::vector<int>& levels, size_t maxN, std::wstring& err);
 std::wstring Redact(std::wstring s, bool maskPaths);
+
+// ---- device diagnosis and repair (device.cpp) ----
+struct DeviceEvent { int id = 0; std::wstring time, problem, status, driver, service; };
+struct DeviceDiag { bool found = false, started = false, driverLoaded = false, hasProblem = false, needsRestart = false, disableable = false, hasNtStatus = false, disabledByUser = false, serviceFound = false, serviceFileExists = false;
+    int problem = 0; unsigned status = 0, ntStatus = 0; DWORD serviceStartType = 0, serviceState = 0; std::wstring instanceId, ntText, service, desc, cls, upperFilters, lowerFilters, infPath, servicePath; std::vector<DeviceEvent> events; };
+struct DeviceFixResult { bool ok = false, fixed = false, found = true, needsRestart = false; int problemBefore = 0, problemAfter = 0; std::wstring message; };
+DeviceDiag DiagnoseDevice(const std::wstring& instanceId);
+DeviceFixResult FixDevice(const std::wstring& instanceId, const std::wstring& cls, const std::wstring& name, const std::string& action);   // rescan | restart | enable | enableService | reinstall
+bool DeviceActionAllowed(const std::wstring& cls, const std::string& action);
+const wchar_t* NtStatusText(unsigned s);
 
 // ---- phase 3 engine (phase3.cpp) ----
 struct OrgInfo { bool domain = false, azureAd = false, mdm = false, policies = false; std::wstring domainName; };

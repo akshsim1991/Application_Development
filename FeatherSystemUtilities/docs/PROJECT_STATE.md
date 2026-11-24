@@ -28,3 +28,6 @@ advice.cpp + data/advice.json (embedded via tools/embed.py as kAdviceJson; same 
 
 ## 3.5 (Phase 3)
 phase3.cpp (org info, perf sample, storage trend, WU registry status, RunCapture, StartupImpact via Diagnostics-Performance event 101, license verify via CNG). webui: dashboard.info, perf.sample, wu.check, startup.impact, store.*, hotfix.*, license.*. UI: richer Today, Programs tabs (Store apps, Windows updates), Boot impact column, license + live-activity settings. Tools: license_keygen/issue, make_sbom, sign.sh/ps1, release.sh. UI tests: 88 checks.
+
+## 3.7 (stabilize, part 1)
+device.cpp: DiagnoseDevice (problem code, DEVPKEY_Device_ProblemStatus decoded, driver service state/file, Kernel-PnP 410/411/441/442 events, filters) and FixDevice (rescan / restart / enable / enableService / reinstall, re-checked and journaled). webui: device.diagnose, device.fix, system.restart/cancelRestart; device.fix is on the administrator-helper whitelist. UI: Drivers > Problems tab (what Windows reports, why it cannot start, automatic fix, manual steps, ignore), theme switch (auto/light/dark). UI tests: 102 checks.

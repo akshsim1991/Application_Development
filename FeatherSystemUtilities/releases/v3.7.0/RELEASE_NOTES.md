@@ -1,0 +1,1 @@
+Drivers: new Problems tab explains why a device cannot start (Windows' problem code and failure status, driver service, Kernel-PnP log entries) and offers automatic repairs (rescan, restart device, enable, enable driver service, reinstall) and manual step-by-step fixes. Light/dark/auto theme switch.

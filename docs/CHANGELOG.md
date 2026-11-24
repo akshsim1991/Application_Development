@@ -2,6 +2,15 @@
 
 Free forever. Windows and macOS. Newest first.
 
+## 2.25.1 (24 November 2026)
+
+- Fixed (Windows): choosing many PDFs at once to add or combine (20 certificates with long names) failed with "You can
+  choose multiple items only if they are all located in the same folder", although they were. The dialog had room for
+  about 4,000 characters of file names; it now has room for about a thousand long names, and says so plainly if even
+  that is not enough. The same for choosing pictures for a new PDF.
+- Changed (Windows): on PDFs, File Explorer's right-click entry now reads "Combine into one PDF (Feather PDF)". In
+  Windows 11 it is under "Show more options" (or Shift+F10), with the other programs' classic entries.
+
 ## 2.25.0 "Taurus" (23 November 2026)
 
 Equations in LaTeX documents now look like LaTeX's, formulas wrapped over two lines are edited whole, and opening,

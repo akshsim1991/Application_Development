@@ -2358,8 +2358,19 @@ void afterPagesChanged() {
     refresh();
 }
 
+// Room for the names of many chosen files: the dialog puts the folder and every name in one buffer, and when they do not
+// fit it fails (Windows then says, wrongly, that the files must be in one folder). 20 certificates with long names
+// passed the 4,000 characters this was before.
+constexpr size_t kManyFiles = 1 << 17;   // characters: about a thousand long names
+
+// After GetOpenFileNameW failed: says so when it was the room for the names, not a cancel.
+void tooManyChosen() {
+    if (CommDlgExtendedError() == FNERR_BUFFERTOOSMALL)
+        MessageBoxW(app.wnd, L"Too many files were chosen at once for Windows' file dialog. Choose fewer files, or add them in two steps.", kAppName, MB_OK | MB_ICONINFORMATION);
+}
+
 std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* title) {
-    std::vector<wchar_t> buf(MAX_PATH * 16, 0);
+    std::vector<wchar_t> buf(multi ? kManyFiles : MAX_PATH * 4, 0);
     OPENFILENAMEW ofn{sizeof(ofn)};
     ofn.hwndOwner = app.wnd;
     ofn.lpstrTitle = title;
@@ -2368,7 +2379,7 @@ std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* 
     ofn.nMaxFile = static_cast<DWORD>(buf.size());
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | (multi ? (OFN_ALLOWMULTISELECT | OFN_EXPLORER) : 0);
     out.clear();
-    if (!GetOpenFileNameW(&ofn)) return L"";
+    if (!GetOpenFileNameW(&ofn)) { tooManyChosen(); return L""; }
     const wchar_t* p = buf.data();
     std::wstring first = p;
     p += first.size() + 1;
@@ -5452,14 +5463,14 @@ void combineOpenPdfs() {
 }
 
 void newPdfFromPictures() {
-    std::vector<wchar_t> buf(MAX_PATH * 64, 0);
+    std::vector<wchar_t> buf(kManyFiles, 0);
     OPENFILENAMEW ofn{sizeof(ofn)};
     ofn.hwndOwner = app.wnd;
     ofn.lpstrTitle = L"Choose the pictures (they become pages in the order of their names)";
     ofn.lpstrFilter = L"Pictures (*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif)\0*.png;*.jpg;*.jpeg;*.bmp;*.gif;*.tif;*.tiff\0";
     ofn.lpstrFile = buf.data(); ofn.nMaxFile = static_cast<DWORD>(buf.size());
     ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_HIDEREADONLY | OFN_ALLOWMULTISELECT | OFN_EXPLORER;
-    if (!GetOpenFileNameW(&ofn)) return;
+    if (!GetOpenFileNameW(&ofn)) { tooManyChosen(); return; }
     std::vector<std::wstring> files;
     const wchar_t* p = buf.data();
     std::wstring first = p;

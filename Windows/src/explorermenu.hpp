@@ -20,6 +20,7 @@ inline const wchar_t* const kClasses = L"SOFTWARE\\Classes\\SystemFileAssociatio
 inline const wchar_t* const kPrefs = L"SOFTWARE\\FeatherPDF\\ContextMenu";
 inline const wchar_t* const kConvertLabel = L"Convert to PDF";
 inline const wchar_t* const kCombineLabel = L"Convert to PDF and combine all the selected file(s)";
+inline const wchar_t* const kCombinePdfLabel = L"Combine into one PDF (Feather PDF)";   // the same, on PDFs
 
 namespace detail {
 inline bool set(const std::wstring& key, const wchar_t* name, const std::wstring& value) {
@@ -84,7 +85,7 @@ inline bool apply(const std::wstring& exe, bool convert, bool combine) {
     auto combineOn = [&](const std::wstring& type) {
         const std::wstring v = std::wstring(kClasses) + type + kCombineVerb;
         if (combine) {
-            ok = detail::set(v, nullptr, kCombineLabel) && ok;
+            ok = detail::set(v, nullptr, type == L".pdf" ? kCombinePdfLabel : kCombineLabel) && ok;
             detail::set(v, L"Icon", icon);
             // Player: offered for any number of selected files (Explorer hides other entries above 15). Each file starts
             // the program; the first one gathers the others' (Windows/src/main.cpp, convertCombine).

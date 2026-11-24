@@ -1653,3 +1653,13 @@ the 2.24.1 Windows installer stay one release longer.
 
 **Published:** 2.25.0 "Taurus" for Windows, Mac and Android (23 November) from commit 37226a9 (the Mac build from ee73d02,
 which only changes a test). The three downloads match latest.json (size and SHA-256); the 2.24.4 files stay one release longer.
+
+### B-129 Choosing many PDFs to combine failed with "only if they are all located in the same folder" - High (Windows)
+- **Found:** the user, selecting about 20 certificate PDFs in one folder (Pages > add/combine).
+- **Cause:** the open dialog's buffer for the chosen names was MAX_PATH * 16 (4,160 characters); the names did not fit,
+  and Windows reports an overflowing multiple selection with that wrong message.
+- **Fix:** 131,072 characters for every dialog that takes many files (PDFs, pictures), and a plain message on
+  FNERR_BUFFERTOOSMALL instead of nothing. The right-click entry on PDFs is labelled "Combine into one PDF (Feather PDF)"
+  (it was "Convert to PDF and combine all the selected file(s)"); in Windows 11 it is under "Show more options" (the
+  first menu takes only packaged extensions).
+

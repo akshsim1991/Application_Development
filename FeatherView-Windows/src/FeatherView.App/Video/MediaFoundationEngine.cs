@@ -65,6 +65,7 @@ public sealed class MediaFoundationEngine : IVideoEngine
         };
         _me.MediaFailed += (_, e) => { _opened = false; _playing = false; Failed?.Invoke(e.ErrorException?.Message ?? "The video could not be played."); };
         _me.MouseLeftButtonDown += (_, e) => { if (e.ClickCount >= 2) SurfaceDoubleClicked?.Invoke(); else SurfaceClicked?.Invoke(); };
+        _me.MouseRightButtonUp += (_, e) => { SurfaceContextRequested?.Invoke(); e.Handled = true; };
         _me.MouseWheel += (_, e) => { SurfaceWheel?.Invoke(e.Delta); e.Handled = true; };
         _me.MouseMove += (_, e) =>
         {
@@ -77,7 +78,7 @@ public sealed class MediaFoundationEngine : IVideoEngine
     public VideoCaps Capabilities => VideoCaps.Screenshot | VideoCaps.Rotation | VideoCaps.Aspect | VideoCaps.SubtitleTracks | VideoCaps.ExternalSubtitles | VideoCaps.SubtitleStyle;
     public FrameworkElement Surface => _surface;
 
-    public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked, SurfaceMoved;
+    public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked, SurfaceMoved, SurfaceContextRequested;
     public event Action<string>? Failed;
     public event Action<int>? SurfaceWheel;
     public void SetCursorHidden(bool hidden) => _surface.Cursor = hidden ? Cursors.None : null;

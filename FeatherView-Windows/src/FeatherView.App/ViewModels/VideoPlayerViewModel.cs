@@ -279,14 +279,16 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     private void Hook(IVideoEngine e)
     {
         e.Opened += OnOpened; e.Ended += OnEnded; e.Failed += OnFailed;
-        e.SurfaceClicked += OnSurfaceClicked; e.SurfaceDoubleClicked += OnSurfaceDoubleClicked; e.SurfaceWheel += OnSurfaceWheel; e.SurfaceMoved += RegisterActivity;
+        e.SurfaceContextRequested += OnSurfaceContext; e.SurfaceClicked += OnSurfaceClicked; e.SurfaceDoubleClicked += OnSurfaceDoubleClicked; e.SurfaceWheel += OnSurfaceWheel; e.SurfaceMoved += RegisterActivity;
     }
     private void Unhook(IVideoEngine e)
     {
         e.Opened -= OnOpened; e.Ended -= OnEnded; e.Failed -= OnFailed;
-        e.SurfaceClicked -= OnSurfaceClicked; e.SurfaceDoubleClicked -= OnSurfaceDoubleClicked; e.SurfaceWheel -= OnSurfaceWheel; e.SurfaceMoved -= RegisterActivity;
+        e.SurfaceContextRequested -= OnSurfaceContext; e.SurfaceClicked -= OnSurfaceClicked; e.SurfaceDoubleClicked -= OnSurfaceDoubleClicked; e.SurfaceWheel -= OnSurfaceWheel; e.SurfaceMoved -= RegisterActivity;
     }
 
+    public event Action? ContextMenuRequested;
+    private void OnSurfaceContext() => ContextMenuRequested?.Invoke();
     private long _lastClickTick;
     private void OnSurfaceClicked() { _lastClickTick = Environment.TickCount64; TogglePlay(); }
     private void OnSurfaceDoubleClicked()

@@ -383,7 +383,7 @@
                     <Grid>
                         <Grid x:Name="PhotoArea" Visibility="{Binding IsPhoto, Converter={StaticResource B2V}}">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
-                            <c:ZoomPanImage x:Name="Viewer" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}">
+                            <c:ZoomPanImage x:Name="Viewer" MouseRightButtonUp="Viewer_MouseRightButtonUp" Source="{Binding CurrentImage}" ImageId="{Binding ImageId}" FitOnOpen="{Binding Settings.FitOnOpen}">
                                 <c:ZoomPanImage.Style>
                                     <Style TargetType="c:ZoomPanImage">
                                         <Setter Property="Grid.ColumnSpan" Value="2" />
@@ -391,7 +391,7 @@
                                     </Style>
                                 </c:ZoomPanImage.Style>
                             </c:ZoomPanImage>
-                            <c:ZoomPanImage x:Name="Viewer2" Grid.Column="1" Source="{Binding CompareImage}" ImageId="{Binding CompareId}" FitOnOpen="True" Margin="3,0,0,0"
+                            <c:ZoomPanImage x:Name="Viewer2" MouseRightButtonUp="Viewer_MouseRightButtonUp" Grid.Column="1" Source="{Binding CompareImage}" ImageId="{Binding CompareId}" FitOnOpen="True" Margin="3,0,0,0"
                                             Visibility="{Binding IsCompare, Converter={StaticResource B2V}}" />
                             <TextBlock Grid.Column="1" Text="{Binding CompareName}" Visibility="{Binding IsCompare, Converter={StaticResource B2V}}" Margin="16,0,0,12" VerticalAlignment="Bottom" HorizontalAlignment="Left"
                                        Foreground="White" FontSize="12" Background="#99000000" Padding="8,3" />
@@ -473,7 +473,7 @@
                                     <Border x:Name="Tile" Margin="2" Padding="6" CornerRadius="8" Background="Transparent" BorderThickness="2" BorderBrush="Transparent"
                                             Width="{Binding DataContext.Gallery.TileWidth, RelativeSource={RelativeSource AncestorType=ListBox}}"
                                             Height="{Binding DataContext.Gallery.TileHeight, RelativeSource={RelativeSource AncestorType=ListBox}}"
-                                            MouseLeftButtonDown="Tile_MouseLeftButtonDown" ToolTip="{Binding File.Path}">
+                                            MouseLeftButtonDown="Tile_MouseLeftButtonDown" MouseRightButtonUp="Tile_MouseRightButtonUp" ToolTip="{Binding File.Path}">
                                         <Grid>
                                             <Grid.RowDefinitions>
                                                 <RowDefinition Height="*" />
@@ -555,7 +555,7 @@
             </Grid>
 
             <!-- Details panel: next to the picture, never on top of it (native video windows cannot be overlapped) -->
-            <Border Grid.Column="2" Width="318" Margin="10,4,0,0" CornerRadius="12" Background="{DynamicResource SurfaceBrush}">
+            <Border Grid.Column="2" Width="{Binding DetailsWidth}" Margin="10,4,0,0" CornerRadius="12" Background="{DynamicResource SurfaceBrush}">
                 <Border.Style>
                     <Style TargetType="Border">
                         <Setter Property="Visibility" Value="Collapsed" />
@@ -572,7 +572,9 @@
                     </Style>
                 </Border.Style>
                 <DockPanel>
-                    <Grid DockPanel.Dock="Top" Margin="18,10,8,6">
+                    <Thumb DockPanel.Dock="Left" Width="7" Cursor="SizeWE" Opacity="0" Background="Transparent" ToolTip="Drag to resize the Details pane"
+                           DragDelta="DetailsResize_DragDelta" DragCompleted="DetailsResize_DragCompleted" />
+                    <Grid DockPanel.Dock="Top" Margin="11,10,8,6">
                         <TextBlock Text="Details" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                         <Button HorizontalAlignment="Right" Style="{StaticResource IconButton}" Tag="{StaticResource IconClose}" ToolTip="Close details" Command="{Binding ToggleInfoCommand}" AutomationProperties.Name="Close details" />
                     </Grid>
@@ -692,12 +694,14 @@
         </Grid>
 
         <!-- Filmstrip -->
-        <Grid Grid.Row="2" Height="118" Margin="10,10,10,0" Visibility="{Binding FilmstripVisible, Converter={StaticResource B2V}}">
+        <Grid Grid.Row="2" Height="{Binding FilmstripHeight}" Margin="10,10,10,0" Visibility="{Binding FilmstripVisible, Converter={StaticResource B2V}}">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
+            <Thumb x:Name="FilmResize" Grid.ColumnSpan="3" Height="8" VerticalAlignment="Top" Margin="0,-9,0,0" Cursor="SizeNS" Opacity="0" Panel.ZIndex="10" Background="Transparent"
+                   ToolTip="Drag to resize the thumbnail strip (or Ctrl + mouse wheel)" DragDelta="FilmResize_DragDelta" DragCompleted="FilmResize_DragCompleted" />
             <Button Grid.Column="0" Style="{StaticResource IconButton}" Tag="{StaticResource IconPrev}" ToolTip="Scroll left" Click="FilmLeft_Click" AutomationProperties.Name="Scroll thumbnails left" />
             <ListBox x:Name="FilmList" Grid.Column="1" ItemsSource="{Binding Gallery.Items}" SelectedItem="{Binding Gallery.Selected, Mode=OneWay}" Background="Transparent" BorderThickness="0" Focusable="False"
                      ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.HorizontalScrollBarVisibility="Hidden" ScrollViewer.CanContentScroll="True"
@@ -715,8 +719,8 @@
                 </ListBox.ItemContainerStyle>
                 <ListBox.ItemTemplate>
                     <DataTemplate>
-                        <Border x:Name="Film" Width="132" Height="104" Margin="4,0" Padding="3" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
-                                MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" ToolTip="{Binding Name}">
+                        <Border x:Name="Film" Width="{Binding DataContext.FilmItemWidth, RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding DataContext.FilmItemHeight, RelativeSource={RelativeSource AncestorType=ListBox}}" Margin="4,0" Padding="3" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
+                                MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" MouseRightButtonUp="Film_MouseRightButtonUp" ToolTip="{Binding Name}">
                             <Grid>
                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                 <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"

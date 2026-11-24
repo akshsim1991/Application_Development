@@ -83,6 +83,12 @@ public partial class MainWindow : Window
             else if (e.NewSize.Width >= 1250 && _autoHidInfo) { _autoHidInfo = false; vm.ShowInfo = true; }
         };
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.ShowInfo) && vm.ShowInfo && ActualWidth < 1250) _autoHidInfo = false; };   // the user opened it on purpose
+        vm.Video.ContextMenuRequested += () => Dispatcher.BeginInvoke(new Action(ShowFileMenu));   // right click on a video (either engine)
+        FilmList.PreviewMouseWheel += (_, e) =>
+        {
+            if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
+            vm.FilmstripHeight += e.Delta > 0 ? 10 : -10; vm.SaveSettings(); e.Handled = true;   // Ctrl + wheel resizes the strip
+        };
         SourceInitialized += (_, _) => theme.ApplyToWindow(this);
         StateChanged += (_, _) => UpdateMaximizeState();
         Closing += (_, _) => SaveBounds();
@@ -177,6 +183,12 @@ public partial class MainWindow : Window
         if (sender is FrameworkElement { DataContext: MediaItemViewModel item }) { _vm.OpenItemCommand.Execute(item); e.Handled = true; }
     }
 
+    private void DetailsResize_DragDelta(object sender, DragDeltaEventArgs e) => _vm.DetailsWidth -= (int)Math.Round(e.HorizontalChange);
+    private void DetailsResize_DragCompleted(object sender, DragCompletedEventArgs e) => _vm.SaveSettings();
+
+    private void FilmResize_DragDelta(object sender, System.Windows.Controls.Primitives.DragDeltaEventArgs e) => _vm.FilmstripHeight -= (int)Math.Round(e.VerticalChange);
+    private void FilmResize_DragCompleted(object sender, System.Windows.Controls.Primitives.DragCompletedEventArgs e) => _vm.SaveSettings();
+
     private void FilmLeft_Click(object sender, RoutedEventArgs e) => ScrollFilm(-1);
     private void FilmRight_Click(object sender, RoutedEventArgs e) => ScrollFilm(1);
 
@@ -218,6 +230,63 @@ public partial class MainWindow : Window
         foreach (var (label, factor) in new[] { ("25%", "0.25"), ("50%", "0.5"), ("100% (actual size)", "1"), ("200%", "2"), ("400%", "4") })
         { var f = factor; menu.Items.Add(Item(label, () => _vm.ZoomPresetCommand.Execute(f))); }
         Show(ZoomButton, menu);
+    }
+
+    // ---- right-click menu for pictures, videos and thumbnails ----
+    private void Tile_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MediaItemViewModel item }) { _vm.ContextSelect(item); ShowFileMenu(); e.Handled = true; }
+    }
+
+    private void Film_MouseRightButtonUp(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement { DataContext: MediaItemViewModel item }) { _vm.OpenItemCommand.Execute(item); ShowFileMenu(); e.Handled = true; }
+    }
+
+    private void Viewer_MouseRightButtonUp(object sender, MouseButtonEventArgs e) { ShowFileMenu(); e.Handled = true; }
+
+    private void ShowFileMenu()
+    {
+        if (_vm.TargetFile == null) return;
+        bool gallery = _vm.IsGallery, photo = _vm.IsPhoto, video = _vm.IsVideo;
+        int n = _vm.CheckedCount;
+        var menu = new ContextMenu();
+        if (gallery) menu.Items.Add(Item("Open", () => _vm.OpenTarget(), gesture: "Enter"));
+        if (photo)
+        {
+            menu.Items.Add(Item("Rotate left", () => _vm.RotateLeftCommand.Execute(null), gesture: "L"));
+            menu.Items.Add(Item("Rotate right", () => _vm.RotateRightCommand.Execute(null), gesture: "R"));
+            menu.Items.Add(Item("Flip horizontally", () => _vm.FlipCommand.Execute(null)));
+            menu.Items.Add(Item("Fit to window", () => _vm.FitCommand.Execute(null), gesture: "0"));
+            menu.Items.Add(Item("Actual size (100%)", () => _vm.ActualSizeCommand.Execute(null), gesture: "1"));
+            menu.Items.Add(new Separator());
+            menu.Items.Add(Item("Copy image", () => _vm.CopyCommand.Execute(null), gesture: "Ctrl+C"));
+        }
+        if (video)
+        {
+            menu.Items.Add(Item(_vm.Video.IsPlaying ? "Pause" : "Play", () => _vm.Video.TogglePlay(), gesture: "Space"));
+            menu.Items.Add(Item("Full screen", () => _vm.ToggleFullscreenCommand.Execute(null), gesture: "F11"));
+            menu.Items.Add(Item("Save screenshot of this frame", () => _vm.Video.ScreenshotCommand.Execute(null), gesture: "Ctrl+S", enabled: _vm.Video.CanScreenshot));
+            menu.Items.Add(new Separator());
+        }
+        menu.Items.Add(Item(n > 1 ? $"Copy {n} files" : "Copy file", () => _vm.CopyFilesToClipboard()));
+        menu.Items.Add(Item("Copy file path", () => _vm.CopyPathToClipboard()));
+        menu.Items.Add(Item("Show in Explorer", () => _vm.ShowTargetInExplorer()));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(_vm.IsFavorite ? "Remove from favorites" : "Add to favorites", () => _vm.ToggleFavoriteCommand.Execute(null), gesture: "Ctrl+D"));
+        if (photo)
+        {
+            menu.Items.Add(Item("Set as wallpaper...", () => _vm.SetWallpaperCommand.Execute(null)));
+            menu.Items.Add(Item("Print...", () => _vm.PrintCommand.Execute(null), gesture: "Ctrl+P"));
+            menu.Items.Add(Item("Compare side by side", () => _vm.CompareCommand.Execute(null), check: _vm.IsCompare));
+        }
+        if (photo || video) menu.Items.Add(Item("Slideshow", () => _vm.ToggleSlideshowCommand.Execute(null), gesture: "S"));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Select all", () => _vm.SelectAllCommand.Execute(null), gesture: "Ctrl+A", enabled: gallery || n > 0));
+        menu.Items.Add(Item("Details panel", () => _vm.ToggleInfoCommand.Execute(null), check: _vm.ShowInfo, gesture: "I"));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item(n > 1 ? $"Delete {n} files (Recycle Bin)..." : "Delete (Recycle Bin)...", () => _vm.DeleteCommand.Execute(null), gesture: "Del"));
+        menu.PlacementTarget = this; menu.Placement = PlacementMode.MousePoint; menu.IsOpen = true;
     }
 
     private void MoreButton_Click(object sender, RoutedEventArgs e)

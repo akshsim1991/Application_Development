@@ -1,3 +1,7 @@
+Feather View 2.1.16
+- Right-click menu on pictures, videos and thumbnails: open, rotate, flip, copy image or file, copy path, show in Explorer, favourite, wallpaper, print, compare, slideshow, select all, delete (Recycle Bin)
+- The thumbnail strip can be resized (drag its top edge or Ctrl + mouse wheel) and so can the Details pane (drag its left edge); sizes are remembered
+
 Feather View 2.1.15
 - Updates: new Settings > Updates options "Download new versions automatically in the background" and "Install a downloaded version automatically when I close Feather View"; the update check retries on a hiccup and a downloaded update installs instantly
 - Releases are now published in one step so the update check never meets a half-published release

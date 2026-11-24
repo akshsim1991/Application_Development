@@ -22,6 +22,7 @@ public sealed class MpvEngine : IVideoEngine
         _host.HandleReady += OnHandleReady;
         _host.Clicked += () => SurfaceClicked?.Invoke();
         _host.DoubleClicked += () => SurfaceDoubleClicked?.Invoke();
+        _host.RightClicked += () => SurfaceContextRequested?.Invoke();
         _host.Wheel += d => SurfaceWheel?.Invoke(d);
         _host.Moved += () => SurfaceMoved?.Invoke();
     }
@@ -32,7 +33,7 @@ public sealed class MpvEngine : IVideoEngine
         VideoCaps.Rotation | VideoCaps.Aspect | VideoCaps.Amplify | VideoCaps.Loudness;
     public FrameworkElement Surface => _host;
 
-    public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked;
+    public event Action? Opened, Ended, SurfaceClicked, SurfaceDoubleClicked, SurfaceContextRequested;
     public event Action<string>? Failed;
     public event Action<int>? SurfaceWheel;
     public event Action? SurfaceMoved;

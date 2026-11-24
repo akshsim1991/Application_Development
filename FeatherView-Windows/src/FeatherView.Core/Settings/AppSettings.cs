@@ -43,6 +43,8 @@ public sealed class AppSettings
 
     // Photo viewing
     public bool FitOnOpen { get; set; } = true;
+    public int DetailsWidth { get; set; } = 318;          // Details pane width in pixels (drag its left edge)
+    public int FilmstripHeight { get; set; } = 118;      // thumbnail strip height in pixels (drag its top edge or Ctrl+wheel)
     public bool ConfirmDelete { get; set; } = true;     // ask before moving a file to the Recycle Bin
     public bool ShowInfoPanelOnOpen { get; set; } = true;
     public bool ShowFilmstrip { get; set; } = true;
@@ -109,6 +111,8 @@ public sealed class AppSettings
         if (!Enum.IsDefined(Theme)) Theme = AppTheme.System;
         if (!Enum.IsDefined(Sort)) Sort = SortMode.Name;
         if (!Enum.IsDefined(GroupBy)) GroupBy = GroupMode.None;
+        FilmstripHeight = Math.Clamp(FilmstripHeight, 70, 240);
+        DetailsWidth = Math.Clamp(DetailsWidth, 240, 640);
         if (!(WindowWidth >= 400)) WindowWidth = 1100;
         if (!(WindowHeight >= 300)) WindowHeight = 720;
         RecentFiles ??= new();

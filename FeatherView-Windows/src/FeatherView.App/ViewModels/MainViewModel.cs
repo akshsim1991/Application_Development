@@ -143,7 +143,7 @@ public sealed class MainViewModel : ObservableObject
         ExtractTextCommand = new AsyncRelayCommand(ExtractTextAsync);
         CopyOcrTextCommand = new RelayCommand(() => { if (_ocrText.Length > 0) { try { Clipboard.SetText(_ocrText); StatusText = "Text copied"; } catch { } } });
         OpenLocationCommand = new RelayCommand(OpenLocation);
-        ShowInExplorerCommand = new RelayCommand(() => { if (Current != null) FileOperations.ShowInExplorer(Current.Path); });
+        ShowInExplorerCommand = new RelayCommand(ShowTargetInExplorer);
         SettingsCommand = new RelayCommand(OpenSettings);
         CheckUpdatesCommand = new AsyncRelayCommand(() => Updates?.CheckAsync(true) ?? Task.CompletedTask);
     }
@@ -201,13 +201,66 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedCountText => CheckedCount > 0 ? $"{CheckedCount} selected" : Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
     public int CheckedCount => Gallery.Items.Count(i => i.IsChecked);
     public bool HasChecked => CheckedCount > 0;
+
+    // ---- right-click menu helpers: they act on the file that was right-clicked / selected ----
+    public MediaFile? TargetFile => Mode == ViewMode.Gallery ? Gallery.Selected?.File : Current;
+    public bool TargetIsImage => TargetFile?.Kind == MediaKind.Image;
+
+    /// <summary>Right click on a tile: it becomes the selection, unless it is already part of a ticked selection.</summary>
+    public void ContextSelect(MediaItemViewModel item) { if (!item.IsChecked) ClickItem(item, ModifierKeys.None); }
+
+    public void CopyFilesToClipboard()
+    {
+        var files = HasChecked ? Gallery.Items.Where(i => i.IsChecked).Select(i => i.File.Path).ToList() : TargetFile != null ? new List<string> { TargetFile.Path } : new List<string>();
+        if (files.Count == 0) return;
+        try
+        {
+            var list = new System.Collections.Specialized.StringCollection(); list.AddRange(files.ToArray());
+            Clipboard.SetFileDropList(list);
+            StatusText = files.Count == 1 ? "File copied - paste it in Explorer or another app" : $"{files.Count} files copied";
+        }
+        catch (Exception ex) { _log.Warn($"Copy failed ({ex.GetType().Name})."); _dialogs.Error("Copy", "The file could not be copied to the clipboard."); }
+    }
+
+    public void CopyPathToClipboard()
+    {
+        if (TargetFile == null) return;
+        try { Clipboard.SetText(TargetFile.Path); StatusText = "Path copied"; }
+        catch (Exception ex) { _log.Warn($"Copy failed ({ex.GetType().Name})."); }
+    }
+
+    public void ShowTargetInExplorer() { if (TargetFile != null) FileOperations.ShowInExplorer(TargetFile.Path); }
+
+    public void OpenTarget() { if (Mode == ViewMode.Gallery) OpenSelected(); }
+
+    // ---- resizable Details pane ----
+    public int DetailsWidth
+    {
+        get => Settings.DetailsWidth;
+        set { var v = Math.Clamp(value, 240, 640); if (Settings.DetailsWidth == v) return; Settings.DetailsWidth = v; OnPropertyChanged(nameof(DetailsWidth)); }
+    }
+
+    // ---- resizable thumbnail strip ----
+    public int FilmstripHeight
+    {
+        get => Settings.FilmstripHeight;
+        set
+        {
+            var v = Math.Clamp(value, 70, 240);
+            if (Settings.FilmstripHeight == v) return;
+            Settings.FilmstripHeight = v;
+            OnPropertyChanged(nameof(FilmstripHeight)); OnPropertyChanged(nameof(FilmItemHeight)); OnPropertyChanged(nameof(FilmItemWidth));
+        }
+    }
+    public double FilmItemHeight => Settings.FilmstripHeight - 14;
+    public double FilmItemWidth => Math.Round(FilmItemHeight * 1.27);
     public RelayCommand SelectAllCommand => _selAll ??= new RelayCommand(() => { foreach (var i in Gallery.Items) i.IsChecked = true; });
     public RelayCommand ClearCheckedCommand => _clrChk ??= new RelayCommand(() => { foreach (var i in Gallery.Items) i.IsChecked = false; });
     private RelayCommand? _selAll, _clrChk;
     public string EmptyMessage { get => _emptyMessage; private set => Set(ref _emptyMessage, value); }
     public bool ShowSidebar => Settings.ShowSidebar;
     public bool FilmstripVisible => Settings.ShowFilmstrip && _mode != ViewMode.Gallery && _files.Count > 1 && !_isFullscreen;
-    public bool IsFavorite => Current != null && Settings.IsFavorite(Current.Path);
+    public bool IsFavorite => TargetFile != null && Settings.IsFavorite(TargetFile.Path);
 
     // ---- details panel ----
     public bool ExpandDetails { get => _xDetails; set => Set(ref _xDetails, value); }

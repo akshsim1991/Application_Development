@@ -27,6 +27,7 @@ public interface IVideoEngine : IDisposable
     event Action<string>? Failed;
     event Action? SurfaceClicked;
     event Action? SurfaceDoubleClicked;
+    event Action? SurfaceContextRequested;   // right click on the video
     event Action<int>? SurfaceWheel;
     event Action? SurfaceMoved;
     void SetCursorHidden(bool hidden);

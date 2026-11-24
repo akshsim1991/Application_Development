@@ -239,4 +239,33 @@ bool OpenSecuritySetting(const wstring& id) {
         {L"sec-secureboot", L"msinfo32.exe", L""}, {L"sec-tpm", L"tpm.msc", L""}, {L"sec-smb1", L"optionalfeatures.exe", L""}, {L"sec-rdp", L"SystemPropertiesRemote.exe", L""}, {L"sec-updates", L"ms-settings:windowsupdate", L""} };
     for (auto& e : m) if (id == e.id) return (INT_PTR)ShellExecuteW(nullptr, L"open", e.file, *e.args ? e.args : nullptr, nullptr, SW_SHOWNORMAL) > 32; return false;
 }
+
+// ---------------- disk health and boot history (read-only) ----------------
+static double WNum(IWbemClassObject* o, const wchar_t* name) { VARIANT v; VariantInit(&v); double r = -1; if (SUCCEEDED(o->Get(name, 0, &v, nullptr, nullptr))) { switch (v.vt) { case VT_UI1: r = v.bVal; break; case VT_I2: r = v.iVal; break; case VT_UI2: r = v.uiVal; break; case VT_I4: r = v.lVal; break; case VT_UI4: r = v.ulVal; break; case VT_R4: r = v.fltVal; break; case VT_R8: r = v.dblVal; break; case VT_BSTR: if (v.bstrVal) r = (double)_wtoi64(v.bstrVal); break; case VT_BOOL: r = v.boolVal ? 1 : 0; break; default: break; } } VariantClear(&v); return r; }
+DiskReport ReadDiskHealth() {
+    DiskReport rep; rep.admin = IsElevated(); wstring e;
+    std::map<wstring, DiskInfo> by; std::vector<wstring> order;
+    Wmi(L"root\\Microsoft\\Windows\\Storage", L"SELECT DeviceId, FriendlyName, MediaType, BusType, HealthStatus, Size FROM MSFT_PhysicalDisk", [&](IWbemClassObject* o) {
+        DiskInfo d; wstring id = Get(o, L"DeviceId"); d.name = Get(o, L"FriendlyName"); int mt = (int)WNum(o, L"MediaType"), bt = (int)WNum(o, L"BusType"), hs = (int)WNum(o, L"HealthStatus");
+        d.media = mt == 3 ? L"HDD" : mt == 4 ? L"SSD" : mt == 5 ? L"Storage class memory" : L"Unknown"; d.bus = bt == 17 ? L"NVMe" : bt == 11 ? L"SATA" : bt == 7 ? L"USB" : bt == 3 ? L"ATA" : bt == 8 ? L"RAID" : bt == 10 ? L"SAS" : bt == 16 ? L"Storage Spaces" : L"";
+        d.health = hs == 0 ? L"Healthy" : hs == 1 ? L"Warning" : hs == 2 ? L"Unhealthy" : L"Unknown"; d.healthCode = hs; d.size = (ULONGLONG)std::max(0.0, WNum(o, L"Size")); by[id] = d; order.push_back(id); }, e);
+    if (order.empty()) rep.error = e.empty() ? L"Windows did not report any physical disks." : L"Disk health is not available on this version of Windows (needs Windows 8 or later).";
+    Wmi(L"root\\Microsoft\\Windows\\Storage", L"SELECT DeviceId, Temperature, Wear, PowerOnHours, ReadErrorsTotal, WriteErrorsTotal FROM MSFT_StorageReliabilityCounter", [&](IWbemClassObject* o) {
+        auto it = by.find(Get(o, L"DeviceId")); if (it == by.end()) return; auto& d = it->second; d.temp = (int)WNum(o, L"Temperature"); d.wear = (int)WNum(o, L"Wear"); d.hours = (long long)WNum(o, L"PowerOnHours"); d.readErr = (long long)WNum(o, L"ReadErrorsTotal"); d.writeErr = (long long)WNum(o, L"WriteErrorsTotal"); }, e);
+    for (auto& id : order) rep.disks.push_back(by[id]);
+    { int any = -1; Wmi(L"root\\wmi", L"SELECT PredictFailure FROM MSStorageDriver_FailurePredictStatus", [&](IWbemClassObject* o) { double p = WNum(o, L"PredictFailure"); if (p >= 0) any = std::max(any, p > 0 ? 1 : 0); }, e); rep.predictFail = any; }
+    DWORD d = 0; rep.trimKnown = true; rep.trimOn = !(RegDw(HKEY_LOCAL_MACHINE, L"SYSTEM\\CurrentControlSet\\Control\\FileSystem", L"DisableDeleteNotification", d) && d != 0);
+    DWORD mask = GetLogicalDrives(); for (int i = 0; i < 26; ++i) if (mask & (1u << i)) { wchar_t root[4] = {(wchar_t)(L'A' + i), L':', L'\\', 0}; if (GetDriveTypeW(root) != DRIVE_FIXED) continue; ULARGE_INTEGER fr, tot, tf; if (!GetDiskFreeSpaceExW(root, &fr, &tot, &tf) || !tot.QuadPart) continue;
+        VolInfo v; v.path = root; wchar_t lab[64] = L"", fs[32] = L""; GetVolumeInformationW(root, lab, 64, nullptr, nullptr, nullptr, fs, 32); v.label = lab; v.fs = fs; v.total = tot.QuadPart; v.free = fr.QuadPart; rep.vols.push_back(v); }
+    return rep;
+}
+static std::string BTag(const std::string& xml, const char* name) { std::string key = std::string("Name='") + name + "'>"; size_t p = xml.find(key); if (p == std::string::npos) return ""; p += key.size(); size_t e = xml.find('<', p); return e == std::string::npos ? "" : xml.substr(p, e - p); }
+std::vector<BootRec> BootHistory(size_t maxN, wstring& err) {   // Windows records every boot's duration (Diagnostics-Performance event 100)
+    std::vector<BootRec> out; EVT_HANDLE q = EvtQuery(nullptr, L"Microsoft-Windows-Diagnostics-Performance/Operational", L"*[System[(EventID=100)]]", EvtQueryChannelPath | EvtQueryReverseDirection);
+    if (!q) { err = L"Windows' boot diagnostics log could not be read (" + Win32Err(GetLastError()) + L"). It may be disabled, or administrator rights may be needed."; return out; }
+    EVT_HANDLE evs[16]; DWORD got = 0; while (out.size() < maxN && EvtNext(q, 16, evs, 1000, 0, &got)) { for (DWORD i = 0; i < got; ++i) { DWORD need = 0, props = 0; EvtRender(nullptr, evs[i], EvtRenderEventXml, 0, nullptr, &need, &props);
+            if (need && need < 100000) { std::vector<wchar_t> x(need / 2 + 2); if (EvtRender(nullptr, evs[i], EvtRenderEventXml, need, x.data(), &need, &props)) { std::string xml = ToUtf8(x.data()); BootRec b; size_t t = xml.find("SystemTime='"); if (t != std::string::npos) { t += 12; b.time = FromUtf8(xml.substr(t, 19)); } b.bootMs = strtoull(BTag(xml, "BootTime").c_str(), nullptr, 10); b.mainMs = strtoull(BTag(xml, "MainPathBootTime").c_str(), nullptr, 10); b.postMs = strtoull(BTag(xml, "BootPostBootTime").c_str(), nullptr, 10); if (b.bootMs && out.size() < maxN) out.push_back(b); } }
+            EvtClose(evs[i]); } }
+    EvtClose(q); std::reverse(out.begin(), out.end()); return out;   // oldest first
+}
 }

@@ -275,7 +275,8 @@ static void ScanShell(std::vector<StartupEntry>& out, int& scanned, int& denied)
         {L"Software\\Classes\\*\\shellex\\ContextMenuHandlers", false}, {L"Software\\Classes\\AllFilesystemObjects\\shellex\\ContextMenuHandlers", false},
         {L"Software\\Classes\\Directory\\shellex\\ContextMenuHandlers", false}, {L"Software\\Classes\\Directory\\Background\\shellex\\ContextMenuHandlers", false},
         {L"Software\\Classes\\Folder\\shellex\\ContextMenuHandlers", false}, {L"Software\\Classes\\Drive\\shellex\\ContextMenuHandlers", false},
-        {L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers", true}};
+        {L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\ShellIconOverlayIdentifiers", true},
+        {L"Software\\Classes\\*\\shellex\\PropertySheetHandlers", false}, {L"Software\\Classes\\Directory\\shellex\\PropertySheetHandlers", false}};
     std::set<wstring> seen;
     for (REGSAM view : {KEY_WOW64_64KEY, KEY_WOW64_32KEY}) for (auto& s : srcs) {
         auto subs = RegSubKeys(HKEY_LOCAL_MACHINE, view, s.path); ++scanned;
@@ -290,7 +291,7 @@ static void ScanShell(std::vector<StartupEntry>& out, int& scanned, int& denied)
             wstring dll = RegStr(HKEY_LOCAL_MACHINE, view, clsPath + L"\\InprocServer32");
             wstring cname = RegStr(HKEY_LOCAL_MACHINE, view, clsPath);
             StartupEntry e; e.name = !cname.empty() ? cname : sk; e.clsid = id;
-            e.type = s.overlay ? L"Explorer add-on: icon overlay" : L"Explorer add-on: right-click menu";
+            e.type = s.overlay ? L"Explorer add-on: icon overlay" : wcsstr(s.path, L"PropertySheet") ? L"Explorer add-on: properties tab" : L"Explorer add-on: right-click menu";
             e.starts = L"With File Explorer"; e.scope = L"All users"; e.command = dll;
             e.root = HKEY_LOCAL_MACHINE; e.view = view; e.subKey = full;
             e.location = L"HKLM\\" + full + (view == KEY_WOW64_32KEY ? L" [32-bit view]" : L"");
@@ -301,6 +302,31 @@ static void ScanShell(std::vector<StartupEntry>& out, int& scanned, int& denied)
     }
 }
 
+
+static wstring RegDefault(HKEY root, REGSAM view, const wstring& sub, const wchar_t* val = nullptr) { return RegStr(root, view, sub, val); }
+static void ScanVerbs(std::vector<StartupEntry>& out, int& scanned, int& denied) {   // static right-click commands: HKCR\<type>\shell\<verb>; hidden by the LegacyDisable value
+    static const wchar_t* types[] = {L"*", L"AllFilesystemObjects", L"Directory", L"Directory\\Background", L"Folder", L"Drive"};
+    for (HKEY root : {HKEY_LOCAL_MACHINE, HKEY_CURRENT_USER}) for (REGSAM view : {KEY_WOW64_64KEY, KEY_WOW64_32KEY}) { if (root == HKEY_CURRENT_USER && view == KEY_WOW64_32KEY) continue;
+        for (auto* t : types) { wstring base = wstring(L"Software\\Classes\\") + t + L"\\shell"; auto subs = RegSubKeys(root, view, base); ++scanned;
+            for (auto& sk : subs) { wstring full = base + L"\\" + sk; wstring cmd = RegDefault(root, view, full + L"\\command"); if (cmd.empty()) continue;   // submenu or DelegateExecute verb: shown by name only if it has a plain command
+                wstring nm = RegStr(root, view, full, L"MUIVerb"); if (nm.empty() || nm[0] == L'@') nm = RegDefault(root, view, full); if (nm.empty() || nm[0] == L'@') nm = sk; nm.erase(std::remove(nm.begin(), nm.end(), L'&'), nm.end());
+                StartupEntry e; e.name = nm + L"  (" + (wcscmp(t, L"*") == 0 ? L"all files" : wcscmp(t, L"AllFilesystemObjects") == 0 ? L"files and folders" : wcscmp(t, L"Directory") == 0 ? L"folders" : wcscmp(t, L"Directory\\Background") == 0 ? L"folder background" : wcscmp(t, L"Folder") == 0 ? L"folders" : L"drives") + L")";
+                e.type = L"Explorer add-on: right-click command"; e.starts = L"When you right-click"; e.scope = root == HKEY_CURRENT_USER ? L"Current user" : L"All users"; e.command = cmd;
+                e.root = root; e.view = view; e.subKey = full; e.location = wstring(root == HKEY_CURRENT_USER ? L"HKCU\\" : L"HKLM\\") + full + (view == KEY_WOW64_32KEY ? L" [32-bit view]" : L"");
+                HKEY k; bool dis = false; if (RegOpenKeyExW(root, full.c_str(), 0, KEY_QUERY_VALUE | view, &k) == ERROR_SUCCESS) { dis = RegQueryValueExW(k, L"LegacyDisable", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; RegCloseKey(k); }
+                e.state = dis ? L"Disabled" : L"Enabled"; e.toggle = Toggle::ShellVerb; e.key = L"verb|" + Lower(wstring(root == HKEY_CURRENT_USER ? L"u|" : L"m|") + full) + (view == KEY_WOW64_32KEY ? L"|32" : L"|64");
+                Finish(e); out.push_back(std::move(e)); } } }
+    (void)denied;
+}
+static bool WriteVerb(const StartupEntry& e, bool enable, wstring& err, wstring& before, wstring& after) {
+    HKEY k; LONG r = RegOpenKeyExW(e.root, e.subKey.c_str(), 0, KEY_QUERY_VALUE | KEY_SET_VALUE | e.view, &k);
+    if (r != ERROR_SUCCESS) { err = r == ERROR_ACCESS_DENIED ? L"Administrator rights are required. Use More > Restart as administrator." : Win32Err(r); return false; }
+    bool was = RegQueryValueExW(k, L"LegacyDisable", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; before = was ? L"Disabled" : L"Enabled";
+    if (enable) { r = RegDeleteValueW(k, L"LegacyDisable"); if (r == ERROR_FILE_NOT_FOUND) r = ERROR_SUCCESS; } else { r = RegSetValueExW(k, L"LegacyDisable", 0, REG_SZ, (const BYTE*)L"", 2); }
+    bool now = RegQueryValueExW(k, L"LegacyDisable", nullptr, nullptr, nullptr, nullptr) == ERROR_SUCCESS; RegCloseKey(k);
+    if (r != ERROR_SUCCESS) { err = r == ERROR_ACCESS_DENIED ? L"Administrator rights are required. Use More > Restart as administrator." : Win32Err(r); return false; }
+    after = now ? L"Disabled" : L"Enabled"; if (now == enable) { err = L"Read-back did not match."; return false; } err = L"Takes effect the next time you right-click."; return true;
+}
 StartupScan ScanStartup() {
     StartupScan r; int scanned = 0, denied = 0;
     ScanRun(r.entries, HKEY_CURRENT_USER, KEY_WOW64_64KEY, kRun, false, scanned, denied);
@@ -312,6 +338,7 @@ StartupScan ScanStartup() {
     ScanFolder(r.entries, FOLDERID_CommonStartup, L"All users", scanned, denied);
     ScanTasks(r.entries, scanned, denied);
     ScanShell(r.entries, scanned, denied);
+    ScanVerbs(r.entries, scanned, denied);
     // first-seen tracking
     bool existed = false; auto seen = LoadSeen(existed); wstring now = NowIsoUtc(); bool changed = false;
     SYSTEMTIME st; GetSystemTime(&st); FILETIME ft; SystemTimeToFileTime(&st, &ft);
@@ -397,6 +424,7 @@ bool SetStartupEnabled(const StartupEntry& e, bool enable, wstring& err) {
         case Toggle::RunApproved: ok = WriteApproved(e, enable, err, before, after); break;
         case Toggle::Task: ok = WriteTask(e, enable, err, before, after); break;
         case Toggle::ShellBlocked: ok = WriteBlocked(e, enable, err, before, after); if (ok) { note = err; err.clear(); } break;
+        case Toggle::ShellVerb: ok = WriteVerb(e, enable, err, before, after); if (ok) { note = err; err.clear(); } break;
         default: break;
     }
     WriteJournal(e.name, e.location, before, after, ok ? L"ok" + (note.empty() ? wstring() : L": " + note) : L"failed: " + err, true);

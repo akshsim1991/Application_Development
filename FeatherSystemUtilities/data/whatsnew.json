@@ -1,5 +1,14 @@
 [
  {
+  "version": "3.10.0",
+  "date": "November 2026",
+  "items": [
+   "New Disk health page: SMART health, temperature, life used, power-on time and error counts where the drive reports them, SSD TRIM status, free-space warnings, and a boot-time history chart.",
+   "Startup page: a Sign-in time chart with your changes marked, and a before/after table showing how each startup change affected boot time.",
+   "New Right-click page: context-menu extensions, right-click commands, icon overlays and properties tabs, each switchable off and on (reversible, journaled). These moved here from the Startup page."
+  ]
+ },
+ {
   "version": "3.9.0",
   "date": "November 2026",
   "items": [

@@ -44,3 +44,7 @@ Remaining from the list: #1 maintenance plan, #2 disk health, #4 sign-in time pe
 
 ## 3.9.0 (roadmap "Important" list, part 2)
 Done: #8 services profiles + properties in the new UI (services.profile*, services.details), #10 cleaner categories (t.iconcache, t.office, t.applogs, t.patchcache risk 2), #12 large-file age filter + files.archive (move, journaled); the folder size treemap already existed on the Storage page.
+
+## 3.10.0 (roadmap "Important" list, part 3)
+Done: #2 disk health (phase2.cpp ReadDiskHealth: MSFT_PhysicalDisk, MSFT_StorageReliabilityCounter, MSStorageDriver_FailurePredictStatus, TRIM registry flag, free space; boot chart from Diagnostics-Performance event 100), #4 sign-in time before/after (UI correlates journal startup changes with boot history), #9 shell extensions page (startup.cpp ScanShell + ScanVerbs, Toggle::ShellVerb via LegacyDisable).
+Remaining from the list: #1 maintenance plan, #5 per-process network/disk, #6 winget, #13 driver store cleanup.

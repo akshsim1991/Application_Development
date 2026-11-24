@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.9.0"
+#define FSU_VERSION L"3.10.0"
 
 namespace fsu {
 
@@ -73,7 +73,7 @@ void WriteJournal(const std::wstring& target, const std::wstring& source, const 
 bool JournalWritable();
 
 // ---- startup ----
-enum class Toggle { None, RunApproved, Task, ShellBlocked };
+enum class Toggle { None, RunApproved, Task, ShellBlocked, ShellVerb };
 struct StartupEntry {
     std::wstring name, state, type, starts, scope, command, program, publisher, version;
     std::wstring signature, warnings, location, firstSeen, key;   // key = stable identity
@@ -178,6 +178,12 @@ struct PrivacyItem { std::wstring id, title, state, detail, why; bool good = tru
 std::vector<PrivacyItem> PrivacyChecklist();
 bool OpenPrivacySetting(const std::wstring& id);
 std::vector<PrivacyItem> SecurityChecklist();
+struct DiskInfo { std::wstring name, media, bus, health; int healthCode = -1, temp = -1, wear = -1; long long hours = -1, readErr = -1, writeErr = -1; ULONGLONG size = 0; };
+struct VolInfo { std::wstring path, label, fs; ULONGLONG total = 0, free = 0; };
+struct DiskReport { std::vector<DiskInfo> disks; std::vector<VolInfo> vols; int predictFail = -1; bool trimKnown = false, trimOn = true, admin = false; std::wstring error; };
+DiskReport ReadDiskHealth();
+struct BootRec { std::wstring time; ULONGLONG bootMs = 0, mainMs = 0, postMs = 0; };
+std::vector<BootRec> BootHistory(size_t maxN, std::wstring& err);
 bool OpenSecuritySetting(const std::wstring& id);
 struct TaskInfo { std::wstring path, name, folder, state, triggers, command, author, lastRun, nextRun, why; long lastResult = 0; bool enabled = true, microsoft = false, startup = false, hidden = false, canToggle = true; };
 std::vector<TaskInfo> ListAllTasks(std::wstring& err);

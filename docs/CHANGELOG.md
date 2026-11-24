@@ -8,8 +8,14 @@ Free forever. Windows and macOS. Newest first.
   choose multiple items only if they are all located in the same folder", although they were. The dialog had room for
   about 4,000 characters of file names; it now has room for about a thousand long names, and says so plainly if even
   that is not enough. The same for choosing pictures for a new PDF.
-- Changed (Windows): on PDFs, File Explorer's right-click entry now reads "Combine into one PDF (Feather PDF)". In
-  Windows 11 it is under "Show more options" (or Shift+F10), with the other programs' classic entries.
+- New (Windows 11): "Combine into one PDF" in File Explorer's first right-click menu (not only under "Show more
+  options"), when two or more PDFs (or pictures, Word, PowerPoint, Excel, text files) are selected: all of them go into
+  one PDF next to the first, in the order of their names, with a bookmark for each. It comes from a small package Windows
+  registers for each user the first time Feather PDF starts after the update; the installer adds the certificate that
+  package is signed with to the PC's trusted ones (made for this build only; nothing else can be signed with it) and the
+  uninstaller removes both. Turning the combine entry off in Settings > File Explorer takes it out of both menus.
+- Changed (Windows): on PDFs, the classic right-click entry (Windows 10, and "Show more options") now reads "Combine
+  into one PDF (Feather PDF)".
 
 ## 2.25.0 "Taurus" (23 November 2026)
 

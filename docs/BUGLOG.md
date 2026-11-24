@@ -1663,3 +1663,21 @@ which only changes a test). The three downloads match latest.json (size and SHA-
   (it was "Convert to PDF and combine all the selected file(s)"); in Windows 11 it is under "Show more options" (the
   first menu takes only packaged extensions).
 
+### B-130 "Combine into one PDF" missing from Windows 11's first right-click menu - Medium (Windows 11)
+- **Found:** the user: the combine option should be in the main menu.
+- **Cause:** Windows 11's first menu shows only commands of packaged apps (IExplorerCommand declared in a package);
+  the registry entries (SystemFileAssociations) appear only under "Show more options".
+- **Fix:** Windows/shellext/shellext.cpp, FeatherPDFShell.dll: an IExplorerCommand, shown when two or more files are
+  selected and all are PDFs or files Feather PDF converts; it writes their paths to a temporary list and starts
+  FeatherPDF.exe --combine-list (combineFiles, factored out of the right-click gathering). Windows/shellext/
+  make-package.py: a sparse package (FeatherPDF.msix: manifest with desktop4 fileExplorerContextMenus and a com
+  SurrogateServer, logos, block map; the program files stay in the program folder as its external location), signed
+  by osslsigncode with a self-signed certificate made at each build, its private key deleted after signing. The setup
+  program trusts the certificate in LocalMachine\TrustedPeople (older "Feather PDF" ones removed) on Windows 11; the app
+  registers the package for the current user in the background, once per version and folder (Add-AppxPackage
+  -ExternalLocation), and removes it when the combine entry is turned off; the uninstaller removes package and
+  certificates. Windows 10 keeps the classic entries only.
+- **Tests:** a new workflow (Windows menu check) builds the DLL and the signed package as for the release, trusts and
+  registers it on a Windows runner, and drives the command: title, icon, shown for three PDFs, hidden for one PDF and for
+  a selection with another file, and Invoke hands all three paths to (a stand-in) FeatherPDF.exe.
+

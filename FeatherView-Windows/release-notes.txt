@@ -1,3 +1,7 @@
+Feather View 2.1.15
+- Updates: new Settings > Updates options "Download new versions automatically in the background" and "Install a downloaded version automatically when I close Feather View"; the update check retries on a hiccup and a downloaded update installs instantly
+- Releases are now published in one step so the update check never meets a half-published release
+
 Feather View 2.1.14
 - Double-clicking a video now switches full screen on and off (also with the extended video engine), without pausing the video
 

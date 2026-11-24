@@ -33,7 +33,7 @@ public sealed class UpdateController
     {
         var s = _settings();
         if (!s.AutoUpdateCheck) return;
-        if (s.LastUpdateCheckUtc is DateTime last && DateTime.UtcNow - last < TimeSpan.FromHours(24)) return;
+        if (s.LastUpdateCheckUtc is DateTime last && DateTime.UtcNow - last < TimeSpan.FromHours(6)) return;
         await CheckAsync(userInitiated: false);
     }
 
@@ -45,7 +45,7 @@ public sealed class UpdateController
         {
             var svc = new UpdateService(_http, log: _log);
             UpdateManifest? m;
-            try { m = await svc.CheckAsync(_currentVersion); }
+            try { m = await CheckWithRetryAsync(svc); }
             catch (UpdateException ex)
             {
                 if (userInitiated) _dialogs.Error("Check for updates", ex.Message + " Check your internet connection and try again.");
@@ -61,6 +61,24 @@ public sealed class UpdateController
             if (!userInitiated && string.Equals(_settings().SkippedVersion, m.Version, StringComparison.OrdinalIgnoreCase)) return;
 
             var asset = m.PickInstaller(IsFrameworkDependentInstall());
+
+            // Already downloaded earlier (background download): install straight away, no second download
+            if (HavePending(m.Version) is string ready)
+            {
+                if (userInitiated || !_settings().AutoInstallUpdates)
+                {
+                    if (_dialogs.AskUpdate(m, _currentVersion, asset?.Size) == UpdateChoice.UpdateNow) LaunchInstaller(ready, restart: true);
+                }
+                return;
+            }
+
+            // Background mode: download quietly, then install on exit (or ask)
+            if (!userInitiated && _settings().AutoDownloadUpdates)
+            {
+                await BackgroundDownloadAsync(svc, m, asset);
+                return;
+            }
+
             switch (_dialogs.AskUpdate(m, _currentVersion, asset?.Size))
             {
                 case UpdateChoice.SkipVersion: { var s = _settings(); s.SkippedVersion = m.Version; _settingsService.Save(s); return; }
@@ -69,6 +87,74 @@ public sealed class UpdateController
             await DownloadAndInstallAsync(svc, m, asset);
         }
         finally { _busy = false; }
+    }
+
+    private async Task<UpdateManifest?> CheckWithRetryAsync(UpdateService svc)
+    {
+        // A release that is being published can be unreachable for a few seconds: try again before reporting an error
+        for (int attempt = 0; ; attempt++)
+        {
+            try { return await svc.CheckAsync(_currentVersion); }
+            catch (UpdateException) when (attempt < 3) { await Task.Delay(TimeSpan.FromSeconds(2 * (attempt + 1))); }
+        }
+    }
+
+    private string? HavePending(string version)
+    {
+        var s = _settings();
+        if (!string.Equals(s.PendingUpdateVersion, version, StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(s.PendingUpdatePath) || !File.Exists(s.PendingUpdatePath)) return null;
+        return s.PendingUpdatePath;
+    }
+
+    private async Task BackgroundDownloadAsync(UpdateService svc, UpdateManifest m, UpdateAsset? asset)
+    {
+        try
+        {
+            var file = await svc.DownloadAsync(m, Path.Combine(Path.GetTempPath(), "FeatherViewUpdate"), null, CancellationToken.None, asset);
+            var s = _settings();
+            s.PendingUpdateVersion = m.Version; s.PendingUpdatePath = file; s.PendingUpdateSha256 = asset?.Sha256;
+            _settingsService.Save(s);
+            _log.Info($"Update {m.Version} downloaded and verified.");
+            if (!s.AutoInstallUpdates)
+            {
+                var choice = _dialogs.AskUpdate(m, _currentVersion, asset?.Size);
+                if (choice == UpdateChoice.UpdateNow) LaunchInstaller(file, restart: true);
+                else if (choice == UpdateChoice.SkipVersion) { s.SkippedVersion = m.Version; _settingsService.Save(s); }
+            }
+        }
+        catch (Exception ex) { _log.Warn($"Background update download failed ({ex.GetType().Name})."); }
+    }
+
+    /// <summary>Called when Feather View closes: installs a verified, already downloaded update silently (no restart, the app is closed).</summary>
+    public void InstallPendingOnExit()
+    {
+        try
+        {
+            var s = _settings();
+            if (!s.AutoInstallUpdates || string.IsNullOrEmpty(s.PendingUpdatePath) || string.IsNullOrEmpty(s.PendingUpdateVersion) || !File.Exists(s.PendingUpdatePath)) return;
+            if (!VersionUtil.IsNewer(s.PendingUpdateVersion, _currentVersion)) { ClearPending(); return; }
+            if (!string.IsNullOrEmpty(s.PendingUpdateSha256))
+            {
+                using var fs = File.OpenRead(s.PendingUpdatePath);
+                if (!Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(fs)).Equals(s.PendingUpdateSha256, StringComparison.OrdinalIgnoreCase)) { ClearPending(); return; }
+            }
+            var path = s.PendingUpdatePath; ClearPending();
+            Process.Start(new ProcessStartInfo(path, "/SILENT /SUPPRESSMSGBOXES /NORESTART /CLOSEAPPLICATIONS") { UseShellExecute = true });
+        }
+        catch (Exception ex) { _log.Warn($"Installing the pending update failed ({ex.GetType().Name})."); }
+    }
+
+    private void ClearPending() { var s = _settings(); s.PendingUpdateVersion = null; s.PendingUpdatePath = null; s.PendingUpdateSha256 = null; _settingsService.Save(s); }
+
+    private void LaunchInstaller(string file, bool restart)
+    {
+        try
+        {
+            ClearPending();
+            Process.Start(new ProcessStartInfo(file, "/SILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS" + (restart ? " /RESTARTAPPLICATIONS" : " /NORESTART")) { UseShellExecute = true });
+            System.Windows.Application.Current.Shutdown();
+        }
+        catch (Exception ex) { _log.Warn($"Update launch failed ({ex.GetType().Name})."); _dialogs.Error("Update", "The installer could not be started."); }
     }
 
     private static bool IsFrameworkDependentInstall()
@@ -94,6 +180,7 @@ public sealed class UpdateController
         try
         {
             // Inno Setup silent upgrade: closes this app, installs over it and starts it again.
+            ClearPending();
             Process.Start(new ProcessStartInfo(file, "/SILENT /SUPPRESSMSGBOXES /CLOSEAPPLICATIONS /RESTARTAPPLICATIONS") { UseShellExecute = true });
             System.Windows.Application.Current.Shutdown();
         }

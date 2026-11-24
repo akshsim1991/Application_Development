@@ -143,7 +143,10 @@ jobs:
           # A re-run replaces the release so its tag points at the commit that was just built.
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) { gh release delete $tag --yes --cleanup-tag }
-          gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --title "Feather View $v" --notes "$notes" --latest --target ${{ github.sha }}
+          # Create as a DRAFT with every file attached, then publish in one step: the 'latest' release (and its latest.json) is never half-uploaded,
+          # so an installed app that checks for updates never meets a missing manifest.
+          gh release create $tag $setup "dist/FeatherView-Setup-small-$v.exe" "dist/FeatherView-$v-portable-win-x64.zip" "dist/FeatherView-$v-framework-dependent-win-x64.zip" dist/latest.json --draft --title "Feather View $v" --notes "$notes" --target ${{ github.sha }}
+          gh release edit $tag --draft=false --latest
 
       - uses: actions/upload-artifact@v4
         with:

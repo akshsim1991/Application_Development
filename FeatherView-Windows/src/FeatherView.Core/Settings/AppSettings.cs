@@ -80,6 +80,11 @@ public sealed class AppSettings
 
     // Updates (same model as FeatherPDF / FileGlade: daily check, ask first, verify before install)
     public bool AutoUpdateCheck { get; set; } = true;
+    public bool AutoDownloadUpdates { get; set; } = true;     // fetch (and verify) a new version in the background
+    public bool AutoInstallUpdates { get; set; } = true;      // install a downloaded version when Feather View is closed (otherwise it asks)
+    public string? PendingUpdateVersion { get; set; }         // a verified installer waiting in the temp folder
+    public string? PendingUpdatePath { get; set; }
+    public string? PendingUpdateSha256 { get; set; }
     public DateTime? LastUpdateCheckUtc { get; set; }
     public string? SkippedVersion { get; set; }
 

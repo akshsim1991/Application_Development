@@ -56,6 +56,8 @@ public partial class App : Application
         var arg = e.Args.FirstOrDefault(a => !a.StartsWith('-'));
         if (arg != null) { if (restored) vm.Tabs.OpenInNewTab(arg); else vm.OpenPath(arg); }
 
+        Exit += (_, _) => vm.Updates.InstallPendingOnExit();   // a downloaded update is installed when the app closes
+
         // Quiet daily update check a few seconds after start-up; the user is asked before anything is downloaded.
         _ = Dispatcher.InvokeAsync(async () =>
         {

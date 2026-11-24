@@ -127,7 +127,9 @@
                 </DockPanel>
 
                 <TextBlock Text="Updates" Style="{StaticResource SectionTitle}" />
-                <CheckBox Content="Check for updates automatically (at most once a day)" IsChecked="{Binding AutoUpdateCheck}" />
+                <CheckBox Content="Check for updates automatically (every few hours while the app is open)" IsChecked="{Binding AutoUpdateCheck}" />
+                <CheckBox Content="Download new versions automatically in the background" IsChecked="{Binding AutoDownloadUpdates}" />
+                <CheckBox Content="Install a downloaded version automatically when I close Feather View" IsChecked="{Binding AutoInstallUpdates}" />
                 <TextBlock Text="Feather View asks before it downloads anything and verifies every update. It never sends your files or personal data." TextWrapping="Wrap" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" Margin="0,2,0,8" />
                 <Button Content="Check for updates now" Style="{StaticResource TextButton}" HorizontalAlignment="Left" Click="CheckNow_Click" />
 

@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.7.1"
+#define FSU_VERSION L"3.7.2"
 
 namespace fsu {
 
@@ -40,6 +40,7 @@ struct Settings {
     std::vector<std::wstring> exclusions;                                // folders/files never scanned or cleaned
     std::vector<std::wstring> ignored;                                   // "kind|id|label" findings the user chose to ignore
     std::wstring skipVersion; long long deferUntil = 0;                  // update prompt: skipped version / "remind me later" (seconds since 1970)
+    bool deviceCheck = true;                                             // look for device problems when Feather starts (read-only) and offer fixes
     std::wstring updateChannel = L"stable", lastSeenVersion; bool webviewPrompt = true;   // update channel; last version whose What's-new was shown; ask about the WebView2 runtime when missing
     std::wstring uiTheme = L"auto";                                     // new UI: auto | light | dark
     bool betaFeatures = false; std::map<std::string, int> flags;          // feature flags: explicit per-flag overrides (0/1); beta flags follow betaFeatures otherwise
@@ -231,6 +232,12 @@ Advice AdviceForStartup(const struct StartupEntry& e, bool fileMissing);
 Advice AdviceForService(const struct ServiceEntry& s);
 bool AdviceRefresh(AdviceInfo& info, std::wstring& err);   // downloads a newer knowledge base when online
 bool FetchAdviceJson(std::string& body, std::wstring& err);   // update.cpp
+bool FetchRepoFile(const wchar_t* name, std::string& body, std::wstring& err);   // any small published JSON next to latest.json
+struct DeviceRule { std::wstring id, title, diagnosis, severity; std::vector<std::wstring> steps, then, advice; bool bios = false; };
+bool DeviceRuleFor(const std::wstring& hwid, const std::wstring& cls, int problem, const std::wstring& ntHex, const std::wstring& name, DeviceRule& out);
+std::wstring DeviceRulesVersion();
+struct BiosInfo { std::wstring vendor, version, date; };
+BiosInfo GetBiosInfo();
 bool InSafeMode(int* kind = nullptr);                        // 1 minimal, 2 with networking
 
 // ---- quarantine (quarantine.cpp): restorable holding area for leftovers and stray files ----

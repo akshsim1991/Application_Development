@@ -3,7 +3,7 @@
 set -euo pipefail; cd "$(dirname "$0")/.."; V="$1"; NOTES="$2"
 BASE="${RELEASES_BASE:-https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main}"   # then copy releases-repo/* into that repo and push
 ./build.sh all >/dev/null
-mkdir -p releases/v$V; cp build/FeatherSystemUtilities-Setup-$V.exe releases/v$V/; cp build/FeatherSystemUtilities.exe releases/v$V/FeatherSystemUtilities-x64.exe; cp build/FeatherSystemUtilities-x86.exe build/WebView2Loader.dll build/WebView2Loader-x86.dll data/advice.json releases/v$V/
+mkdir -p releases/v$V; cp build/FeatherSystemUtilities-Setup-$V.exe releases/v$V/; cp build/FeatherSystemUtilities.exe releases/v$V/FeatherSystemUtilities-x64.exe; cp build/FeatherSystemUtilities-x86.exe build/WebView2Loader.dll build/WebView2Loader-x86.dll data/advice.json data/devicefixes.json releases/v$V/
 python3 tools/make_sbom.py "$V" releases/v$V/SBOM.cdx.json
 printf '%s\n' "$NOTES" > releases/v$V/RELEASE_NOTES.md; (cd releases/v$V && sha256sum * > SHA256SUMS.txt)
 S=$(sha256sum build/FeatherSystemUtilities-Setup-$V.exe | cut -d' ' -f1); SZ=$(stat -c %s build/FeatherSystemUtilities-Setup-$V.exe)
@@ -15,7 +15,7 @@ except Exception: print('')
 PY
 )
 for x in releases-repo/*.exe; do [ -e "$x" ] || continue; [ "$(basename "$x")" = "$KEEP" ] || rm -f "$x"; done   # keep the previous installer so users can roll back to it
-cp build/FeatherSystemUtilities-Setup-$V.exe releases-repo/; cp data/advice.json releases-repo/advice.json
+cp build/FeatherSystemUtilities-Setup-$V.exe releases-repo/; cp data/advice.json releases-repo/advice.json; cp data/devicefixes.json releases-repo/devicefixes.json
 cp releases-repo/latest.json /tmp/prev-latest.json 2>/dev/null || echo '{}' > /tmp/prev-latest.json
 python3 - "$V" "$NOTES" "$BASE" "$S" "$SZ" "${SIGNER:-}" <<'PY'
 import sys, json, datetime

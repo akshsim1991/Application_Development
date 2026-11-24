@@ -185,3 +185,7 @@ std::vector<Hotfix> ListHotfixes(std::wstring& err) {
     std::vector<Hotfix> out; Wmi(L"ROOT\\CIMV2", L"SELECT HotFixID,Description,InstalledOn,InstalledBy FROM Win32_QuickFixEngineering", [&](IWbemClassObject* o) { Hotfix h; h.kb = Get(o, L"HotFixID"); if (h.kb.empty()) return; h.desc = Get(o, L"Description"); h.date = Get(o, L"InstalledOn"); h.by = Get(o, L"InstalledBy"); out.push_back(h); }, err); return out;
 }
 }
+
+namespace fsu {
+BiosInfo GetBiosInfo() { BiosInfo b; wstring e; Wmi(L"ROOT\\CIMV2", L"SELECT Manufacturer,SMBIOSBIOSVersion,ReleaseDate FROM Win32_BIOS", [&](IWbemClassObject* o) { b.vendor = Get(o, L"Manufacturer"); b.version = Get(o, L"SMBIOSBIOSVersion"); b.date = Get(o, L"ReleaseDate"); if (b.date.size() >= 8) b.date = b.date.substr(0, 4) + L"-" + b.date.substr(4, 2) + L"-" + b.date.substr(6, 2); }, e); return b; }
+}

@@ -30,7 +30,7 @@ const wchar_t* NtStatusText(unsigned s) {
     case 0xC0000225: return L"STATUS_NOT_FOUND: something the driver looks for (firmware entry, resource or file) was not found.";
     case 0xC00002B6: return L"STATUS_DEVICE_POWER_FAILURE: the device did not respond to a power request.";
     case 0xC0000428: return L"STATUS_INVALID_IMAGE_HASH: the driver's digital signature could not be verified.";
-    default: return L"Windows recorded this status but Feather has no plain-language text for it. Search the code on Microsoft's site."; }
+    default: { static wchar_t buf[512]; buf[0] = 0; DWORD n = FormatMessageW(FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, GetModuleHandleW(L"ntdll.dll"), s, 0, buf, 511, nullptr); while (n && (buf[n - 1] == L'\r' || buf[n - 1] == L'\n' || buf[n - 1] == L' ')) buf[--n] = 0; if (n) return buf; return L"Windows recorded this status but gives no text for it. Search the code on Microsoft's site."; } }   // Windows' own message table decodes any NTSTATUS
 }
 static bool ProtectedClass(const wstring& cls) { static const wchar_t* p[] = {L"system", L"hdc", L"scsiadapter", L"diskdrive", L"volume", L"volumesnapshot", L"processor", L"computer", L"keyboard", L"mouse", L"hidclass", L"usb", L"usbhub"}; wstring l = cls; for (auto& c : l) c = (wchar_t)towlower(c); for (auto* x : p) if (l == x) return true; return false; }
 bool DeviceActionAllowed(const wstring& cls, const std::string& action) { if (action == "rescan" || action == "enableService") return true; return !ProtectedClass(cls); }

@@ -1,0 +1,1 @@
+Device problems now use a known-issue knowledge base (online-updatable): each failing device gets a specific diagnosis, a safe repair plan and a clear result; any Windows failure status is decoded. Full step-by-step log and Details window, Fix all, copy diagnostic details, optional device check at start.

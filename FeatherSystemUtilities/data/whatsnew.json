@@ -1,11 +1,86 @@
 [
- {"version":"3.7.1","date":"November 2026","items":["What's new and Help pages inside the app.","Update channel (stable or beta) and one-click roll back to the previous version.","The administrator helper now also covers Clean items that need administrator rights.","If the new interface cannot start (missing WebView2 runtime) Feather explains why and offers the Microsoft download page."]},
- {"version":"3.7.0","date":"November 2026","items":["Drivers: new Problems tab explains why a device cannot start (problem code, Windows failure status, driver service, Kernel-PnP log) and offers automatic and manual fixes.","Light / dark / follow-Windows theme."]},
- {"version":"3.6.0","date":"November 2026","items":["Beta features switch (Store app removal, Windows update uninstall, administrator helper).","Journal entries now record a type and how to undo.","Optional administrator helper: one permission prompt instead of restarting Feather."]},
- {"version":"3.5.1","date":"November 2026","items":["Progress and results appear in a status bar with Cancel for scans.","More reliable registry deletes and exact failure reasons."]},
- {"version":"3.5.0","date":"November 2026","items":["Dashboard: device model, Windows Update status, optional live activity, storage trend, review list.","Microsoft Store apps and Windows updates in the uninstaller; startup boot impact.","License verification, SBOM, privacy policy."]},
- {"version":"3.4.0","date":"November 2026","items":["Startup and Services show a Recommendation column (safe to disable?) from an online-updatable list.","Administrator prompts instead of silent failures; Safe Mode support."]},
- {"version":"3.3.0","date":"November 2026","items":["Drivers: problem codes, installed-vs-proposed comparison, one-at-a-time install.","Privacy page and Troubleshoot page with redacted reports."]},
- {"version":"3.2.0","date":"November 2026","items":["Update check at launch.","Quarantine, Recovery page, dry-run previews, exclusions and ignored findings."]},
- {"version":"3.0.0","date":"November 2026","items":["Completely new interface."]}
+ {
+  "version": "3.7.2",
+  "date": "November 2026",
+  "items": [
+   "Device problems: known-issue knowledge base (online-updatable) gives each failing device a specific diagnosis, a safe repair plan and a clear result; decodes any Windows failure status.",
+   "Complete step-by-step 'What happened' log and a Details window with the full log.",
+   "Fix all problems at once, copy diagnostic details for support, and an optional read-only device check at start."
+  ]
+ },
+ {
+  "version": "3.7.1",
+  "date": "November 2026",
+  "items": [
+   "What's new and Help pages inside the app.",
+   "Update channel (stable or beta) and one-click roll back to the previous version.",
+   "The administrator helper now also covers Clean items that need administrator rights.",
+   "If the new interface cannot start (missing WebView2 runtime) Feather explains why and offers the Microsoft download page."
+  ]
+ },
+ {
+  "version": "3.7.0",
+  "date": "November 2026",
+  "items": [
+   "Drivers: new Problems tab explains why a device cannot start (problem code, Windows failure status, driver service, Kernel-PnP log) and offers automatic and manual fixes.",
+   "Light / dark / follow-Windows theme."
+  ]
+ },
+ {
+  "version": "3.6.0",
+  "date": "November 2026",
+  "items": [
+   "Beta features switch (Store app removal, Windows update uninstall, administrator helper).",
+   "Journal entries now record a type and how to undo.",
+   "Optional administrator helper: one permission prompt instead of restarting Feather."
+  ]
+ },
+ {
+  "version": "3.5.1",
+  "date": "November 2026",
+  "items": [
+   "Progress and results appear in a status bar with Cancel for scans.",
+   "More reliable registry deletes and exact failure reasons."
+  ]
+ },
+ {
+  "version": "3.5.0",
+  "date": "November 2026",
+  "items": [
+   "Dashboard: device model, Windows Update status, optional live activity, storage trend, review list.",
+   "Microsoft Store apps and Windows updates in the uninstaller; startup boot impact.",
+   "License verification, SBOM, privacy policy."
+  ]
+ },
+ {
+  "version": "3.4.0",
+  "date": "November 2026",
+  "items": [
+   "Startup and Services show a Recommendation column (safe to disable?) from an online-updatable list.",
+   "Administrator prompts instead of silent failures; Safe Mode support."
+  ]
+ },
+ {
+  "version": "3.3.0",
+  "date": "November 2026",
+  "items": [
+   "Drivers: problem codes, installed-vs-proposed comparison, one-at-a-time install.",
+   "Privacy page and Troubleshoot page with redacted reports."
+  ]
+ },
+ {
+  "version": "3.2.0",
+  "date": "November 2026",
+  "items": [
+   "Update check at launch.",
+   "Quarantine, Recovery page, dry-run previews, exclusions and ignored findings."
+  ]
+ },
+ {
+  "version": "3.0.0",
+  "date": "November 2026",
+  "items": [
+   "Completely new interface."
+  ]
+ }
 ]

@@ -67,6 +67,10 @@ static wstring JsonStr(const std::string& j, const char* key, size_t from = 0) {
 }
 static ULONGLONG JsonNum(const std::string& j, const char* key, size_t from) { std::string k = std::string("\"") + key + "\""; size_t p = j.find(k, from); if (p == std::string::npos) return 0; p = j.find(':', p); return p == std::string::npos ? 0 : (ULONGLONG)strtoull(j.c_str() + p + 1, nullptr, 10); }
 
+bool FetchRepoFile(const wchar_t* name, std::string& body, wstring& err) {   // same hosts/limits as the manifest: raw GitHub, jsDelivr, project repo
+    static const wchar_t* bases[] = {L"https://raw.githubusercontent.com/akshsim1991/FeatherSystemUtilities-releases/main/", L"https://cdn.jsdelivr.net/gh/akshsim1991/FeatherSystemUtilities-releases@main/", L"https://raw.githubusercontent.com/akshsim1991/Application_Development/claude/new-session-ann5h4/FeatherSystemUtilities/releases-repo/"};
+    wstring last; for (auto b : bases) { std::vector<char> v; wstring e; if (HttpGet(wstring(b) + name, v, 512 * 1024, nullptr, nullptr, e)) { body.assign(v.begin(), v.end()); return true; } last = e; } err = last.empty() ? L"Not found online." : last; return false;
+}
 bool FetchAdviceJson(std::string& body, wstring& err) {
     wstring last; for (auto url : kAdviceUrls) { std::vector<char> b; wstring e; if (HttpGet(url, b, 512 * 1024, nullptr, nullptr, e)) { body.assign(b.begin(), b.end()); return true; } last = e; }
     err = last.empty() ? L"No recommendations found online." : last; return false;

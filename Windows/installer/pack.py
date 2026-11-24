@@ -27,6 +27,10 @@ def files_to_install(build):
     repo = os.path.dirname(os.path.dirname(root))   # Windows/installer -> the top of the repository
     items = [("FeatherPDF.exe", os.path.join(build, "FeatherPDF.exe")),
              ("pdfium.dll", os.path.join(build, "pdfium.dll")),
+             # Windows 11's first right-click menu (Windows/shellext): the command, its package and certificate
+             ("FeatherPDFShell.dll", os.path.join(build, "FeatherPDFShell.dll")),
+             ("FeatherPDF.msix", os.path.join(build, "FeatherPDF.msix")),
+             ("FeatherPDF-package.cer", os.path.join(build, "FeatherPDF-package.cer")),
              ("Feather PDF User Guide.pdf", os.path.join(repo, "docs", "Feather PDF User Guide.pdf")),
              ("THIRD_PARTY_NOTICES.md", os.path.join(repo, "THIRD_PARTY_NOTICES.md"))]
     for sub in ("licenses", "tessdata"):

@@ -26,6 +26,7 @@
 #include "topdf.hpp"
 #include "officepdf.hpp"
 #include "explorermenu.hpp"
+#include "explorerpackage.hpp"
 #include "sanitize.hpp"
 #include "formdata.hpp"
 #include "exporter.hpp"
@@ -4064,6 +4065,32 @@ void restartAutosave() {
 // Settings: every preference lives here (and only here), in six groups; a change applies at once and is saved.
 enum SettingsPage { SP_APPEARANCE, SP_TABS, SP_VIEWING, SP_EDITING, SP_PERFORMANCE, SP_EXPLORER, SP_ADVANCED };
 
+// Windows 11's first right-click menu: "Combine into one PDF" comes from a package registered for each Windows user
+// (Windows/src/explorerpackage.hpp). Done in the background, once for each version and program folder, and taken
+// out when the entry is turned off in Settings. Remembered in HKCU\Software\FeatherPDF, ExplorerMenuPackage.
+DWORD WINAPI syncExplorerPackageThread(void*) {
+    wchar_t exe[MAX_PATH * 2];
+    const DWORD n = GetModuleFileNameW(nullptr, exe, MAX_PATH * 2);
+    std::wstring folder(exe, n);
+    folder = folder.substr(0, folder.find_last_of(L"\\/"));
+    if (GetFileAttributesW((folder + L"\\" + explorerpackage::kPackage).c_str()) == INVALID_FILE_ATTRIBUTES) return 0;   // (not installed: a build folder)
+    const std::wstring mine = std::wstring(L"" FEATHER_VERSION L"|") + folder;
+    wchar_t have[1024] = L"";
+    DWORD size = sizeof(have);
+    RegGetValueW(HKEY_CURRENT_USER, L"Software\\FeatherPDF", L"ExplorerMenuPackage", RRF_RT_REG_SZ, nullptr, have, &size);
+    if (explorermenu::combineOn()) {
+        if (mine != have && explorerpackage::registerForUser(folder))
+            RegSetKeyValueW(HKEY_CURRENT_USER, L"Software\\FeatherPDF", L"ExplorerMenuPackage", REG_SZ, mine.c_str(), static_cast<DWORD>((mine.size() + 1) * sizeof(wchar_t)));
+    } else if (have[0] && explorerpackage::unregisterForUser()) {
+        RegDeleteKeyValueW(HKEY_CURRENT_USER, L"Software\\FeatherPDF", L"ExplorerMenuPackage");
+    }
+    return 0;
+}
+void syncExplorerPackage() {
+    if (!explorerpackage::windows11()) return;
+    if (HANDLE t = CreateThread(nullptr, 0, syncExplorerPackageThread, nullptr, 0, nullptr)) CloseHandle(t);
+}
+
 // Settings > File Explorer: the right-click entries are machine-wide (HKLM), so a copy of Feather PDF with the right to
 // change them does it (Windows asks for permission). False when it was refused or failed.
 bool setExplorerMenu(bool convert, bool combine) {
@@ -4165,7 +4192,7 @@ void showSettings(int first) {
         it.set = [combineEntry](int x) {
             const bool convert = combineEntry ? explorermenu::convertOn() : x != 0;
             const bool combine = combineEntry ? x != 0 : explorermenu::combineOn();
-            setExplorerMenu(convert, combine);
+            if (setExplorerMenu(convert, combine)) syncExplorerPackage();   // (Windows 11's first menu follows)
         };
         return it;
     };
@@ -7875,6 +7902,8 @@ void takeMutex(HANDLE mx) {
     }
 }
 
+int combineFiles(const std::vector<std::wstring>& chosen, HWND note, std::wstring& openThis);
+
 // Returns the exit code; `openThis` gets the combined PDF when it is to be opened in Feather PDF.
 int convertCombine(const std::wstring& file, std::wstring& openThis) {
     wchar_t full[MAX_PATH * 2];
@@ -7921,8 +7950,15 @@ int convertCombine(const std::wstring& file, std::wstring& openThis) {
     ReleaseMutex(mx);
     CloseHandle(mx);
 
+    return combineFiles(g.files, g.note, openThis);
+}
+
+// Converts each of `chosen` to PDF and combines them, in the order of their names, with a bookmark for each, into
+// "<first file> (combined).pdf" next to the first; `note` (may be null) shows the progress and is closed.
+int combineFiles(const std::vector<std::wstring>& chosen, HWND note, std::wstring& openThis) {
+    struct { HWND note; } g{note};
     std::vector<std::wstring> files;
-    for (const auto& f : g.files) if (std::none_of(files.begin(), files.end(), [&](const std::wstring& x) { return _wcsicmp(x.c_str(), f.c_str()) == 0; })) files.push_back(f);
+    for (const auto& f : chosen) if (std::none_of(files.begin(), files.end(), [&](const std::wstring& x) { return _wcsicmp(x.c_str(), f.c_str()) == 0; })) files.push_back(f);
     std::stable_sort(files.begin(), files.end(), [](const std::wstring& a, const std::wstring& b) {
         const int byName = StrCmpLogicalW(fileNameOf(a).c_str(), fileNameOf(b).c_str());
         return byName != 0 ? byName < 0 : StrCmpLogicalW(a.c_str(), b.c_str()) < 0;
@@ -8025,6 +8061,34 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
         files = {written};
     }
     // "--convert-combine file": Convert to PDF and combine all the selected file(s), from File Explorer
+    // "--combine-list file": File Explorer's Windows 11 menu (Windows/shellext): the selected files, one per line
+    // (UTF-16), all at once; the list is a temporary file, deleted here.
+    if (files.size() == 2 && files[0] == L"--combine-list") {
+        std::vector<std::wstring> chosen;
+        if (FILE* f = _wfopen(files[1].c_str(), L"rb")) {
+            std::wstring all;
+            wchar_t buf[4096];
+            size_t n;
+            while ((n = fread(buf, sizeof(wchar_t), 4096, f)) > 0) all.append(buf, n);
+            fclose(f);
+            if (!all.empty() && all[0] == 0xFEFF) all.erase(0, 1);
+            size_t at = 0;
+            while (at < all.size()) {
+                size_t e = all.find(L'\n', at);
+                if (e == std::wstring::npos) e = all.size();
+                std::wstring line = all.substr(at, e - at);
+                while (!line.empty() && (line.back() == L'\r' || line.back() == L' ')) line.pop_back();
+                if (!line.empty()) chosen.push_back(line);
+                at = e + 1;
+            }
+        }
+        DeleteFileW(files[1].c_str());
+        if (chosen.empty()) return 2;
+        std::wstring combined;
+        const int rc = combineFiles(chosen, convertNote(L"Combining " + std::to_wstring(chosen.size()) + L" files\u2026"), combined);
+        if (combined.empty()) return rc;
+        files = {combined};
+    }
     if (files.size() == 2 && files[0] == L"--convert-combine") {
         std::wstring combined;
         const int rc = convertCombine(files[1], combined);
@@ -8228,6 +8292,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, PWSTR, int show) {
     }
 
     letGo();   // the window is ready, with its files open: the next launch hands its file to it
+    syncExplorerPackage();   // Windows 11: "Combine into one PDF" in File Explorer's first menu, for this user
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
         TranslateMessage(&msg);

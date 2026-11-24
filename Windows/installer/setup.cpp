@@ -4,6 +4,7 @@
 // Feather PDF again. Switches: /S silent, /D=folder (silent install location), /uninstall; for an update started by
 // Feather PDF itself: /waitfor=<process id> (wait until that Feather PDF has closed) and /relaunch (start it again after).
 #include "explorermenu.hpp"
+#include "explorerpackage.hpp"
 #include <windows.h>
 #include <commctrl.h>
 #include <dwmapi.h>
@@ -540,6 +541,8 @@ bool installWork(const std::wstring& dirIn) {
         explorermenu::wanted(convert, combine);   // as chosen in Settings before (an update keeps it)
         explorermenu::apply(exe, convert, combine);
         logLine(std::wstring(L"right-click menu: Convert to PDF ") + (convert ? L"on" : L"off") + L", Convert to PDF and combine " + (combine ? L"on" : L"off"));
+        // Windows 11's first menu: the package's certificate trusted (the app registers the package for each user)
+        if (explorerpackage::windows11()) logLine(std::wstring(L"Windows 11 menu certificate: ") + (explorerpackage::trust(dir) ? L"trusted" : L"NOT trusted"));
         SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);
     }
     advance(1000);
@@ -553,6 +556,8 @@ bool uninstallWork(const std::wstring& dirIn) {
     const std::wstring dir = trimSlash(dirIn);
     auto fail = [](const std::wstring& e) { std::lock_guard<std::mutex> l(g_prog.m); g_prog.error = e; logLine(L"FAILED: " + e); return false; };
     logLine(L"uninstall from " + dir);
+    // Windows 11's menu package first: its command (FeatherPDFShell.dll) may be in use by File Explorer
+    explorerpackage::untrust();
     if (dir.empty() || !fileExists(dir + L"\\" + kExe)) {
         // nothing there: only the Windows entries are left to remove
         logLine(L"no program files found in " + dir);

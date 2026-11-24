@@ -1,0 +1,63 @@
+# Windows 11's "Combine into one PDF" (Windows/shellext): built on Linux as for the release, then checked on Windows:
+# the certificate trusted and the sparse package registered as the installer and the app do, and the command itself
+# (tests/windows/menucheck.cpp: its title, when it is shown, and that it hands every selected file to FeatherPDF.exe).
+name: Windows menu check
+
+on:
+  push:
+    paths: ["Windows/shellext/**", "Windows/src/explorerpackage.hpp", "tests/windows/**", ".github/workflows/windows-menu.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mingw-w64 osslsigncode
+          pip install pillow
+      - name: Build the command, the package and the test programs
+        run: |
+          mkdir -p out
+          x86_64-w64-mingw32-g++ -O2 -shared -s -static -static-libgcc -static-libstdc++ Windows/shellext/shellext.cpp Windows/shellext/shellext.def \
+            -o out/FeatherPDFShell.dll -lole32 -lshell32 -lshlwapi -luuid
+          x86_64-w64-mingw32-g++ -O2 -s -municode -static -mwindows tests/windows/stub.cpp -o out/FeatherPDF.exe -lshell32
+          x86_64-w64-mingw32-g++ -O2 -s -municode -static tests/windows/menucheck.cpp -o out/menucheck.exe -lole32 -lshell32 -luuid
+          VERSION=$(sed -n 's/^project(FeatherPDF VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          python3 Windows/shellext/make-package.py "$VERSION" out
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: menu
+          path: out
+
+  check:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: menu
+          path: menu
+      - name: Trust the certificate and register the package (as the installer and the app do)
+        shell: pwsh
+        run: |
+          $d = (Resolve-Path menu).Path
+          Import-Certificate -FilePath "$d\FeatherPDF-package.cer" -CertStoreLocation Cert:\LocalMachine\TrustedPeople | Out-Null
+          Add-AppxPackage -Path "$d\FeatherPDF.msix" -ExternalLocation $d
+          $p = Get-AppxPackage -Name FeatherPDF.ExplorerMenu
+          if (-not $p) { throw "the package was not registered" }
+          $p | Format-List Name, Version, Publisher, InstallLocation, Status
+      - name: The command
+        shell: pwsh
+        run: |
+          $d = (Resolve-Path menu).Path
+          & "$d\menucheck.exe" $d
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - name: Unregister (as the uninstaller does)
+        shell: pwsh
+        run: |
+          Get-AppxPackage -Name FeatherPDF.ExplorerMenu | Remove-AppxPackage
+          if (Get-AppxPackage -Name FeatherPDF.ExplorerMenu) { throw "still registered" }

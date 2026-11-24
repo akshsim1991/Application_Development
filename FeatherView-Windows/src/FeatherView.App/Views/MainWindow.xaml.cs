@@ -47,7 +47,12 @@ public partial class MainWindow : Window
         // Rubber-band selection: press on the gallery and drag a rectangle over thumbnails (hold Ctrl to add to the current selection)
         GalleryList.PreviewMouseLeftButtonDown += Gallery_MarqueeDown;
         GalleryList.PreviewMouseMove += Gallery_MarqueeMove;
-        GalleryList.PreviewMouseLeftButtonUp += (_, e) => { if (EndMarquee()) e.Handled = true; };
+        GalleryList.PreviewMouseLeftButtonUp += (_, e) =>
+        {
+            if (EndMarquee()) e.Handled = true;
+            if (_deferredClick is { } d) { _deferredClick = null; _vm.ClickItem(d, ModifierKeys.None); }   // a plain click (no drag) on part of a multi-selection selects just that one
+            _dragItem = null;
+        };
         GalleryList.LostMouseCapture += (_, _) => EndMarquee();
 
         // The folder path is editable: Enter goes there, Esc puts the current path back. Shortcuts are paused while typing, like in the search box.
@@ -109,6 +114,7 @@ public partial class MainWindow : Window
         };
         vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(MainViewModel.ShowInfo) && vm.ShowInfo && ActualWidth < 1250) _autoHidInfo = false; };   // the user opened it on purpose
         vm.Video.ContextMenuRequested += () => Dispatcher.BeginInvoke(new Action(ShowFileMenu));   // right click on a video (either engine)
+        FilmList.PreviewMouseLeftButtonUp += (_, _) => _filmDragItem = null;
         FilmList.PreviewMouseWheel += (_, e) =>
         {
             if (!Keyboard.Modifiers.HasFlag(ModifierKeys.Control)) return;
@@ -194,6 +200,7 @@ public partial class MainWindow : Window
     }
 
     // ---- rubber-band (drag rectangle) selection in the gallery ----
+    private MediaItemViewModel? _dragItem, _deferredClick;
     private Point _mqStart; private bool _mqDown, _mqActive; private HashSet<MediaItemViewModel>? _mqBase;
 
     private static T? Ancestor<T>(DependencyObject? d) where T : DependencyObject
@@ -205,6 +212,7 @@ public partial class MainWindow : Window
     private void Gallery_MarqueeDown(object sender, MouseButtonEventArgs e)
     {
         if (e.ClickCount > 1 || Ancestor<ScrollBar>(e.OriginalSource as DependencyObject) != null || Ancestor<CheckBox>(e.OriginalSource as DependencyObject) != null) return;
+        _dragItem = null; _deferredClick = null;
         _mqStart = e.GetPosition(GalleryList); _mqDown = true; _mqActive = false;
     }
 
@@ -216,6 +224,13 @@ public partial class MainWindow : Window
         if (!_mqActive)
         {
             if (Math.Abs(p.X - _mqStart.X) < 6 && Math.Abs(p.Y - _mqStart.Y) < 6) return;   // a click, not a drag
+            if (_dragItem != null)
+            {
+                // dragging FROM a thumbnail: take the file(s) to Explorer, OneDrive, a browser upload, an e-mail...
+                var item = _dragItem; _dragItem = null; _deferredClick = null; _mqDown = false;
+                StartFileDrag(GalleryList, item);
+                e.Handled = true; return;
+            }
             _mqActive = true; GalleryList.CaptureMouse();
             bool ctrl = Keyboard.Modifiers.HasFlag(ModifierKeys.Control) || Keyboard.Modifiers.HasFlag(ModifierKeys.Shift);
             _mqBase = ctrl ? _vm.Gallery.Items.Where(i => i.IsChecked).ToHashSet() : new HashSet<MediaItemViewModel>();
@@ -253,6 +268,20 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Starts a normal Windows drag of the real files (copy only: the originals are never moved or changed).</summary>
+    private void StartFileDrag(DependencyObject source, MediaItemViewModel item)
+    {
+        var files = item.IsChecked ? _vm.Gallery.Items.Where(i => i.IsChecked).Select(i => i.File.Path) : new[] { item.File.Path };
+        var paths = files.Where(System.IO.File.Exists).ToArray();
+        if (paths.Length == 0) return;
+        try
+        {
+            var data = new DataObject(DataFormats.FileDrop, paths);
+            DragDrop.DoDragDrop(source, data, DragDropEffects.Copy);
+        }
+        catch (Exception ex) when (ex is System.Runtime.InteropServices.COMException or InvalidOperationException) { }
+    }
+
     private bool EndMarquee()
     {
         bool was = _mqActive;
@@ -265,15 +294,34 @@ public partial class MainWindow : Window
     {
         if (sender is FrameworkElement { DataContext: MediaItemViewModel item })
         {
-            if (e.ClickCount >= 2) _vm.OpenItemCommand.Execute(item); else _vm.ClickItem(item, Keyboard.Modifiers);
+            _dragItem = item;
+            if (e.ClickCount >= 2) _vm.OpenItemCommand.Execute(item);
+            else if (item.IsChecked && _vm.CheckedCount > 1 && Keyboard.Modifiers == ModifierKeys.None) _deferredClick = item;   // keep the multi-selection so it can be dragged
+            else _vm.ClickItem(item, Keyboard.Modifiers);
             e.Handled = true;
         }
     }
 
     // ---- filmstrip ----
+    private MediaItemViewModel? _filmDragItem; private Point _filmDragStart;
+
+    private void FilmItem_MouseMove(object sender, MouseEventArgs e)
+    {
+        if (_filmDragItem == null) return;
+        if (e.LeftButton != MouseButtonState.Pressed) { _filmDragItem = null; return; }
+        var p = e.GetPosition(this);
+        if (Math.Abs(p.X - _filmDragStart.X) < 8 && Math.Abs(p.Y - _filmDragStart.Y) < 8) return;
+        var item = _filmDragItem; _filmDragItem = null;
+        StartFileDrag(FilmList, item);
+    }
+
     private void FilmItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement { DataContext: MediaItemViewModel item }) { _vm.OpenItemCommand.Execute(item); e.Handled = true; }
+        if (sender is FrameworkElement { DataContext: MediaItemViewModel item })
+        {
+            _filmDragItem = item; _filmDragStart = e.GetPosition(this);
+            _vm.OpenItemCommand.Execute(item); e.Handled = true;
+        }
     }
 
     private void DetailsResize_DragDelta(object sender, DragDeltaEventArgs e) => _vm.DetailsWidth -= (int)Math.Round(e.HorizontalChange);

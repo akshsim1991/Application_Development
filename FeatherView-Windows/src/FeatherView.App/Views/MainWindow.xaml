@@ -773,7 +773,7 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate>
                         <Border x:Name="Film" Width="{Binding DataContext.FilmItemWidth, RelativeSource={RelativeSource AncestorType=ListBox}}" Height="{Binding DataContext.FilmItemHeight, RelativeSource={RelativeSource AncestorType=ListBox}}" Margin="4,0" Padding="3" CornerRadius="9" BorderThickness="2" BorderBrush="Transparent" Background="{DynamicResource SurfaceBrush}"
-                                MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" MouseRightButtonUp="Film_MouseRightButtonUp" ToolTip="{Binding Name}">
+                                MouseLeftButtonDown="FilmItem_MouseLeftButtonDown" MouseMove="FilmItem_MouseMove" MouseRightButtonUp="Film_MouseRightButtonUp" ToolTip="{Binding Name}">
                             <Grid>
                                 <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" RenderOptions.BitmapScalingMode="HighQuality" />
                                 <Border Width="30" Height="30" CornerRadius="15" Background="#99000000" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"

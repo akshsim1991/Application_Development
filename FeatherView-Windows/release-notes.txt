@@ -1,3 +1,6 @@
+Feather View 2.1.20
+- Drag and drop OUT of Feather View: select pictures or videos (tick them, or Ctrl/Shift+click, or drag a rectangle) and drag them from a thumbnail to Explorer, a OneDrive folder, a browser upload page, an e-mail or another app. The files are copied; the originals are never moved or changed. Works from the gallery and from the thumbnail strip
+
 Feather View 2.1.19
 - Feather View now appears in the Windows "Open with" menu for pictures AND videos (MP4, MOV, MKV, AVI, WMV, WebM and more) and in Settings > Default apps. It registers itself for your user account at start-up, so installed copies get it by updating; no administrator rights needed
 

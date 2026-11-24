@@ -70,6 +70,8 @@ public sealed class AppSettings
     public bool VideoAutoplay { get; set; } = true;
     public bool VideoResume { get; set; } = true;
     public bool VideoLoop { get; set; }
+    public FeatherView.Core.Video.RepeatMode VideoRepeat { get; set; } = FeatherView.Core.Video.RepeatMode.Off;   // play once / repeat all / repeat one
+    public bool VideoShuffle { get; set; }
     public int FullscreenControlsHideSeconds { get; set; } = 5;     // full screen: controls appear on mouse movement and hide again after this long
     public bool KeepVideoPlayingAcrossTabs { get; set; } = true;   // a video keeps playing (sound) when another tab is shown
     public int VideoVolume { get; set; } = 80;            // 0-300 (above 100 amplifies)

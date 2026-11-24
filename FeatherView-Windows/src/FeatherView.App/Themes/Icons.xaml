@@ -26,6 +26,10 @@
     <Geometry x:Key="IconFrameForward">M5 4l10 8-10 8z M19 5v14</Geometry>
     <Geometry x:Key="IconVolume">M11 5L6 9H2v6h4l5 4z M15.54 8.46a5 5 0 0 1 0 7.07 M19.07 4.93a10 10 0 0 1 0 14.14</Geometry>
     <Geometry x:Key="IconVolumeMute">M11 5L6 9H2v6h4l5 4z M23 9l-6 6 M17 9l6 6</Geometry>
+    <Geometry x:Key="IconRepeatOne">M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3 M11 10h1v4</Geometry>
+    <Geometry x:Key="IconTrackNext">M13 19l9-7-9-7z M2 19l9-7-9-7z</Geometry>
+    <Geometry x:Key="IconTrackPrev">M11 19l-9-7 9-7z M22 19l-9-7 9-7z</Geometry>
+    <Geometry x:Key="IconList">M8 6h13 M8 12h13 M8 18h13 M3 6h.01 M3 12h.01 M3 18h.01</Geometry>
     <Geometry x:Key="IconRepeat">M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3</Geometry>
     <Geometry x:Key="IconCamera">M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z M8 13a4 4 0 1 0 8 0 4 4 0 1 0-8 0</Geometry>
     <Geometry x:Key="IconSubtitles">M3 5h18v14H3z M7 15h4 M13 15h4 M7 11h2 M12 11h5</Geometry>

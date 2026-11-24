@@ -410,6 +410,15 @@ public partial class MainWindow : Window
             menu.Items.Add(Item("Save screenshot of this frame", () => _vm.Video.ScreenshotCommand.Execute(null), gesture: "Ctrl+S", enabled: _vm.Video.CanScreenshot));
             menu.Items.Add(new Separator());
         }
+        int vids = _vm.TargetVideoCount;
+        if (vids > 0 && !video)
+        {
+            menu.Items.Add(Item(vids > 1 ? $"Play {vids} videos as a playlist" : "Play video", () => _vm.PlaySelectionAsPlaylist()));
+            menu.Items.Add(Item(vids > 1 ? $"Add {vids} videos to the playlist" : "Add to playlist", () => _vm.AddSelectionToPlaylist()));
+        }
+        if (_vm.Video.Playlist.Count > 0 && !video) menu.Items.Add(Item($"Play the playlist ({_vm.Video.Playlist.Count} videos)", () => _vm.PlayPlaylist()));
+        if (video) menu.Items.Add(Item("Add all videos of this folder to the playlist", () => { if (_vm.Video.FolderVideosProvider?.Invoke() is { } v) _vm.Video.AddToPlaylist(v); }));
+        menu.Items.Add(new Separator());
         menu.Items.Add(Item(n > 1 ? $"Copy {n} files" : "Copy file", () => _vm.CopyFilesToClipboard()));
         menu.Items.Add(Item("Copy file path", () => _vm.CopyPathToClipboard()));
         menu.Items.Add(Item("Show in Explorer", () => _vm.ShowTargetInExplorer()));

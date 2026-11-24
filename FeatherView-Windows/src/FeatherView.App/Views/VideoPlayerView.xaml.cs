@@ -65,6 +65,30 @@ public partial class VideoPlayerView : UserControl
         menu.PlacementTarget = anchor; menu.Placement = PlacementMode.Top; menu.IsOpen = true;
     }
 
+    private void PlaylistButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (Vm is not { } vm) return;
+        var menu = new ContextMenu();
+        vm.PlaylistMenuInfo(out var items, out var current);
+        if (items.Count == 0) menu.Items.Add(Item("The playlist is empty - the video that is playing becomes its first item", () => { }, enabled: false));
+        for (int i = 0; i < items.Count && i < 40; i++)
+        {
+            int idx = i;
+            menu.Items.Add(Item($"{i + 1}.  {System.IO.Path.GetFileName(items[i])}", () => vm.PlayPlaylistIndex(idx), check: i == current));
+        }
+        if (items.Count > 40) menu.Items.Add(Item($"... and {items.Count - 40} more", () => { }, enabled: false));
+        menu.Items.Add(new Separator());
+        menu.Items.Add(Item("Add all videos of this folder", () => { if (vm.FolderVideosProvider?.Invoke() is { } v) vm.AddToPlaylist(v); }, enabled: vm.FolderVideosProvider != null));
+        menu.Items.Add(Item("Shuffle", () => vm.ToggleShuffleCommand.Execute(null), check: vm.ShuffleOn));
+        var repeat = new MenuItem { Header = "When a video ends" };
+        repeat.Items.Add(Item("Play once, then stop at the end of the list", () => vm.RepeatMode = FeatherView.Core.Video.RepeatMode.Off, check: vm.RepeatMode == FeatherView.Core.Video.RepeatMode.Off));
+        repeat.Items.Add(Item("Repeat the whole list", () => vm.RepeatMode = FeatherView.Core.Video.RepeatMode.All, check: vm.RepeatMode == FeatherView.Core.Video.RepeatMode.All));
+        repeat.Items.Add(Item("Repeat this video (loop)", () => vm.RepeatMode = FeatherView.Core.Video.RepeatMode.One, check: vm.RepeatMode == FeatherView.Core.Video.RepeatMode.One));
+        menu.Items.Add(repeat);
+        menu.Items.Add(Item("Clear playlist", () => vm.ClearPlaylistCommand.Execute(null), enabled: items.Count > 0));
+        Open((Button)sender, menu);
+    }
+
     private void SpeedButton_Click(object sender, RoutedEventArgs e)
     {
         if (Vm is not { } vm) return;

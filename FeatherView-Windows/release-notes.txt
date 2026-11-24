@@ -1,3 +1,7 @@
+Feather View 2.1.21
+- Video playlists: tick several videos and press Enter (or right-click > Play N videos as a playlist) and they play one after another. Right-click > Add to playlist builds a queue from any folder; the playlist button in the video bar shows it
+- Video bar: previous and next video, shuffle, and a repeat button that cycles play once / repeat all / repeat one (Shift+Left and Shift+Right also skip videos). With no playlist, next and previous walk through the videos of the folder
+
 Feather View 2.1.20
 - Drag and drop OUT of Feather View: select pictures or videos (tick them, or Ctrl/Shift+click, or drag a rectangle) and drag them from a thumbnail to Explorer, a OneDrive folder, a browser upload page, an e-mail or another app. The files are copied; the originals are never moved or changed. Works from the gallery and from the thumbnail strip
 

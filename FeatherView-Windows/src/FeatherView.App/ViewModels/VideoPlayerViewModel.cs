@@ -71,6 +71,11 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         VolumeUpCommand = new RelayCommand(() => Volume += 5, () => Active);
         VolumeDownCommand = new RelayCommand(() => Volume -= 5, () => Active);
         LoopCommand = new RelayCommand(() => LoopEnabled = !LoopEnabled, () => Active);
+        NextTrackCommand = new RelayCommand(NextTrack, () => Active);
+        PreviousTrackCommand = new RelayCommand(PreviousTrack, () => Active);
+        ToggleShuffleCommand = new RelayCommand(() => ShuffleOn = !ShuffleOn);
+        CycleRepeatCommand = new RelayCommand(() => RepeatMode = RepeatMode switch { RepeatMode.Off => RepeatMode.All, RepeatMode.All => RepeatMode.One, _ => RepeatMode.Off });
+        ClearPlaylistCommand = new RelayCommand(ClearPlaylist, () => Playlist.Count > 0);
         AbLoopCommand = new RelayCommand(CycleAbLoop, () => Active && CanAbLoop);
         ScreenshotCommand = new RelayCommand(Screenshot, () => Active && CanScreenshot);
         LoadSubtitleCommand = new RelayCommand(LoadSubtitle, () => Active && CanExternalSubtitles);
@@ -94,6 +99,11 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     public RelayCommand VolumeUpCommand { get; }
     public RelayCommand VolumeDownCommand { get; }
     public RelayCommand LoopCommand { get; }
+    public RelayCommand NextTrackCommand { get; }
+    public RelayCommand PreviousTrackCommand { get; }
+    public RelayCommand ToggleShuffleCommand { get; }
+    public RelayCommand CycleRepeatCommand { get; }
+    public RelayCommand ClearPlaylistCommand { get; }
     public RelayCommand AbLoopCommand { get; }
     public RelayCommand ScreenshotCommand { get; }
     public RelayCommand LoadSubtitleCommand { get; }
@@ -127,7 +137,7 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     private void RaiseCommands()
     {
         foreach (var c in new[] { PlayPauseCommand, FrameBackCommand, FrameForwardCommand, SeekRelativeCommand, SpeedUpCommand, SpeedDownCommand, ResetSpeedCommand, MuteCommand, VolumeUpCommand, VolumeDownCommand,
-                                  LoopCommand, AbLoopCommand, ScreenshotCommand, LoadSubtitleCommand, LoadAudioCommand, GoToTimeCommand, ChapterNextCommand, ChapterPreviousCommand, RotateCommand })
+                                  LoopCommand, NextTrackCommand, PreviousTrackCommand, AbLoopCommand, ScreenshotCommand, LoadSubtitleCommand, LoadAudioCommand, GoToTimeCommand, ChapterNextCommand, ChapterPreviousCommand, RotateCommand })
             c.RaiseCanExecuteChanged();
     }
     public double Position { get => _position; private set { if (Set(ref _position, value)) OnPropertyChanged(nameof(PositionText)); } }
@@ -179,7 +189,100 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         Toast(_boost ? "Quiet-audio boost on" : "Quiet-audio boost off");
     }
     public bool IsMuted { get => _muted; set { if (Set(ref _muted, value)) { if (_engine != null) _engine.Muted = value; _settings().VideoMuted = value; } } }
-    public bool LoopEnabled { get => _loop; set { if (Set(ref _loop, value)) { if (_engine != null) _engine.Loop = value; _settings().VideoLoop = value; } } }
+    public bool LoopEnabled { get => _loop; set => RepeatMode = value ? RepeatMode.One : RepeatMode.Off; }
+
+    // ---- playlist: play several videos in series, shuffle, repeat ----
+    public Playlist Playlist { get; } = new();
+    private readonly Dictionary<string, MediaFile> _plFiles = new(StringComparer.OrdinalIgnoreCase);
+    public event Action<MediaFile>? PlaylistItemStarted;
+    /// <summary>Supplied by the main view-model: the videos in the folder being browsed.</summary>
+    public Func<IReadOnlyList<MediaFile>>? FolderVideosProvider { get; set; }
+
+    public RepeatMode RepeatMode
+    {
+        get => Playlist.Repeat;
+        set
+        {
+            if (Playlist.Repeat == value) return;
+            Playlist.Repeat = value; _loop = value == RepeatMode.One;
+            if (_engine != null) _engine.Loop = _loop;
+            var s = _settings(); s.VideoRepeat = value; s.VideoLoop = _loop;
+            OnPropertyChanged(nameof(RepeatMode)); OnPropertyChanged(nameof(LoopEnabled)); OnPropertyChanged(nameof(RepeatTip)); OnPropertyChanged(nameof(RepeatIsOne)); OnPropertyChanged(nameof(RepeatIsOn));
+        }
+    }
+    public bool RepeatIsOn => Playlist.Repeat != RepeatMode.Off;
+    public bool RepeatIsOne => Playlist.Repeat == RepeatMode.One;
+    public string RepeatTip => Playlist.Repeat switch { RepeatMode.All => "Repeat: all videos (click: repeat one)", RepeatMode.One => "Repeat: this video (click: play once)", _ => "Play once (click: repeat all)" };
+    public bool ShuffleOn
+    {
+        get => Playlist.Shuffle;
+        set { if (Playlist.Shuffle == value) return; Playlist.Shuffle = value; _settings().VideoShuffle = value; OnPropertyChanged(nameof(ShuffleOn)); Toast(value ? "Shuffle on" : "Shuffle off"); }
+    }
+    public bool HasPlaylist => Playlist.Count > 1;
+    public string PlaylistText => Playlist.Count > 1 ? $"{Playlist.Index + 1} / {Playlist.Count}" : "";
+    private void PlaylistChanged() { OnPropertyChanged(nameof(HasPlaylist)); OnPropertyChanged(nameof(PlaylistText)); }
+
+    public void StartPlaylist(IReadOnlyList<MediaFile> files, int start = 0)
+    {
+        if (files.Count == 0) return;
+        _plFiles.Clear(); foreach (var f in files) _plFiles[f.Path] = f;
+        Playlist.SetItems(files.Select(f => f.Path), start);
+        PlaylistChanged();
+        PlayPath(Playlist.Current);
+    }
+
+    /// <summary>Adds videos to the queue (starting a queue from the playing video when there is none). Returns how many were added.</summary>
+    public int AddToPlaylist(IEnumerable<MediaFile> files)
+    {
+        var list = files.Where(f => f.Kind == MediaKind.Video).ToList();
+        if (list.Count == 0) return 0;
+        if (Playlist.Count == 0 && _file != null) { _plFiles[_file.Path] = _file; Playlist.SetItems(new[] { _file.Path }); }
+        foreach (var f in list) _plFiles[f.Path] = f;
+        int added = Playlist.Add(list.Select(f => f.Path));
+        PlaylistChanged();
+        Toast(added == 0 ? "Already in the playlist" : $"Added {added} video{(added == 1 ? "" : "s")} to the playlist ({Playlist.Count} in total)");
+        return added;
+    }
+
+    public void ClearPlaylist() { Playlist.Clear(); _plFiles.Clear(); PlaylistChanged(); Toast("Playlist cleared"); }
+
+    public void PlayPlaylistIndex(int index)
+    {
+        if (Playlist.JumpTo(index)) PlayPath(Playlist.Current);
+    }
+
+    public void NextTrack() => Advance(next: true);
+    public void PreviousTrack() => Advance(next: false);
+
+    private void Advance(bool next)
+    {
+        if (Playlist.Count == 0 && FolderVideosProvider?.Invoke() is { Count: > 1 } folder && _file != null)
+        {
+            // no queue yet: Next / Previous walk through the videos of this folder
+            int at = Math.Max(0, folder.ToList().FindIndex(f => f.Path.Equals(_file.Path, StringComparison.OrdinalIgnoreCase)));
+            _plFiles.Clear(); foreach (var f in folder) _plFiles[f.Path] = f;
+            Playlist.SetItems(folder.Select(f => f.Path), at);
+        }
+        var path = next ? Playlist.Next(auto: false) : Playlist.Previous();
+        if (path == null) { Toast(next ? "That was the last video" : "This is the first video"); return; }
+        PlayPath(path);
+    }
+
+    private void PlayPath(string? path, int depth = 0)
+    {
+        if (path == null) return;
+        if (!_plFiles.TryGetValue(path, out var f) || !File.Exists(path))
+        {
+            // a listed file that vanished is skipped
+            if (depth < Playlist.Count && Playlist.Next(auto: false) is { } n) PlayPath(n, depth + 1);
+            return;
+        }
+        Open(f);
+        PlaylistItemStarted?.Invoke(f);
+        PlaylistChanged();
+    }
+
+    public void PlaylistMenuInfo(out IReadOnlyList<string> items, out int current) { items = Playlist.Items; current = Playlist.Index; }
 
     private bool Has(VideoCaps c) => _engine != null && (_engine.Capabilities & c) == c;
     public bool CanFrameStep => Has(VideoCaps.FrameStep);
@@ -220,6 +323,9 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     public void Open(MediaFile file)
     {
         Stop();
+        // a video opened by hand: keep the queue when it belongs to it, otherwise a new queue starts
+        if (Playlist.Count > 0) { if (_plFiles.ContainsKey(file.Path)) Playlist.SyncTo(file.Path); else { Playlist.Clear(); _plFiles.Clear(); } }
+        PlaylistChanged();
         _file = file; _key = PlaybackHistory.MakeKey(file.Path, file.Length, file.LastWriteUtc);
         _triedFallback = false; _abA = _abB = null; _rotation = 0; _speedIndex = 3;
         OnPropertyChanged(nameof(HasMedia)); OnPropertyChanged(nameof(AbText)); OnPropertyChanged(nameof(SpeedText)); RaiseCommands();
@@ -261,7 +367,9 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
         }
         var s = _settings();
         _volume = Math.Clamp(s.VideoVolume, 0, engine.Capabilities.HasFlag(VideoCaps.Amplify) ? 300 : 100);
-        _muted = s.VideoMuted; _loop = s.VideoLoop;
+        _muted = s.VideoMuted;
+        Playlist.Repeat = s.VideoRepeat != RepeatMode.Off ? s.VideoRepeat : (s.VideoLoop ? RepeatMode.One : RepeatMode.Off); Playlist.Shuffle = s.VideoShuffle; _loop = Playlist.Repeat == RepeatMode.One;
+        OnPropertyChanged(nameof(RepeatMode)); OnPropertyChanged(nameof(RepeatTip)); OnPropertyChanged(nameof(RepeatIsOn)); OnPropertyChanged(nameof(RepeatIsOne)); OnPropertyChanged(nameof(ShuffleOn));
         engine.Volume = _volume; engine.Muted = _muted;
         _boost = s.VideoLoudnessBoost && engine.Capabilities.HasFlag(VideoCaps.Loudness); engine.LoudnessBoost = _boost;
         OnPropertyChanged(nameof(LoudnessEnabled)); OnPropertyChanged(nameof(LoudnessText)); engine.Loop = _loop; engine.Speed = 1;
@@ -313,6 +421,14 @@ public sealed class VideoPlayerViewModel : ObservableObject, IDisposable
     {
         IsPlaying = false;
         if (_file != null && _key != null) { _history.Record(_key, _file.Name, _file.Path, 0, _duration); _history.Save(); }
+        if (Playlist.Count > 1)
+        {
+            // series: the next video starts by itself (Repeat One is handled by the engine itself; the end of the list stops or wraps)
+            var next = Playlist.Next(auto: true);
+            if (next != null) PlayPath(next);
+            else Toast("Playlist finished");
+        }
+        else if (Playlist.Repeat == RepeatMode.All && _engine != null) { _engine.Seek(0, exact: false); _engine.Play(); IsPlaying = _engine.IsPlaying; }   // a single video with "repeat all" simply repeats
     }
 
     private void OnFailed(string message)

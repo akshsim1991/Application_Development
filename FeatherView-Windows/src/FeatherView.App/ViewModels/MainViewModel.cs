@@ -79,6 +79,8 @@ public sealed class MainViewModel : ObservableObject
         Tabs = new TabsViewModel(this, dialogs);
         Video.InfoReady += lines => { Info.Clear(); foreach (var (l, v) in lines) Info.Add(new InfoLine(l, v)); };
         Video.ToggleFullscreenRequested += () => IsFullscreen = !IsFullscreen;
+        Video.FolderVideosProvider = () => _files.Where(f => f.Kind == MediaKind.Video).ToList();
+        Video.PlaylistItemStarted += OnPlaylistItemStarted;
         Video.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(VideoPlayerViewModel.IsPlaying) or nameof(VideoPlayerViewModel.HasMedia))
@@ -201,6 +203,49 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedCountText => CheckedCount > 0 ? $"{CheckedCount} selected" : Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
     public int CheckedCount => Gallery.Items.Count(i => i.IsChecked);
     public bool HasChecked => CheckedCount > 0;
+
+    // ---- video playlist ----
+    private List<MediaFile> TargetVideos()
+    {
+        var checkedVideos = Gallery.Items.Where(i => i.IsChecked && i.IsVideo).Select(i => i.File).ToList();
+        if (checkedVideos.Count > 0) return checkedVideos;
+        return TargetFile is { Kind: MediaKind.Video } f ? new List<MediaFile> { f } : new List<MediaFile>();
+    }
+    public bool HasVideoTarget => TargetVideos().Count > 0;
+    public int TargetVideoCount => TargetVideos().Count;
+
+    /// <summary>Plays the ticked (or selected) videos one after another.</summary>
+    public void PlaySelectionAsPlaylist()
+    {
+        var list = TargetVideos();
+        if (list.Count == 0) return;
+        _videoOwner = Tabs.ActiveId;
+        Video.StartPlaylist(list, 0);
+    }
+
+    public void AddSelectionToPlaylist()
+    {
+        var list = TargetVideos();
+        if (list.Count == 0) return;
+        Video.AddToPlaylist(list);
+        StatusText = $"Playlist: {Video.Playlist.Count} video{(Video.Playlist.Count == 1 ? "" : "s")} - open the playlist button in the video bar to see or play it";
+    }
+
+    public void PlayPlaylist() { if (Video.Playlist.Count > 0) { _videoOwner = Tabs.ActiveId; Video.PlayPlaylistIndex(Math.Max(0, Video.Playlist.Index)); } }
+
+    private void OnPlaylistItemStarted(MediaFile file)
+    {
+        // keep the window in step when the playlist moves to another video (same folder: select its tile; other folder: just show it)
+        _videoOwner = Tabs.ActiveId;
+        int idx = _files.FindIndex(f => f.Path.Equals(file.Path, StringComparison.OrdinalIgnoreCase));
+        if (idx >= 0) { _index = idx; Gallery.Select(idx, scroll: true); }
+        _base = null; CurrentImage = null; StopGif(); ImageId = file.Path; Info.Clear(); TakenLines.Clear(); ExifLines.Clear(); Histogram = null;
+        InfoTitle = file.Name; InfoSubtitle = $"{Path.GetExtension(file.Name).TrimStart('.').ToUpperInvariant()}  •  {FormatSize(file.Length)}"; InfoDimensions = "";
+        if (_compare) IsCompare = false;
+        Mode = ViewMode.Video;
+        UpdateStatus();
+        OnPropertyChanged(nameof(IsFavorite));
+    }
 
     // ---- right-click menu helpers: they act on the file that was right-clicked / selected ----
     public MediaFile? TargetFile => Mode == ViewMode.Gallery ? Gallery.Selected?.File : Current;
@@ -752,6 +797,7 @@ public sealed class MainViewModel : ObservableObject
     /// <summary>Shift+arrow keys: move the cursor and extend the selection from the anchor. "L","R" = one tile; "U","D" = one row; "H","E" = first/last.</summary>
     public void ExtendSelection(string how)
     {
+        if (Mode == ViewMode.Video) { if (how == "R") Video.NextTrack(); else if (how == "L") Video.PreviousTrack(); return; }
         if (Mode != ViewMode.Gallery || _files.Count == 0) return;
         if (_anchor < 0 || _anchor >= _files.Count) _anchor = Math.Max(0, Gallery.SelectedIndex);
         switch (how)
@@ -813,6 +859,8 @@ public sealed class MainViewModel : ObservableObject
 
     private void OpenSelected()
     {
+        // several videos ticked: Enter / double click plays them in series
+        if (Mode == ViewMode.Gallery && Gallery.Items.Count(i => i.IsChecked && i.IsVideo) > 1) { PlaySelectionAsPlaylist(); return; }
         if (_files.Count == 0 || Gallery.SelectedIndex < 0) return;
         if (Gallery.SelectedIndex == _index && (CurrentImage != null || (Current?.Kind == MediaKind.Video && Video.HasMedia)))
         { Mode = Current?.Kind == MediaKind.Video ? ViewMode.Video : ViewMode.Photo; _gif?.Resume(); UpdateStatus(); return; }

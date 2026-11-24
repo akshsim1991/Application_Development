@@ -70,7 +70,22 @@
                         <Button x:Name="SubtitleButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconSubtitles}" ToolTip="Subtitles" Click="SubtitleButton_Click" AutomationProperties.Name="Subtitles" />
                         <Button x:Name="AudioButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconAudio}" ToolTip="Audio tracks" Click="AudioButton_Click" AutomationProperties.Name="Audio tracks" />
                         <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconCamera}" ToolTip="Save a screenshot of this frame (Ctrl+S)" Command="{Binding ScreenshotCommand}" AutomationProperties.Name="Screenshot" />
-                        <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconRepeat}" ToolTip="Loop (Ctrl+L)" IsChecked="{Binding LoopEnabled}" AutomationProperties.Name="Loop" />
+                        <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconTrackPrev}" ToolTip="Previous video in the playlist (Shift+Left)" Command="{Binding PreviousTrackCommand}" AutomationProperties.Name="Previous video" />
+                        <Button Style="{StaticResource IconButton}" Tag="{StaticResource IconTrackNext}" ToolTip="Next video in the playlist (Shift+Right)" Command="{Binding NextTrackCommand}" AutomationProperties.Name="Next video" />
+                        <ToggleButton Style="{StaticResource IconToggle}" Tag="{StaticResource IconShuffle}" ToolTip="Shuffle the playlist" IsChecked="{Binding ShuffleOn, Mode=OneWay}" Command="{Binding ToggleShuffleCommand}" AutomationProperties.Name="Shuffle" />
+                        <Button ToolTip="{Binding RepeatTip}" Command="{Binding CycleRepeatCommand}" AutomationProperties.Name="Repeat mode">
+                            <Button.Style>
+                                <Style TargetType="Button" BasedOn="{StaticResource IconButton}">
+                                    <Setter Property="Tag" Value="{StaticResource IconRepeat}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RepeatIsOn}" Value="True"><Setter Property="Foreground" Value="{DynamicResource AccentBrush}" /></DataTrigger>
+                                        <DataTrigger Binding="{Binding RepeatIsOne}" Value="True"><Setter Property="Tag" Value="{StaticResource IconRepeatOne}" /></DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        <Button x:Name="PlaylistButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconList}" ToolTip="Playlist: see the queue, add all videos of this folder, clear" Click="PlaylistButton_Click" AutomationProperties.Name="Playlist" />
+                        <TextBlock Text="{Binding PlaylistText}" VerticalAlignment="Center" Margin="0,0,6,0" Foreground="{DynamicResource SubtleTextBrush}" FontSize="12" />
                         <Button x:Name="MoreButton" Style="{StaticResource IconButton}" Tag="{StaticResource IconMore}" ToolTip="More: aspect ratio, chapters, go to time, rotate" Click="MoreButton_Click" AutomationProperties.Name="More options" />
                         <Rectangle Width="1" Margin="6,6" Fill="{DynamicResource BorderBrushSoft}" />
                         <Button ToolTip="Mute (M)" Command="{Binding MuteCommand}" AutomationProperties.Name="Mute">

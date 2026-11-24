@@ -1699,3 +1699,6 @@ runner (Windows menu check workflow). The three downloads match latest.json.
   the project's Kotlin compiler; the emulator self-test gains a second tab (switch back, close), the sidebar with drawn
   thumbnails, and full screen on and off.
 
+
+**Published:** 2.26.0 "Mondeo" for Windows, Mac and Android (24 November); the emulator self-test passed with the new
+tabs, sidebar and full-screen checks. All four downloads (with the 32-bit APK, now in latest.json) match.

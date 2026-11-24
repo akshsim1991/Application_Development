@@ -1721,3 +1721,7 @@ tabs, sidebar and full-screen checks. All four downloads (with the 32-bit APK, n
   paragraph changed, highlight, note, pen stroke, find, night colours, undo and redo, a second tab, the sidebar with
   drawn thumbnails, full screen on and off, save; the saved file is read by pikepdf and pdfminer (3 pages, highlight,
   ink and note, the edit found). All 26 checks pass; the pictures are in docs/ios.
+
+**Published:** 2.27.0 "Fiesta" for Windows, Mac, Android and (new) iPhone and iPad (24 November); the iOS build's
+simulator check passed. All five downloads match latest.json, which now lists the .ipa (ios); the releases page has
+the sideloading steps.

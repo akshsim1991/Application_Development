@@ -44,6 +44,25 @@ public partial class MainWindow : Window
         vm.FocusSearchRequested += () => Dispatcher.BeginInvoke(new Action(() => { SearchBox.Focus(); SearchBox.SelectAll(); }), System.Windows.Threading.DispatcherPriority.Input);
         GalleryList.SizeChanged += (_, e) => vm.Gallery.SetViewportWidth(e.NewSize.Width - SystemParameters.VerticalScrollBarWidth - 20);
 
+        // The folder path is editable: Enter goes there, Esc puts the current path back. Shortcuts are paused while typing, like in the search box.
+        PathBox.GotKeyboardFocus += (_, _) =>
+        {
+            _savedBindings = InputBindings.Cast<InputBinding>().ToList();
+            InputBindings.Clear();
+            PathBox.Foreground = (Brush)FindResource("TextBrush"); PathBox.BorderBrush = (Brush)FindResource("BorderBrushSoft"); PathBox.SelectAll();
+        };
+        PathBox.LostKeyboardFocus += (_, _) =>
+        {
+            if (_savedBindings != null) { InputBindings.Clear(); foreach (var b in _savedBindings) InputBindings.Add(b); _savedBindings = null; }
+            PathBox.Foreground = (Brush)FindResource("SubtleTextBrush"); PathBox.BorderBrush = Brushes.Transparent;
+            PathBox.Text = vm.FolderDisplay;
+        };
+        PathBox.PreviewKeyDown += (_, e) =>
+        {
+            if (e.Key == Key.Enter) { var text = PathBox.Text; Keyboard.ClearFocus(); FocusManager.SetFocusedElement(this, this); _vm.GoToTypedPath(text); e.Handled = true; }
+            else if (e.Key == Key.Escape) { PathBox.Text = vm.FolderDisplay; Keyboard.ClearFocus(); FocusManager.SetFocusedElement(this, this); e.Handled = true; }
+        };
+
         // While typing in the search box, single-letter shortcuts must not fire.
         SearchBox.GotKeyboardFocus += (_, _) =>
         {

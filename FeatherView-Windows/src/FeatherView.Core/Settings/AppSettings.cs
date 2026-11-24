@@ -3,7 +3,7 @@ using System.Text.Json.Serialization;
 namespace FeatherView.Core.Settings;
 
 [JsonConverter(typeof(JsonStringEnumConverter<AppTheme>))]
-public enum AppTheme { System, Light, Dark }
+public enum AppTheme { System, Light, Dark, Amoled, Midnight, Forest, Sepia, Glass }
 
 [JsonConverter(typeof(JsonStringEnumConverter<VideoEnginePreference>))]
 public enum VideoEnginePreference { Auto, MediaFoundation, Mpv }
@@ -43,6 +43,13 @@ public sealed class AppSettings
 
     // Photo viewing
     public bool FitOnOpen { get; set; } = true;
+    // tabs
+    public bool RandomTabColors { get; set; } = true;       // each tab gets its own colour accent
+    public bool ShowTabNumbers { get; set; } = true;        // "1  Holiday" instead of "Holiday"
+    public bool ShowTabCloseButton { get; set; } = true;    // off: the close button shows only on the active or hovered tab
+    public bool ShowTabPlayingIcon { get; set; } = true;    // speaker icon on the tab that is playing a video
+    public bool SidebarPinned { get; set; } = true;       // false: compact icon-only sidebar
+    public bool QuickAccessExpanded { get; set; } = true;
     public int DetailsWidth { get; set; } = 318;          // Details pane width in pixels (drag its left edge)
     public int FilmstripHeight { get; set; } = 118;      // thumbnail strip height in pixels (drag its top edge or Ctrl+wheel)
     public bool ConfirmDelete { get; set; } = true;     // ask before moving a file to the Recycle Bin

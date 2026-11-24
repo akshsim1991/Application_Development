@@ -41,7 +41,7 @@ public partial class App : Application
         var vm = new MainViewModel(settings, settingsService, thumbs, dialogs, theme, log,
             main => new VideoPlayerViewModel(() => main.Settings, dialogs, history, localAppData, log));
         vm.Updates = new UpdateController(dialogs, settingsService, () => vm.Settings, version, log);
-        vm.RefreshRecent();
+        vm.RefreshRecent(); vm.RefreshQuickAccess();
 
         var window = new MainWindow(vm, theme);
         MainWindow = window;

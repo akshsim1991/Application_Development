@@ -1,3 +1,10 @@
+Feather View 2.1.17
+- The folder path above the gallery is editable: click it, type or paste a path and press Enter (Esc cancels)
+- Settings now use tabs (Appearance, General, Viewing, Video, Performance, Updates, More) instead of one long page
+- New themes: AMOLED (pure black), Midnight blue, Forest green, Sepia and Glass (translucent, acrylic blur on Windows 11)
+- Tab options in Settings: random tab colours, tab numbers, always-visible close button, playing icon, reopen tabs, keep video playing
+- Sidebar: pin or unpin (unpinned = compact icon bar) and a Quick Access list with your Pictures, Videos, Downloads, Desktop, Documents and drives (from the Windows user profile)
+
 Feather View 2.1.16
 - Right-click menu on pictures, videos and thumbnails: open, rotate, flip, copy image or file, copy path, show in Explorer, favourite, wallpaper, print, compare, slideshow, select all, delete (Recycle Bin)
 - The thumbnail strip can be resized (drag its top edge or Ctrl + mouse wheel) and so can the Details pane (drag its left edge); sizes are remembered

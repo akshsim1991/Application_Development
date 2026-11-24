@@ -233,6 +233,48 @@ public sealed class MainViewModel : ObservableObject
 
     public void OpenTarget() { if (Mode == ViewMode.Gallery) OpenSelected(); }
 
+    // ---- sidebar: pinned (full) or compact icon rail; quick access folders ----
+    public bool SidebarPinned => Settings.SidebarPinned;
+    public bool SidebarCompact => !Settings.SidebarPinned;
+    public double SidebarWidth => Settings.SidebarPinned ? 214 : 46;
+    public bool QuickAccessExpanded => Settings.QuickAccessExpanded;
+    public RelayCommand ToggleSidebarPinCommand => _pinCmd ??= new RelayCommand(() =>
+    {
+        Settings.SidebarPinned = !Settings.SidebarPinned; SaveSettings();
+        OnPropertyChanged(nameof(SidebarPinned)); OnPropertyChanged(nameof(SidebarCompact)); OnPropertyChanged(nameof(SidebarWidth));
+    });
+    public RelayCommand ToggleQuickAccessCommand => _qaCmd ??= new RelayCommand(() => { Settings.QuickAccessExpanded = !Settings.QuickAccessExpanded; SaveSettings(); OnPropertyChanged(nameof(QuickAccessExpanded)); });
+    private RelayCommand? _pinCmd, _qaCmd;
+
+    public ObservableCollection<QuickFolderItem> QuickAccess { get; } = new();
+    /// <summary>The user typed or pasted a path in the folder bar: open a folder, or a picture/video file (its folder opens with it selected).</summary>
+    public void GoToTypedPath(string? text)
+    {
+        var t = (text ?? "").Trim().Trim('"');
+        if (t.Length == 0) return;
+        try
+        {
+            t = Environment.ExpandEnvironmentVariables(t);
+            if (t.Length == 2 && t[1] == ':') t += "\\";
+            if (Directory.Exists(t)) LoadFolder(Path.GetFullPath(t), null, gallery: true);
+            else if (File.Exists(t)) OpenPath(Path.GetFullPath(t));
+            else _dialogs.Error("Go to folder", "That folder or file could not be found. Check the path and try again.");
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException or IOException)
+        { _dialogs.Error("Go to folder", "That is not a valid folder path."); }
+    }
+
+    public void RefreshQuickAccess()
+    {
+        QuickAccess.Clear();
+        foreach (var q in QuickFolders.Build())
+        {
+            Geometry? g = null;
+            try { g = Application.Current?.TryFindResource(q.IconKey) as Geometry; } catch { }
+            QuickAccess.Add(new QuickFolderItem(q.Name, q.Hint, q.Path, g));
+        }
+    }
+
     // ---- resizable Details pane ----
     public int DetailsWidth
     {
@@ -1022,6 +1064,8 @@ public sealed class MainViewModel : ObservableObject
         OnPropertyChanged(nameof(Settings));
         Video.ApplySettings();
         if (!s.KeepVideoPlayingAcrossTabs && Video.HasMedia && _videoOwner != Tabs.ActiveId) Video.Stop();   // background play was just switched off
+        Tabs.RefreshAppearance();
+        OnPropertyChanged(nameof(SidebarPinned)); OnPropertyChanged(nameof(SidebarCompact)); OnPropertyChanged(nameof(SidebarWidth));
         OnPropertyChanged(nameof(ShowSidebar)); OnPropertyChanged(nameof(FilmstripVisible)); OnPropertyChanged(nameof(IsShuffle));
     }
 
@@ -1055,3 +1099,5 @@ public sealed class MainViewModel : ObservableObject
     }
     public void RefreshRecent() { RecentFiles.Clear(); foreach (var p in Settings.RecentFiles.Where(File.Exists)) RecentFiles.Add(p); }
 }
+
+public sealed record QuickFolderItem(string Name, string Hint, string Path, Geometry? Icon);

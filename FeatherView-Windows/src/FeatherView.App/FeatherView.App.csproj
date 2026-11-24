@@ -10,7 +10,7 @@
     <RootNamespace>FeatherView</RootNamespace>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Assets\app.ico</ApplicationIcon>
-    <Version>2.1.16</Version>
+    <Version>2.1.17</Version>
     <Product>Feather View</Product>
     <Company>Akshaya Simha</Company>
     <Description>Lightweight photo and video viewer</Description>

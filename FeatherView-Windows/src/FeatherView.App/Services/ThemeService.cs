@@ -24,12 +24,18 @@ public sealed class ThemeService
     public void Apply(AppTheme mode)
     {
         _mode = mode;
-        IsDark = mode switch { AppTheme.Dark => true, AppTheme.Light => false, _ => !SystemUsesLightTheme() };
-        var dict = new ResourceDictionary { Source = new Uri($"Themes/{(IsDark ? "Dark" : "Light")}.xaml", UriKind.Relative) };
+        IsDark = mode switch { AppTheme.Light or AppTheme.Sepia => false, AppTheme.System => !SystemUsesLightTheme(), _ => true };
+        var dict = new ResourceDictionary { Source = new Uri($"Themes/{ThemeFile(mode)}.xaml", UriKind.Relative) };
         var merged = Application.Current.Resources.MergedDictionaries;
         if (merged.Count > 0) merged[0] = dict; else merged.Insert(0, dict);
         foreach (Window w in Application.Current.Windows) ApplyToWindow(w);
     }
+
+    private string ThemeFile(AppTheme mode) => mode switch
+    {
+        AppTheme.Glass => "Glass", AppTheme.Amoled => "Amoled", AppTheme.Midnight => "Midnight", AppTheme.Forest => "Forest", AppTheme.Sepia => "Sepia",
+        _ => IsDark ? "Dark" : "Light",
+    };
 
     public void ApplyToWindow(Window w)
     {
@@ -38,7 +44,26 @@ public sealed class ThemeService
         int on = IsDark ? 1 : 0;
         try { DwmSetWindowAttribute(hwnd, 20, ref on, sizeof(int)); DwmSetWindowAttribute(hwnd, 19, ref on, sizeof(int)); }
         catch { /* DWM unavailable (e.g. Safe Mode): keep the default title bar */ }
+        ApplyGlass(w, hwnd, _mode == AppTheme.Glass);
     }
+
+    /// <summary>Glass theme: translucent window over a blurred (acrylic) backdrop on Windows 11; other themes switch it off again.</summary>
+    private static void ApplyGlass(Window w, IntPtr hwnd, bool on)
+    {
+        try
+        {
+            if (HwndSource.FromHwnd(hwnd)?.CompositionTarget is { } target)
+                target.BackgroundColor = on ? System.Windows.Media.Colors.Transparent : System.Windows.Media.Colors.Black;
+            var m = new MARGINS { Left = on ? -1 : 0, Right = on ? -1 : 0, Top = on ? -1 : 0, Bottom = on ? -1 : 0 };
+            DwmExtendFrameIntoClientArea(hwnd, ref m);
+            int backdrop = on ? 3 /* acrylic */ : 1 /* none */;
+            DwmSetWindowAttribute(hwnd, 38 /* DWMWA_SYSTEMBACKDROP_TYPE, Windows 11 22H2+ */, ref backdrop, sizeof(int));
+        }
+        catch { /* older Windows or no DWM: the theme is then just translucent colours */ }
+    }
+
+    [StructLayout(LayoutKind.Sequential)] private struct MARGINS { public int Left, Right, Top, Bottom; }
+    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(IntPtr hwnd, ref MARGINS m);
 
     private static bool SystemUsesLightTheme()
     {

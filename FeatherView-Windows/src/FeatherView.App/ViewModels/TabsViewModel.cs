@@ -11,10 +11,20 @@ public sealed class TabItemViewModel : ObservableObject
     private bool _active;
     public TabItemViewModel(Guid id) { Id = id; }
     public Guid Id { get; }
-    public string Title { get => _title; set => Set(ref _title, value); }
+    public string Title { get => _title; set { if (Set(ref _title, value)) OnPropertyChanged(nameof(DisplayTitle)); } }
     private bool _playing;
     /// <summary>True while a video that belongs to this tab is playing (shown as a small speaker on the tab).</summary>
-    public bool IsPlaying { get => _playing; set => Set(ref _playing, value); }
+    public bool IsPlaying { get => _playing; set { if (Set(ref _playing, value)) OnPropertyChanged(nameof(ShowPlayIcon)); } }
+    private int _number; private bool _showNumber = true, _showColor = true, _showClose = true, _showPlayIcon = true;
+    private System.Windows.Media.Brush _color = System.Windows.Media.Brushes.Transparent;
+    public int Number { get => _number; set { if (Set(ref _number, value)) OnPropertyChanged(nameof(DisplayTitle)); } }
+    public bool ShowNumber { get => _showNumber; set { if (Set(ref _showNumber, value)) OnPropertyChanged(nameof(DisplayTitle)); } }
+    public bool ShowColor { get => _showColor; set => Set(ref _showColor, value); }
+    public bool ShowClose { get => _showClose; set => Set(ref _showClose, value); }
+    public bool ShowPlayIconSetting { get => _showPlayIcon; set { if (Set(ref _showPlayIcon, value)) OnPropertyChanged(nameof(ShowPlayIcon)); } }
+    public bool ShowPlayIcon => _playing && _showPlayIcon;
+    public System.Windows.Media.Brush ColorBrush { get => _color; set => Set(ref _color, value); }
+    public string DisplayTitle => _showNumber ? $"{_number}  {_title}" : _title;
     public bool IsActive { get => _active; set => Set(ref _active, value); }
 }
 
@@ -64,13 +74,31 @@ public sealed class TabsViewModel : ObservableObject
     public double TabWidth => Math.Clamp((_available - 56) / Math.Max(1, _m.Tabs.Count), 70, 170);
     public void SetAvailableWidth(double width) { _available = width; OnPropertyChanged(nameof(TabWidth)); }
 
+    private static readonly System.Windows.Media.Brush[] Palette = new[] { "#FF6EA8FE", "#FFFFB454", "#FF5FD38D", "#FFC792EA", "#FFFF7B7B", "#FF4DD0C4", "#FFFFD24D", "#FFF48FB1", "#FF9CCC65", "#FF80CBC4" }
+        .Select(c => { var b = (System.Windows.Media.SolidColorBrush)new System.Windows.Media.BrushConverter().ConvertFromString(c)!; b.Freeze(); return (System.Windows.Media.Brush)b; }).ToArray();
+
+    /// <summary>A random-looking but stable colour per tab (derived from the tab's own random id).</summary>
+    private static System.Windows.Media.Brush ColorFor(Guid id) => Palette[(int)((uint)id.GetHashCode() % (uint)Palette.Length)];
+
+    /// <summary>Applies the tab options from Settings (numbers, colours, close button, playing icon) to every tab.</summary>
+    public void RefreshAppearance()
+    {
+        var s = _host.Settings;
+        for (int i = 0; i < Items.Count; i++)
+        {
+            var t = Items[i];
+            t.Number = i + 1; t.ShowNumber = s.ShowTabNumbers; t.ShowColor = s.RandomTabColors; t.ShowClose = s.ShowTabCloseButton; t.ShowPlayIconSetting = s.ShowTabPlayingIcon;
+        }
+    }
+
     private int IndexOf(TabItemViewModel? item) => item == null ? _m.ActiveIndex : Math.Max(0, _m.Tabs.ToList().FindIndex(t => t.Id == item.Id));
 
     private void Refresh()
     {
         Items.Clear();
         for (int i = 0; i < _m.Tabs.Count; i++)
-            Items.Add(new TabItemViewModel(_m.Tabs[i].Id) { Title = TabManager.TitleOf(_m.Tabs[i]), IsActive = i == _m.ActiveIndex });
+            Items.Add(new TabItemViewModel(_m.Tabs[i].Id) { Title = TabManager.TitleOf(_m.Tabs[i]), IsActive = i == _m.ActiveIndex, Number = i + 1, ColorBrush = ColorFor(_m.Tabs[i].Id) });
+        RefreshAppearance();
         OnPropertyChanged(nameof(TabWidth)); OnPropertyChanged(nameof(CanReopen)); OnPropertyChanged(nameof(Count));
         ReopenTabCommand.RaiseCanExecuteChanged();
         SetPlayingTab(_playingTab);

@@ -1,0 +1,21 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <SolidColorBrush x:Key="BgBrush" Color="#FF0B1020" />
+    <SolidColorBrush x:Key="SurfaceBrush" Color="#FF121A30" />
+    <SolidColorBrush x:Key="HoverBrush" Color="#FF1C2745" />
+    <SolidColorBrush x:Key="PressedBrush" Color="#FF26345C" />
+    <SolidColorBrush x:Key="BorderBrushSoft" Color="#FF222F52" />
+    <SolidColorBrush x:Key="TextBrush" Color="#FFE6ECFF" />
+    <SolidColorBrush x:Key="SubtleTextBrush" Color="#FF8E9BC4" />
+    <SolidColorBrush x:Key="AccentBrush" Color="#FF7FA4FF" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="#FF1E2E5C" />
+    <SolidColorBrush x:Key="DangerBrush" Color="#FFFF7B7B" />
+    <SolidColorBrush x:Key="ToolRotateBrush" Color="#FFFFB454" />
+    <SolidColorBrush x:Key="ToolFlipBrush" Color="#FFC792EA" />
+    <SolidColorBrush x:Key="ToolDeleteBrush" Color="#FFFF6B6B" />
+    <SolidColorBrush x:Key="ToolCopyBrush" Color="#FF4DD0C4" />
+    <SolidColorBrush x:Key="ToolStarBrush" Color="#FFFFD24D" />
+    <SolidColorBrush x:Key="ToolPlayBrush" Color="#FF5FD38D" />
+    <SolidColorBrush x:Key="ToolGalleryBrush" Color="#FF6EA8FE" />
+    <SolidColorBrush x:Key="ToolInfoBrush" Color="#FF5CC8FF" />
+</ResourceDictionary>

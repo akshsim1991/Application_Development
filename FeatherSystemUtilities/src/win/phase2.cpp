@@ -268,4 +268,10 @@ std::vector<BootRec> BootHistory(size_t maxN, wstring& err) {   // Windows recor
             EvtClose(evs[i]); } }
     EvtClose(q); std::reverse(out.begin(), out.end()); return out;   // oldest first
 }
+
+std::map<wstring, wstring> InfDeviceMap() {   // lower-case oemNN.inf -> names of the devices using it
+    std::map<wstring, wstring> m; std::map<wstring, int> cnt; wstring e;
+    Wmi(L"ROOT\\CIMV2", L"SELECT InfName, DeviceName FROM Win32_PnPSignedDriver", [&](IWbemClassObject* o) { wstring inf = Get(o, L"InfName"), dn = Get(o, L"DeviceName"); if (inf.empty()) return; for (auto& c : inf) c = (wchar_t)towlower(c); if (!dn.empty()) { int& n = cnt[inf]; if (n < 3) m[inf] += (m[inf].empty() ? L"" : L", ") + dn; ++n; } else m[inf] += L""; }, e);
+    for (auto& kv : cnt) if (kv.second > 3) m[kv.first] += L" and " + std::to_wstring(kv.second - 3) + L" more"; return m;
+}
 }

@@ -48,3 +48,7 @@ Done: #8 services profiles + properties in the new UI (services.profile*, servic
 ## 3.10.0 (roadmap "Important" list, part 3)
 Done: #2 disk health (phase2.cpp ReadDiskHealth: MSFT_PhysicalDisk, MSFT_StorageReliabilityCounter, MSStorageDriver_FailurePredictStatus, TRIM registry flag, free space; boot chart from Diagnostics-Performance event 100), #4 sign-in time before/after (UI correlates journal startup changes with boot history), #9 shell extensions page (startup.cpp ScanShell + ScanVerbs, Toggle::ShellVerb via LegacyDisable).
 Remaining from the list: #1 maintenance plan, #5 per-process network/disk, #6 winget, #13 driver store cleanup.
+
+## 3.11.0 (roadmap "Important" list, part 4)
+Done: #13 driver store cleanup (phase4.cpp ListDriverStore/RemoveDriverPkg via SetupUninstallOEMInfW without force; backup copies in DataDir\driverbackups; restore via SetupCopyOEMInfW; helper-whitelisted), #6 winget (RunCapture of winget.exe; table parsed by column positions; one-at-a-time upgrade; ids validated), #5 per-process activity (IO counters, TCP/UDP owner tables, TCP EStats bytes when elevated; UI polls procs.activity every 2 s).
+Remaining from the list: #1 maintenance plan (3.12).

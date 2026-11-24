@@ -91,7 +91,7 @@ kbd{background:var(--soft);border:1px solid var(--line);border-radius:6px;paddin
 // ======================= bridge =======================
 const wv = window.chrome && window.chrome.webview;
 let nextId = 1; const pending = new Map(); const listeners = {};
-const SLOW = new Set(['clean.scan', 'clean.run', 'clean.runById', 'files.scan', 'files.remove', 'storage.children', 'programs.uninstall', 'programs.removeLeftovers', 'programs.list', 'drivers.check', 'drivers.install', 'drivers.list', 'update.install', 'update.rollback', 'update.check', 'privacy.clear', 'privacy.scan', 'store.list', 'store.remove', 'hotfix.list', 'events.query', 'report.build', 'device.fix', 'device.diagnose', 'wu.check', 'selftest.run', 'safemode.fix', 'recovery.create', 'recovery.points', 'broker.start', 'export.csv', 'scan.add', 'exclusions.add', 'report.save', 'startup.list', 'startup.delay', 'startup.set', 'startup.delete', 'services.list', 'services.op', 'trouble.status', 'startup.impact', 'advice.refresh', 'system.restart', 'tools.run']);
+const SLOW = new Set(['winget.list', 'winget.show', 'winget.upgrade', 'driverstore.list', 'driverstore.remove', 'driverstore.restore', 'clean.scan', 'clean.run', 'clean.runById', 'files.scan', 'files.remove', 'storage.children', 'programs.uninstall', 'programs.removeLeftovers', 'programs.list', 'drivers.check', 'drivers.install', 'drivers.list', 'update.install', 'update.rollback', 'update.check', 'privacy.clear', 'privacy.scan', 'store.list', 'store.remove', 'hotfix.list', 'events.query', 'report.build', 'device.fix', 'device.diagnose', 'wu.check', 'selftest.run', 'safemode.fix', 'recovery.create', 'recovery.points', 'broker.start', 'export.csv', 'scan.add', 'exclusions.add', 'report.save', 'startup.list', 'startup.delay', 'startup.set', 'startup.delete', 'services.list', 'services.op', 'trouble.status', 'startup.impact', 'advice.refresh', 'system.restart', 'tools.run']);
 function call(cmd, args) { return new Promise(res => { const id = nextId++; const ms = SLOW.has(cmd) ? 30 * 60e3 : 60e3; const tm = setTimeout(() => { if (pending.delete(id)) { res({ ok: false, error: `Windows took too long to answer (${cmd}). The operation may still be running; check the Journal.` }); if (typeof ST !== 'undefined' && ST.kind === 'busy') setBusy(null); } }, ms); const done = v => { clearTimeout(tm); res(v); }; pending.set(id, done); if (!wv) { pending.delete(id); done({ ok: false, error: 'Not running inside Feather System Utilities.' }); return; } wv.postMessage({ id, cmd, args: args || {} }); }); }
 if (wv) wv.addEventListener('message', e => { const m = e.data; if (m && m.id != null) { const r = pending.get(m.id); if (r) { pending.delete(m.id); r(m.data); } } else if (m && m.event) (listeners[m.event] || []).forEach(f => f(m.data)); });
 const on = (ev, f) => { (listeners[ev] = listeners[ev] || []).push(f); };
@@ -108,6 +108,7 @@ const icon = d => `<svg viewBox="0 0 24 24">${d}</svg>`;
 const ICON = {
   today: icon('<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>'),
   clean: icon('<path d="M4 20l9-9M13 4l7 7M10 7l7 7-6 6-7-7z"/>'),
+  appupd: icon('<path d="M12 3v12M7 10l5 5 5-5M4 20h16"/>'),
   programs: icon('<rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M17.5 14v7M14 17.5h7"/>'),
   startup: icon('<path d="M12 3v9M6.3 7.3a8 8 0 1 0 11.4 0"/>'),
   services: icon('<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>'),
@@ -127,10 +128,11 @@ const ICON = {
   settings: icon('<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>'),
   about: icon('<circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/>')
 };
-const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['startup', 'Startup'], ['services', 'Services'], ['drivers', 'Drivers'], ['procs', 'Processes'], ['files', 'Files'], ['storage', 'Storage'], ['disks', 'Disk health'], ['tools', 'Tools'], ['privacy', 'Privacy'], ['security', 'Security'], ['shell', 'Right-click'], ['tasks', 'Tasks'], ['trouble', 'Troubleshoot'], ['journal', 'Journal'], ['recovery', 'Recovery']];
+const NAV = [['today', 'Today'], ['clean', 'Clean'], ['programs', 'Programs'], ['appupd', 'App updates'], ['startup', 'Startup'], ['services', 'Services'], ['drivers', 'Drivers'], ['procs', 'Processes'], ['files', 'Files'], ['storage', 'Storage'], ['disks', 'Disk health'], ['tools', 'Tools'], ['privacy', 'Privacy'], ['security', 'Security'], ['shell', 'Right-click'], ['tasks', 'Tasks'], ['trouble', 'Troubleshoot'], ['journal', 'Journal'], ['recovery', 'Recovery']];
 const TITLES = {
   today: ['', 'Nothing is changed without your OK · everything is previewed and can be rolled back'],
   clean: ['Clean', 'Review what can be removed. Each item says why it is safe, and what happens.'],
+  appupd: ['App updates', 'Apps with a newer version available through winget. You review and update one at a time.'],
   programs: ['Programs', 'Uninstall silently or step by step. Leftovers are previewed, never guessed.'],
   startup: ['Startup', 'What runs when you sign in, with the evidence behind every entry.'],
   services: ['Services', 'Windows services. Critical ones are protected.'],
@@ -153,7 +155,7 @@ const TITLES = {
 // ======================= state =======================
 const S = { page: 'today', info: {}, today: { ran: false, running: false }, lists: {},
   clean: { items: null, gen: 0, coverage: '', deep: false }, startup: { items: null, coverage: '' }, sec: { items: null, admin: false }, disk: null, boot: null, tasks: { items: null, err: '' }, programs: { items: null, tab: 'desktop', store: null, hot: null }, services: { items: null, drivers: false },
-  drivers: { tab: 'installed', items: null, upd: null, updErr: '', diag: {}, fixLog: {}, fixBusy: null }, procs: { items: null }, files: { mode: 'large', data: {} }, storage: { drives: null, data: null }, sys: null, scan: null,
+  dstore: { items: null, gen: 0, backups: null, err: '' }, wg: { status: null, items: null, err: '', note: '', busy: false }, pa: { prev: null, cur: null, rates: {}, timer: null }, drivers: { tab: 'installed', items: null, upd: null, updErr: '', diag: {}, fixLog: {}, fixBusy: null }, procs: { items: null }, files: { mode: 'large', data: {} }, storage: { drives: null, data: null }, sys: null, scan: null,
   journal: { items: null, backups: null }, rec: { points: null, quar: null }, dash: null, live: null, lic: null, wu: null, flags: null, priv: { items: null, gen: 0, sel: new Set(), checklist: null }, trouble: { status: null, events: null, evWarn: '', opts: { hours: 24, levels: [1, 2], logs: ['System', 'Application'], redact: true, maskPaths: false } }, ign: null, excl: null, update: null, busy: null };
 function LS(id) { if (!S.lists[id]) S.lists[id] = { id, sel: new Set(), anchor: -1, focus: null, order: [], sort: DEF_SORT[id.split(':')[0]] || null, q: '', f: {}, csv: null }; return S.lists[id]; }
 const DEF_SORT = { clean: ['size', -1], startup: ['name', 1], programs: ['name', 1], services: ['name', 1], drvinst: ['name', 1], drvupd: ['name', 1], procs: ['mem', -1], large: ['size', -1], dupes: ['group', 1], empty: ['path', 1], journal: ['time', -1], rp: ['seq', -1], quar: ['time', -1], privchk: ['title', 1], events: ['time', -1], downloads: ['date', 1], store: ['name', 1], hotfix: ['date', -1] };
@@ -196,7 +198,7 @@ async function adminGate(items, what) {
 }
 function applyTheme(v) { if (v === 'light' || v === 'dark') document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme; }
 const flagOn = id => !!(S.flags && S.flags.items && (S.flags.items.find(f => f.id === id) || {}).on);
-const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+const plural = (n, a, b) => `${n} ${n === 1 ? a : (b || a + 's')}`;
 
 // ======================= list framework: checkbox + click + Ctrl/Shift multi-select, sort, filter =======================
 function cmp(x, y) { return typeof x === 'number' && typeof y === 'number' ? x - y : String(x == null ? '' : x).localeCompare(String(y == null ? '' : y), undefined, { sensitivity: 'base', numeric: true }); }
@@ -363,7 +365,7 @@ TOPACT.drivers = () => `<button class="btn ghost" data-act="drvRefresh">Refresh<
 PAGES.drivers = () => {
   const d = S.drivers, tab = (k, l) => `<button class="chip ${d.tab === k ? 'on' : ''}" data-dtab="${k}">${l}</button>`, probN = d.items ? d.items.filter(e => e.problem && !e.ignored).length : 0;
   const pend = d.pending ? `<div class="banner warn" role="status">${d.pending} driver${d.pending === 1 ? ' was' : 's were'} updated and not yet verified after a restart.<button class="btn pri sm" data-act="drvVerify">Verify devices</button></div>` : '';
-  return `<div class="tabs">${tab('installed', 'Installed drivers')}${tab('problems', 'Problems' + (probN ? ' (' + probN + ')' : ''))}${tab('updates', 'Driver updates')}</div>${pend}` + (d.tab === 'installed' ? drvInstalled() : d.tab === 'problems' ? drvProblems() : drvUpdates());
+  return `<div class="tabs">${tab('installed', 'Installed drivers')}${tab('problems', 'Problems' + (probN ? ' (' + probN + ')' : ''))}${tab('updates', 'Driver updates')}${tab('store', 'Driver store')}</div>${pend}` + (d.tab === 'installed' ? drvInstalled() : d.tab === 'problems' ? drvProblems() : d.tab === 'store' ? drvStore() : drvUpdates());
 };
 const ROLLBACK = 'To go back to the previous driver: Device Manager → right-click the device → Properties → Driver → Roll Back Driver (only available if Windows kept the old driver). You can also use the restore point you created (Recovery page). A restore point cannot reverse every driver problem.';
 function drvInstalled() {
@@ -646,6 +648,56 @@ PAGES.disks = () => {
 async function loadDisk() { const r = await run('Reading drive health…', () => call('disks.health')); S.disk = r.ok ? r : { disks: [], vols: [], error: r.error, predictFail: -1 }; await loadBoot(); }
 async function loadBoot() { const r = await call('boot.history', { max: 60 }); S.boot = r.ok ? r : { items: [], error: r.error }; }
 
+
+// ---------- Driver store cleanup ----------
+const DS_STATE = { inuse: ['ok', 'In use'], old: ['warn', 'Old version'], unused: ['neutral', 'Unused'] };
+function drvStore() {
+  const D = S.dstore, L = LS('dstore'); if (!D.items) return D.err ? `<div class="card empty">${esc(D.err)}</div>` : '<div class="card empty">Reading the driver store…</div>';
+  const items = D.items.filter(e => matchQ(L, e.original + ' ' + e.provider + ' ' + e.cls + ' ' + e.devices + ' ' + e.inf) && (!L.f.st || L.f.st === 'all' || e.state === L.f.st));
+  const sorted = sortItems(L, items, { name: e => e.original, prov: e => e.provider, cls: e => e.cls, ver: e => e.date, size: e => e.bytes, st: e => e.state });
+  const rows = sorted.map(e => ({ k: e.i, cells: [`<div class="nm">${esc(e.original)} <span class="muted">(${esc(e.inf)})</span></div><div class="muted cut">${esc(e.devices || (e.inUse ? '' : 'No device is using this package'))}</div>`, esc(e.provider), esc(e.cls), `${esc(e.version)}<div class="muted">${esc(e.date)}</div>`, fmt(e.bytes), `<span class="pill ${DS_STATE[e.state][0]}">${DS_STATE[e.state][1]}</span>`], csv: [e.original, e.inf, e.provider, e.cls, e.version, e.date, e.bytes, e.state] }));
+  const sel = selectedOf(L, D.items, e => e.i), rem = sel.filter(e => !e.inUse), oldN = D.items.filter(e => e.state === 'old'), oldB = oldN.reduce((a, e) => a + e.bytes, 0);
+  const batch = `<button class="btn danger sm" data-act="dsRemove" ${rem.length ? '' : 'disabled'}>Remove${rem.length ? ' (' + rem.length + ', ' + fmt(rem.reduce((a, e) => a + e.bytes, 0)) + ')' : ''}…</button>`;
+  const bk = D.backups || [];
+  return `<div class="card" style="margin-bottom:12px"><b>${oldN.length ? `${plural(oldN.length, 'old driver version')} can be removed (${fmt(oldB)})` : 'No old driver versions found'}</b><div class="muted" style="margin:4px 0 8px">Windows keeps every driver package it ever installed. When a newer version of the same driver is installed, the older ones only take space. Packages used by a device are never offered for removal. Before removing, Feather can create a restore point and save a copy of each package so you can put it back.</div><div style="display:flex;gap:8px"><button class="btn pri sm" data-act="dsSelectOld" ${oldN.length ? '' : 'disabled'}>Select old versions</button><button class="btn ghost sm" data-act="dsRefresh">Refresh</button></div></div>
+  <div class="toolbar">${searchBox(L, 'Search driver packages')}${chips(L, 'st', [['all', 'All'], ['old', 'Old versions'], ['unused', 'Unused'], ['inuse', 'In use']])}</div>${selBar(L, 'packages', batch)}${table(L, [{ h: 'Driver package', s: 'name' }, { h: 'Publisher', s: 'prov' }, { h: 'Class', s: 'cls' }, { h: 'Version', s: 'ver' }, { h: 'Size', s: 'size', n: 1 }, { h: 'Status', s: 'st' }], rows, 'No driver packages match.')}
+  <div class="muted" style="margin-top:8px">“Unused” means no device uses it but it is the newest version of its driver; keep it if you may reconnect that hardware (printer, USB device).</div>
+  ${bk.length ? `<h3 style="margin:18px 0 8px;color:var(--mute);font-size:12px;letter-spacing:.6px;text-transform:uppercase">Saved copies of removed drivers</h3>${bk.map((b, k) => `<div class="row"><div class="grow"><b>${esc(b.name)}</b> <span class="muted">${esc(b.time)} · ${fmt(b.bytes)}</span></div><button class="btn ghost sm" data-act="dsRestore" data-i="${k}">Put back</button></div>`).join('')}` : ''}`;
+}
+async function loadDstore() { const r = await run('Reading the driver store…', () => call('driverstore.list')); const b = await call('driverstore.backups'); S.dstore.err = r.ok ? '' : r.error; S.dstore.items = r.ok ? r.items : null; S.dstore.gen = r.gen || 0; S.dstore.backups = b.ok ? b.items : []; }
+
+
+// ---------- Per-process activity ----------
+const _procsRunning = PAGES.procs;
+PAGES.procs = () => { const t = S.procs.tab || 'running', tb = (k, l) => `<button class="chip ${t === k ? 'on' : ''}" data-act="procTab" data-tab="${k}">${l}</button>`; return `<div class="tabs">${tb('running', 'Running')}${tb('activity', 'Disk & network activity')}</div>` + (t === 'activity' ? procActivity() : _procsRunning()); };
+function procActivity() {
+  const P = S.pa, L = LS('procact'); if (!P.cur) return '<div class="card empty">Measuring… numbers appear after the first two seconds.</div>';
+  const by = {}; for (const p of P.cur.items) { const r = P.rates[p.pid] || { rd: 0, wr: 0, i: 0, o: 0 }, g = by[p.name.toLowerCase()] || (by[p.name.toLowerCase()] = { name: p.name, n: 0, rd: 0, wr: 0, i: 0, o: 0, conn: 0, pids: [] }); g.n++; g.rd += r.rd; g.wr += r.wr; g.i += r.i; g.o += r.o; g.conn += p.tcp + p.udp; g.pids.push(p.pid); }
+  let list = Object.values(by).filter(g => matchQ(L, g.name) && (!L.f.k || L.f.k === 'all' || (L.f.k === 'disk' ? g.rd + g.wr > 1024 : g.conn > 0)));
+  if (!L.sort) list.sort((a, b) => (b.rd + b.wr + b.i + b.o) - (a.rd + a.wr + a.i + a.o) || b.conn - a.conn); else list = sortItems(L, list, { name: g => g.name, rd: g => g.rd, wr: g => g.wr, conn: g => g.conn, i: g => g.i, o: g => g.o });
+  const nb = P.cur.netBytes, rate = v => v > 0 ? fmt(v) + '/s' : '—';
+  const rows = list.map(g => ({ k: g.name, cells: [`<div class="nm">${esc(g.name)}${g.n > 1 ? ` <span class="muted">×${g.n}</span>` : ''}</div>`, rate(g.rd), rate(g.wr), g.conn || '—', nb ? rate(g.i) : '<span class="muted" title="Per-app network speed needs administrator rights">admin</span>', nb ? rate(g.o) : '<span class="muted">admin</span>'], csv: [g.name, g.rd, g.wr, g.conn, g.i, g.o] }));
+  return `<div class="toolbar">${searchBox(L, 'Search apps')}${chips(L, 'k', [['all', 'All'], ['disk', 'Using the disk'], ['net', 'Connected']])}<span class="muted">Updates every 2 seconds while this tab is open</span></div>${table(L, [{ h: 'App', s: 'name' }, { h: 'Disk read', s: 'rd', n: 1 }, { h: 'Disk write', s: 'wr', n: 1 }, { h: 'Connections', s: 'conn', n: 1 }, { h: 'Network in', s: 'i', n: 1 }, { h: 'Network out', s: 'o', n: 1 }], rows, 'Nothing matches.')}
+  <div class="muted" style="margin-top:8px">Disk figures are the file and device reads/writes Windows counts for each program (they include some network-share and pipe traffic). Network speed counts data on established IPv4 TCP connections and needs administrator rights (More › Restart as administrator); without them only the number of connections is shown. UDP and IPv6 speeds are not measured. Apps with the same name are added together.</div>`;
+}
+async function paTick() { if (S.page !== 'procs' || S.procs.tab !== 'activity') { clearInterval(S.pa.timer); S.pa.timer = null; return; } const r = await call('procs.activity'); if (!r.ok) return; const prev = S.pa.cur; S.pa.cur = r; if (prev) { const dt = Math.max(0.5, (r.t - prev.t) / 1000), pm = {}; prev.items.forEach(p => pm[p.pid] = p); S.pa.rates = {}; r.items.forEach(p => { const q = pm[p.pid]; if (q) S.pa.rates[p.pid] = { rd: Math.max(0, (p.rd - q.rd) / dt), wr: Math.max(0, (p.wr - q.wr) / dt), i: Math.max(0, (p.netIn - q.netIn) / dt), o: Math.max(0, (p.netOut - q.netOut) / dt) }; }); } if (S.page === 'procs' && S.procs.tab === 'activity' && !document.querySelector('.shade')) draw(); }
+
+// ---------- App updates (winget) ----------
+TOPACT.appupd = () => `<button class="btn ghost" data-act="wgRefresh">Check again</button>`;
+PAGES.appupd = () => {
+  const W = S.wg, L = LS('winget'); if (!W.status) return '<div class="card empty">Looking for winget…</div>';
+  if (!W.status.present) return `<div class="card"><b>winget is not installed</b><div class="muted" style="margin-top:4px">winget is Microsoft’s package manager. It comes with “App Installer” on Windows 10 (1809 and later) and Windows 11 — install or update “App Installer” from the Microsoft Store, then press Check again. It is not available on Windows 7 or 8.</div></div>`;
+  if (W.err) return `<div class="card"><b>Could not read the update list</b><div class="muted" style="margin-top:4px">${esc(W.err)}</div></div>`;
+  if (!W.items) return '<div class="card empty">Asking winget which apps have updates… this can take up to a minute and contacts the winget sources on the internet.</div>';
+  const items = W.items.filter(e => matchQ(L, e.name + ' ' + e.id)), sorted = sortItems(L, items, { name: e => e.name, id: e => e.id, ver: e => e.version, av: e => e.available });
+  const rows = sorted.map(e => ({ k: e.id, cells: [`<div class="nm">${esc(e.name)}</div><div class="muted">${esc(e.id)}</div>`, esc(e.version), `<b>${esc(e.available)}</b>`, esc(e.source || '—')], csv: [e.name, e.id, e.version, e.available, e.source] }));
+  const sel = selectedOf(L, W.items, e => e.id), f = sel.length === 1 ? sel[0] : null;
+  const batch = `<button class="btn pri sm" data-act="wgReview" ${f && !W.busy ? '' : 'disabled'} title="${f ? '' : 'Select one app'}">Review and update${f ? ' ' + esc(f.name) : ''}…</button>`;
+  return `<div class="card" style="margin-bottom:12px"><b>${W.items.length ? plural(W.items.length, 'app has', 'apps have') + ' an update' : 'Everything winget manages is up to date'}</b> <span class="muted">· winget ${esc(W.status.version)}</span><div class="muted" style="margin-top:4px">Updates run one at a time so you can look at each. Feather only asks winget to do it; the installer comes from the publisher or Microsoft’s source and winget checks its hash. Some apps ask for administrator permission themselves. Apps winget cannot identify are not listed.${W.note ? ' ' + esc(W.note) : ''}</div></div>
+  <div class="toolbar">${searchBox(L, 'Search apps')}</div>${selBar(L, 'apps', batch)}${table(L, [{ h: 'App', s: 'name' }, { h: 'Installed', s: 'ver' }, { h: 'Available', s: 'av' }, { h: 'Source', s: 'id' }], rows, 'Nothing to update.')}`;
+};
+async function loadWinget() { S.wg.status = null; S.wg.items = null; S.wg.err = ''; const st = await run('Looking for winget…', () => call('winget.status')); S.wg.status = st.ok ? st : { present: false }; if (!S.wg.status.present) return; draw(); const r = await run('Checking for app updates…', () => call('winget.list')); if (r.ok) { S.wg.items = r.items; S.wg.note = r.note || ''; } else { S.wg.err = r.error; S.wg.items = []; } }
+
 // ---------- Troubleshoot ----------
 TOPACT.trouble = () => `<button class="btn ghost" data-act="troubleRefresh">Recheck</button>`;
 PAGES.trouble = () => {
@@ -758,11 +810,12 @@ async function loadPage() {
   else if (p === 'startup' && !S.startup.items) { draw(); await loadStartup(); }
   else if (p === 'services' && !S.services.items) { draw(); await loadServices(); }
   else if (p === 'drivers' && !S.drivers.items) { draw(); await loadDrivers(); }
-  else if (p === 'procs') { if (!S.procs.items) draw(); await loadProcs(); }
+  else if (p === 'procs') { if (!S.procs.items) draw(); await loadProcs(); if (S.procs.tab === 'activity' && !S.pa.timer) S.pa.timer = setInterval(paTick, 2000); }
   else if (p === 'storage') { if (!S.storage.drives) await loadDrives(); }
   else if (p === 'tools') { await loadSys(); }
   else if (p === 'journal') { await Promise.all([loadJournal(), loadBackups()]); }
   else if (p === 'privacy') { if (!S.priv.items) draw(); await loadPrivacy(); }
+  else if (p === 'appupd') { if (!S.wg.status) { draw(); await loadWinget(); } }
   else if (p === 'disks') { if (!S.disk) draw(); await loadDisk(); }
   else if (p === 'shell') { if (!S.startup.items) { draw(); await loadStartup(); } }
   else if (p === 'security') { if (!S.sec.items) draw(); await loadSecurity(); }
@@ -1017,6 +1070,23 @@ A.shellRefresh = async () => { S.startup.items = null; draw(); await loadStartup
 A.shellOne = async el => { const e = S.startup.items.find(x => x.key === el.dataset.k); if (!e) return; const en = e.state !== 'Enabled'; if (!await adminGate([e], 'change this item')) return; await setShell([e], en); };
 A.shellBatch = async el => { const en = el.dataset.v === '1', sel = selectedOf(LS('shell'), S.startup.items.filter(isShellItem), e => e.key).filter(e => e.canToggle && (en ? e.state === 'Disabled' : e.state === 'Enabled')); if (!sel.length) return toast('Nothing to change in the selection.'); if (!await adminGate(sel, en ? 'enable these items' : 'disable these items')) return;
   if (!en && !await modal({ title: `Disable ${plural(sel.length, 'item')}?`, body: 'They stop appearing in the right-click menu or on icons. You can switch them back on here.', items: sel.map(e => e.name), confirm: 'Disable' })) return; await setShell(sel, en); };
+A.dsRefresh = async () => { S.dstore.items = null; draw(); await loadDstore(); draw(); };
+A.dsSelectOld = () => { const L = LS('dstore'); L.sel.clear(); S.dstore.items.filter(e => e.state === 'old').forEach(e => L.sel.add(e.i)); draw(); };
+A.dsRemove = async () => { const D = S.dstore, L = LS('dstore'), sel = selectedOf(L, D.items, e => e.i).filter(e => !e.inUse); if (!sel.length) return; if (!await adminGate(sel.map(() => ({ needsAdmin: true })), 'remove driver packages')) return;
+  const bytes = sel.reduce((a, e) => a + e.bytes, 0), unusedN = sel.filter(e => e.state === 'unused').length;
+  const ok = await modal({ title: `Remove ${plural(sel.length, 'driver package')} (${fmt(bytes)})?`, body: `Windows will no longer have these packages to install. ${unusedN ? `<b>${plural(unusedN, 'of them is', 'of them are')} the newest version of a driver that no device uses now;</b> removing it means Windows must download it again if you reconnect that hardware. ` : ''}A package that a device still uses is refused by Windows.`, items: sel.map(e => `${e.original} ${e.version} (${e.date}) — ${DS_STATE[e.state][1]}`), extra: '<label style="display:block;margin-top:8px"><input type="checkbox" id="dsBk" checked> Save a copy of each package first, so I can put it back</label><label style="display:block;margin-top:4px"><input type="checkbox" id="dsRp" checked> Create a Windows restore point first</label>', confirm: 'Remove', danger: true }); if (!ok) return;
+  const bk = modal.vals.dsBk, rp = modal.vals.dsRp;
+  if (rp) { const r0 = await run('Creating a restore point…', () => call('recovery.create', { desc: 'Feather: before driver store cleanup' })); if (!r0.ok) { if (!await modal({ title: 'No restore point', body: esc(r0.error || 'The restore point could not be created.') + ' Continue without it?', confirm: 'Continue', danger: true })) return; } }
+  const r = await run('Removing driver packages…', () => call('driverstore.remove', { gen: D.gen, ids: sel.map(e => e.i), backup: bk })); toast(r.ok ? `${r.done} removed, ${fmt(r.freed)} freed${bk ? '. Copies are kept under “Saved copies”.' : '.'}` : `${r.done || 0} removed, ${r.failed || 1} failed: ${r.error}`, !r.ok); L.sel.clear(); await loadDstore(); loadJournal(); draw(); };
+A.dsRestore = async el => { const b = S.dstore.backups[+el.dataset.i]; if (!b || !await adminGate([{ needsAdmin: true }], 'put the driver back')) return; if (!await modal({ title: 'Put this driver back?', body: 'Reinstalls the saved package into the Windows driver store. It is only used again if a device needs it.', items: [b.name], confirm: 'Put back' })) return; const r = await run('Restoring…', () => call('driverstore.restore', { path: b.path })); toast(r.ok ? 'Driver package restored to the driver store.' : r.error, !r.ok); await loadDstore(); loadJournal(); draw(); };
+A.wgRefresh = async () => { draw(); await loadWinget(); draw(); };
+A.wgReview = async () => { const W = S.wg, L = LS('winget'), sel = selectedOf(L, W.items, e => e.id); if (sel.length !== 1) return; const e = sel[0];
+  const info = await run('Reading package details…', () => call('winget.show', { id: e.id })); const text = info.ok ? info.text.split('\n').filter(x => x.trim()).slice(0, 40).join('\n') : 'Details could not be read: ' + info.error;
+  const ok = await modal({ title: `Update ${e.name}?`, body: `<b>${esc(e.version)} → ${esc(e.available)}</b> from source “${esc(e.source || 'winget')}”. Close ${esc(e.name)} first if it is running. The update is not undoable from here; the Journal records it.`, extra: `<pre style="white-space:pre-wrap;max-height:40vh;overflow:auto;margin:8px 0 0;font-size:12px">${esc(text)}</pre>`, confirm: 'Update now' }); if (!ok) return;
+  W.busy = true; const r = await run(`Updating ${e.name}…`, () => call('winget.upgrade', { id: e.id, from: e.version, to: e.available })); W.busy = false; loadJournal();
+  await modal({ title: r.ok ? `${e.name} updated` : `${e.name} was not updated`, body: r.ok ? 'winget reports success.' : esc(r.error || 'winget reported a problem.') + ' Some installers need the app closed or administrator permission; try again after closing it, or use Restart as administrator.', extra: r.text ? `<pre style="white-space:pre-wrap;max-height:40vh;overflow:auto;margin:8px 0 0;font-size:12px">${esc(r.text)}</pre>` : '', cancel: null, confirm: 'OK' });
+  LS('winget').sel.clear(); S.wg.status = null; draw(); await loadWinget(); draw(); };
+A.procTab = async el => { S.procs.tab = el.dataset.tab; if (S.procs.tab === 'activity') { S.pa.cur = null; draw(); await paTick(); if (!S.pa.timer) S.pa.timer = setInterval(paTick, 2000); } else { if (!S.procs.items) await loadProcs(); draw(); } };
 A.secRefresh = async () => { S.sec.items = null; draw(); await loadSecurity(); draw(); };
 A.secOpen = async el => { const r = await call('security.open', { id: el.dataset.id }); if (!r.ok) toast(r.error, true); };
 A.tasksRefresh = async () => { S.tasks.items = null; draw(); await loadTasks(); draw(); };
@@ -1084,7 +1154,7 @@ document.addEventListener('click', async e => {
   const th = t.closest('th[data-sort]'); if (th) { const L = S.lists[th.dataset.l]; L.sort = [th.dataset.sort, L.sort && L.sort[0] === th.dataset.sort ? -L.sort[1] : 1]; draw(); return; }
   const fc = t.closest('[data-fc]'); if (fc) { const [id, field, val] = fc.dataset.fc.split('|'); LS(id).f[field] = val; draw(); return; }
   const ft = t.closest('[data-ft]'); if (ft) { S.files.mode = ft.dataset.ft; draw(); return; }
-  const dt = t.closest('[data-dtab]'); if (dt) { S.drivers.tab = dt.dataset.dtab; draw(); if (dt.dataset.dtab === 'problems') { await loadDiag(); draw(); } return; }
+  const dt = t.closest('[data-dtab]'); if (dt) { S.drivers.tab = dt.dataset.dtab; draw(); if (dt.dataset.dtab === 'problems') { await loadDiag(); draw(); } if (dt.dataset.dtab === 'store' && !S.dstore.items) { await loadDstore(); draw(); } return; }
   const dv = t.closest('[data-drive],[data-path]'); if (dv && S.page === 'storage') { await openFolder(dv.dataset.drive || dv.dataset.path); return; }
 });
 document.addEventListener('input', e => { const q = e.target.dataset && e.target.dataset.q; if (q) { LS(q).q = e.target.value; draw(); } });

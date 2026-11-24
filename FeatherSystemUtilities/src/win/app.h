@@ -13,7 +13,7 @@
 #include <functional>
 #include <atomic>
 
-#define FSU_VERSION L"3.10.0"
+#define FSU_VERSION L"3.11.0"
 
 namespace fsu {
 
@@ -178,6 +178,20 @@ struct PrivacyItem { std::wstring id, title, state, detail, why; bool good = tru
 std::vector<PrivacyItem> PrivacyChecklist();
 bool OpenPrivacySetting(const std::wstring& id);
 std::vector<PrivacyItem> SecurityChecklist();
+std::map<std::wstring, std::wstring> InfDeviceMap();
+struct DrvPkg { std::wstring inf, original, provider, cls, version, date, folder, devices; ULONGLONG bytes = 0; bool inUse = false, newest = false; int group = 0; };
+std::vector<DrvPkg> ListDriverStore(std::wstring& err);
+bool RemoveDriverPkg(const DrvPkg& p, bool backup, std::wstring& err, std::wstring& backupPath);
+struct DrvBackup { std::wstring path, name, time; ULONGLONG bytes = 0; };
+std::vector<DrvBackup> ListDriverBackups();
+bool RestoreDriverBackup(const std::wstring& path, std::wstring& err);
+struct WingetPkg { std::wstring name, id, version, available, source; };
+bool WingetPresent(std::wstring& version);
+bool WingetUpgradable(std::vector<WingetPkg>& out, std::wstring& err);
+bool WingetShow(const std::wstring& id, std::wstring& text, std::wstring& err);
+bool WingetUpgrade(const std::wstring& id, std::wstring& text, int& exitCode, std::wstring& err);
+struct ProcAct { DWORD pid = 0; std::wstring name; ULONGLONG rd = 0, wr = 0, netIn = 0, netOut = 0; int tcp = 0, udp = 0; };
+std::vector<ProcAct> SampleProcActivity(bool& netBytes);
 struct DiskInfo { std::wstring name, media, bus, health; int healthCode = -1, temp = -1, wear = -1; long long hours = -1, readErr = -1, writeErr = -1; ULONGLONG size = 0; };
 struct VolInfo { std::wstring path, label, fs; ULONGLONG total = 0, free = 0; };
 struct DiskReport { std::vector<DiskInfo> disks; std::vector<VolInfo> vols; int predictFail = -1; bool trimKnown = false, trimOn = true, admin = false; std::wstring error; };

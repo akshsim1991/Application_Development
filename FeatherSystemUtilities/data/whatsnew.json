@@ -1,5 +1,14 @@
 [
  {
+  "version": "3.11.0",
+  "date": "November 2026",
+  "items": [
+   "Drivers › Driver store: see every third-party driver package Windows keeps, remove old versions to free space (never packages a device is using), with an optional restore point and saved copies you can put back.",
+   "New App updates page: apps with newer versions via winget, reviewed and updated one at a time.",
+   "Processes › Disk & network activity: live disk read/write and connection counts per app, plus network speed per app when run as administrator."
+  ]
+ },
+ {
   "version": "3.10.0",
   "date": "November 2026",
   "items": [

@@ -14,7 +14,7 @@
 namespace fsu {
 using std::wstring; using std::string;
 
-static const char* kAllowed[] = {"startup.set", "startup.delete", "startup.delay", "startup.removeDelay", "services.op", "services.startType", "safemode.fix", "recovery.create", "drivers.install", "hotfix.uninstall", "device.fix", "clean.runById", "tasks.set", "services.profileApply"};
+static const char* kAllowed[] = {"startup.set", "startup.delete", "startup.delay", "startup.removeDelay", "services.op", "services.startType", "safemode.fix", "recovery.create", "drivers.install", "hotfix.uninstall", "device.fix", "clean.runById", "tasks.set", "services.profileApply", "driverstore.remove", "driverstore.restore"};
 bool BrokerAllows(const string& cmd) { for (auto* c : kAllowed) if (cmd == c) return true; return false; }
 
 static bool ReadExact(HANDLE h, void* buf, DWORD n) { char* p = (char*)buf; while (n) { DWORD got = 0; if (!ReadFile(h, p, n, &got, nullptr) || !got) return false; p += got; n -= got; } return true; }

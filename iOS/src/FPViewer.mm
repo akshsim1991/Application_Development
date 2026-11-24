@@ -4,6 +4,7 @@
 #import "FPSettingsController.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
+#include <cmath>
 
 /** A document open in a tab. */
 @interface FPTab : NSObject
@@ -165,7 +166,7 @@
     [_pageLabel addGestureRecognizer:[[UITapGestureRecognizer alloc] initWithTarget:self action:@selector(askPage)]];
     _pageLabel.translatesAutoresizingMaskIntoConstraints = NO;
     [middle addSubview:_pageLabel];
-    _busy = [[UIActivityIndicatorView alloc] initWithActivityIndicatorViewStyle:UIActivityIndicatorViewStyleLarge];
+    _busy = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleLarge];
     _busy.hidesWhenStopped = YES;
     _busy.translatesAutoresizingMaskIntoConstraints = NO;
     [middle addSubview:_busy];

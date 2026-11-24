@@ -326,6 +326,24 @@ static std::map<string, Fn>& Handlers() {
         else { SvcOp o = op == "start" ? SvcOp::Start : op == "stop" ? SvcOp::Stop : op == "restart" ? SvcOp::Restart : op == "pause" ? SvcOp::Pause : SvcOp::Resume; ok = ServiceOp(s, o, err); }
         return ok ? Ok() : Err(err); };
     h["services.lookup"] = [](const js::V& a) { ServiceEntry sv; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& e : g_sv.entries) if (U(e.name) == a.str("name")) { sv = e; f = true; break; } if (!f) return Err(L"Service not found."); } OnlineLookup(g_wnd, false, sv.program, sv.display); return Ok(); };
+    h["services.profiles"] = [](const js::V&) { js::Arr a; for (auto& p : ListProfiles()) a.add(js::Obj().str("id", U(p.id)).str("label", U(p.label)).str("impact", U(p.impact)).boolean("builtin", p.builtin).done()); return js::Obj().boolean("ok", true).raw("items", a.done()).done(); };
+    h["services.profilePlan"] = [](const js::V& a) {
+        ProfileInfo pi; bool f = false; for (auto& p : ListProfiles()) if (U(p.id) == a.str("id")) { pi = p; f = true; break; } if (!f) return Err(L"Profile not found.");
+        std::vector<ServiceEntry> cur; { std::lock_guard<std::mutex> l(g_m); cur = g_sv.entries; } if (cur.empty()) { ServiceScan sc = ScanServices(false); cur = sc.entries; std::lock_guard<std::mutex> l(g_m); g_sv = std::move(sc); }
+        std::vector<PlanItem> plan; wstring note, err; if (!BuildPlan(pi, cur, plan, note, err)) return Err(err);
+        auto key = [](DWORD t, bool d) { return t == SERVICE_DISABLED ? "disabled" : t == SERVICE_DEMAND_START ? "manual" : (d ? "autodelay" : "auto"); };
+        js::Arr arr; for (auto& i : plan) arr.add(js::Obj().str("name", U(i.name)).str("display", U(i.display)).str("from", U(i.from)).str("to", U(i.to)).str("why", U(i.why)).boolean("skip", i.skip).str("oldKey", key(i.oldType, i.oldDelayed)).str("newKey", key(i.type, i.delayed)).done());
+        return js::Obj().boolean("ok", true).str("label", U(pi.label)).str("impact", U(pi.impact)).str("note", U(note)).raw("items", arr.done()).done(); };
+    h["services.profileApply"] = [](const js::V& a) {   // the plan is rebuilt here from the profile id; the page can only choose which of the planned services to apply
+        ProfileInfo pi; bool f = false; for (auto& p : ListProfiles()) if (U(p.id) == a.str("id")) { pi = p; f = true; break; } if (!f) return Err(L"Profile not found.");
+        std::vector<ServiceEntry> cur; { std::lock_guard<std::mutex> l(g_m); cur = g_sv.entries; } if (cur.empty()) return Err(L"Refresh the services list first.");
+        std::vector<PlanItem> plan; wstring note, err; if (!BuildPlan(pi, cur, plan, note, err)) return Err(err);
+        std::set<string> only; for (auto& n : a.strs("names")) only.insert(n); int ok = 0, bad = 0; wstring first;
+        for (auto& i : plan) { if (i.skip || (!only.empty() && !only.count(U(i.name)))) continue; wstring e2, before; if (SetServiceStartType(i.name, i.type, i.delayed, e2, before)) ++ok; else { ++bad; if (first.empty()) first = i.display + L": " + e2; } }
+        { std::lock_guard<std::mutex> l(g_m); g_sv.entries.clear(); }
+        return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).str("error", U(first)).done(); };
+    h["services.profileSave"] = [](const js::V& a) { std::vector<ServiceEntry> cur; { std::lock_guard<std::mutex> l(g_m); cur = g_sv.entries; } if (cur.empty()) return Err(L"Refresh the services list first."); wstring label = W(a.str("label")), path, err; if (label.empty()) return Err(L"Give the profile a name."); return SaveProfile(label, cur, path, err) ? js::Obj().boolean("ok", true).str("path", U(path)).done() : Err(err); };
+    h["services.details"] = [](const js::V& a) { ServiceEntry s; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& e : g_sv.entries) if (U(e.name) == a.str("name")) { s = e; f = true; break; } if (!f) return Err(L"Service not found. Refresh the list."); } int t = (int)a.num("tab", 0); return js::Obj().boolean("ok", true).str("text", U(ServiceTabText(s, t < 0 || t > 4 ? 0 : t))).done(); };
     h["services.startType"] = [](const js::V& a) {
         ServiceEntry s; { std::lock_guard<std::mutex> l(g_m); bool f = false; for (auto& e : g_sv.entries) if (U(e.name) == a.str("name")) { s = e; f = true; break; } if (!f) return Err(L"Service not found. Refresh the list."); }
         string t = a.str("type"); if (s.critical && t == "disabled") return Err(L"Blocked: this service is on the critical list (Windows may become unstable).");
@@ -339,6 +357,22 @@ static std::map<string, Fn>& Handlers() {
         FileScan s; ScanFiles(o, s); js::Arr arr; for (size_t i = 0; i < s.files.size(); ++i) { auto& f = s.files[i]; arr.add(js::Obj().num("i", (double)i).str("name", U(f.name)).str("folder", U(f.folder)).str("ext", U(f.ext)).num("size", (double)f.size).str("date", U(FileDateText(f.mtime))).num("group", f.group).num("count", f.groupCount).str("hash", U(f.hash)).boolean("verified", f.verified).done()); }
         js::Obj r; r.boolean("ok", true).raw("items", arr.done()).str("coverage", U(s.coverage)).num("scanned", (double)s.scanned).num("totalBytes", (double)s.totalBytes).num("reclaimable", (double)s.reclaimable).num("groups", s.groups).boolean("cancelled", s.cancelled);
         std::lock_guard<std::mutex> l(g_m); g_fs[mode] = std::move(s); r.num("gen", ++g_fsGen[mode]); return r.done(); };
+    h["files.archive"] = [](const js::V& a) {   // moves chosen files (large-file mode only) to a folder the user picks; nothing is deleted, each move is journaled and reversible by moving the file back
+        int mode = ModeOf(a.str("mode")); if (mode != 0) return Err(L"Archiving is only available for large files.");
+        std::vector<std::pair<wstring, ULONGLONG>> src; { std::lock_guard<std::mutex> l(g_m); auto& sc = g_fs[mode]; if ((int)a.num("gen", -1) != g_fsGen[mode]) return Err(L"The list changed. Scan again.");
+            if (auto* v = a.get("ids")) for (auto& x : v->a) { size_t i = (size_t)x.n; if (x.t == js::V::Num && i < sc.files.size() && !sc.files[i].path.empty()) src.emplace_back(sc.files[i].path, sc.files[i].size); } }
+        if (src.empty()) return Err(L"Nothing selected.");
+        IFileOpenDialog* d = nullptr; if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_IFileOpenDialog, (void**)&d)) || !d) return Err(L"The folder picker is not available."); DWORD o = 0; d->GetOptions(&o); d->SetOptions(o | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM); d->SetTitle(L"Choose the archive folder (an external drive or another disk is best)");
+        wstring dest; if (SUCCEEDED(d->Show(g_wnd))) { IShellItem* it = nullptr; if (SUCCEEDED(d->GetResult(&it)) && it) { PWSTR p = nullptr; if (SUCCEEDED(it->GetDisplayName(SIGDN_FILESYSPATH, &p)) && p) { dest = p; CoTaskMemFree(p); } it->Release(); } } d->Release();
+        if (dest.empty()) return js::Obj().boolean("ok", true).boolean("cancelled", true).done();
+        while (dest.size() > 3 && dest.back() == L'\\') dest.pop_back(); if (IsProtectedPath(dest)) return Err(L"That folder is protected. Choose a different archive folder.");
+        int ok = 0, bad = 0; ULONGLONG moved = 0; wstring first; std::vector<string> gone;
+        for (auto& pr : src) { const wstring& p = pr.first; if (IsProtectedPath(p) || IsExcluded(p)) { ++bad; if (first.empty()) first = p + L": protected"; continue; }
+            size_t sl = p.find_last_of(L'\\'); wstring nm = sl == wstring::npos ? p : p.substr(sl + 1), to = dest + L"\\" + nm; if (_wcsicmp(to.c_str(), p.c_str()) == 0) { ++bad; if (first.empty()) first = nm + L": already in that folder"; continue; }
+            for (int n = 2; GetFileAttributesW(to.c_str()) != INVALID_FILE_ATTRIBUTES && n < 1000; ++n) { size_t dot = nm.find_last_of(L'.'); to = dest + L"\\" + (dot == wstring::npos || dot == 0 ? nm + L" (" + std::to_wstring(n) + L")" : nm.substr(0, dot) + L" (" + std::to_wstring(n) + L")" + nm.substr(dot)); }
+            if (MoveFileExW(p.c_str(), to.c_str(), MOVEFILE_COPY_ALLOWED | MOVEFILE_WRITE_THROUGH)) { ++ok; moved += pr.second; WriteJournal(p, L"archive", L"in place", L"moved to " + to, L"ok (move it back to undo)", true); } else { ++bad; if (first.empty()) first = nm + L": " + Win32Err(GetLastError()); } }
+        { std::lock_guard<std::mutex> l(g_m); auto& sc = g_fs[mode]; for (auto& f : sc.files) if (!f.path.empty() && GetFileAttributesW(f.path.c_str()) == INVALID_FILE_ATTRIBUTES) { gone.push_back(std::to_string(&f - &sc.files[0])); f.path.clear(); } }
+        js::Arr g; for (auto& x : gone) g.add(x); return js::Obj().boolean("ok", bad == 0).num("done", ok).num("failed", bad).num("bytes", (double)moved).str("dest", U(dest)).str("error", U(first)).raw("gone", g.done()).done(); };
     h["files.cancel"] = [](const js::V&) { g_cancel = true; ++g_stGen; return Ok(); };
     h["files.openLocation"] = [](const js::V& a) { string m = a.str("mode"); int mode = ModeOf(m); wstring p; { std::lock_guard<std::mutex> l(g_m); size_t i = (size_t)a.num("i", -1); if ((int)a.num("gen", -1) != g_fsGen[mode] || i >= g_fs[mode].files.size()) return Err(L"The list changed."); p = g_fs[mode].files[i].path; } if (p.empty()) return Err(L"Already removed."); wstring e; return OpenFileLocationEx(p, e) ? Ok() : Err(e); };
     h["files.remove"] = [](const js::V& a) {

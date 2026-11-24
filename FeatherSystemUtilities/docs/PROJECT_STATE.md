@@ -41,3 +41,6 @@ log.cpp (app.log, crash filter), selftest.cpp (25+ checks, CLI --selftest), webu
 ## 3.8.0 (roadmap "Important" list, part 1)
 Done: #3 Security posture checklist (phase2.cpp SecurityChecklist, read-only), #7 Scheduled tasks manager (tasks.cpp; disable/enable via SetStartupEnabled so it is journaled; Windows tasks protected except telemetry groups), #11 pattern exclusions (settings.cpp IsExcluded, * and ?).
 Remaining from the list: #1 maintenance plan, #2 disk health, #4 sign-in time per change, #5 per-process network/disk, #6 winget, #8 services profiles, #9 shell extensions, #10 more cleaner categories, #12 large-file tree, #13 driver store cleanup.
+
+## 3.9.0 (roadmap "Important" list, part 2)
+Done: #8 services profiles + properties in the new UI (services.profile*, services.details), #10 cleaner categories (t.iconcache, t.office, t.applogs, t.patchcache risk 2), #12 large-file age filter + files.archive (move, journaled); the folder size treemap already existed on the Storage page.

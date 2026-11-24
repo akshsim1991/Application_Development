@@ -1,5 +1,14 @@
 [
  {
+  "version": "3.9.0",
+  "date": "November 2026",
+  "items": [
+   "Services: Profiles (privacy, lighter, no Xbox, no printer, security hardening or your own) with a full preview, undo, and Save current as profile; Properties window with General, Configuration, Recovery, Dependencies and History tabs.",
+   "Clean: new categories for Office caches, icon cache, old setup/Defender logs, and the Windows Installer patch cache (strong warning, High risk, never selected for you).",
+   "Files: large files can be filtered by how long since they were modified, and archived (moved, never deleted) to another folder or drive."
+  ]
+ },
+ {
   "version": "3.8.0",
   "date": "November 2026",
   "items": [

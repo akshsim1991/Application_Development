@@ -1787,3 +1787,6 @@ redrawn icons. All five downloads match latest.json.
 - **Tests:** a dry run of an iPhone-only release on a copy of the releases repository: Windows, macOS and Android stay
   at 2.27.1 with their files, the release's version stays 2.27.1, the iPhone entry becomes 2.28.0; a release for an app
   whose file is missing stops with "missing releases/...".
+
+**Published:** 2.28.0 "Galaxy" for iPhone and iPad only (25 November); Windows, macOS and Android stay at 2.27.1 (the
+release version in latest.json too). Every download matches latest.json; altstore.json lists 2.28.0.

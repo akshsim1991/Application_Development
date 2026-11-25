@@ -1740,3 +1740,6 @@ the sideloading steps.
   Shift+clicked, the file saved with Ctrl+S and read by pikepdf: pages at 0, 270 and 270 degrees. The first icon
   looked like a padlock at toolbar size in its picture; it was redrawn. The Mac UI check presses the toolbar item and
   the trace shows the first page turned (842x595) and the others not.
+
+**Published:** 2.27.1 for Windows, Mac, Android, iPhone and iPad (25 November); the Windows UI check passed with the
+redrawn icons. All five downloads match latest.json.

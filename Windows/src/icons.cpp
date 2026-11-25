@@ -246,14 +246,14 @@ void paint(Graphics& g, int icon, COLORREF colour) {
             g.DrawLine(&pen, 5.5f, 8.0f, 10.0f, 12.5f);
             g.DrawLine(&pen, 10.0f, 12.5f, 14.5f, 8.0f);
             break;
-        case RotateLeft: case RotateRight: {   // a page under a curved arrow; left is right mirrored
+        case RotateLeft: case RotateRight: {   // a small page in a turning arrow (clockwise); left is right mirrored
             if (icon == RotateLeft) { g.TranslateTransform(20, 0); g.ScaleTransform(-1, 1); }
-            g.DrawRectangle(&pen, 6.5f, 10.5f, 7.0f, 7.0f);
+            g.DrawRectangle(&pen, 7.5f, 7.5f, 5.0f, 6.0f);
             p.StartFigure();
-            p.AddArc(4.5f, 2.5f, 11.0f, 11.0f, 195.0f, 165.0f);   // over the top, ending on the right, going down
+            p.AddArc(3.0f, 3.5f, 14.0f, 14.0f, -55.0f, 280.0f);   // from the upper right, round the bottom, to the upper left
             g.DrawPath(&pen, &p);
-            g.DrawLine(&pen, 15.5f, 9.4f, 13.4f, 7.3f);
-            g.DrawLine(&pen, 15.5f, 9.4f, 17.4f, 7.1f);
+            g.DrawLine(&pen, 5.05f, 5.55f, 1.86f, 5.83f);   // the arrowhead there, pointing up and to the right
+            g.DrawLine(&pen, 5.05f, 5.55f, 4.77f, 8.74f);
             break;
         }
     }

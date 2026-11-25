@@ -1,0 +1,50 @@
+# The Windows app on a real Windows: built on Linux as for the release (MinGW), then its toolbar driven with the mouse
+# on a Windows runner (tests/windows/uicheck.py), with pictures of the screen.
+name: Windows UI check
+
+on:
+  push:
+    paths: ["Windows/src/**", "tests/windows/uicheck.py", ".github/workflows/windows-ui.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q mingw-w64 ninja-build
+      - name: Build Feather PDF for Windows
+        run: |
+          bash scripts/fetch-pdfium.sh
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64.cmake
+          cmake --build build --target FeatherPDF
+          mkdir -p out && cp build/FeatherPDF.exe build/pdfium.dll out/
+          pip install reportlab && python3 tests/android/make_test_pdf.py out/in.pdf
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: out
+
+  check:
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: app
+          path: app
+      - name: The toolbar, driven with the mouse
+        shell: pwsh
+        run: |
+          pip install --quiet pillow pikepdf
+          python tests/windows/uicheck.py "$PWD\app\FeatherPDF.exe" "$PWD\app\in.pdf" "$PWD\ui"
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-ui
+          path: ui

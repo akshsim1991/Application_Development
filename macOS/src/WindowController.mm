@@ -18,11 +18,16 @@ static NSToolbarItemIdentifier const kPagesItem = @"pages";
 static NSToolbarItemIdentifier const kSidebarItem = @"sidebar";
 static NSToolbarItemIdentifier const kFindItem = @"find";
 static NSToolbarItemIdentifier const kEditItem = @"editpdf";
+static NSToolbarItemIdentifier const kRotateItem = @"rotate";
 extern BOOL FPInlineEditing();   // Editing.mm: a paragraph is being typed in
 
 @interface FPWindowController (EditingCalls)   // Editing.mm
 - (IBAction)chooseEditTool:(NSMenuItem*)sender;
 - (void)endInlineEdit:(BOOL)apply;
+@end
+@interface FPWindowController (ToolsCalls)   // Tools.mm
+- (IBAction)rotateRight:(id)sender;
+- (IBAction)rotateLeft:(id)sender;
 @end
 static NSToolbarItemIdentifier const kPageItem = @"page";
 static NSToolbarItemIdentifier const kZoomItem = @"zoom";
@@ -268,11 +273,11 @@ static BOOL editBarTool(FPTool t) {   // the tools of Edit PDF: the bar stays wh
 // ---- the toolbar ----
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kZoomItem, kFindItem ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kRotateItem, kZoomItem, kFindItem ];
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, kRotateItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
 static NSImage* symbol(NSString* name, NSString* description) {
@@ -330,6 +335,16 @@ static NSImage* symbol(NSString* name, NSString* description) {
         item.view = row;
         item.label = @"Page";
         [self viewChanged:nil];
+    } else if ([ident isEqualToString:kRotateItem]) {   // the page shown; with Shift, every page
+        NSSegmentedControl* s = [NSSegmentedControl segmentedControlWithImages:@[ symbol(@"rotate.left", @"Rotate left"),
+                                                                                    symbol(@"rotate.right", @"Rotate right") ]
+                                                                  trackingMode:NSSegmentSwitchTrackingMomentary
+                                                                        target:self
+                                                                        action:@selector(rotateClicked:)];
+        [s setToolTip:@"Rotate this page left (⌘L; Shift-click: every page)" forSegment:0];
+        [s setToolTip:@"Rotate this page right (⌘R; Shift-click: every page)" forSegment:1];
+        item.view = s;
+        item.label = @"Rotate";
     } else if ([ident isEqualToString:kZoomItem]) {
         NSSegmentedControl* s = [NSSegmentedControl segmentedControlWithImages:@[ symbol(@"minus.magnifyingglass", @"Zoom out"),
                                                                                     symbol(@"plus.magnifyingglass", @"Zoom in") ]
@@ -359,6 +374,31 @@ static NSImage* symbol(NSString* name, NSString* description) {
 
 - (void)pagesClicked:(NSSegmentedControl*)s {
     if (s.selectedSegment == 0) [self previousPage:nil]; else [self nextPage:nil];
+}
+
+- (void)rotateClicked:(NSSegmentedControl*)s {
+    const BOOL right = s.selectedSegment == 1;
+    if (!(NSEvent.modifierFlags & NSEventModifierFlagShift)) { if (right) [self rotateRight:nil]; else [self rotateLeft:nil]; return; }
+    Document* d = self.pdf;   // Shift: every page
+    if (!d) return;
+    std::vector<int> all(static_cast<size_t>(d->pageCount()));
+    for (int i = 0; i < d->pageCount(); ++i) all[static_cast<size_t>(i)] = i;
+    if (d->rotatePages(all, right ? 1 : 3)) [self afterChange];
+}
+
+- (IBAction)uiRotateToolbar:(id)sender {   // the build check: the toolbar's rotate right pressed, as a click would
+    for (NSToolbarItem* item in self.window.toolbar.items)
+        if ([item.itemIdentifier isEqualToString:kRotateItem] && [item.view isKindOfClass:[NSSegmentedControl class]]) {
+            NSSegmentedControl* s = (NSSegmentedControl*)item.view;
+            s.selectedSegment = 1;
+            [NSApp sendAction:s.action to:s.target from:s];
+        }
+    Document* d = self.pdf;
+    NSMutableArray* sizes = [NSMutableArray array];
+    for (int i = 0; d && i < d->pageCount(); ++i) [sizes addObject:[NSString stringWithFormat:@"%.0fx%.0f", d->pageSize(i).w, d->pageSize(i).h]];
+    NSMutableArray* ids = [NSMutableArray array];
+    for (NSToolbarItem* item in self.window.toolbar.items) [ids addObject:item.itemIdentifier];
+    FPTrace(@"rotate toolbar: items %@; pages %@", [ids componentsJoinedByString:@" "], [sizes componentsJoinedByString:@" "]);
 }
 
 - (void)zoomClicked:(NSSegmentedControl*)s {
@@ -441,7 +481,8 @@ static NSImage* symbol(NSString* name, NSString* description) {
     [_view setNeedsDisplay:YES];
     // colourful toolbar icons, as on Windows: each its own colour; off, the text colour
     NSDictionary<NSToolbarItemIdentifier, NSColor*>* tints = @{@"sidebar" : NSColor.systemBlueColor, @"pages" : NSColor.systemGreenColor,
-                                                               @"zoom" : NSColor.systemOrangeColor, @"find" : NSColor.systemPurpleColor};
+                                                               @"zoom" : NSColor.systemOrangeColor, @"find" : NSColor.systemPurpleColor,
+                                                               @"rotate" : NSColor.systemTealColor};
     for (NSToolbarItem* item in self.window.toolbar.items) {
         NSColor* tint = FPColourIcons() ? tints[item.itemIdentifier] : nil;
         for (NSView* v in [item.view isKindOfClass:[NSStackView class]] ? ((NSStackView*)item.view).views : @[ item.view ?: [NSView new] ])

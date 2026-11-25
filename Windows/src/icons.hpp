@@ -6,7 +6,7 @@ namespace icons {
 
 // Same order as the toolbar's icon numbers.
 enum { None, Open, Save, Undo, Redo, Edit, Annotate, Comment, Geometry, SideBySide, Prev, Next, ZoomOut, ZoomIn, Search, More,
-       File, Drop, Plus, ChevronDown };
+       File, Drop, Plus, ChevronDown, RotateLeft, RotateRight };
 
 // Drawn `size` pixels square, centred in `r`; the strokes grow with the size, so every icon has the same weight.
 void draw(HDC dc, const RECT& r, int icon, COLORREF colour, int size = 24);

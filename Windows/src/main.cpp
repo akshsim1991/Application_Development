@@ -93,6 +93,7 @@ constexpr UINT kMsgSpeech = WM_APP + 8;           // the voice reading aloud has
 // kind: a toolbar button, or one of the window buttons (minimise, maximise, close) drawn in the tab row
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
 enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU,
+           C_ROTL = 130, C_ROTR,   // the toolbar's rotate buttons: the page shown (with Shift, every page)
            C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE,
            // the edit row, under the toolbar while Edit PDF is on
            C_ER_EDIT = 160, C_ER_ADDTEXT, C_ER_PICTURE, C_ER_TABLE, C_ER_REPLACE, C_ER_REDACT, C_ER_MORE, C_ER_DONE, C_ER_EQUATION,
@@ -3954,6 +3955,11 @@ void runCommand(int id) {
         case C_SAVE: saveActive(); break;
         case C_UNDO: undoRedo(false); break;
         case C_REDO: undoRedo(true); break;
+        case C_ROTL: case C_ROTR:   // the page shown; with Shift, every page (as Ctrl+L and Ctrl+R)
+            if (!d) break;
+            if (GetKeyState(VK_SHIFT) < 0) rotateView(id == C_ROTR ? 1 : -1);
+            else if (d->rotatePages({app.viewer.currentPage()}, id == C_ROTR ? 1 : -1)) afterPagesChanged();
+            break;
     }
 }
 
@@ -6577,7 +6583,7 @@ void commandPalette() {
 
 // ---- the header: the tab row (which is also the title bar) and the toolbar; the status bar at the bottom ----
 enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE,
-            I_FILE, I_DROP, I_PLUS, I_CHEVRON };   // same numbering as icons::
+            I_FILE, I_DROP, I_PLUS, I_CHEVRON, I_ROTL, I_ROTR };   // same numbering as icons::
 
 std::vector<int> g_separators;   // x of the thin lines between toolbar groups
 
@@ -6644,6 +6650,8 @@ std::wstring tipFor(int id) {
         case C_ZOOMOUT: return L"Zoom out";
         case C_ZOOMIN: return L"Zoom in";
         case C_ZOOMMENU: return L"Zoom presets, fit width, fit page";
+        case C_ROTL: return L"Rotate this page left (Shift+click: every page; Ctrl+L)";
+        case C_ROTR: return L"Rotate this page right (Shift+click: every page; Ctrl+R)";
         case C_FIND: return L"Find in the document (Ctrl+F)";
         case C_ER_EDIT: return L"Click any outlined text to change it there, or a picture to move or resize it (Ctrl+E)";
         case C_ER_ADDTEXT: return L"Click where new text should start";
@@ -6786,7 +6794,7 @@ void layoutHeader(HDC dc, int width) {
     auto groupW = [&](const wchar_t* label, bool compact) { return compact ? px(40) : px(10) + px(20) + px(6) + textWidth(dc, app.font, label) + px(12); };
     const std::wstring ofText = d ? L"of " + std::to_wstring(d->pageCount()) : L"";
     const int ofW = std::max(textWidth(dc, app.font, L"of 999"), textWidth(dc, app.font, ofText)) + px(10);
-    const int rightW = px(32) + px(50) + ofW + px(32) + sep + px(32) + px(84) + px(32) + sep + iconW + px(42) + px(10);
+    const int rightW = px(32) + px(50) + ofW + px(32) + sep + px(32) + px(84) + px(32) + sep + 2 * iconW + sep + iconW + px(42) + px(10);
     int leftW = px(8) + 4 * iconW + 2 * sep;
     for (const auto& g : groups) leftW += groupW(g.label, false) + px(2);
     app.compact = leftW + rightW + px(16) > width;
@@ -6808,6 +6816,9 @@ void layoutHeader(HDC dc, int width) {
     int rx = width - px(10);
     rx -= px(42); app.buttons.push_back({L"", {rx, top, rx + px(42), bottom}, C_MENU, true, I_MORE});
     rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_FIND, d != nullptr, I_SEARCH});
+    rx -= sep; g_separators.push_back(rx + sep / 2);
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_ROTR, d != nullptr, I_ROTR});
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_ROTL, d != nullptr, I_ROTL});
     rx -= sep; g_separators.push_back(rx + sep / 2);
     rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_ZOOMIN, d != nullptr, I_ZIN});
     rx -= px(84);
@@ -6901,6 +6912,7 @@ COLORREF iconColour(int icon, COLORREF bg) {
         case icons::SideBySide: c = RGB(0x0E, 0x8F, 0xB3); break;
         case icons::ZoomIn: case icons::ZoomOut: c = RGB(0x54, 0x63, 0xD6); break;
         case icons::Search: c = RGB(0x1F, 0x6F, 0xEB); break;
+        case icons::RotateLeft: case icons::RotateRight: c = RGB(0xD9, 0x77, 0x06); break;
         default: return pal().text;   // arrows, More: in the text colour
     }
     if (pal().dark) c = mixColour(c, RGB(0xFF, 0xFF, 0xFF), 0.3);   // lighter on dark toolbars

@@ -92,6 +92,10 @@ static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvi
     const NSInteger i = [self indexOf:url in:list];
     int page = 0;
     if (i >= 0) { page = list[i].page; [list removeObjectAtIndex:i]; }
+    // entries of the same name that cannot be reached go (versions before 2.28 kept bookmarks that never opened
+    // again, and added the file once more each time it was opened from Files); the page read there is kept
+    for (NSInteger k = (NSInteger)list.count - 1; k >= 0; --k)
+        if ([list[k].name isEqualToString:name] && ![list[k] resolve:nil]) { if (i < 0 && page == 0) page = list[k].page; [list removeObjectAtIndex:k]; }
     FPRecent* r = [FPRecent new];
     r.name = name; r.bookmark = b; r.copyName = copyName ?: @""; r.page = page; r.time = NSDate.date.timeIntervalSince1970;
     [list insertObject:r atIndex:0];

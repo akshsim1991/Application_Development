@@ -36,11 +36,11 @@ NS_ASSUME_NONNULL_BEGIN
 @interface FPRecent : NSObject
 @property(nonatomic, copy) NSString* name;
 @property(nonatomic, copy) NSData* bookmark;
-@property(nonatomic, copy) NSString* copyName;   // the copy kept in Caches/open when it was last opened ("" none)
+@property(nonatomic, copy) NSString* keptName;   // the copy kept in Caches/open when it was last opened ("" none)
 @property(nonatomic) int page;
 @property(nonatomic) double time;
 + (NSArray<FPRecent*>*)list;
-+ (void)add:(NSURL*)url name:(NSString*)name bookmark:(nullable NSData*)bookmark copy:(nullable NSString*)copyName;
++ (void)add:(NSURL*)url name:(NSString*)name bookmark:(nullable NSData*)bookmark copy:(nullable NSString*)keptName;
 /** The file manager moved or renamed a file: its entry follows it. */
 + (void)moved:(NSURL*)from to:(NSURL*)to;
 /** The file manager deleted a file: its entry goes. */

@@ -60,7 +60,7 @@ static NSString* const kRecents = @"recents";
     for (NSDictionary* d in [D() arrayForKey:kRecents] ?: @[]) {
         FPRecent* r = [FPRecent new];
         r.name = d[@"name"] ?: @"Document.pdf"; r.bookmark = d[@"bookmark"] ?: [NSData data];
-        r.copyName = d[@"copy"] ?: @"";
+        r.keptName = d[@"copy"] ?: @"";
         r.page = [d[@"page"] intValue]; r.time = [d[@"time"] doubleValue];
         [out addObject:r];
     }
@@ -68,7 +68,7 @@ static NSString* const kRecents = @"recents";
 }
 + (void)save:(NSArray<FPRecent*>*)list {
     NSMutableArray* a = [NSMutableArray array];
-    for (FPRecent* r in list) [a addObject:@{@"name": r.name, @"bookmark": r.bookmark, @"copy": r.copyName ?: @"", @"page": @(r.page), @"time": @(r.time)}];
+    for (FPRecent* r in list) [a addObject:@{@"name": r.name, @"bookmark": r.bookmark, @"copy": r.keptName ?: @"", @"page": @(r.page), @"time": @(r.time)}];
     [D() setObject:a forKey:kRecents];
 }
 static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvingSymlinksInPath.path ?: @""; }
@@ -80,7 +80,7 @@ static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvi
     }
     return -1;
 }
-+ (void)add:(NSURL*)url name:(NSString*)name bookmark:(NSData*)bookmark copy:(NSString*)copyName {
++ (void)add:(NSURL*)url name:(NSString*)name bookmark:(NSData*)bookmark copy:(NSString*)keptName {
     NSData* b = bookmark;
     if (!b) {   // (a file of the app's own needs no permission)
         const BOOL scoped = [url startAccessingSecurityScopedResource];
@@ -97,7 +97,7 @@ static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvi
     for (NSInteger k = (NSInteger)list.count - 1; k >= 0; --k)
         if ([list[k].name isEqualToString:name] && ![list[k] resolve:nil]) { if (i < 0 && page == 0) page = list[k].page; [list removeObjectAtIndex:k]; }
     FPRecent* r = [FPRecent new];
-    r.name = name; r.bookmark = b; r.copyName = copyName ?: @""; r.page = page; r.time = NSDate.date.timeIntervalSince1970;
+    r.name = name; r.bookmark = b; r.keptName = keptName ?: @""; r.page = page; r.time = NSDate.date.timeIntervalSince1970;
     [list insertObject:r atIndex:0];
     while (list.count > 20) [list removeLastObject];
     [self save:list];
@@ -164,9 +164,9 @@ static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvi
     return u;
 }
 - (NSString*)keptCopy {
-    if (self.copyName.length == 0) return nil;
+    if (self.keptName.length == 0) return nil;
     NSString* p = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"open"]
-                   stringByAppendingPathComponent:self.copyName];
+                   stringByAppendingPathComponent:self.keptName];
     return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : nil;
 }
 @end

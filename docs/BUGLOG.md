@@ -1773,3 +1773,17 @@ redrawn icons. All five downloads match latest.json.
   folders and sub-folders are found (a text file is not), searches, renames, duplicates, moves, copies and deletes and
   checks the files on disk and the list; the update download refuses a file whose fingerprint differs and keeps a good
   one in Updates.
+
+### B-136 A release for one kind of device made every app update - Medium (all)
+- **Found:** the user: an update that changed only the iPhone app made Windows and macOS (and Android) download and
+  install an update that changed nothing.
+- **Root cause:** latest.json had one version for every app, and every app compared its own with it; the release
+  script always published every app at the new version.
+- **Fix:** each download in latest.json carries its own version and notes, and each app compares its own (Windows and
+  macOS: shared/update.cpp; Android: Updater.kt; iPhone: FPUpdater), the release's version being only a fallback.
+  scripts/publish-release.sh takes PLATFORMS (default all): only those apps are copied and given the new version; the
+  others keep their entry and file. The release's version stays the newest of the computer and Android apps, so the
+  copies installed before this change (which read only it) are not offered an update meant for the iPhone.
+- **Tests:** a dry run of an iPhone-only release on a copy of the releases repository: Windows, macOS and Android stay
+  at 2.27.1 with their files, the release's version stays 2.27.1, the iPhone entry becomes 2.28.0; a release for an app
+  whose file is missing stops with "missing releases/...".

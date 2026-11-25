@@ -4,7 +4,8 @@ Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
 ## 2.28.0 "Galaxy" (25 November 2026)
 
-iPhone and iPad:
+iPhone and iPad only: Windows, macOS and Android stay at 2.27.1 and are not offered an update. From now on each app
+has its own version in the version file, and a release for one kind of device leaves the others alone.
 
 - New: Search for PDF files on your iPhone (the button next to Settings, and on the start screen). It finds every PDF in
   Feather PDF's folder (On My iPhone > Feather PDF) and in the places you let it search: add "On My iPhone" and

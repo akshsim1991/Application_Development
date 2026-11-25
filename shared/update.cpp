@@ -73,7 +73,19 @@ bool parse(const std::string& json, Release& out) {
     Reader r{json};
     if (!r.object("", kv)) return false;
     out = Release{};
+    // Each download may carry its own version and notes (a release for one kind of device leaves the others' as they
+    // were, so they are not offered an update that changes nothing): this app's own, when given, are the ones compared.
+#if defined(_WIN32)
+    const std::string mine = "windows.";
+#elif defined(__APPLE__)
+    const std::string mine = "mac.";
+#else
+    const std::string mine = "linux.";
+#endif
+    std::string ownVersion, ownNotes;
     for (const auto& [k, v] : kv) {
+        if (k == mine + "version") ownVersion = v;
+        else if (k == mine + "notes") ownNotes = v;
         if (k == "version") out.version = v;
         else if (k == "date") out.date = v;
         else if (k == "notes") out.notes = platform::wide(v);
@@ -84,6 +96,7 @@ bool parse(const std::string& json, Release& out) {
         else if (k == "mac.sha256") out.mac.sha256 = v;
         else if (k == "mac.size") out.mac.size = std::atoll(v.c_str());
     }
+    if (!ownVersion.empty()) { out.version = ownVersion; if (!ownNotes.empty()) out.notes = platform::wide(ownNotes); }
     return !out.version.empty();
 }
 

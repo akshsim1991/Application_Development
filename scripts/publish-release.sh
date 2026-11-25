@@ -1,49 +1,78 @@
 #!/usr/bin/env bash
 # Publishes the installers in releases/ to the public releases repository (akshsim1991/FeatherPDF-releases), with the
 # version file the apps read to find new versions (shared/update.hpp). Usage:
-#   scripts/publish-release.sh path/to/FeatherPDF-releases-checkout "What is new, a line or two"
-# It copies FeatherPDF-Setup-<version>.exe, FeatherPDF-<version>-mac.dmg, FeatherPDF-<version>-android.apk and
-# FeatherPDF-<version>-ios.ipa, writes
-# latest.json (version, date, notes, and for each file its address, size and SHA-256), then commits and pushes. All of
-# them must be of the same version.
+#   [PLATFORMS="ios"] scripts/publish-release.sh path/to/FeatherPDF-releases-checkout "What is new, a line or two"
+# PLATFORMS says which apps this release is for (default: windows mac android ios). Each of them is copied
+# (FeatherPDF-Setup-<version>.exe, FeatherPDF-<version>-mac.dmg, FeatherPDF-<version>-android.apk (and -32bit),
+# FeatherPDF-<version>-ios.ipa) and gets this version and notes in latest.json (with its address, size and SHA-256);
+# the others keep their entry and file as they were, so their apps are not offered an update that changes nothing.
+# Then it commits and pushes.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 dest="$1"; notes="${2:-}"
+platforms="${PLATFORMS:-windows mac android ios}"
 version="$(sed -n 's/^project(FeatherPDF VERSION \([0-9.]*\).*/\1/p' "$root/CMakeLists.txt")"
-win="FeatherPDF-Setup-$version.exe"; mac="FeatherPDF-$version-mac.dmg"; apk="FeatherPDF-$version-android.apk"
-apk32="FeatherPDF-$version-android-32bit.apk"   # older 32-bit phones (optional)
-ipa="FeatherPDF-$version-ios.ipa"   # iPhone and iPad, installed from a Mac (sideloaded)
-for f in "$win" "$mac" "$apk" "$ipa"; do [ -f "$root/releases/$f" ] || { echo "missing releases/$f"; exit 1; }; done
 base="https://raw.githubusercontent.com/akshsim1991/FeatherPDF-releases/main"
-# The previous release's files stay one release longer: GitHub's servers go on handing out the old latest.json for a few
-# minutes after this is pushed, and an update started then fetches the old installer. Older ones go.
-previous="$(sed -n 's/.*"version": "\([0-9.]*\)".*/\1/p' "$dest/latest.json" 2>/dev/null | head -1)"
-for f in "$dest"/FeatherPDF-Setup-*.exe "$dest"/FeatherPDF-*-mac.dmg "$dest"/FeatherPDF-*-android.apk "$dest"/FeatherPDF-*-android-32bit.apk "$dest"/FeatherPDF-*-ios.ipa; do
-  [ -e "$f" ] || continue
-  case "$(basename "$f")" in *"-$version"[.-]*|*"-$version-"*) continue ;; esac
-  if [ -n "$previous" ] && [ "$previous" != "$version" ]; then
-    case "$(basename "$f")" in *"-$previous."*|*"-$previous-"*) continue ;; esac
-  fi
-  rm -f "$f"
-done
-cp "$root/releases/$win" "$root/releases/$mac" "$root/releases/$apk" "$root/releases/$ipa" "$dest/"
-[ -f "$root/releases/$apk32" ] && cp "$root/releases/$apk32" "$dest/"
 cp "$root/docs/PRIVACY.md" "$dest/PRIVACY.md"   # the privacy policy Google Play and the apps link to
-python3 - "$dest" "$version" "$notes" "$base" "$win" "$mac" "$apk" "$apk32" "$ipa" <<'PY'
-import hashlib, json, os, sys, datetime
-dest, version, notes, base, win, mac, apk, apk32, ipa = sys.argv[1:]
+# latest.json, and which files each app's download is now (the shell variables for the README below)
+eval "$(python3 - "$dest" "$version" "$notes" "$base" "$root/releases" "$platforms" <<'PY'
+import hashlib, json, os, sys, datetime, shutil
+dest, version, notes, base, rel, platforms = sys.argv[1:]
+platforms = platforms.split()
+names = {"windows": f"FeatherPDF-Setup-{version}.exe", "mac": f"FeatherPDF-{version}-mac.dmg",
+         "android": f"FeatherPDF-{version}-android.apk", "android32": f"FeatherPDF-{version}-android-32bit.apk",
+         "ios": f"FeatherPDF-{version}-ios.ipa"}
+try: old = json.load(open(os.path.join(dest, "latest.json")))
+except Exception: old = {}
 def pkg(name):
-    data = open(os.path.join(dest, name), 'rb').read()
-    return {"url": f"{base}/{name}", "size": len(data), "sha256": hashlib.sha256(data).hexdigest()}
-latest = {"version": version, "date": datetime.date.today().strftime("%-d %B %Y"), "notes": notes,
-          "windows": pkg(win), "mac": pkg(mac), "android": pkg(apk), "ios": pkg(ipa)}
-if os.path.exists(os.path.join(dest, apk32)):
-    latest["android32"] = pkg(apk32)   # older 32-bit phones (the Android app's updater takes it there)
-open(os.path.join(dest, "latest.json"), "w").write(json.dumps(latest, indent=2, ensure_ascii=True) + "\n")
-print(json.dumps(latest, indent=2))
+    data = open(os.path.join(dest, name), "rb").read()
+    return {"url": f"{base}/{name}", "size": len(data), "sha256": hashlib.sha256(data).hexdigest(), "version": version, "notes": notes}
+def vkey(v): return [int(x) if x.isdigit() else 0 for x in v.split(".")]
+latest = {}
+for key in ["windows", "mac", "android", "android32", "ios"]:
+    owner = "android" if key == "android32" else key
+    if owner in platforms:
+        src = os.path.join(rel, names[key])
+        if not os.path.exists(src):
+            if key == "android32": continue   # (optional)
+            print(f"echo 'missing releases/{names[key]}'; exit 1"); sys.exit(0)   # (run by the shell's eval)
+        shutil.copy(src, os.path.join(dest, names[key]))
+        latest[key] = pkg(names[key])
+    elif key in old:   # as it was (its version: its own, or the release's it came with)
+        e = dict(old[key]); e.setdefault("version", old.get("version", "")); e.setdefault("notes", old.get("notes", ""))
+        latest[key] = e
+# The release's version, for apps that read only it (those before per-device versions): the newest of the computer
+# and Android apps, so they are not offered an update that is only for other devices.
+desk = [latest[k]["version"] for k in ("windows", "mac", "android") if k in latest]
+top = max(desk, key=vkey) if desk else version
+topNotes = next((latest[k]["notes"] for k in ("windows", "mac", "android") if k in latest and latest[k]["version"] == top), notes)
+out = {"version": top, "date": datetime.date.today().strftime("%-d %B %Y"), "notes": topNotes}
+for k in ["windows", "mac", "android", "ios", "android32"]:
+    if k in latest: out[k] = latest[k]
+open(os.path.join(dest, "latest.json"), "w").write(json.dumps(out, indent=2, ensure_ascii=True) + "\n")
+print(json.dumps(out, indent=2), file=sys.stderr)
+# The files: those latest.json names, and the ones the previous latest.json named (GitHub's servers go on handing out
+# the old latest.json for a few minutes after a push, and an update started then fetches the old file). Others go.
+keep = {os.path.basename(e["url"]) for e in out.values() if isinstance(e, dict)}
+keep |= {os.path.basename(e["url"]) for e in old.values() if isinstance(e, dict) and "url" in e}
+for f in os.listdir(dest):
+    if f.startswith("FeatherPDF-") and f.endswith((".exe", ".dmg", ".apk", ".ipa")) and f not in keep:
+        os.remove(os.path.join(dest, f))
+fn = lambda k: os.path.basename(out[k]["url"]) if k in out else ""
+vv = lambda k: out[k]["version"] if k in out else ""
+newest = max([vv(k) for k in ("windows", "mac", "android", "ios") if vv(k)], key=vkey)
+print(f'win="{fn("windows")}"; mac="{fn("mac")}"; apk="{fn("android")}"; apk32="{fn("android32")}"; ipa="{fn("ios")}"; newest="{newest}"')
+print(f'vwin="{vv("windows")}"; vmac="{vv("mac")}"; vapk="{vv("android")}"; vipa="{vv("ios")}"')
+PY
+)"
+python3 - "$dest" "$version" "$notes" "$base" <<'PY'
+import json, os, sys, datetime
+dest, version, notes, base = sys.argv[1:]
+latest = json.load(open(os.path.join(dest, "latest.json")))
 # AltStore's source (altstore.json): with it added in AltStore (the iPhone app's Settings > Keep up to date with AltStore),
 # AltStore finds and installs new versions of the iPhone app by itself
 ios = latest["ios"]
+version, notes = ios.get("version", version), ios.get("notes", notes)   # (the iPhone app's own)
 app = {"name": "Feather PDF", "bundleIdentifier": "com.featherpdf.ios", "developerName": "Feather PDF",
        "subtitle": "A fast, free PDF reader and editor.",
        "localizedDescription": "Read, find, edit text and equations, highlight, draw, add notes, turn and delete pages, "
@@ -66,7 +95,7 @@ cat > "$dest/README.md" <<MD
 A fast, free PDF reader and editor for Windows, macOS, Android, iPhone and iPad. Everything happens on your own device: no account,
 no cloud service, no tracking. Free to use and share, always.
 
-**Version $version**
+**Newest: version $newest** (Windows $vwin, macOS $vmac, Android $vapk, iPhone and iPad $vipa)
 
 - Windows 7 SP1, 8.1, 10 and 11 (64-bit): [$win]($base/$win) (or from the mirror: [$win]($mirror/$win))
 - macOS 11 or later (Apple silicon and Intel): [$mac]($base/$mac) (or from the mirror: [$mac]($mirror/$mac))

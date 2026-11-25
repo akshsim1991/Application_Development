@@ -106,15 +106,16 @@ static NSString* offered = nil;   // the version offered while the app runs (ask
             if (manual) [self tell:from title:@"No answer from the releases page" message:[NSString stringWithFormat:@"Is the iPhone online? (%@)", err.localizedDescription ?: @""]];
             return;
         }
-        NSString* v = [j[@"version"] isKindOfClass:NSString.class] ? j[@"version"] : @"0";
         NSDictionary* ios = [j[@"ios"] isKindOfClass:NSDictionary.class] ? j[@"ios"] : nil;
+        // the iPhone app's own version when given (a release for other devices leaves the iPhone's as it was)
+        NSString* v = [ios[@"version"] isKindOfClass:NSString.class] ? ios[@"version"] : [j[@"version"] isKindOfClass:NSString.class] ? j[@"version"] : @"0";
         if ([self compare:v with:self.version] <= 0 || !ios || ![ios[@"url"] isKindOfClass:NSString.class]) {
             busy = NO;
             if (manual) [self tell:from title:@"Feather PDF is up to date" message:[NSString stringWithFormat:@"Version %@ is the newest.", self.version]];
             return;
         }
         if (!manual && [offered isEqualToString:v]) { busy = NO; return; }   // (asked already while the app runs)
-        NSString* notes = [j[@"notes"] isKindOfClass:NSString.class] ? j[@"notes"] : @"";
+        NSString* notes = [ios[@"notes"] isKindOfClass:NSString.class] ? ios[@"notes"] : [j[@"notes"] isKindOfClass:NSString.class] ? j[@"notes"] : @"";
         NSString* url = ios[@"url"];
         // downloaded at once, then offered
         [self download:url version:v size:[ios[@"size"] longLongValue] sha256:[ios[@"sha256"] isKindOfClass:NSString.class] ? ios[@"sha256"] : @""

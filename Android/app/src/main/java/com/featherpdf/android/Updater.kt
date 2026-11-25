@@ -61,7 +61,9 @@ object Updater {
         val j = JSONObject(text)
         val only32 = Build.SUPPORTED_64_BIT_ABIS.isEmpty()
         val a = if (only32 && j.has("android32")) j.getJSONObject("android32") else j.getJSONObject("android")
-        return Release(j.getString("version"), j.optString("notes", ""), a.getString("url"), a.optLong("size", -1), a.optString("sha256", ""))
+        // the APK's own version and notes when given (a release for other devices leaves Android's as it was)
+        return Release(a.optString("version", "").ifEmpty { j.getString("version") }, a.optString("notes", "").ifEmpty { j.optString("notes", "") },
+                       a.getString("url"), a.optLong("size", -1), a.optString("sha256", ""))
     }
 
     private fun get(address: String, progress: ((Long) -> Unit)? = null, into: File? = null): ByteArray {

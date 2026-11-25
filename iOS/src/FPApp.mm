@@ -452,8 +452,17 @@
     }];
     // Recent: opens the file again; follows a rename; a file deleted behind Feather PDF's back opens from the kept copy
     NSURL* recentFile = [work URLByAppendingPathComponent:@"Report final.pdf"];
-    [self step:@"recent: open" do:^{ files.openFile(recentFile); }];
+    __block NSInteger tabsBefore = 0;
+    [self step:@"recent: open" do:^{ tabsBefore = v.tabCount; files.openFile(recentFile); }];
+    for (int k = 0; k < 4; ++k) [self step:@"recent: opening" do:^{}];   // (read in the background, then opened)
     [self step:@"recent: listed" do:^{
+        [me note:[NSString stringWithFormat:@"tabs %ld -> %ld; recent %lu", (long)tabsBefore, (long)v.tabCount, (unsigned long)FPRecent.list.count]];
+        for (FPRecent* e in FPRecent.list) {
+            NSString* w = nil;
+            NSURL* x = [e resolve:&w];
+            [me note:[NSString stringWithFormat:@"recent %@: bookmark %lu bytes, kept %@, resolves to %@ (%@)", e.name, (unsigned long)e.bookmark.length,
+                      e.keptName.length ? e.keptName : @"-", x.path ?: @"nothing", w ?: @""]];
+        }
         FPRecent* r = FPRecent.list.firstObject;
         NSURL* u = [r resolve:nil];
         [me check:[NSString stringWithFormat:@"the document is in Recent and opens again (%@)", u.lastPathComponent ?: @"not reached"] ok:u && [u.lastPathComponent isEqualToString:@"Report final.pdf"]];

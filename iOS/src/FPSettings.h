@@ -36,15 +36,23 @@ NS_ASSUME_NONNULL_BEGIN
 @interface FPRecent : NSObject
 @property(nonatomic, copy) NSString* name;
 @property(nonatomic, copy) NSData* bookmark;
+@property(nonatomic, copy) NSString* copyName;   // the copy kept in Caches/open when it was last opened ("" none)
 @property(nonatomic) int page;
 @property(nonatomic) double time;
 + (NSArray<FPRecent*>*)list;
-+ (void)add:(NSURL*)url name:(NSString*)name;
++ (void)add:(NSURL*)url name:(NSString*)name bookmark:(nullable NSData*)bookmark copy:(nullable NSString*)copyName;
+/** The file manager moved or renamed a file: its entry follows it. */
++ (void)moved:(NSURL*)from to:(NSURL*)to;
+/** The file manager deleted a file: its entry goes. */
++ (void)forget:(NSURL*)url;
 + (void)setPage:(int)page forURL:(NSURL*)url;
 + (int)pageForURL:(NSURL*)url;
 + (void)remove:(FPRecent*)r;
 + (void)clear;
-- (nullable NSURL*)resolve;
+/** The file (a stale bookmark is made again, so it keeps working); nil when it cannot be reached, with why. */
+- (nullable NSURL*)resolve:(NSString* _Nullable * _Nullable)why;
+/** The copy kept when it was last opened, when it is still there. */
+- (nullable NSString*)keptCopy;
 @end
 
 NS_ASSUME_NONNULL_END

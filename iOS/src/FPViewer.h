@@ -11,6 +11,8 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)openURL:(NSURL*)url;
 /** The build check: a file of the app's own, opened as it is (no security scope). */
 - (void)openPath:(NSString*)path;
+/** Recent, when the original cannot be reached: the copy kept when it was last opened (saving makes a new file). */
+- (void)openKeptCopy:(NSString*)path name:(NSString*)name page:(int)page;
 @property(nonatomic, readonly) NSInteger tabCount;
 @property(nonatomic, readonly) NSInteger currentTab;
 @property(nonatomic, readonly) FPDoc document;

@@ -6,6 +6,7 @@
 #import "FPSettingsController.h"
 #import "FPUpdater.h"
 #import "FPViewer.h"
+#import "FPFiles.h"
 
 // ---------------------------------------------------------------------------------------------------------------
 // The start screen
@@ -13,6 +14,8 @@
 @interface FPStart : UIViewController <UITableViewDataSource, UITableViewDelegate, UIDocumentPickerDelegate>
 @property(nonatomic, readonly) FPViewer* viewer;
 - (void)openURL:(NSURL*)url;
+- (FPFiles*)showFilesSearching:(nullable NSString*)text;
+- (void)openRecent:(FPRecent*)r;
 @end
 
 @implementation FPStart {
@@ -34,7 +37,9 @@
     gear.accessibilityLabel = @"Settings";
     UIBarButtonItem* about = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"info.circle"] style:UIBarButtonItemStylePlain target:self action:@selector(about)];
     about.accessibilityLabel = @"About Feather PDF";
-    self.navigationItem.rightBarButtonItems = @[gear, about];
+    UIBarButtonItem* find = [[UIBarButtonItem alloc] initWithImage:[UIImage systemImageNamed:@"doc.text.magnifyingglass"] style:UIBarButtonItemStylePlain target:self action:@selector(showFiles)];
+    find.accessibilityLabel = @"Search for PDF files on your iPhone";
+    self.navigationItem.rightBarButtonItems = @[gear, find, about];   // (right to left: Search next to Settings)
 
     UIButtonConfiguration* c = [UIButtonConfiguration filledButtonConfiguration];
     c.title = @"Open a PDF";
@@ -46,6 +51,15 @@
     UIButton* open = [UIButton buttonWithConfiguration:c primaryAction:[UIAction actionWithHandler:^(UIAction*) { [self pick]; }]];
     open.translatesAutoresizingMaskIntoConstraints = NO;
     [self.view addSubview:open];
+    UIButtonConfiguration* fc = [UIButtonConfiguration tintedButtonConfiguration];
+    fc.title = @"Search for PDF files on your iPhone";
+    fc.image = [UIImage systemImageNamed:@"doc.text.magnifyingglass"];
+    fc.imagePadding = 10;
+    fc.cornerStyle = UIButtonConfigurationCornerStyleLarge;
+    fc.contentInsets = NSDirectionalEdgeInsetsMake(12, 20, 12, 20);
+    UIButton* files = [UIButton buttonWithConfiguration:fc primaryAction:[UIAction actionWithHandler:^(UIAction*) { [self showFiles]; }]];
+    files.translatesAutoresizingMaskIntoConstraints = NO;
+    [self.view addSubview:files];
 
     _list = [[UITableView alloc] initWithFrame:CGRectZero style:UITableViewStyleInsetGrouped];
     _list.dataSource = self; _list.delegate = self;
@@ -62,7 +76,10 @@
         [open.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor constant:16],
         [open.leadingAnchor constraintEqualToAnchor:self.view.readableContentGuide.leadingAnchor],
         [open.trailingAnchor constraintEqualToAnchor:self.view.readableContentGuide.trailingAnchor],
-        [_list.topAnchor constraintEqualToAnchor:open.bottomAnchor constant:8],
+        [files.topAnchor constraintEqualToAnchor:open.bottomAnchor constant:10],
+        [files.leadingAnchor constraintEqualToAnchor:self.view.readableContentGuide.leadingAnchor],
+        [files.trailingAnchor constraintEqualToAnchor:self.view.readableContentGuide.trailingAnchor],
+        [_list.topAnchor constraintEqualToAnchor:files.bottomAnchor constant:8],
         [_list.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor], [_list.trailingAnchor constraintEqualToAnchor:self.view.trailingAnchor],
         [_list.bottomAnchor constraintEqualToAnchor:self.view.bottomAnchor],
         [_empty.centerYAnchor constraintEqualToAnchor:self.view.centerYAnchor],
@@ -90,6 +107,20 @@
         return;
     }
     if (![NSProcessInfo.processInfo.arguments containsObject:@"--selftest"]) [FPUpdater checkOnOpen:self];
+}
+
+/** The PDF files on the iPhone: search, open, rename, move, duplicate, delete... */
+- (FPFiles*)showFiles { return [self showFilesSearching:nil]; }
+
+- (FPFiles*)showFilesSearching:(nullable NSString*)text {
+    if (self.presentedViewController) [self dismissViewControllerAnimated:NO completion:nil];
+    FPFiles* f = [[FPFiles alloc] initWithSearch:text];
+    __weak FPStart* me = self;
+    f.openFile = ^(NSURL* u) { [me openURL:u]; };
+    self.navigationController.navigationBar.prefersLargeTitles = NO;
+    [self.navigationController popToRootViewControllerAnimated:NO];
+    [self.navigationController pushViewController:f animated:YES];
+    return f;
 }
 
 - (void)settings {
@@ -120,8 +151,12 @@
     UINavigationController* n = self.navigationController;
     if (n.topViewController != _viewer) {
         n.navigationBar.prefersLargeTitles = NO;
-        [n popToRootViewControllerAnimated:NO];
-        [n pushViewController:_viewer animated:YES];
+        // over the PDF files list when opened from there (back, the house, returns to it); else from the start
+        if ([n.viewControllers containsObject:_viewer]) [n popToViewController:_viewer animated:NO];
+        else {
+            if (![n.topViewController isKindOfClass:FPFiles.class]) [n popToRootViewControllerAnimated:NO];
+            [n pushViewController:_viewer animated:YES];
+        }
     }
 }
 
@@ -154,18 +189,30 @@
 
 - (void)tableView:(UITableView*)t didSelectRowAtIndexPath:(NSIndexPath*)ip {
     [t deselectRowAtIndexPath:ip animated:YES];
-    FPRecent* r = _recents[ip.row];
-    NSURL* u = [r resolve];
-    if (!u) {
-        UIAlertController* a = [UIAlertController alertControllerWithTitle:@"The document is not there any more"
-                                                                   message:@"It may have been moved, renamed or deleted. Open it again from Files." preferredStyle:UIAlertControllerStyleAlert];
-        [a addAction:[UIAlertAction actionWithTitle:@"Remove from the list" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
-            [FPRecent remove:r]; [self viewWillAppear:NO]; }]];
-        [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleCancel handler:nil]];
-        [self presentViewController:a animated:YES completion:nil];
-        return;
-    }
-    [self openURL:u];
+    [self openRecent:_recents[ip.row]];
+}
+
+/** A recent document: the file where it is; when it cannot be reached, the copy kept when it was last read, or a
+ *  search for it among the PDFs on the iPhone (it may have been moved or renamed). */
+- (void)openRecent:(FPRecent*)r {
+    NSString* why = nil;
+    NSURL* u = [r resolve:&why];
+    if (u) { [self openURL:u]; return; }
+    NSString* kept = [r keptCopy];
+    NSString* msg = [NSString stringWithFormat:@"%@%@", why.length ? [why stringByAppendingString:@"\n\n"] : @"",
+                     kept ? @"Feather PDF kept a copy from when you last read it. Or find the file, if it was moved or renamed." : @"Find it, if it was moved or renamed."];
+    UIAlertController* a = [UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"%@ is not where it was", r.name] message:msg preferredStyle:UIAlertControllerStyleAlert];
+    if (kept) [a addAction:[UIAlertAction actionWithTitle:@"Open the kept copy" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+        [self showViewer];
+        [self->_viewer loadViewIfNeeded];
+        [self->_viewer openKeptCopy:kept name:r.name page:r.page];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Find it" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
+        [self showFilesSearching:r.name.stringByDeletingPathExtension]; }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Remove from the list" style:UIAlertActionStyleDestructive handler:^(UIAlertAction*) {
+        [FPRecent remove:r]; [self viewWillAppear:NO]; }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
 }
 
 - (UISwipeActionsConfiguration*)tableView:(UITableView*)t trailingSwipeActionsConfigurationForRowAtIndexPath:(NSIndexPath*)ip {
@@ -357,6 +404,86 @@
         [me shot:@"08-settings"];
         [v dismissViewControllerAnimated:NO completion:nil];
     }];
+    // the PDF files on the iPhone: found in folders and sub-folders, searched, renamed, duplicated, moved, copied, deleted
+    NSURL* lib = FPPlaces.library;
+    NSURL* work = [lib URLByAppendingPathComponent:@"Work"];
+    NSURL* sub = [work URLByAppendingPathComponent:@"Old"];
+    __block FPFiles* files = nil;
+    NSFileManager* fm = NSFileManager.defaultManager;
+    auto exists = ^BOOL(NSURL* u) { return [fm fileExistsAtPath:u.path]; };
+    [self step:@"file manager" do:^{
+        [fm createDirectoryAtURL:sub withIntermediateDirectories:YES attributes:nil error:nil];
+        [fm copyItemAtPath:self->_in toPath:[work URLByAppendingPathComponent:@"Report A.pdf"].path error:nil];
+        [fm copyItemAtPath:self->_in toPath:[sub URLByAppendingPathComponent:@"Budget B.pdf"].path error:nil];
+        [@"not a PDF" writeToURL:[work URLByAppendingPathComponent:@"notes.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
+        files = [self->_start showFilesSearching:nil];
+    }];
+    [self step:@"files found" do:^{
+        NSMutableSet* names = [NSMutableSet set];
+        for (FPFileItem* it in files.found) [names addObject:it.name];
+        [me note:[NSString stringWithFormat:@"found %@", [[names allObjects] componentsJoinedByString:@", "]]];
+        [me check:@"the PDFs in folders and sub-folders are found" ok:[names containsObject:@"in.pdf"] && [names containsObject:@"Report A.pdf"] && [names containsObject:@"Budget B.pdf"]];
+        [me check:@"only PDFs" ok:![names containsObject:@"notes.txt"]];
+        [me shot:@"13-files"];
+        [files setSearchText:@"budget"];
+        [me check:[NSString stringWithFormat:@"searching by name (%lu shown)", (unsigned long)files.shown.count] ok:files.shown.count == 1 && [files.shown.firstObject.name isEqualToString:@"Budget B.pdf"]];
+        [me shot:@"14-files-search"];
+        [files setSearchText:@""];
+    }];
+    [self step:@"file operations" do:^{
+        NSURL* a = [work URLByAppendingPathComponent:@"Report A.pdf"];
+        NSURL* renamed = nil, *dup = nil, *moved = nil, *copied = nil;
+        NSString* w = [FPFiles rename:a to:@"Report final" result:&renamed];
+        [me check:[NSString stringWithFormat:@"rename (%@)", w ?: renamed.lastPathComponent] ok:!w && exists([work URLByAppendingPathComponent:@"Report final.pdf"]) && !exists(a)];
+        w = [FPFiles duplicate:renamed result:&dup];
+        [me check:[NSString stringWithFormat:@"duplicate (%@)", w ?: dup.lastPathComponent] ok:!w && [dup.lastPathComponent isEqualToString:@"Report final copy.pdf"] && exists(dup)];
+        w = [FPFiles move:[sub URLByAppendingPathComponent:@"Budget B.pdf"] into:lib result:&moved];
+        [me check:[NSString stringWithFormat:@"move into Feather PDF's folder (%@)", w ?: moved.path.lastPathComponent] ok:!w && exists([lib URLByAppendingPathComponent:@"Budget B.pdf"]) && !exists([sub URLByAppendingPathComponent:@"Budget B.pdf"])];
+        w = [FPFiles makeCopy:moved into:work result:&copied];
+        [me check:@"copy to a folder" ok:!w && exists([work URLByAppendingPathComponent:@"Budget B.pdf"]) && exists(moved)];
+        w = [FPFiles remove:dup];
+        [me check:@"delete" ok:!w && !exists(dup)];
+        [files rescan];
+    }];
+    [self step:@"files again" do:^{
+        NSMutableArray* names = [NSMutableArray array];
+        for (FPFileItem* it in files.found) [names addObject:it.name];
+        [me check:@"the list shows the changes" ok:[names containsObject:@"Report final.pdf"] && ![names containsObject:@"Report final copy.pdf"] && ![names containsObject:@"Report A.pdf"]];
+    }];
+    // Recent: opens the file again; follows a rename; a file deleted behind Feather PDF's back opens from the kept copy
+    NSURL* recentFile = [work URLByAppendingPathComponent:@"Report final.pdf"];
+    [self step:@"recent: open" do:^{ files.openFile(recentFile); }];
+    [self step:@"recent: listed" do:^{
+        FPRecent* r = FPRecent.list.firstObject;
+        NSURL* u = [r resolve:nil];
+        [me check:[NSString stringWithFormat:@"the document is in Recent and opens again (%@)", u.lastPathComponent ?: @"not reached"] ok:u && [u.lastPathComponent isEqualToString:@"Report final.pdf"]];
+        NSURL* to = nil;
+        [FPFiles rename:recentFile to:@"Report signed" result:&to];
+        NSURL* again = [FPRecent.list.firstObject resolve:nil];
+        [me check:[NSString stringWithFormat:@"renamed in the file manager, Recent follows it (%@)", again.lastPathComponent ?: @"lost"] ok:[again.lastPathComponent isEqualToString:@"Report signed.pdf"]];
+        [fm removeItemAtURL:to error:nil];   // (as another app would)
+        NSString* why = nil;
+        FPRecent* gone = FPRecent.list.firstObject;
+        [me check:@"deleted elsewhere: Recent says so" ok:[gone resolve:&why] == nil];
+        [me check:@"and has the copy kept when it was read" ok:gone.keptCopy != nil];
+        const NSInteger before = v.tabCount;
+        [v openKeptCopy:gone.keptCopy ?: @"" name:gone.name page:0];
+        [me check:@"the kept copy opens" ok:v.tabCount == before + 1];
+    }];
+    // a new version: downloaded and checked (its size and fingerprint); a damaged download is refused
+    [self step:@"update download" do:^{
+        NSString* fake = [lib.path stringByAppendingPathComponent:@"fake.ipa"];
+        [[@"Feather PDF update" dataUsingEncoding:NSUTF8StringEncoding] writeToFile:fake atomically:YES];
+        NSString* sha = @"62a9a8d9ac0f2a52dfa0aa0e0b8b13a95c3a6c0e8c0f0d0b3d45b5a8b0b0e4d2";   // (not its own: refused)
+        [FPUpdater download:[NSURL fileURLWithPath:fake].absoluteString version:@"9.9.9" size:18 sha256:sha then:^(NSString* file, NSString* error) {
+            [me check:[NSString stringWithFormat:@"a download that is not the published file is refused (%@)", error ?: @"accepted"] ok:file == nil && error != nil];
+            [FPUpdater download:[NSURL fileURLWithPath:fake].absoluteString version:@"9.9.9" size:18 sha256:@"" then:^(NSString* file2, NSString* error2) {
+                [me check:[NSString stringWithFormat:@"a good download is kept in Updates (%@)", error2 ?: file2.lastPathComponent]
+                       ok:file2 && [NSFileManager.defaultManager fileExistsAtPath:file2] && [file2 containsString:@"/Updates/"]];
+            }];
+        }];
+    }];
+    [self step:@"update download done" do:^{}];
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.6 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self next:0 waited:0]; });
 }
 @end
@@ -384,6 +511,7 @@
     self.window.tintColor = [UIColor colorWithRed:0.78 green:0.16 blue:0.16 alpha:1];
     [self.window makeKeyAndVisible];
     [FPSettings applyTheme];
+    [FPPlaces activate];   // the folders chosen for searching: their permission, for the files found there
     if ([NSProcessInfo.processInfo.arguments containsObject:@"--selftest"]) {
         _test = [[FPSelfTest alloc] initWithStart:_start window:self.window];
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ [self->_test run]; });
@@ -395,8 +523,23 @@
 - (BOOL)application:(UIApplication*)app openURL:(NSURL*)url options:(NSDictionary<UIApplicationOpenURLOptionsKey, id>*)options {
     if (!url.isFileURL) return NO;
     [_start loadViewIfNeeded];
+    // "Copy to Feather PDF" (not opened in place): iOS puts a copy in Documents/Inbox; it goes into Feather PDF's own
+    // folder, where the file manager finds it (and Recent can open it again)
+    NSString* inbox = [FPPlaces.library.path stringByAppendingPathComponent:@"Inbox"];
+    if (![options[UIApplicationOpenURLOptionsOpenInPlaceKey] boolValue] && [url.URLByStandardizingPath.path hasPrefix:inbox]) {
+        NSURL* to = nil;
+        if (![FPFiles move:url into:FPPlaces.library result:&to] && to) url = to;
+    }
     [_start openURL:url];
     return YES;
+}
+
+- (void)applicationDidBecomeActive:(UIApplication*)app {   // back in the app: a new version? (at most every 30 minutes)
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--selftest"]) return;
+    UIViewController* top = self.window.rootViewController;
+    while (top.presentedViewController) top = top.presentedViewController;
+    if ([top isKindOfClass:UINavigationController.class]) top = ((UINavigationController*)top).visibleViewController ?: top;
+    [FPUpdater checkOnOpen:top];
 }
 
 @end

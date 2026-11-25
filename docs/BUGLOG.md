@@ -1743,3 +1743,33 @@ the sideloading steps.
 
 **Published:** 2.27.1 for Windows, Mac, Android, iPhone and iPad (25 November); the Windows UI check passed with the
 redrawn icons. All five downloads match latest.json.
+
+### B-134 iPhone: every recent document said "not there any more" - High (iOS)
+- **Found:** the user: tapping a recent file always said "The document is not there any more. It may have been moved,
+  renamed or deleted. Open it again from Files."
+- **Root cause:** the bookmark that opens a recent document again was made after the app had given back its permission
+  to the file (FPViewer read the file between startAccessingSecurityScopedResource and stopAccessing..., and only then
+  FPRecent made the bookmark). iOS gives such a bookmark no way back into a file of Files, iCloud Drive or another app,
+  so resolving it failed every time, and the message blamed the file.
+- **Fix:** the bookmark is made while the permission is in force; a stale bookmark (the file moved or renamed) is made
+  again when it is resolved; the file manager tells Recent when it renames, moves or deletes a file. When a file really
+  cannot be reached, the message says why and offers the copy kept when it was last read (now in Caches, kept between
+  launches, not in the temporary folder) or a search for it among the PDFs on the iPhone.
+- **Tests:** the simulator build check opens a file from the file manager, finds it first in Recent and resolves it,
+  renames it and resolves it under the new name, deletes it behind Feather PDF's back, and checks that Recent says so
+  and that the kept copy opens.
+
+### B-135 iPhone: no way to find and manage the PDFs on the iPhone; updates only offered - Medium (iOS)
+- **Found:** the user: "Search for PDF files on your iPhone" next to Settings, a file manager for PDFs only (delete,
+  rename, move, duplicate...), and new versions downloaded at once.
+- **Fix:** FPFiles: the PDFs in Feather PDF's folder and in the places the user lets it search (bookmarks of folders
+  chosen once; iOS lets an app into nothing else), searched in the background, with search, sort, open, rename,
+  duplicate, move, copy, share, information and delete (to Recently Deleted where the place has one), one file or
+  several; every change goes through the file coordinator. PDFs handed over as copies (Documents/Inbox) are moved
+  into Feather PDF's folder. FPUpdater checks whenever the app opens or comes back (at most every 30 minutes),
+  downloads the new .ipa into Feather PDF > Updates and checks its size and SHA-256, then offers AltStore or SideStore
+  (one tap) or sharing the file to the Mac. The releases page gets an AltStore source (altstore.json).
+- **Tests:** the simulator build check makes folders and files, opens the file manager and checks that the PDFs in
+  folders and sub-folders are found (a text file is not), searches, renames, duplicates, moves, copies and deletes and
+  checks the files on disk and the list; the update download refuses a file whose fingerprint differs and keeps a good
+  one in Updates.

@@ -2,6 +2,26 @@
 
 Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
+## 2.28.0 "Galaxy" (25 November 2026)
+
+iPhone and iPad:
+
+- New: Search for PDF files on your iPhone (the button next to Settings, and on the start screen). It finds every PDF in
+  Feather PDF's folder (On My iPhone > Feather PDF) and in the places you let it search: add "On My iPhone" and
+  "iCloud Drive" once and it finds all your PDFs there, in every folder (iCloud files not yet downloaded too). Search
+  by name or folder; sort by name, date, size or folder; pull down to search again.
+- New: a file manager for PDFs, in the same list. Tap to open; swipe to rename or delete; touch and hold for open,
+  rename, duplicate, move, copy to another folder, share, information (place, size, pages, dates) and delete; Select to
+  share, move, duplicate or delete several at once. Moving and copying go to Feather PDF's folder, a searched place or
+  any folder. PDFs sent to Feather PDF from other apps are kept in its folder.
+- Fixed: tapping a recent document said "The document is not there any more" although it was. Recent documents now
+  open again; they follow files renamed or moved; and when one really was deleted or moved elsewhere, Feather PDF says
+  so and offers the copy it kept from when you last read it, or finds the file for you.
+- Updates: a new version is downloaded as soon as it is out (checked whenever the app opens, at most every 30
+  minutes) and checked against its published size and fingerprint. With AltStore or SideStore on the iPhone it installs
+  with one tap; Settings > Keep up to date with AltStore lets AltStore install new versions by itself. Otherwise the
+  downloaded file is shared to the Mac (AirDrop) and installed as the first time.
+
 ## 2.27.1 (25 November 2026)
 
 - New (Windows and macOS): rotate buttons in the toolbar, beside the zoom. Rotate left or right turns the page you are

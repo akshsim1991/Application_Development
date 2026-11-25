@@ -37,6 +37,8 @@
     <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
   </dict></array>
   <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+  <!-- new versions installed by AltStore or SideStore when the iPhone has one (FPUpdater) -->
+  <key>LSApplicationQueriesSchemes</key><array><string>altstore</string><string>sidestore</string></array>
   <key>UIFileSharingEnabled</key><true/>
   <key>ITSAppUsesNonExemptEncryption</key><false/>
 </dict>

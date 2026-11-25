@@ -366,6 +366,9 @@
         NSString* copy = nil;
         NSString* failure = nil;
         const BOOL scoped = [url startAccessingSecurityScopedResource];
+        // the bookmark that opens it again from Recent: made while the permission to read it is in force (one made
+        // after stopAccessing... cannot reach the file later: "not there any more")
+        NSData* mark = [url bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
         __block NSData* data = nil;
         NSError* err = nil;
         [[NSFileCoordinator new] coordinateReadingItemAtURL:url options:NSFileCoordinatorReadingWithoutChanges error:&err byAccessor:^(NSURL* u) {
@@ -383,17 +386,23 @@
                 [self openNext];
                 return;
             }
-            [self openCopy:copy url:url name:name password:@""];
+            [self openCopy:copy url:url name:name password:@"" mark:mark];
         });
     });
 }
 
 - (void)openPath:(NSString*)path {
-    [self openCopy:path url:nil name:path.lastPathComponent password:@""];
+    [self openCopy:path url:nil name:path.lastPathComponent password:@"" mark:nil];
+}
+
+- (void)openKeptCopy:(NSString*)path name:(NSString*)name page:(int)page {
+    [self openCopy:path url:nil name:name password:@"" mark:nil];
+    if (page > 0 && _current >= 0) [_pages goToPage:page];
 }
 
 - (NSString*)cachePathFor:(NSString*)key {
-    NSString* dir = [NSTemporaryDirectory() stringByAppendingPathComponent:@"open"];
+    // in Caches (kept between launches, unless iOS needs the room): Recent opens it when the original is gone
+    NSString* dir = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"open"];
     [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
     unsigned char h[CC_SHA256_DIGEST_LENGTH];
     NSData* k = [key dataUsingEncoding:NSUTF8StringEncoding];
@@ -403,11 +412,11 @@
     return [dir stringByAppendingPathComponent:[s stringByAppendingString:@".pdf"]];
 }
 
-- (void)openCopy:(NSString*)path url:(nullable NSURL*)url name:(NSString*)name password:(NSString*)password {
+- (void)openCopy:(NSString*)path url:(nullable NSURL*)url name:(NSString*)name password:(NSString*)password mark:(nullable NSData*)mark {
     int result = 0;
     FPDoc d = [FPEngine open:path password:password result:&result];
     if (!d) {
-        if (result == 4 || result == 5) { [self askPasswordFor:path url:url name:name wrong:result == 5]; return; }
+        if (result == 4 || result == 5) { [self askPasswordFor:path url:url name:name wrong:result == 5 mark:mark]; return; }
         [self tell:@"Feather PDF" message:[FPEngine describe:result name:name]];
         [self openNext];
         return;
@@ -416,7 +425,7 @@
     FPTab* t = [FPTab new];
     t.doc = d; t.url = url; t.name = name; t.localPath = path; t.zoom = 1;
     t.page = (url && FPSettings.restorePositions) ? [FPRecent pageForURL:url] : 0;
-    if (url) [FPRecent add:url name:name];
+    if (url) [FPRecent add:url name:name bookmark:mark copy:path.lastPathComponent];
     [_tabs addObject:t];
     _current = _tabs.count - 1;
     [self closeSearch];
@@ -432,7 +441,7 @@
     if (_waiting.count) { NSURL* u = _waiting.firstObject; [_waiting removeObjectAtIndex:0]; [self openURL:u]; }
 }
 
-- (void)askPasswordFor:(NSString*)path url:(nullable NSURL*)url name:(NSString*)name wrong:(BOOL)wrong {
+- (void)askPasswordFor:(NSString*)path url:(nullable NSURL*)url name:(NSString*)name wrong:(BOOL)wrong mark:(nullable NSData*)mark {
     UIAlertController* a = [UIAlertController alertControllerWithTitle:wrong ? @"Wrong password" : @"This document is protected"
                                                                message:wrong ? @"Try again." : @"Type its password to open it." preferredStyle:UIAlertControllerStyleAlert];
     [a addTextFieldWithConfigurationHandler:^(UITextField* f) { f.secureTextEntry = YES; f.placeholder = @"Password"; }];
@@ -441,7 +450,7 @@
         if (self->_tabs.count == 0) [self.navigationController popViewControllerAnimated:YES];
     }]];
     [a addAction:[UIAlertAction actionWithTitle:@"Open" style:UIAlertActionStyleDefault handler:^(UIAlertAction*) {
-        [self openCopy:path url:url name:name password:a.textFields.firstObject.text ?: @""];
+        [self openCopy:path url:url name:name password:a.textFields.firstObject.text ?: @"" mark:mark];
     }]];
     [self presentViewController:a animated:YES completion:nil];
 }

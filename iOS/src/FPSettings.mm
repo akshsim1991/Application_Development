@@ -60,6 +60,7 @@ static NSString* const kRecents = @"recents";
     for (NSDictionary* d in [D() arrayForKey:kRecents] ?: @[]) {
         FPRecent* r = [FPRecent new];
         r.name = d[@"name"] ?: @"Document.pdf"; r.bookmark = d[@"bookmark"] ?: [NSData data];
+        r.copyName = d[@"copy"] ?: @"";
         r.page = [d[@"page"] intValue]; r.time = [d[@"time"] doubleValue];
         [out addObject:r];
     }
@@ -67,28 +68,55 @@ static NSString* const kRecents = @"recents";
 }
 + (void)save:(NSArray<FPRecent*>*)list {
     NSMutableArray* a = [NSMutableArray array];
-    for (FPRecent* r in list) [a addObject:@{@"name": r.name, @"bookmark": r.bookmark, @"page": @(r.page), @"time": @(r.time)}];
+    for (FPRecent* r in list) [a addObject:@{@"name": r.name, @"bookmark": r.bookmark, @"copy": r.copyName ?: @"", @"page": @(r.page), @"time": @(r.time)}];
     [D() setObject:a forKey:kRecents];
 }
+static NSString* pathOf(NSURL* u) { return u.URLByStandardizingPath.URLByResolvingSymlinksInPath.path ?: @""; }
 + (NSInteger)indexOf:(NSURL*)url in:(NSArray<FPRecent*>*)list {
+    NSString* want = pathOf(url);
     for (NSUInteger i = 0; i < list.count; ++i) {
-        NSURL* u = [list[i] resolve];
-        if (u && [u.URLByStandardizingPath isEqual:url.URLByStandardizingPath]) return (NSInteger)i;
+        NSURL* u = [list[i] resolve:nil];
+        if (u && [pathOf(u) isEqualToString:want]) return (NSInteger)i;
     }
     return -1;
 }
-+ (void)add:(NSURL*)url name:(NSString*)name {
-    NSData* b = [url bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
++ (void)add:(NSURL*)url name:(NSString*)name bookmark:(NSData*)bookmark copy:(NSString*)copyName {
+    NSData* b = bookmark;
+    if (!b) {   // (a file of the app's own needs no permission)
+        const BOOL scoped = [url startAccessingSecurityScopedResource];
+        b = [url bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
+        if (scoped) [url stopAccessingSecurityScopedResource];
+    }
     if (!b) return;
     NSMutableArray<FPRecent*>* list = [[self list] mutableCopy];
     const NSInteger i = [self indexOf:url in:list];
     int page = 0;
     if (i >= 0) { page = list[i].page; [list removeObjectAtIndex:i]; }
     FPRecent* r = [FPRecent new];
-    r.name = name; r.bookmark = b; r.page = page; r.time = NSDate.date.timeIntervalSince1970;
+    r.name = name; r.bookmark = b; r.copyName = copyName ?: @""; r.page = page; r.time = NSDate.date.timeIntervalSince1970;
     [list insertObject:r atIndex:0];
     while (list.count > 20) [list removeLastObject];
     [self save:list];
+}
++ (void)moved:(NSURL*)from to:(NSURL*)to {
+    NSMutableArray<FPRecent*>* list = [[self list] mutableCopy];
+    const NSInteger i = [self indexOf:from in:list];
+    if (i < 0) {   // (the bookmark may already follow the file: then it is found by its new place)
+        const NSInteger j = [self indexOf:to in:list];
+        if (j >= 0) { list[j].name = to.lastPathComponent; [self save:list]; }
+        return;
+    }
+    const BOOL scoped = [to startAccessingSecurityScopedResource];
+    NSData* b = [to bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
+    if (scoped) [to stopAccessingSecurityScopedResource];
+    if (b) list[i].bookmark = b;
+    list[i].name = to.lastPathComponent;
+    [self save:list];
+}
++ (void)forget:(NSURL*)url {
+    NSMutableArray<FPRecent*>* list = [[self list] mutableCopy];
+    const NSInteger i = [self indexOf:url in:list];
+    if (i >= 0) { [list removeObjectAtIndex:i]; [self save:list]; }
 }
 + (void)setPage:(int)page forURL:(NSURL*)url {
     NSArray<FPRecent*>* list = [self list];
@@ -108,8 +136,33 @@ static NSString* const kRecents = @"recents";
     [self save:list];
 }
 + (void)clear { [D() removeObjectForKey:kRecents]; }
-- (NSURL*)resolve {
+- (NSURL*)resolve:(NSString**)why {
     BOOL stale = NO;
-    return [NSURL URLByResolvingBookmarkData:self.bookmark options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:nil];
+    NSError* err = nil;
+    NSURL* u = [NSURL URLByResolvingBookmarkData:self.bookmark options:0 relativeToURL:nil bookmarkDataIsStale:&stale error:&err];
+    if (!u) { if (why) *why = err.localizedDescription; return nil; }
+    const BOOL scoped = [u startAccessingSecurityScopedResource];
+    // there: a file, or (iCloud Drive) a file not downloaded yet, which opening downloads
+    NSNumber* ubiquitous = nil;
+    [u getResourceValue:&ubiquitous forKey:NSURLIsUbiquitousItemKey error:nil];
+    const BOOL there = [NSFileManager.defaultManager fileExistsAtPath:u.path] || ubiquitous.boolValue;
+    if (there && stale) {   // moved or renamed: the bookmark made again from where it is now
+        NSData* b = [u bookmarkDataWithOptions:0 includingResourceValuesForKeys:nil relativeToURL:nil error:nil];
+        if (b) {
+            NSMutableArray<FPRecent*>* list = [[FPRecent list] mutableCopy];
+            for (FPRecent* r in list) if ([r.bookmark isEqualToData:self.bookmark]) { r.bookmark = b; r.name = u.lastPathComponent; }
+            [FPRecent save:list];
+            self.bookmark = b;
+        }
+    }
+    if (scoped) [u stopAccessingSecurityScopedResource];
+    if (!there) { if (why) *why = @"It is not in its folder any more."; return nil; }
+    return u;
+}
+- (NSString*)keptCopy {
+    if (self.copyName.length == 0) return nil;
+    NSString* p = [[NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"open"]
+                   stringByAppendingPathComponent:self.copyName];
+    return [NSFileManager.defaultManager fileExistsAtPath:p] ? p : nil;
 }
 @end

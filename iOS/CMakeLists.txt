@@ -14,6 +14,7 @@ file(GLOB ICONS "${CMAKE_CURRENT_SOURCE_DIR}/resources/*.png")
 add_executable(FeatherPDFiOS MACOSX_BUNDLE
   src/FPApp.mm
   src/FPEngine.mm
+  src/FPFiles.mm
   src/FPPagesView.mm
   src/FPSettings.mm
   src/FPSettingsController.mm

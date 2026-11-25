@@ -52,8 +52,11 @@ static FPRow* toggle(NSString* title, BOOL (^get)(void), void (^set)(BOOL)) {
                  ^(UIView* c) { [me pick:@"Drawing colour" items:FPSettings.colourNames current:FPSettings.drawIndex from:c set:^(NSInteger i) { FPSettings.drawIndex = i; }]; }),
           choice(@"Line width", ^{ return FPSettings.widthNames[FPSettings.widthIndex]; },
                  ^(UIView* c) { [me pick:@"Line width" items:FPSettings.widthNames current:FPSettings.widthIndex from:c set:^(NSInteger i) { FPSettings.widthIndex = i; }]; })],
-        @[toggle(@"Check for new versions", ^{ return FPSettings.checkUpdates; }, ^(BOOL v) { FPSettings.checkUpdates = v; }),
+        @[toggle(@"Download new versions as soon as they are out", ^{ return FPSettings.checkUpdates; }, ^(BOOL v) { FPSettings.checkUpdates = v; }),
           choice(@"Check now", nil, ^(UIView*) { [FPUpdater checkNow:me]; }),
+          choice(@"Keep up to date with AltStore", nil, ^(UIView*) {
+              if (FPUpdater.altStoreInstalled) [FPUpdater addAltStoreSource];
+              else [me confirm:@"AltStore is not on this iPhone. With AltStore (altstore.io), Feather PDF updates install by themselves, with no Mac at hand. Installed from the Mac with Sideloadly, each new version is downloaded here and shared to the Mac." action:@"OK" from:nil then:^{}]; }),
           choice(@"Forget recent documents", nil, ^(UIView* c) {
               [me confirm:@"Forget the recent documents?" action:@"Forget" from:c then:^{ [FPRecent clear]; }]; }),
           choice(@"Reset every setting", nil, ^(UIView* c) {

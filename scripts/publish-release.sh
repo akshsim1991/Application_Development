@@ -41,7 +41,24 @@ if os.path.exists(os.path.join(dest, apk32)):
     latest["android32"] = pkg(apk32)   # older 32-bit phones (the Android app's updater takes it there)
 open(os.path.join(dest, "latest.json"), "w").write(json.dumps(latest, indent=2, ensure_ascii=True) + "\n")
 print(json.dumps(latest, indent=2))
+# AltStore's source (altstore.json): with it added in AltStore (the iPhone app's Settings > Keep up to date with AltStore),
+# AltStore finds and installs new versions of the iPhone app by itself
+ios = latest["ios"]
+app = {"name": "Feather PDF", "bundleIdentifier": "com.featherpdf.ios", "developerName": "Feather PDF",
+       "subtitle": "A fast, free PDF reader and editor.",
+       "localizedDescription": "Read, find, edit text and equations, highlight, draw, add notes, turn and delete pages, "
+                               "and manage the PDF files on your iPhone. No account, no tracking.",
+       "iconURL": f"{base}/ios-icon.png", "tintColor": "C62828",
+       "version": version, "versionDate": datetime.date.today().isoformat(), "versionDescription": notes,
+       "downloadURL": ios["url"], "size": ios["size"],
+       "versions": [{"version": version, "date": datetime.date.today().isoformat(), "localizedDescription": notes,
+                     "downloadURL": ios["url"], "size": ios["size"], "sha256": ios["sha256"], "minOSVersion": "15.0"}],
+       "appPermissions": {"entitlements": [], "privacy": {}}}
+source = {"name": "Feather PDF", "identifier": "com.featherpdf.source", "sourceURL": f"{base}/altstore.json",
+          "website": "https://github.com/akshsim1991/FeatherPDF-releases", "apps": [app], "news": []}
+open(os.path.join(dest, "altstore.json"), "w").write(json.dumps(source, indent=2, ensure_ascii=True) + "\n")
 PY
+cp "$root/iOS/resources/AppIcon60x60@3x.png" "$dest/ios-icon.png"   # (AltStore shows it)
 mirror="https://cdn.jsdelivr.net/gh/akshsim1991/FeatherPDF-releases@RELEASE"   # jsDelivr; RELEASE becomes the release commit once pushed
 cat > "$dest/README.md" <<MD
 # Feather PDF
@@ -68,7 +85,9 @@ mirror link beside it, which serves the same file (its SHA-256 is in latest.json
 Installed copies on Windows and macOS find new versions themselves (Help > Update to new version) and ask whether to
 update now or later. So does the Android app (Settings > Advanced > Update to the new version, and a check when it opens):
 it downloads the APK, checks it and hands it to Android's installer, which installs it over the old one, keeping your settings.
-The iPhone app says when a new version is out; it is installed from the Mac the same way as the first time.
+The iPhone app downloads a new version as soon as it is out. With AltStore on the iPhone it installs with a tap (and
+AltStore can keep it up to date by itself: in the app, Settings > Keep up to date with AltStore); otherwise it is installed
+from the Mac the same way as the first time (the app shares the downloaded file to the Mac with AirDrop).
 
 ## iPhone and iPad
 

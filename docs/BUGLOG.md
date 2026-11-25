@@ -1725,3 +1725,18 @@ tabs, sidebar and full-screen checks. All four downloads (with the 32-bit APK, n
 **Published:** 2.27.0 "Fiesta" for Windows, Mac, Android and (new) iPhone and iPad (24 November); the iOS build's
 simulator check passed. All five downloads match latest.json, which now lists the .ipa (ios); the releases page has
 the sideloading steps.
+
+### B-133 No rotate button in the Windows and Mac toolbars - Medium (Windows, macOS)
+- **Found:** the user: "Add a rotate button in the toolbar".
+- **Root cause:** rotating was only in the page menus, the thumbnail menu, the command palette and the shortcuts
+  (Ctrl+L / Ctrl+R on Windows, which turn every page; ⌘L / ⌘R on the Mac, which turn the page shown); the toolbars were
+  planned around the tool groups, and the page tools were left to the menus.
+- **Fix:** Windows: two buttons between the zoom and Find, with new icons (a page in a turning arrow, orange in
+  colourful icons), "Rotate this page left / right", Shift+click for every page; the toolbar's room for its icons-only
+  (compact) layout counts them. macOS: a Rotate toolbar item (rotate.left / rotate.right symbols, teal in colourful
+  icons) before the zoom, the same behaviour.
+- **Tests:** a new workflow (Windows UI check) builds the app as for the release and runs it on a Windows runner: the
+  two buttons are found on the screen by their colour, the tooltip shown, "rotate right" clicked, "rotate left"
+  Shift+clicked, the file saved with Ctrl+S and read by pikepdf: pages at 0, 270 and 270 degrees. The first icon
+  looked like a padlock at toolbar size in its picture; it was redrawn. The Mac UI check presses the toolbar item and
+  the trace shows the first page turned (842x595) and the others not.

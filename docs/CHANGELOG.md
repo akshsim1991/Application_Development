@@ -2,6 +2,12 @@
 
 Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
+## 2.27.1 (25 November 2026)
+
+- New (Windows and macOS): rotate buttons in the toolbar, beside the zoom. Rotate left or right turns the page you are
+  looking at; Shift+click turns every page. (Rotating was there before, in the page menus and with Ctrl+L / Ctrl+R,
+  but nothing on the toolbar showed it.) The Mac's toolbar has a Rotate item, the same.
+
 ## 2.27.0 "Fiesta" (24 November 2026)
 
 - New: Feather PDF for iPhone and iPad (iOS 15 or later). Read and find; change text (with x² and x₂) and equations

@@ -17,6 +17,7 @@ public interface IDialogService
     string? PickFolder();
     AppSettings? ShowSettings(AppSettings current, Func<Task> checkUpdatesNow, string engineStatus, Func<Task> installEngine);
     UpdateChoice AskUpdate(UpdateManifest manifest, string currentVersion, long? downloadBytes);
+    void ShowMerge(FeatherView.ViewModels.MergeViewModel vm);
     IProgress<double> ShowDownloadProgress(string title, Action cancel);
     void CloseDownloadProgress();
 }

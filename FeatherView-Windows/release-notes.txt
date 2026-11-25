@@ -1,3 +1,7 @@
+Feather View 2.1.22
+- Merge videos: tick two or more videos and choose Merge (right-click menu, or the ... menu). Reorder them, name the file and press Merge. Videos that match are joined with no quality loss; different formats, sizes or frame rates are re-encoded to match. The result is a new file next to the first video; nothing is ever overwritten or changed. Uses ffmpeg, a free tool downloaded once on request (about 30 MB, verified)
+- New Refresh button in the toolbar (reloads the folder, same as F5)
+
 Feather View 2.1.21
 - Video playlists: tick several videos and press Enter (or right-click > Play N videos as a playlist) and they play one after another. Right-click > Add to playlist builds a queue from any folder; the playlist button in the video bar shows it
 - Video bar: previous and next video, shuffle, and a repeat button that cycles play once / repeat all / repeat one (Shift+Left and Shift+Right also skip videos). With no playlist, next and previous walk through the videos of the folder

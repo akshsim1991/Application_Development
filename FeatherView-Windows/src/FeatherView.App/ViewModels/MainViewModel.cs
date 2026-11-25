@@ -10,6 +10,7 @@ using FeatherView.Core.Media;
 using FeatherView.Core.Mvvm;
 using FeatherView.Core.Settings;
 using FeatherView.Core.Tabs;
+using FeatherView.Core.Video;
 using FeatherView.Services;
 
 namespace FeatherView.ViewModels;
@@ -203,6 +204,48 @@ public sealed class MainViewModel : ObservableObject
     public string SelectedCountText => CheckedCount > 0 ? $"{CheckedCount} selected" : Gallery.SelectedIndex >= 0 && _files.Count > 0 ? "1 selected" : "0 selected";
     public int CheckedCount => Gallery.Items.Count(i => i.IsChecked);
     public bool HasChecked => CheckedCount > 0;
+
+    // ---- merge videos into one file (needs ffmpeg, downloaded once on request) ----
+    private static readonly System.Net.Http.HttpClient ToolsHttp = new() { Timeout = TimeSpan.FromMinutes(15) };
+    public RelayCommand MergeVideosCommand => _mergeCmd ??= new RelayCommand(() => _ = MergeVideosAsync());
+    private RelayCommand? _mergeCmd;
+
+    public async Task MergeVideosAsync()
+    {
+        var videos = TargetVideos();
+        if (videos.Count < 2)
+        {
+            _dialogs.Info("Merge videos", "Select at least two videos first: tick their check boxes, use Ctrl+click or Shift+click, or drag a rectangle over them. Then choose Merge again.");
+            return;
+        }
+        var ffmpeg = await EnsureFfmpegAsync();
+        if (ffmpeg == null) return;
+        var vm = new MergeViewModel(ffmpeg, videos, _log);
+        _dialogs.ShowMerge(vm);
+        if (vm.Done) Reload();   // the new file appears in the folder
+    }
+
+    private async Task<string?> EnsureFfmpegAsync()
+    {
+        var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var found = FfmpegLocator.Find(AppContext.BaseDirectory, local);
+        if (found != null) return found;
+        if (!_dialogs.Confirm("Merge videos needs a free video tool",
+                "Joining videos uses ffmpeg, a free open-source program. It is about 30 MB and is downloaded once from this project's own releases page, checked against its fingerprint, and kept in your user profile. Download it now?", "Download"))
+            return null;
+        var cts = new CancellationTokenSource();
+        var progress = _dialogs.ShowDownloadProgress("Downloading ffmpeg", () => cts.Cancel());
+        try
+        {
+            var dl = new ToolsDownloader(ToolsHttp, log: _log);
+            var manifest = await dl.GetManifestAsync(cts.Token);
+            return await dl.InstallAsync(manifest, FfmpegLocator.ToolsDir(local), progress, cts.Token);
+        }
+        catch (OperationCanceledException) { return null; }
+        catch (FeatherView.Core.Updates.UpdateException ex) { _dialogs.CloseDownloadProgress(); _dialogs.Error("Merge videos", ex.Message + " Check your internet connection and try again."); return null; }
+        catch (Exception ex) { _log.Warn($"ffmpeg download failed ({ex.GetType().Name})."); _dialogs.CloseDownloadProgress(); _dialogs.Error("Merge videos", "The video tool could not be downloaded."); return null; }
+        finally { _dialogs.CloseDownloadProgress(); }
+    }
 
     // ---- video playlist ----
     private List<MediaFile> TargetVideos()

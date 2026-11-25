@@ -416,6 +416,7 @@ public partial class MainWindow : Window
             menu.Items.Add(Item(vids > 1 ? $"Play {vids} videos as a playlist" : "Play video", () => _vm.PlaySelectionAsPlaylist()));
             menu.Items.Add(Item(vids > 1 ? $"Add {vids} videos to the playlist" : "Add to playlist", () => _vm.AddSelectionToPlaylist()));
         }
+        if (vids > 1 && !video) menu.Items.Add(Item($"Merge {vids} videos into one file...", () => _vm.MergeVideosCommand.Execute(null)));
         if (_vm.Video.Playlist.Count > 0 && !video) menu.Items.Add(Item($"Play the playlist ({_vm.Video.Playlist.Count} videos)", () => _vm.PlayPlaylist()));
         if (video) menu.Items.Add(Item("Add all videos of this folder to the playlist", () => { if (_vm.Video.FolderVideosProvider?.Invoke() is { } v) _vm.Video.AddToPlaylist(v); }));
         menu.Items.Add(new Separator());
@@ -456,6 +457,7 @@ public partial class MainWindow : Window
         menu.Items.Add(Item("Copy image", () => _vm.CopyCommand.Execute(null), gesture: "Ctrl+C"));
         menu.Items.Add(Item("Delete (Recycle Bin)...", () => _vm.DeleteCommand.Execute(null), gesture: "Del"));
         menu.Items.Add(Item("Reload folder", () => _vm.ReloadCommand.Execute(null), gesture: "F5"));
+        menu.Items.Add(Item("Merge selected videos into one file...", () => _vm.MergeVideosCommand.Execute(null), enabled: _vm.TargetVideoCount > 1));
         menu.Items.Add(new Separator());
         var sort = new MenuItem { Header = "Sort by" };
         foreach (var mode in Enum.GetValues<SortMode>()) { var m = mode; sort.Items.Add(Item(m.ToString(), () => _vm.SetSort(m), check: _vm.Settings.Sort == m)); }

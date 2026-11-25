@@ -26,6 +26,7 @@
     <Geometry x:Key="IconFrameForward">M5 4l10 8-10 8z M19 5v14</Geometry>
     <Geometry x:Key="IconVolume">M11 5L6 9H2v6h4l5 4z M15.54 8.46a5 5 0 0 1 0 7.07 M19.07 4.93a10 10 0 0 1 0 14.14</Geometry>
     <Geometry x:Key="IconVolumeMute">M11 5L6 9H2v6h4l5 4z M23 9l-6 6 M17 9l6 6</Geometry>
+    <Geometry x:Key="IconRefresh">M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8 M21 3v5h-5 M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16 M8 16H3v5</Geometry>
     <Geometry x:Key="IconRepeatOne">M17 1l4 4-4 4 M3 11V9a4 4 0 0 1 4-4h14 M7 23l-4-4 4-4 M21 13v2a4 4 0 0 1-4 4H3 M11 10h1v4</Geometry>
     <Geometry x:Key="IconTrackNext">M13 19l9-7-9-7z M2 19l9-7-9-7z</Geometry>
     <Geometry x:Key="IconTrackPrev">M11 19l-9-7 9-7z M22 19l-9-7 9-7z</Geometry>

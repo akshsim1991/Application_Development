@@ -393,6 +393,7 @@
                                 </StackPanel>
                             </Button>
                             <ToggleButton Style="{StaticResource IconToggle}" Foreground="{DynamicResource ToolGalleryBrush}" Tag="{StaticResource IconGrid}" ToolTip="Thumbnail gallery (G)" IsChecked="{Binding IsGallery, Mode=OneWay}" Command="{Binding ToggleGalleryCommand}" AutomationProperties.Name="Gallery" Margin="6,0,1,0" />
+                            <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolInfoBrush}" Tag="{StaticResource IconRefresh}" ToolTip="Refresh - reload this folder (F5)" Command="{Binding ReloadCommand}" AutomationProperties.Name="Refresh" />
                             <Rectangle Width="1" Margin="8,6" Fill="{DynamicResource BorderBrushSoft}" />
                             <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolRotateBrush}" Tag="{StaticResource IconRotateLeft}" ToolTip="Rotate left (L)" Command="{Binding RotateLeftCommand}" AutomationProperties.Name="Rotate left" />
                             <Button Style="{StaticResource IconButton}" Foreground="{DynamicResource ToolRotateBrush}" Tag="{StaticResource IconRotateRight}" ToolTip="Rotate right (R)" Command="{Binding RotateRightCommand}" AutomationProperties.Name="Rotate right" />

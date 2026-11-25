@@ -62,6 +62,8 @@ public sealed class WpfDialogService : IDialogService
         return w.Choice;
     }
 
+    public void ShowMerge(FeatherView.ViewModels.MergeViewModel vm) => Prepare(new MergeWindow(vm)).ShowDialog();
+
     public IProgress<double> ShowDownloadProgress(string title, Action cancel)
     {
         _progress = Prepare(new ProgressWindow(title, cancel));

@@ -116,6 +116,54 @@ jobs:
           if ($LASTEXITCODE -eq 0) { gh release delete featherview-engine --yes --cleanup-tag }
           gh release create featherview-engine $zip (Join-Path $work "engine.json") --title "Extended video engine (libmpv)" --notes "libmpv LGPL build from $src $tag. Feather View downloads this only when you ask for extended video support (Settings > Video). Source: https://github.com/mpv-player/mpv" --target ${{ github.sha }}
 
+      - name: Publish ffmpeg for the Merge videos feature - only when the commit message contains [tools]
+        if: contains(github.event.head_commit.message, '[tools]')
+        continue-on-error: true
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch an open-source ffmpeg build from its upstream release, keep only ffmpeg.exe / ffprobe.exe / licence, and re-publish it with a SHA-256 so the app can verify it.
+          $repos = @(@{ r = "GyanD/codexffmpeg"; rx = '^ffmpeg-.*-essentials_build\.zip$' }, @{ r = "BtbN/FFmpeg-Builds"; rx = '^ffmpeg-master-latest-win64-gpl\.zip$' })
+          $asset = $null; $src = $null; $tag = $null
+          foreach ($c in $repos) {
+            $names = gh api "repos/$($c.r)/releases/latest" --jq '.assets[].name' 2>$null
+            Write-Host "$($c.r) assets:"; $names | Select-Object -First 15 | ForEach-Object { Write-Host "  $_" }
+            $pick = $names | Where-Object { $_ -match $c.rx } | Select-Object -First 1
+            if ($pick) { $asset = $pick; $src = $c.r; $tag = (gh api "repos/$($c.r)/releases/latest" --jq .tag_name); break }
+          }
+          if (-not $asset) { throw "No ffmpeg package was found upstream." }
+          Write-Host "Using $src $tag : $asset"
+          $work = Join-Path $env:RUNNER_TEMP "ffmpeg"; New-Item -ItemType Directory -Force $work | Out-Null
+          gh release download $tag -R $src --pattern $asset --dir $work
+          Expand-Archive -Path (Join-Path $work $asset) -DestinationPath "$work\x" -Force
+          $pkg = Join-Path $work "pkg"; New-Item -ItemType Directory -Force $pkg | Out-Null
+          foreach ($n in @("ffmpeg.exe", "ffprobe.exe")) {
+            $f = Get-ChildItem "$work\x" -Recurse -Filter $n | Select-Object -First 1
+            if (-not $f) { throw "$n not found in the package." }
+            Copy-Item $f.FullName (Join-Path $pkg $n)
+          }
+          Get-ChildItem "$work\x" -Recurse -File | Where-Object { $_.Name -match '^(LICENSE|COPYING|README)' } | Select-Object -First 3 | ForEach-Object { Copy-Item $_.FullName (Join-Path $pkg $_.Name) -Force }
+          @"
+          ffmpeg and ffprobe, unmodified open-source build from https://github.com/$($src) (release $tag). Licence: see the LICENSE file (GPL build). Source: https://ffmpeg.org/
+          Feather View downloads this only when you use "Merge videos", and runs it as a separate program.
+          "@ | Set-Content (Join-Path $pkg "README-ffmpeg.txt") -Encoding UTF8
+          $zip = Join-Path $work "ffmpeg-win64.zip"
+          Compress-Archive -Path "$pkg\*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower(); $size = (Get-Item $zip).Length
+          # prove the real merge code works with this exact ffmpeg build before publishing it
+          Expand-Archive -Path $zip -DestinationPath "$work\check" -Force
+          $env:FV_FFMPEG = Join-Path $work "check\ffmpeg.exe"
+          dotnet test tests/FeatherView.Tests -c Release --filter "FullyQualifiedName~Merge" --no-restore 2>&1 | Write-Host
+          if ($LASTEXITCODE -ne 0) { throw "The merge tests failed with this ffmpeg build." }
+          $url = "https://github.com/akshsim1991/Application_Development/releases/download/featherview-tools/ffmpeg-win64.zip"
+          $json = [ordered]@{ version = "$tag"; license = "GPL (ffmpeg essentials build)"; notes = "ffmpeg from $src $tag"; win64 = [ordered]@{ url = $url; size = $size; sha256 = $hash } } | ConvertTo-Json -Depth 4
+          Set-Content (Join-Path $work "tools.json") $json -Encoding UTF8
+          Write-Host $json
+          gh release view featherview-tools *> $null
+          if ($LASTEXITCODE -eq 0) { gh release delete featherview-tools --yes --cleanup-tag }
+          gh release create featherview-tools $zip (Join-Path $work "tools.json") --title "Video tools (ffmpeg)" --notes "ffmpeg from $src $tag, used by Merge videos. Feather View downloads this only when you ask to merge videos. Source: https://ffmpeg.org/" --target ${{ github.sha }}
+
       - name: GitHub Release - becomes the 'latest' release that installed apps update from (only when the commit message contains [release])
         if: contains(github.event.head_commit.message, '[release]')
         shell: pwsh

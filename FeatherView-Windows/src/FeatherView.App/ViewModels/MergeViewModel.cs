@@ -32,9 +32,9 @@ public sealed class MergeViewModel : ObservableObject
         _merger = new VideoMerger(ffmpegPath);
         foreach (var f in files) Items.Add(new MergeItem(f));
         _outputName = "Merged - " + Path.GetFileNameWithoutExtension(Items[0].Name);
-        MoveUpCommand = new RelayCommand(p => Move(p as MergeItem, -1), () => !Running);
-        MoveDownCommand = new RelayCommand(p => Move(p as MergeItem, 1), () => !Running);
-        RemoveCommand = new RelayCommand(p => { if (p is MergeItem m && Items.Count > 2) { Items.Remove(m); Refresh(); } }, () => !Running);
+        MoveUpCommand = new RelayCommand(p => Move(p as MergeItem, -1), _ => !Running);
+        MoveDownCommand = new RelayCommand(p => Move(p as MergeItem, 1), _ => !Running);
+        RemoveCommand = new RelayCommand(p => { if (p is MergeItem m && Items.Count > 2) { Items.Remove(m); Refresh(); } }, _ => !Running);
         StartCommand = new AsyncRelayCommand(StartAsync, ex => { _log.Error("Merge failed", ex); Status = "Something went wrong: " + ex.Message; Running = false; });
         CancelCommand = new RelayCommand(() => _cts?.Cancel(), () => Running);
     }

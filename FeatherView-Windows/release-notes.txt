@@ -1,3 +1,6 @@
+Feather View 2.1.23
+- Build fix for the Merge videos window (same features as 2.1.22)
+
 Feather View 2.1.22
 - Merge videos: tick two or more videos and choose Merge (right-click menu, or the ... menu). Reorder them, name the file and press Merge. Videos that match are joined with no quality loss; different formats, sizes or frame rates are re-encoded to match. The result is a new file next to the first video; nothing is ever overwritten or changed. Uses ffmpeg, a free tool downloaded once on request (about 30 MB, verified)
 - New Refresh button in the toolbar (reloads the folder, same as F5)

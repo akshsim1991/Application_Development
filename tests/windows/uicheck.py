@@ -155,9 +155,10 @@ for scenario in ("ctrl", "box"):
         shot("12-box-picked", log=True)
     key(0x2E); time.sleep(1.5)            # Delete
     key(0x11, 0x53); time.sleep(3)        # Ctrl+S
-    shot(f"13-{scenario}-deleted")
+    shot(f"13-{scenario}-deleted", log=True)
     close_app(app)
     t = text_of(work)
+    print("  note saved text: " + " | ".join(l for l in t.splitlines() if l.strip())[:600], flush=True)
     if scenario == "ctrl":
         check("Ctrl+click: the heading and the paragraph clicked are deleted together, the rest kept",
               "Quarterly Report" not in t and "Sales rose" not in t and "Online orders" in t and "Next steps" in t)

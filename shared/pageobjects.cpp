@@ -3120,6 +3120,60 @@ GroupHit groupAt(Document& d, int page, double x, double y) {
     return g;
 }
 
+bool boundsOf(Document& d, int page, const std::vector<int>& objects, double& l, double& b, double& r, double& t) {
+    FPDF_PAGE pg = d.page(page);
+    if (!pg) return false;
+    const auto& api = pdfium::api();
+    bool any = false;
+    for (int i : objects) {
+        FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(pg, i);
+        float ol, ob, orr, ot;
+        if (!o || !api.FPDFPageObj_GetBounds(o, &ol, &ob, &orr, &ot)) continue;
+        if (!any) { l = ol; b = ob; r = orr; t = ot; any = true; }
+        else { l = std::min<double>(l, ol); b = std::min<double>(b, ob); r = std::max<double>(r, orr); t = std::max<double>(t, ot); }
+    }
+    return any;
+}
+
+GroupHit groupsIn(Document& d, int page, double l, double b, double r, double t) {
+    if (l > r) std::swap(l, r);
+    if (b > t) std::swap(b, t);
+    GroupHit out;
+    const auto& api = pdfium::api();
+    // (finding a paragraph may open a form onto the page, which numbers the objects again: then the search starts over)
+    for (int attempt = 0; attempt < 3; ++attempt) {
+        FPDF_PAGE pg = d.page(page);
+        if (!pg) return out;
+        if (contentgen::prepare(d.handle(), pg)) { d.resetText(page); d.pinPage(page); pg = d.page(page); }
+        const int n = api.FPDFPage_CountObjects(pg);
+        const auto sz = d.pageSize(page);
+        std::set<int> picked;
+        bool renumbered = false;
+        for (int i = 0; i < n && !renumbered; ++i) {
+            if (picked.count(i)) continue;
+            FPDF_PAGEOBJECT o = api.FPDFPage_GetObject(d.page(page), i);
+            float ol, ob, orr, ot;
+            if (!o || !api.FPDFPageObj_GetBounds(o, &ol, &ob, &orr, &ot)) continue;
+            if (orr < l || ol > r || ot < b || ob > t) continue;   // not touched
+            const bool inside = ol >= l && orr <= r && ob >= b && ot <= t;
+            if (!inside && (orr - ol) * (ot - ob) > 0.6 * sz.w * sz.h) continue;   // a background, unless the box holds it all
+            // the whole of what it belongs to: the group found at a point of it (its middle, kept inside the box)
+            const double px = std::clamp<double>((ol + orr) / 2, l, r), py = std::clamp<double>((ob + ot) / 2, b, t);
+            GroupHit g = groupAt(d, page, px, py);
+            if (api.FPDFPage_CountObjects(d.page(page)) != n) { renumbered = true; break; }
+            if (g.found && std::find(g.objects.begin(), g.objects.end(), i) != g.objects.end()) picked.insert(g.objects.begin(), g.objects.end());
+            else picked.insert(i);   // (a part the point-finder does not group: taken alone)
+        }
+        if (renumbered) continue;
+        out.objects.assign(picked.begin(), picked.end());
+        out.found = !out.objects.empty();
+        out.kind = GroupHit::Shape;
+        if (out.found) boundsOf(d, page, out.objects, out.left, out.bottom, out.right, out.top);
+        return out;
+    }
+    return out;
+}
+
 // A form object under the point that holds text (a page a program stamped or merged keeps its whole content in one): its
 // contents are put on the page itself, in the same places and order, so its text can be edited. One undo step; the page
 // looks the same (checked as every change is), or nothing is changed.

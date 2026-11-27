@@ -219,6 +219,7 @@ std::wstring pickPdf(bool multi, std::vector<std::wstring>& out, const wchar_t* 
 void commandPalette(); void combineOpenPdfs(); void newPdfFromPictures(); void splitPdf(); void cropByBox(); void lookUpSelection(bool web); void readFromThisPage();
 bool featureDraw(Document& d, const Viewer::Event& e);
 bool featureClick(Document& d, const Viewer::Event& e);
+void showObjectSelection(Document& d, int page, std::vector<int> objs);
 std::vector<annot::RectD> tableOutlines(int page);
 void pagesMenuAction(int cmd, const std::vector<int>& sel);
 void toolsDispatch(int cmd);
@@ -5232,6 +5233,14 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
             return true;
         }
         case Viewer::Tool::Select: {
+            if (e.pts.size() == 2) {   // a box drawn: everything it touches, each whole (with Ctrl or Shift: added to the selection)
+                const pageobj::GroupHit g = pageobj::groupsIn(d, e.page, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y);
+                const bool adding = (GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_SHIFT) < 0) && app.sel.page == e.page;
+                std::vector<int> objs = adding ? app.sel.objects : std::vector<int>{};
+                for (int i : g.objects) if (std::find(objs.begin(), objs.end(), i) == objs.end()) objs.push_back(i);
+                showObjectSelection(d, e.page, objs);
+                return true;
+            }
             if (app.sel.page != e.page || e.pts.size() < 4) return true;
             if (pageobj::transformGroup(d, e.page, app.sel.objects, e.pts[0].x, e.pts[0].y, e.pts[1].x, e.pts[1].y, e.pts[2].x, e.pts[2].y, e.pts[3].x, e.pts[3].y)) {
                 app.viewer.documentChanged();
@@ -5311,6 +5320,22 @@ bool featureDraw(Document& d, const Viewer::Event& e) {
     }
 }
 
+// The Move tool's selection: these objects of the page, in one frame (nothing selected when the list is empty).
+void showObjectSelection(Document& d, int page, std::vector<int> objs) {
+    std::sort(objs.begin(), objs.end());
+    double l, b, r, t;
+    if (objs.empty() || !pageobj::boundsOf(d, page, objs, l, b, r, t)) {
+        app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr);
+        return;
+    }
+    app.sel.page = page; app.sel.objects = objs;
+    std::vector<double> gx, gy;
+    pageobj::snapGuides(d, page, objs, gx, gy);
+    annot::RectD rc{l, b, r, t};
+    app.viewer.setObjectSelection(page, &rc, gx, gy, 1);
+    notice(L"Picked: drag to move, a corner to resize, Delete to delete. Ctrl+click adds or takes out a paragraph, picture or table.");
+}
+
 bool featureClick(Document& d, const Viewer::Event& e) {
     switch (e.tool) {
         case Viewer::Tool::TablePlace: {
@@ -5330,6 +5355,19 @@ bool featureClick(Document& d, const Viewer::Event& e) {
         }
         case Viewer::Tool::Select: {
             pageobj::GroupHit g = pageobj::groupAt(d, e.page, e.pts.front().x, e.pts.front().y);
+            // Ctrl or Shift: the paragraph, picture, table or shape clicked is added to the selection, or taken out of it
+            if ((GetKeyState(VK_CONTROL) < 0 || GetKeyState(VK_SHIFT) < 0) && app.sel.page == e.page && !app.sel.objects.empty()) {
+                if (!g.found) return true;
+                std::vector<int> objs = app.sel.objects;
+                const bool all = std::all_of(g.objects.begin(), g.objects.end(), [&](int i) { return std::find(objs.begin(), objs.end(), i) != objs.end(); });
+                for (int i : g.objects) {
+                    auto at = std::find(objs.begin(), objs.end(), i);
+                    if (all && at != objs.end()) objs.erase(at);
+                    else if (!all && at == objs.end()) objs.push_back(i);
+                }
+                showObjectSelection(d, e.page, objs);
+                return true;
+            }
             if (!g.found) { app.sel.page = -1; app.sel.objects.clear(); app.viewer.setObjectSelection(-1, nullptr); return true; }
             app.sel.page = e.page; app.sel.objects = g.objects;
             std::vector<double> gx, gy;

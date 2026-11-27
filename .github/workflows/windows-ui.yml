@@ -40,7 +40,7 @@ jobs:
       - name: The toolbar, driven with the mouse
         shell: pwsh
         run: |
-          pip install --quiet pillow pikepdf
+          pip install --quiet pillow pikepdf pdfminer.six
           python tests/windows/uicheck.py "$PWD\app\FeatherPDF.exe" "$PWD\app\in.pdf" "$PWD\ui"
           if ($LASTEXITCODE -ne 0) { exit 1 }
       - uses: actions/upload-artifact@v4

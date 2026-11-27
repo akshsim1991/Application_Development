@@ -85,5 +85,77 @@ if len(btns) == 2:
     rot = [int(p.obj.get("/Rotate", 0)) % 360 for p in pikepdf.open(pdf).pages]
     check(f"the saved pages are turned as asked: {rot}", rot == [0, 270, 270])
 app.kill()
+
+# ---- the Move tool: Ctrl+click adds to the selection; a box drawn picks everything it touches, each whole ----
+def key(*codes):
+    for c in codes: u.keybd_event(c, 0, 0, 0)
+    for c in reversed(codes): u.keybd_event(c, 0, 2, 0)
+    time.sleep(0.4)
+
+def typed(text):
+    for ch in text:
+        vk = u.VkKeyScanW(ord(ch)) & 0xFF
+        shift = (u.VkKeyScanW(ord(ch)) >> 8) & 1
+        key(*( [0x10, vk] if shift else [vk] ))
+
+def page_map(img):
+    """Where the page is: from the test page's red band (595 points wide, its top edge the page's top, 842)."""
+    w, h = img.size
+    px = img.convert("RGB").load()
+    red = lambda c: c[0] > 170 and c[1] < 80 and c[2] < 80
+    rows = [y for y in range(0, min(h, 500)) if sum(1 for x in range(0, w, 4) if red(px[x, y])) > w // 16]
+    if not rows: return None
+    y0 = rows[0]
+    xs = [x for x in range(w) if red(px[x, y0 + 3])]
+    left, right = min(xs), max(xs)
+    s = (right - left + 1) / 595.0
+    return lambda x, y: (int(left + x * s), int(y0 + (842 - y) * s))
+
+def text_of(path):
+    from pdfminer.high_level import extract_text
+    return extract_text(path)
+
+import shutil
+for scenario in ("ctrl", "box"):
+    work = os.path.join(out, f"move-{scenario}.pdf")
+    shutil.copy(sys.argv[4] if len(sys.argv) > 4 else pdf, work)
+    app = subprocess.Popen([exe, work])
+    for _ in range(60):
+        time.sleep(1)
+        if window(): break
+    time.sleep(4)
+    h = window()[0][0] if window() else None
+    if h: u.ShowWindow(h, 3); u.SetForegroundWindow(h); time.sleep(3)
+    to = page_map(shot(f"10-{scenario}-open"))
+    check(f"{scenario}: the page is found on the screen", to is not None)
+    if not to: app.kill(); continue
+    key(0x11, 0x4B)                       # Ctrl+K: the command palette
+    typed("Move or resize"); time.sleep(0.5); key(0x0D)
+    time.sleep(1.5)
+    if scenario == "ctrl":
+        click(*to(110, 765))                  # the heading
+        u.SetCursorPos(*to(160, 703)); time.sleep(0.3)
+        u.keybd_event(0x11, 0, 0, 0); u.mouse_event(2, 0, 0, 0, 0); time.sleep(0.05); u.mouse_event(4, 0, 0, 0, 0); u.keybd_event(0x11, 0, 2, 0)
+        time.sleep(2)
+        shot("11-ctrl-picked", log=True)
+    else:
+        (x0, y0), (x1, y1) = to(85, 584), to(300, 448)
+        u.SetCursorPos(x0, y0); time.sleep(0.3); u.mouse_event(2, 0, 0, 0, 0)
+        for k in range(1, 21):
+            u.SetCursorPos(x0 + (x1 - x0) * k // 20, y0 + (y1 - y0) * k // 20); time.sleep(0.03)
+        u.mouse_event(4, 0, 0, 0, 0); time.sleep(2.5)
+        shot("12-box-picked", log=True)
+    key(0x2E); time.sleep(1.5)            # Delete
+    key(0x11, 0x53); time.sleep(3)        # Ctrl+S
+    shot(f"13-{scenario}-deleted")
+    app.kill(); time.sleep(1)
+    t = text_of(work)
+    if scenario == "ctrl":
+        check("Ctrl+click: the heading and the paragraph clicked are deleted together, the rest kept",
+              "Quarterly Report" not in t and "Sales rose" not in t and "Online orders" in t and "Next steps" in t)
+    else:
+        check("a box drawn: the chart's labels it touched are deleted, the text beside it kept",
+              "Jul" not in t and "Sep" not in t and "Next steps" in t and "Sales by month" in t and "Online orders" in t)
+
 print("ALL PASSED" if fails == 0 else f"{fails} FAILED", flush=True)
 sys.exit(1 if fails else 0)

@@ -810,7 +810,9 @@ static NSRect stretched(NSRect r, int h, double dx, double dy) {
     double x, y;
     if (![self pageAt:p page:&page x:&x y:&y]) return;
     _objDrag = FPToolEvent::None;
-    if ((_tool == FPToolSelectObject || _tool == FPToolEditAll) && _objPage == page) {   // on the selected object: move it, or resize it by its handle
+    // (⌘ or Shift with the Move tool: adding to the selection or taking out of it, so the frame is not taken)
+    const bool adding = _tool == FPToolSelectObject && (e.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift));
+    if ((_tool == FPToolSelectObject || _tool == FPToolEditAll) && _objPage == page && !adding) {   // on the selected object: move it, or resize it by its handle
         if ((_objHandle = [self objectHandleAt:p]) != 0) _objDrag = FPToolEvent::Resize;
         else if (NSPointInRect(p, [self viewRectOnPage:_objPage rect:_objRect])) _objDrag = FPToolEvent::Move;
     }
@@ -959,7 +961,18 @@ static NSRect stretched(NSRect r, int h, double dx, double dy) {
     [self drawObjectBox];
     if (_objDrag != FPToolEvent::None) return;
     if (!_toolDown && !((_tool == FPToolPolygon || _tool == FPToolProtractor) && !_toolPathView.empty())) return;
-    if (_tool == FPToolSelectObject || _tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable || _tool == FPToolEditAll) return;
+    if (_tool == FPToolSelectObject) {   // the selection box being drawn with the Move tool
+        NSBezierPath* band = [NSBezierPath bezierPathWithRect:NSMakeRect(std::min(_toolStartView.x, _toolNowView.x), std::min(_toolStartView.y, _toolNowView.y),
+                                                                         std::fabs(_toolNowView.x - _toolStartView.x), std::fabs(_toolNowView.y - _toolStartView.y))];
+        const CGFloat dash[2] = {4, 3};
+        [band setLineDash:dash count:2 phase:0];
+        [NSColor.controlAccentColor setStroke];
+        [[NSColor.controlAccentColor colorWithAlphaComponent:0.08] setFill];
+        [band fill];
+        [band stroke];
+        return;
+    }
+    if (_tool == FPToolEditText || _tool == FPToolEditPara || _tool == FPToolEditTable || _tool == FPToolPlaceTable || _tool == FPToolEditAll) return;
     NSColor* c = _tool == FPToolRedact ? NSColor.blackColor
                : _tool == FPToolRuler || _tool == FPToolProtractor ? [NSColor colorWithSRGBRed:0 green:0.56 blue:0.38 alpha:1]
                                                                    : NSColor.controlAccentColor;

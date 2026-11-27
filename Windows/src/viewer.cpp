@@ -1252,10 +1252,15 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 return 0;
             }
             if (tool_ == Tool::Select || tool_ == Tool::EditAll) {   // edit mode picks pictures and moves them as Select does
-                ObjDrag m = objHit(cx, cy);
+                // Ctrl or Shift: adding to the selection (or taking out of it), so no handle or move is taken
+                const bool adding = tool_ == Tool::Select && (w & (MK_CONTROL | MK_SHIFT)) != 0;
+                ObjDrag m = adding ? ObjDrag::None : objHit(cx, cy);
                 annot::PointD pt;
                 if (m != ObjDrag::None && pageUnclamped(cx, cy, objSelPage_, pt)) {
                     objDrag_ = m; objDragStart_ = pt; objCur_ = objSel_; snappedX_ = snappedY_ = false;
+                    SetCapture(hwnd_);
+                } else if (tool_ == Tool::Select && pageAt(cx, cy, page)) {   // a click, or a box drawn (told apart on release)
+                    band_ = true; bandPage_ = page; bandStart_ = bandNow_ = {cx, cy};
                     SetCapture(hwnd_);
                 } else if (pageAt(cx, cy, page) && toPage(cx, cy, page, pt) && onEvent) {
                     Event e; e.kind = Event::Click; e.tool = tool_; e.page = page; e.pts = {pt};
@@ -1395,6 +1400,7 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
                 if (b != hoverBlock_ || (b >= 0 && pg != hoverPage_)) { hoverBlock_ = b; hoverPage_ = b >= 0 ? pg : -1; InvalidateRect(hwnd_, nullptr, FALSE); }
             }
             if ((tool_ == Tool::Polygon && polyPage_ >= 0) || tool_ == Tool::Protractor) { polyMouse_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); }
+            if (band_) { bandNow_ = {GET_X_LPARAM(l), GET_Y_LPARAM(l)}; InvalidateRect(hwnd_, nullptr, FALSE); return 0; }
             if (objDrag_ != ObjDrag::None && doc_) {
                 annot::PointD now;
                 if (!pageUnclamped(GET_X_LPARAM(l), GET_Y_LPARAM(l), objSelPage_, now)) return 0;
@@ -1477,6 +1483,24 @@ LRESULT Viewer::handle(UINT m, WPARAM w, LPARAM l) {
             }
             return 0;
         case WM_LBUTTONUP:
+            if (band_) {
+                band_ = false;
+                ReleaseCapture();
+                InvalidateRect(hwnd_, nullptr, FALSE);
+                if (!onEvent || !doc_) return 0;
+                const POINT a = bandStart_, b = {GET_X_LPARAM(l), GET_Y_LPARAM(l)};
+                annot::PointD p0, p1;
+                Event e; e.tool = Tool::Select; e.page = bandPage_;
+                if (std::abs(b.x - a.x) < 5 && std::abs(b.y - a.y) < 5) {   // hardly moved: a click
+                    if (!toPage(a.x, a.y, bandPage_, p0)) return 0;
+                    e.kind = Event::Click; e.pts = {p0};
+                } else {
+                    if (!pageUnclamped(a.x, a.y, bandPage_, p0) || !pageUnclamped(b.x, b.y, bandPage_, p1)) return 0;
+                    e.kind = Event::Draw; e.pts = {p0, p1};
+                }
+                onEvent(e);
+                return 0;
+            }
             if (objDrag_ != ObjDrag::None) {
                 const annot::RectD from = objSel_, to = objCur_;
                 objDrag_ = ObjDrag::None;
@@ -1663,6 +1687,12 @@ Viewer::ObjDrag Viewer::objHit(int cx, int cy) const {
 }
 
 void Viewer::drawObjectSelection(HDC dc) {
+    if (band_) {   // the box being drawn with the Move tool
+        HPEN bp = CreatePen(PS_DOT, 1, RGB(0x30, 0x80, 0xFF));
+        HGDIOBJ op0 = SelectObject(dc, bp), ob0 = SelectObject(dc, GetStockObject(NULL_BRUSH));
+        Rectangle(dc, std::min(bandStart_.x, bandNow_.x), std::min(bandStart_.y, bandNow_.y), std::max(bandStart_.x, bandNow_.x) + 1, std::max(bandStart_.y, bandNow_.y) + 1);
+        SelectObject(dc, ob0); SelectObject(dc, op0); DeleteObject(bp);
+    }
     if (objSelPage_ < 0 || objSelPage_ >= static_cast<int>(tops_.size())) return;
     RECT r = annotScreenRect(objSelPage_, objDrag_ == ObjDrag::None ? objSel_ : objCur_);
     HPEN pen = CreatePen(objDrag_ == ObjDrag::None ? PS_SOLID : PS_DASH, 2, RGB(0x30, 0x80, 0xFF));

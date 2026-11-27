@@ -68,6 +68,9 @@ struct Selection {
     pageobj::GroupHit group;
 };
 Selection g_sel;
+@interface FPWindowController (EditingPick)
+- (void)pickObjects:(std::vector<int>)objs page:(int)page;
+@end
 std::wstring g_picturePath;            // the picture to put on the page (Picture tool)
 double g_pictureWidth = 0;             // its width on the page in points (0: its own size)
 int g_cropPicPage = -1, g_cropPicObj = -1;   // a picture being cropped (the crop tool then crops it, not the page)
@@ -304,7 +307,30 @@ BOOL FPInlineEditing() { return g_editor && !g_editor.finished; }
                 }
                 break;
             }
+            const bool adding = (NSEvent.modifierFlags & (NSEventModifierFlagCommand | NSEventModifierFlagShift)) != 0;
+            if (self.pageView.tool == FPToolSelectObject && e.kind == FPToolEvent::Draw && e.drag == FPToolEvent::None && e.pts.size() >= 2) {
+                // a box drawn: everything it touches, each whole (⌘ or Shift: added to the selection)
+                const pageobj::GroupHit g = pageobj::groupsIn(*d, e.page, e.pts.front().x, e.pts.front().y, e.pts.back().x, e.pts.back().y);
+                std::vector<int> objs = adding && g_sel.page == e.page && g_sel.group.found ? g_sel.group.objects : std::vector<int>{};
+                for (int i : g.objects) if (std::find(objs.begin(), objs.end(), i) == objs.end()) objs.push_back(i);
+                [self pickObjects:objs page:e.page];
+                break;
+            }
             if (e.kind != FPToolEvent::Click) break;
+            if (adding && self.pageView.tool == FPToolSelectObject && g_sel.page == e.page && g_sel.group.found) {
+                // ⌘ or Shift: the paragraph, picture, table or shape clicked is added to the selection, or taken out of it
+                const pageobj::GroupHit g = pageobj::groupAt(*d, e.page, p.x, p.y);
+                if (!g.found) break;
+                std::vector<int> objs = g_sel.group.objects;
+                const bool all = std::all_of(g.objects.begin(), g.objects.end(), [&](int i) { return std::find(objs.begin(), objs.end(), i) != objs.end(); });
+                for (int i : g.objects) {
+                    auto at = std::find(objs.begin(), objs.end(), i);
+                    if (all && at != objs.end()) objs.erase(at);
+                    else if (!all && at == objs.end()) objs.push_back(i);
+                }
+                [self pickObjects:objs page:e.page];
+                break;
+            }
             g_sel.page = e.page;
             g_sel.group = pageobj::groupAt(*d, e.page, p.x, p.y);
             self.pageView.objectSides = g_sel.group.kind != pageobj::GroupHit::Paragraph;   // text is not stretched one way
@@ -604,6 +630,14 @@ NSTextAlignment textAlignment(pageobj::Align a) {
 }
 
 // For the build check: edit mode on (as the Edit PDF button), then FEATHER_UI_EDITMODE="x y" clicks there on the first page.
+- (IBAction)uiBoxSelect:(id)sender {   // the build check: a box drawn with the Move tool over the top of the first page
+    self.pageView.tool = FPToolSelectObject;
+    FPToolEvent ev;
+    ev.kind = FPToolEvent::Draw; ev.page = 0; ev.pts = {{30, 830}, {570, 640}};
+    if (self.pageView.onToolEvent) self.pageView.onToolEvent(ev);
+    FPTrace(@"box select: %d objects", g_sel.group.found ? static_cast<int>(g_sel.group.objects.size()) : 0);
+}
+
 - (IBAction)uiEditMode:(id)sender {
     Document* d = self.pdf;
     if (!d) return;
@@ -734,6 +768,23 @@ NSTextAlignment textAlignment(pageobj::Align a) {
     g_sel = Selection{};
     [self.pageView setObjectBox:-1 rect:annot::RectD{}];
     [self afterChange];
+}
+
+/** The Move tool's selection: these objects of the page in one frame (none: nothing selected). */
+- (void)pickObjects:(std::vector<int>)objs page:(int)page {
+    std::sort(objs.begin(), objs.end());
+    Document* d = self.pdf;
+    pageobj::GroupHit g;
+    if (d && !objs.empty() && pageobj::boundsOf(*d, page, objs, g.left, g.bottom, g.right, g.top)) {
+        g.found = true; g.kind = pageobj::GroupHit::Shape; g.objects = objs;
+        g_sel.page = page; g_sel.group = g;
+        self.pageView.objectSides = YES;
+        [self.pageView setObjectBox:page rect:annot::RectD{g.left, g.bottom, g.right, g.top}];
+        FPTrace(@"objects picked: %lu, box %.0f %.0f %.0f %.0f", (unsigned long)objs.size(), g.left, g.bottom, g.right, g.top);
+    } else {
+        g_sel.page = -1; g_sel.group = pageobj::GroupHit{};
+        [self.pageView setObjectBox:-1 rect:annot::RectD{}];
+    }
 }
 
 - (IBAction)objectRotateRight:(id)sender { if (g_sel.group.found && pageobj::rotateGroup(*self.pdf, g_sel.page, g_sel.group.objects, 1)) [self afterObjectChange]; }

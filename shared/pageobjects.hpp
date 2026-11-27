@@ -148,6 +148,12 @@ struct GroupHit {
 };
 // The picture, paragraph or table at a page point (a picture wins over text, text over a table).
 GroupHit groupAt(Document& d, int page, double x, double y);
+// Everything a box drawn on the page touches (the Move tool's selection box), each whole: a paragraph touched anywhere is
+// picked whole, as are the pictures, tables and drawn shapes it touches (a background as large as the page only when the
+// box holds all of it). One group, its objects by number in page order; found false when the box touches nothing.
+GroupHit groupsIn(Document& d, int page, double l, double b, double r, double t);
+// The box around page objects (page coordinates); false when none has one.
+bool boundsOf(Document& d, int page, const std::vector<int>& objects, double& l, double& b, double& r, double& t);
 // When the text under a point is inside a form object (a page another program stamped or merged): its contents are put on
 // the page itself so the text can be edited. True when that was done (one undo step); false when there is none or it could
 // not be done exactly.

@@ -1805,3 +1805,6 @@ release version in latest.json too). Every download matches latest.json; altstor
   the heading clicked and a paragraph Ctrl+clicked, Delete, save: both gone, the rest kept; then a box drawn over the
   chart, Delete, save: the chart's labels gone, the text beside it kept. The Mac UI check draws a box with the Move
   tool and checks that several objects are picked.
+
+**Published:** 2026.11.27 "Focus" for Windows, macOS and Android (27 November), at the user's request before the Windows UI
+check's Ctrl+click run finished (the box run passed; Ctrl+click picked both paragraphs on screen). The iPhone stays at 2.28.0.

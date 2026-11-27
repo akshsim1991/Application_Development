@@ -43,8 +43,7 @@ def deco(c,doc):
     # footer
     c.setStrokeColor(colors.HexColor('#c8d3d8')); c.setLineWidth(0.6); c.line(M,14*mm,W-M,14*mm)
     c.setFillColor(GREY); c.setFont('LS',8)
-    c.drawString(M,9.5*mm,'\u00a9 2026 PneuSim. All rights reserved.')
-    c.drawCentredString(W/2+10*mm,9.5*mm,'Pneumatic  \u00b7  Electro-pneumatic  \u00b7  Hydraulic')
+    c.drawString(M,9.5*mm,'PneuSim  \u00b7  Pneumatic  \u00b7  Electro-pneumatic  \u00b7  Hydraulic')
     c.setFillColor(TEAL); c.setFont('LSB',9); c.drawRightString(W-M,9.5*mm,'Page %d of 4'%doc.page)
     c.restoreState()
 
@@ -84,9 +83,9 @@ st+= [P('1  About the software',h1),
  P('It is made for <b>engineers, technicians, designers and maintenance teams</b>, and for anyone learning fluid power. Component names are plain English with the standard name in brackets, for example <i>3/2 valve, push button, NC</i>, so you do not need to be a specialist to start. Symbols are drawn by PneuSim following ISO 1219 / IEC 60617 conventions.'),
  Spacer(1,6)]
 st+=[Spacer(1,2),
- img('shot16.png',fw),
- P('Figure 1: the PneuSim window (dark theme) with a small circuit and its GRAFCET sequence chart.',ParagraphStyle('cap',parent=small,fontName='LSI')),
- legend(['Quick-access buttons and the File tab (New, Open, Save, Export, Settings)','Ribbon tabs: components and tools by topic','Ribbon commands: edit, run, view, pages, quick parts','Search box: finds any command or component','File tabs: several circuits open at once','Workspace: place, connect and run the circuit','Properties panel: all settings of the selected part','Page tabs: several pages in one circuit','Bottom tabs: step diagram, GRAFCET, plotter, check, explain, inspector, fault finding','GRAFCET chart generated from the circuit']),
+ img('shot1.png',fw),
+ P('Figure 1: the PneuSim window with a small circuit and its displacement-step diagram.',ParagraphStyle('cap',parent=small,fontName='LSI')),
+ legend(['Quick-access buttons and the File tab (New, Open, Save, Export, Settings)','Ribbon tabs: components and tools by topic','Ribbon commands: edit, run, view, pages, quick parts','Search box: finds any command or component','File tabs: several circuits open at once','Workspace: place, connect and run the circuit','Properties panel: all settings of the selected part','Page tabs: several pages in one circuit','Bottom tabs: step diagram, GRAFCET, plotter, check, explain, inspector, fault finding','Displacement-step diagram: cylinder and valve movements over time (a GRAFCET chart is one tab away)']),
  Spacer(1,5),
  P('How it works in four steps',h2),
  Table([[P('<b>1  Draw</b><br/>Click a component, click in the workspace, drag port to port. Lines route themselves.',cell),
@@ -162,9 +161,9 @@ st+=[P('3  Advantages over competitive software',h1),
  P('Circuit simulators differ widely. These are the points where PneuSim is designed to save you time and effort.',body),Spacer(1,4),ct,
  P('* General comparison of typical approaches. Features of individual products vary by product, edition and version; check any product you compare against. PneuSim names no competitor and claims no certification.',small),
  Spacer(1,6),
- Table([[img('shot15.png',fw*0.56),
-   [P('Figure 2: View tab, workspace and GRAFCET panel',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
-    legend(['View tab: zoom, pan, grid, live value labels, dark mode','Show and hide the bottom panels','Collapse the ribbon for more room','Workspace with the circuit','GRAFCET chart made from your circuit','Generate it again after a change, or copy it as text'],cols=1,width=fw*0.40)]]],colWidths=[fw*0.58,fw*0.42],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
+ Table([[img('shot2.png',fw*0.64),
+   [P('Figure 2: Cutaway view of the whole workspace',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
+    legend(['Switch between one component and the whole workspace','Valve: see the spool and the switching position','Animated flow in the tubes: blue where pressurised','Cylinder: position, speed and chamber pressure live','Compressed air supply: compressor and receiver'],cols=1,width=fw*0.32)]]],colWidths=[fw*0.66,fw*0.34],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
  PageBreak()]
 # ---------- PAGE 4
 st+=[P('4  Why students should study this',h1),
@@ -193,10 +192,10 @@ st+=[wtab,Spacer(1,7),
          P('<b>Computer</b>',cell),P('2 GB memory (4 GB recommended), 50 MB disk, 1366 x 768 screen or larger',cell)]],colWidths=[fw*0.11,fw*0.39,fw*0.11,fw*0.39],
    style=TableStyle([('BOX',(0,0),(-1,-1),0.6,colors.HexColor('#c8d3d8')),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)])),
  Spacer(1,6),
- P('A real circuit',h2),
- Table([[img('shot17.png',fw*0.50),
-   [P('Figure 3: pneumatic counterbalance circuit (example 13)',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
-    legend(['Cylinder carrying a vertical load','Counterbalance valve: holds the load','5/3 valve, closed centre: hold, raise, lower','Push button LOWER (S1); RAISE (S2) on the right','Air supply with service unit','Pressure gauge','Notes: text placed on the drawing'],cols=1,width=fw*0.44)]]],colWidths=[fw*0.54,fw*0.46],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
+ P('Let PneuSim draw the circuit',h2),
+ Table([[img('shot3.png',fw*0.46),
+   [P('Figure 3: the circuit generator',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
+    legend(['Type the movement sequence, for example A+ B+ B- A-','Choose electro-pneumatic or pneumatic','Optional switch for continuous cycling','PneuSim explains how the circuit will work, step by step','Generate circuit: the drawing appears in the workspace'],cols=1,width=fw*0.50)]]],colWidths=[fw*0.50,fw*0.50],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
  Spacer(1,6),
  box([P('<font size="13" color="#007684"><b>Ready to try it?</b></font>',body),Spacer(1,2),
       P('Ask your PneuSim supplier for the installer or a live demonstration. Start with the built-in examples, press F1 for the Quick Guide, and have your first circuit running in minutes.',body),Spacer(1,3),

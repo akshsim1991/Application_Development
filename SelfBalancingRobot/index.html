@@ -1,0 +1,2198 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PenduBot 3D — Inverted Pendulum &amp; PID Engineering Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'],
+            mono: ['ui-monospace', 'SFMono-Regular', 'Menlo', 'Monaco', 'Consolas', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #070b14;
+      color: #e2e8f0;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      user-select: none;
+    }
+    #canvas-wrap {
+      position: relative;
+      width: 100%;
+      height: 100%;
+    }
+    canvas.webgl-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      touch-action: none;
+    }
+    /* Custom thin scrollbars for side panels */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.4);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(100, 116, 139, 0.45);
+      border-radius: 9999px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(56, 189, 248, 0.65);
+    }
+    /* Range slider styling */
+    input[type="range"].sim-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 5px;
+      background: rgba(51, 65, 85, 0.85);
+      border-radius: 9999px;
+      outline: none;
+    }
+    input[type="range"].sim-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #0f172a;
+      cursor: pointer;
+      box-shadow: 0 0 8px rgba(56, 189, 248, 0.65);
+      transition: transform 0.12s ease, background-color 0.12s ease;
+    }
+    input[type="range"].sim-slider::-webkit-slider-thumb:hover {
+      transform: scale(1.15);
+      background: #7dd3fc;
+    }
+    .glass-panel {
+      background: rgba(11, 18, 32, 0.82);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-radius: 0.75rem;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+    .glass-sub {
+      background: rgba(15, 23, 42, 0.68);
+      border: 1px solid rgba(148, 163, 184, 0.1);
+      border-radius: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-wrap" class="relative w-screen h-screen overflow-hidden bg-[#070b14]">
+    <!-- Fullscreen 3D WebGL Canvas -->
+    <canvas id="sim-canvas" class="webgl-canvas"></canvas>
+
+    <!-- 3D Floating Component Label Overlay -->
+    <div id="part-tooltip" class="pointer-events-none fixed z-30 hidden transition-opacity duration-150">
+      <div class="px-2.5 py-1 rounded-md bg-slate-950/90 border border-sky-400/50 text-xs font-mono text-sky-300 shadow-lg flex items-center gap-1.5">
+        <span class="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse"></span>
+        <span id="tooltip-label">COMPONENT</span>
+      </div>
+    </div>
+
+    <!-- Top Header & Quick Transport Bar -->
+    <header class="fixed top-3 left-3 right-3 z-20 flex flex-wrap items-center justify-between gap-2 pointer-events-none">
+      <!-- Brand & Status Pill -->
+      <div class="glass-panel px-3.5 py-2 flex items-center gap-3 pointer-events-auto">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-sky-500/25 to-indigo-500/25 border border-sky-400/40 flex items-center justify-center text-sky-400 font-mono font-bold text-sm">
+          PB
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-sm font-semibold tracking-tight text-slate-100">PenduBot 3D Studio</h1>
+            <span id="status-badge" class="px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/35">
+              BALANCING
+            </span>
+          </div>
+          <p class="text-[11px] text-slate-400 font-mono">2-Wheel Inverted Pendulum • Real-Time PID &amp; IMU</p>
+        </div>
+      </div>
+
+      <!-- Primary Transport, Motion & Demo Controls -->
+      <div class="glass-panel px-2.5 py-1.5 flex flex-wrap items-center gap-1.5 pointer-events-auto">
+        <button id="btn-start" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 transition flex items-center gap-1">
+          <span>▶</span> Start
+        </button>
+        <button id="btn-stop" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/35 transition flex items-center gap-1">
+          <span>❚❚</span> Stop
+        </button>
+        <button id="btn-reset" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-sky-500/15 hover:bg-sky-500/25 text-sky-300 border border-sky-500/35 transition flex items-center gap-1">
+          <span>↺</span> Reset
+        </button>
+        <button id="btn-estop" class="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-rose-600/25 hover:bg-rose-600/40 text-rose-200 border border-rose-500/50 transition flex items-center gap-1">
+          <span>⏻</span> E-STOP
+        </button>
+
+        <div class="h-5 w-px bg-slate-700/70 mx-0.5 hidden sm:block"></div>
+
+        <!-- Drive Controls -->
+        <div class="flex items-center gap-1" title="Drive controls (WASD / Arrow Keys)">
+          <button id="btn-fwd" class="px-2 py-1.5 rounded-lg text-xs font-mono bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/50 active:bg-sky-500/30 active:border-sky-400 transition">W / ↑ Fwd</button>
+          <button id="btn-rev" class="px-2 py-1.5 rounded-lg text-xs font-mono bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/50 active:bg-sky-500/30 active:border-sky-400 transition">S / ↓ Rev</button>
+          <button id="btn-left" class="px-2 py-1.5 rounded-lg text-xs font-mono bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/50 active:bg-sky-500/30 active:border-sky-400 transition">A / ← Left</button>
+          <button id="btn-right" class="px-2 py-1.5 rounded-lg text-xs font-mono bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/50 active:bg-sky-500/30 active:border-sky-400 transition">D / → Right</button>
+        </div>
+
+        <div class="h-5 w-px bg-slate-700/70 mx-0.5 hidden md:block"></div>
+
+        <!-- Push Impulse & 12s Showreel -->
+        <button id="btn-push" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-200 border border-indigo-400/40 transition">
+          ⚡ Push Impulse
+        </button>
+        <button id="btn-walk-tuned" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-cyan-500/20 hover:bg-cyan-500/30 text-cyan-200 border border-cyan-400/40 transition">
+          🚶 Perfectly Tuned to Walk
+        </button>
+        <button id="btn-demo" class="px-2.5 py-1.5 rounded-lg text-xs font-medium bg-purple-500/20 hover:bg-purple-500/30 text-purple-200 border border-purple-400/40 transition flex items-center gap-1.5">
+          <span>🎬</span> <span id="demo-btn-text">12s Showreel</span>
+        </button>
+        <button id="btn-audio" class="px-2.5 py-1.5 rounded-lg text-xs font-mono bg-slate-800/90 hover:bg-slate-700 text-slate-200 border border-slate-600/50 transition" title="Toggle WebAudio Procedural Synthesizer">
+          🔊 Audio ON
+        </button>
+      </div>
+    </header>
+
+    <!-- Demo Progress Banner (Shown when 12s Showreel is active) -->
+    <div id="demo-banner" class="fixed top-28 left-1/2 -translate-x-1/2 z-20 hidden glass-panel px-4 py-2 border border-purple-400/40">
+      <div class="flex items-center gap-3 text-xs">
+        <span class="font-mono text-purple-300 font-semibold">SHOWREEL</span>
+        <span id="demo-phase-label" class="text-slate-200">Initializing...</span>
+        <span id="demo-timer" class="font-mono text-sky-300">0.0s / 12.0s</span>
+      </div>
+      <div class="w-64 h-1.5 bg-slate-800 rounded-full overflow-hidden mt-1.5">
+        <div id="demo-progress-bar" class="h-full bg-gradient-to-r from-sky-400 via-purple-400 to-emerald-400 w-0 transition-none"></div>
+      </div>
+    </div>
+
+    <!-- Left Dock: Telemetry, Graphs & IMU Sensor Readout -->
+    <aside id="left-panel" class="fixed top-28 left-3 bottom-3 w-[320px] max-w-[92vw] z-10 flex flex-col gap-2.5 overflow-y-auto pr-0.5 pointer-events-auto">
+      <!-- Real-Time Telemetry Grid -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Real-Time Telemetry</h2>
+          <span id="sim-time-readout" class="text-[11px] font-mono text-slate-400">t = 0.00s</span>
+        </div>
+
+        <div class="grid grid-cols-2 gap-1.5 text-xs">
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">Pitch Angle</div>
+            <div id="val-pitch" class="font-mono text-sm font-semibold text-sky-300 mt-0.5">0.00°</div>
+          </div>
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">Target Pitch</div>
+            <div id="val-target-pitch" class="font-mono text-sm font-semibold text-indigo-300 mt-0.5">0.00°</div>
+          </div>
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">Angular Vel (ω)</div>
+            <div id="val-ang-vel" class="font-mono text-sm font-semibold text-amber-300 mt-0.5">0.00 rad/s</div>
+          </div>
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">PID Output</div>
+            <div id="val-pid-out" class="font-mono text-sm font-semibold text-emerald-300 mt-0.5">0.00</div>
+          </div>
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">Wheel RPM (L / R)</div>
+            <div id="val-rpm" class="font-mono text-xs font-semibold text-slate-100 mt-1">0 / 0 RPM</div>
+          </div>
+          <div class="glass-sub p-2">
+            <div class="text-[10px] text-slate-400 uppercase">PWM / Battery</div>
+            <div id="val-pwm-batt" class="font-mono text-xs font-semibold text-slate-100 mt-1">0% • 11.4V</div>
+          </div>
+        </div>
+
+        <!-- PID Term Breakdown -->
+        <div class="mt-2 pt-2 border-t border-slate-800/90">
+          <div class="flex justify-between text-[10px] font-mono text-slate-400 mb-1">
+            <span>PID TERMS (e = <span id="val-err" class="text-slate-200">0.00°</span>)</span>
+            <span id="val-pid-sum" class="text-sky-300">Σ = 0.00</span>
+          </div>
+          <div class="grid grid-cols-3 gap-1.5 text-[11px] font-mono">
+            <div class="bg-slate-900/80 rounded px-2 py-1 border border-slate-800">
+              <span class="text-slate-400">P:</span> <span id="val-p-term" class="text-sky-300">0.00</span>
+            </div>
+            <div class="bg-slate-900/80 rounded px-2 py-1 border border-slate-800">
+              <span class="text-slate-400">I:</span> <span id="val-i-term" class="text-purple-300">0.00</span>
+            </div>
+            <div class="bg-slate-900/80 rounded px-2 py-1 border border-slate-800">
+              <span class="text-slate-400">D:</span> <span id="val-d-term" class="text-amber-300">0.00</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Live Oscilloscope Graphs: Pitch Angle & Motor Output -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Oscilloscope Scope</h2>
+          <div class="flex items-center gap-2.5 text-[10px] font-mono">
+            <span class="flex items-center gap-1 text-sky-300"><i class="w-2 h-0.5 bg-sky-400 inline-block"></i>Pitch</span>
+            <span class="flex items-center gap-1 text-rose-300"><i class="w-2 h-0.5 bg-rose-400 inline-block"></i>Target</span>
+            <span class="flex items-center gap-1 text-emerald-300"><i class="w-2 h-0.5 bg-emerald-400 inline-block"></i>Motor</span>
+          </div>
+        </div>
+        <canvas id="scope-canvas" class="w-full h-32 rounded-lg bg-slate-950/90 border border-slate-800/90 block"></canvas>
+      </section>
+
+      <!-- MPU6050 / IMU Sensor Telemetry & 3D Orientation Attitude Ball -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">MPU6050 IMU Sensor</h2>
+          <span class="text-[10px] font-mono text-emerald-400">I2C 0x68 • 200Hz</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <canvas id="imu-canvas" class="w-24 h-24 shrink-0 rounded-lg bg-slate-950/90 border border-slate-800"></canvas>
+          <div class="flex-1 grid grid-cols-1 gap-1 text-[11px] font-mono">
+            <div class="flex justify-between bg-slate-900/75 px-2 py-1 rounded">
+              <span class="text-slate-400">Accel X/Y/Z:</span>
+              <span id="imu-accel" class="text-slate-200">0.0, 0.0, 9.8</span>
+            </div>
+            <div class="flex justify-between bg-slate-900/75 px-2 py-1 rounded">
+              <span class="text-slate-400">Gyro Pitch/Yaw:</span>
+              <span id="imu-gyro" class="text-amber-300">0.0°, 0.0°</span>
+            </div>
+            <div class="flex justify-between bg-slate-900/75 px-2 py-1 rounded">
+              <span class="text-slate-400">Est. Tilt:</span>
+              <span id="imu-fused" class="text-sky-300">0.00°</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </aside>
+
+    <!-- Right Dock: PID Tuning, Environment, Camera & Assembly Inspector -->
+    <aside id="right-panel" class="fixed top-28 right-3 bottom-3 w-[330px] max-w-[92vw] z-10 flex flex-col gap-2.5 overflow-y-auto pl-0.5 pointer-events-auto">
+      <!-- PID Gains & Operating Conditions -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">PID &amp; Operating Tuning</h2>
+          <button id="btn-pid-defaults" class="text-[10px] font-mono text-sky-400 hover:text-sky-300 underline">Defaults</button>
+        </div>
+
+        <div class="space-y-2.5 text-xs">
+          <!-- Kp -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Proportional (Kp)</span>
+              <span id="label-kp" class="text-sky-300">36.0</span>
+            </div>
+            <input id="slider-kp" type="range" min="0" max="120" step="0.5" value="36" class="sim-slider" />
+          </div>
+
+          <!-- Ki -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Integral (Ki)</span>
+              <span id="label-ki" class="text-purple-300">4.0</span>
+            </div>
+            <input id="slider-ki" type="range" min="0" max="40" step="0.5" value="4" class="sim-slider" />
+          </div>
+
+          <!-- Kd -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Derivative (Kd)</span>
+              <span id="label-kd" class="text-amber-300">8.0</span>
+            </div>
+            <input id="slider-kd" type="range" min="0" max="20" step="0.1" value="8" class="sim-slider" />
+          </div>
+
+          <!-- Target Pitch Angle -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Target Pitch Angle</span>
+              <span id="label-target-angle" class="text-indigo-300">0.0°</span>
+            </div>
+            <input id="slider-target-angle" type="range" min="-15" max="15" step="0.5" value="0" class="sim-slider" />
+          </div>
+
+          <!-- Drive Speed -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Drive Speed Gain</span>
+              <span id="label-speed" class="text-emerald-300">1.0x</span>
+            </div>
+            <input id="slider-speed" type="range" min="0.2" max="2.5" step="0.1" value="1.0" class="sim-slider" />
+          </div>
+
+          <!-- Battery Voltage -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">LiPo Battery Voltage</span>
+              <span id="label-voltage" class="text-rose-300">11.4V</span>
+            </div>
+            <input id="slider-voltage" type="range" min="7.0" max="12.6" step="0.1" value="11.4" class="sim-slider" />
+          </div>
+
+          <!-- Disturbance Force -->
+          <div>
+            <div class="flex justify-between font-mono text-[11px] mb-1">
+              <span class="text-slate-300">Wind / Disturbance Force</span>
+              <span id="label-disturbance" class="text-orange-300">0.0 N</span>
+            </div>
+            <input id="slider-disturbance" type="range" min="-12" max="12" step="0.5" value="0" class="sim-slider" />
+          </div>
+        </div>
+      </section>
+
+      <!-- Exploded View, X-Ray & Camera Presets -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Assembly &amp; Inspection</h2>
+          <button id="btn-xray" class="px-2 py-0.5 rounded text-[11px] font-mono bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-cyan-500/30 transition">
+            X-Ray: OFF
+          </button>
+        </div>
+
+        <!-- Exploded View Slider -->
+        <div class="mb-3">
+          <div class="flex justify-between font-mono text-[11px] mb-1">
+            <span class="text-slate-300">Exploded Assembly</span>
+            <span id="label-explode" class="text-cyan-300">0%</span>
+          </div>
+          <input id="slider-explode" type="range" min="0" max="100" step="1" value="0" class="sim-slider" />
+        </div>
+
+        <!-- Camera Presets -->
+        <div class="text-[10px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Camera Presets</div>
+        <div class="grid grid-cols-3 gap-1.5 text-xs">
+          <button data-cam="iso" class="cam-btn px-2 py-1.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/40 font-mono text-[11px] transition">Isometric</button>
+          <button data-cam="front" class="cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition">Front</button>
+          <button data-cam="rear" class="cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition">Rear</button>
+          <button data-cam="left" class="cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition">Left</button>
+          <button data-cam="right" class="cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition">Right</button>
+          <button data-cam="top" class="cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition">Top</button>
+        </div>
+      </section>
+
+      <!-- Selected Component Technical Inspector -->
+      <section class="glass-panel p-3">
+        <div class="flex items-center justify-between mb-1.5">
+          <h2 class="text-xs font-semibold uppercase tracking-wider text-slate-300">Component Inspector</h2>
+          <button id="btn-clear-part" class="text-[10px] font-mono text-slate-400 hover:text-slate-200">Clear</button>
+        </div>
+        <div id="inspector-card" class="glass-sub p-2.5 text-xs">
+          <div class="flex items-center justify-between">
+            <span id="part-name" class="font-semibold text-sky-300">Click any 3D part</span>
+            <span id="part-subsystem" class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">READY</span>
+          </div>
+          <p id="part-desc" class="text-[11px] text-slate-300/90 leading-relaxed mt-1.5">
+            Select wheels, DC geared motors, chassis plates, LiPo battery pack, microcontroller, H-bridge motor driver, IMU sensor, or wiring harness to inspect engineering specifications and highlight in 3D.
+          </p>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <script>
+    /**
+     * PenduBot 3D — Self-Balancing Two-Wheeled Robot Simulation
+     * 100% Procedural Three.js Geometry, Real-Time Inverted Pendulum Physics,
+     * PID Controller, MPU6050 IMU Simulation, Exploded/X-Ray Inspection & WebAudio Synth.
+     */
+    (function () {
+      'use strict';
+
+      // =========================================================================
+      // 1. COMPONENT METADATA CATALOG (For Selection, Labels & Technical Inspector)
+      // =========================================================================
+      const COMPONENT_INFO = {
+        wheels: {
+          name: 'High-Grip Treaded Wheels (L/R)',
+          subsystem: 'LOCOMOTION',
+          desc: 'Ø90mm molded elastomer tires with CNC aluminum hubs and hex couplers. Provides ground traction for torque-induced linear acceleration and differential steering.'
+        },
+        motors: {
+          name: '12V DC Geared Motors & Encoders',
+          subsystem: 'ACTUATORS',
+          desc: '30:1 metal-gear DC motors with quadrature Hall encoders delivering high holding torque and fast dynamic reversal required for inverted pendulum stabilization.'
+        },
+        power: {
+          name: 'Power Distribution: XT60, Switch, 5V Buck & Bulk Cap',
+          subsystem: 'POWER',
+          desc: 'XT60 battery connector, rocker power switch, LM2596-style 11.1V→5V buck regulator for the MCU/IMU, and a 1000µF bulk capacitor that absorbs motor current spikes on the VM rail.'
+        },
+        hardware: {
+          name: 'M3 Brass Standoffs, Screws & Wheel Bolts',
+          subsystem: 'FASTENERS',
+          desc: 'Hex brass standoffs spacing the three chassis decks, stainless pan-head screws, and wheel retaining bolts with washers that clamp each hub onto its D-shaft.'
+        },
+        brackets: {
+          name: 'CNC Aluminum Motor Mounts & Brackets',
+          subsystem: 'STRUCTURE',
+          desc: 'Anodized 6061-T6 brackets rigidly coupling the gearbox housings to the lower chassis deck while maintaining coaxial wheel alignment.'
+        },
+        chassis: {
+          name: 'Triple-Deck Alloy Chassis Frame',
+          subsystem: 'STRUCTURE',
+          desc: 'Lower, middle and upper mounting plates spaced by brass standoffs, designed to position center-of-mass height for controllable pendulum dynamics.'
+        },
+        battery: {
+          name: '3S 11.1V LiPo Battery Pack',
+          subsystem: 'POWER',
+          desc: 'High-discharge lithium polymer pack mounted near the mid-lower spine to anchor center of gravity and supply peak current surges during rapid balance recovery.'
+        },
+        controller: {
+          name: 'ESP32 DevKit Dual-Core MCU',
+          subsystem: 'COMPUTE',
+          desc: 'Real-time embedded controller executing the 200Hz control loop, sensor fusion filter, PID computation, differential drive mixing, and PWM generation.'
+        },
+        driver: {
+          name: 'TB6612FNG Dual H-Bridge Motor Driver',
+          subsystem: 'POWER STAGE',
+          desc: 'High-frequency PWM H-bridge breakout with screw terminals and header pins, translating signed PID control commands into bidirectional motor drive voltage.'
+        },
+        imu: {
+          name: 'MPU6050 6-Axis IMU (GY-521)',
+          subsystem: 'SENSORS',
+          desc: 'Mounted on the mid deck near the pitch pivot axis to measure linear acceleration and angular rate (rad/s), feeding pitch tilt estimation to the PID feedback loop.'
+        },
+        wiring: {
+          name: 'Power & Signal Wiring Harness',
+          subsystem: 'INTERCONNECT',
+          desc: 'Color-coded power leads (red/black), I2C sensor bus, and motor phase/PWM cables routed cleanly between battery, driver, IMU, and microcontroller.'
+        }
+      };
+
+      // =========================================================================
+      // 2. PROCEDURAL WEB-AUDIO SYNTHESIZER (Motor Hum, Beeps, Disturbance & Alert)
+      // =========================================================================
+      class ProceduralAudioEngine {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+          this.initialized = false;
+          this.master = null;
+          this.motorOsc = null;
+          this.motorSubOsc = null;
+          this.motorGain = null;
+          this.pwmOsc = null;
+          this.pwmGain = null;
+          this.noiseBuf = null;
+          this.lastStepTime = 0;
+          this.lastBlipTime = 0;
+        }
+
+        ensureInit() {
+          if (this.initialized || !this.enabled) return;
+          try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC) return;
+            this.ctx = new AC();
+            this.master = this.ctx.createGain();
+            this.master.gain.value = 0.9;
+            this.master.connect(this.ctx.destination);
+
+            // DC gear-motor: sawtooth + triangle harmonic through a low-pass
+            this.motorOsc = this.ctx.createOscillator();
+            this.motorSubOsc = this.ctx.createOscillator();
+            this.motorGain = this.ctx.createGain();
+            const filter = this.ctx.createBiquadFilter();
+            this.motorOsc.type = 'sawtooth';
+            this.motorSubOsc.type = 'triangle';
+            this.motorOsc.frequency.value = 65;
+            this.motorSubOsc.frequency.value = 130;
+            filter.type = 'lowpass';
+            filter.frequency.value = 520;
+            this.motorGain.gain.value = 0.0001;
+            this.motorOsc.connect(filter);
+            this.motorSubOsc.connect(filter);
+            filter.connect(this.motorGain);
+            this.motorGain.connect(this.master);
+            this.motorOsc.start();
+            this.motorSubOsc.start();
+
+            // High-pitched PWM whine from the H-bridge, rising with drive duty
+            this.pwmOsc = this.ctx.createOscillator();
+            this.pwmGain = this.ctx.createGain();
+            this.pwmOsc.type = 'square';
+            this.pwmOsc.frequency.value = 3200;
+            this.pwmGain.gain.value = 0.0001;
+            const hp = this.ctx.createBiquadFilter();
+            hp.type = 'bandpass';
+            hp.frequency.value = 3200;
+            hp.Q.value = 4;
+            this.pwmOsc.connect(hp);
+            hp.connect(this.pwmGain);
+            this.pwmGain.connect(this.master);
+            this.pwmOsc.start();
+
+            // 0.5 s of white noise for whooshes / impacts
+            const len = Math.floor(this.ctx.sampleRate * 0.5);
+            this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+            const d = this.noiseBuf.getChannelData(0);
+            for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+
+            this.initialized = true;
+          } catch (e) {
+            // Audio blocked or unsupported
+          }
+        }
+
+        resume() {
+          if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+        }
+
+        toggle() {
+          this.enabled = !this.enabled;
+          if (this.enabled) {
+            this.ensureInit();
+            this.resume();
+            this.playTone(660, 0.08, 'sine', 0.06);
+          } else if (this.ctx && this.motorGain) {
+            const t = this.ctx.currentTime;
+            this.motorGain.gain.setTargetAtTime(0.0001, t, 0.04);
+            this.pwmGain.gain.setTargetAtTime(0.0001, t, 0.04);
+          }
+          return this.enabled;
+        }
+
+        playTone(freq, duration = 0.1, type = 'sine', volume = 0.08, glideTo = null) {
+          if (!this.enabled) return;
+          this.ensureInit();
+          if (!this.ctx) return;
+          try {
+            this.resume();
+            const now = this.ctx.currentTime;
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, now);
+            if (glideTo) osc.frequency.exponentialRampToValueAtTime(glideTo, now + duration);
+            gain.gain.setValueAtTime(0.0001, now);
+            gain.gain.exponentialRampToValueAtTime(volume, now + 0.012);
+            gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            osc.connect(gain);
+            gain.connect(this.master);
+            osc.start(now);
+            osc.stop(now + duration + 0.03);
+          } catch (e) {}
+        }
+
+        playNoise(duration, volume, filterType, f0, f1) {
+          if (!this.enabled) return;
+          this.ensureInit();
+          if (!this.ctx || !this.noiseBuf) return;
+          try {
+            this.resume();
+            const now = this.ctx.currentTime;
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.noiseBuf;
+            const f = this.ctx.createBiquadFilter();
+            f.type = filterType;
+            f.frequency.setValueAtTime(f0, now);
+            if (f1) f.frequency.exponentialRampToValueAtTime(f1, now + duration);
+            const g = this.ctx.createGain();
+            g.gain.setValueAtTime(volume, now);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+            src.connect(f); f.connect(g); g.connect(this.master);
+            src.start(now);
+            src.stop(now + duration + 0.02);
+          } catch (e) {}
+        }
+
+        playClick() { this.playTone(1800, 0.025, 'square', 0.03); }
+        playSelect() { this.playTone(587.33, 0.06, 'sine', 0.05); this.playTone(880, 0.07, 'sine', 0.03); }
+        playStartupBeep() {
+          this.playTone(523.25, 0.09, 'triangle', 0.07);
+          setTimeout(() => this.playTone(783.99, 0.14, 'triangle', 0.08), 100);
+        }
+        playPauseBeep() { this.playTone(440, 0.07, 'sine', 0.05); setTimeout(() => this.playTone(330, 0.1, 'sine', 0.05), 80); }
+        playResetSound() { this.playTone(300, 0.18, 'triangle', 0.06, 700); }
+        playWarningBeep() {
+          for (let i = 0; i < 3; i++) setTimeout(() => this.playTone(880, 0.12, 'square', 0.06), i * 160);
+        }
+        playImpulseSound() {
+          this.playNoise(0.14, 0.18, 'lowpass', 900, 200);
+          this.playTone(140, 0.12, 'triangle', 0.11, 70);
+        }
+        playFallSound() {
+          this.playNoise(0.35, 0.3, 'lowpass', 600, 80);
+          this.playTone(120, 0.3, 'sawtooth', 0.09, 45);
+          setTimeout(() => this.playTone(220, 0.2, 'sawtooth', 0.06, 110), 120);
+        }
+        playWalkChirp() {
+          [392, 523.25, 659.25].forEach((f, i) => setTimeout(() => this.playTone(f, 0.08, 'triangle', 0.06), i * 70));
+        }
+        playExplodeSound(opening) {
+          this.playNoise(0.3, 0.12, 'bandpass', opening ? 400 : 2200, opening ? 2200 : 400);
+        }
+        playCameraSwoosh() { this.playNoise(0.2, 0.06, 'bandpass', 600, 1800); }
+        playXray(on) { this.playTone(on ? 500 : 900, 0.15, 'sine', 0.05, on ? 900 : 500); }
+        playDemoCue() { this.playTone(740, 0.06, 'sine', 0.05); }
+
+        // Servo/IMU data "blip" while balancing hard
+        playCorrectionTick() {
+          if (!this.ctx) return;
+          const n = this.ctx.currentTime;
+          if (n - this.lastBlipTime < 0.09) return;
+          this.lastBlipTime = n;
+          this.playTone(2400, 0.02, 'square', 0.012);
+        }
+
+        // speed: normalized wheel speed (0..1+), duty: |PWM| 0..1
+        updateMotorSound(normalizedSpeed, isActive, duty = 0) {
+          if (!this.enabled || !this.initialized || !this.ctx) return;
+          try {
+            if (isActive) this.resume();
+            const now = this.ctx.currentTime;
+            if (!isActive) {
+              this.motorGain.gain.setTargetAtTime(0.0001, now, 0.05);
+              this.pwmGain.gain.setTargetAtTime(0.0001, now, 0.05);
+              return;
+            }
+            const sp = Math.min(1.5, Math.abs(normalizedSpeed));
+            const base = 55 + sp * 210 + duty * 40;
+            this.motorOsc.frequency.setTargetAtTime(base, now, 0.04);
+            this.motorSubOsc.frequency.setTargetAtTime(base * 1.98, now, 0.04);
+            this.motorGain.gain.setTargetAtTime(Math.min(0.06, 0.004 + sp * 0.03 + duty * 0.02), now, 0.04);
+            this.pwmOsc.frequency.setTargetAtTime(2800 + duty * 1400, now, 0.05);
+            this.pwmGain.gain.setTargetAtTime(Math.min(0.012, duty * 0.02), now, 0.05);
+          } catch (e) {}
+        }
+      }
+
+      const audio = new ProceduralAudioEngine();
+
+      // =========================================================================
+      // 3. SIMULATION STATE, PID CONTROLLER & INVERTED PENDULUM PHYSICS
+      // =========================================================================
+      const state = {
+        running: true,
+        emergencyStop: false,
+        simTime: 0,
+
+        // Tunable parameters
+        kp: 36.0,
+        ki: 4.0,
+        kd: 8.0,
+        targetPitchDeg: 0.0,
+        speedGain: 1.0,
+        batteryVoltage: 11.4,
+        disturbanceForce: 0.0,
+        explodeAmount: 0.0, // 0..1
+        xrayMode: false,
+
+        // User / Demo drive inputs (-1..1)
+        driveThrottle: 0.0,
+        driveTurn: 0.0,
+        keyState: { fwd: false, rev: false, left: false, right: false },
+
+        // Inverted pendulum state (radians / rad/s / meters / m/s)
+        pitch: 0.045,        // Chassis tilt from vertical (+ is forward tilt)
+        pitchVel: 0.0,       // Angular velocity d(pitch)/dt
+        wheelAngleL: 0.0,    // Left wheel rotation angle (rad)
+        wheelAngleR: 0.0,    // Right wheel rotation angle (rad)
+        wheelVelL: 0.0,      // Left wheel angular velocity (rad/s)
+        wheelVelR: 0.0,      // Right wheel angular velocity (rad/s)
+        posX: 0.0,           // Ground linear position along forward axis (m)
+        posZ: 0.0,           // Ground lateral offset (m)
+        velX: 0.0,           // Ground linear velocity (m/s)
+        yaw: 0.0,            // Robot heading angle (rad)
+        yawRate: 0.0,        // Turning rate (rad/s)
+
+        // PID state
+        integral: 0.0,
+        prevError: 0.0,
+        motorCmd: 0.0,
+        effTargetDeg: 0.0,
+        accX: 0.0,
+        lastP: 0.0,
+        lastI: 0.0,
+        lastD: 0.0,
+        pidOutput: 0.0,
+        pwmPercent: 0.0,
+        rpmL: 0.0,
+        rpmR: 0.0,
+
+        // Status
+        statusText: 'BALANCING',
+        fallen: false,
+
+        // 12s Automated Showreel state
+        demoActive: false,
+        demoElapsed: 0.0,
+        demoDuration: 12.0,
+        demoImpulseFired: false,
+
+        // Oscilloscope history ring buffers
+        historyLen: 180,
+        pitchHist: [],
+        targetHist: [],
+        motorHist: [],
+
+        // Component selection & camera
+        selectedPartKey: null,
+        hoveredPartKey: null,
+        camPreset: 'iso',
+        camTransitionActive: false
+      };
+
+      for (let i = 0; i < state.historyLen; i++) {
+        state.pitchHist.push(0);
+        state.targetHist.push(0);
+        state.motorHist.push(0);
+      }
+
+      // Physical constants for a realistic ~0.42m tall self-balancing robot
+      const PHYS = {
+        g: 9.81,
+        wheelRadius: 0.045,     // m
+        trackWidth: 0.195,      // m between wheel centres
+        comHeight: 0.145,       // m
+        chassisMass: 1.35,      // kg
+        pendulumInertia: 0.145, // kg m^2 effective pitch inertia about axle
+        gravGain: 25.0,         // m g l / I  (rad/s^2 per rad) -> unstable pole
+        axleAccelMax: 14.0,      // m/s^2 axle acceleration at 100% PWM, nominal voltage
+        rollingFriction: 0.5,   // 1/s linear drag
+        pitchDamping: 0.35,     // 1/s viscous pitch damping
+        maxSpeed: 0.6,          // m/s at full throttle
+        maxYawRate: 2.2,        // rad/s at full turn
+        velLoopGain: 4.0,      // deg of lean per m/s of speed error (outer loop)
+        maxLeanDeg: 9.0,
+        fallAngle: 0.96,        // rad (~55 deg)
+        groundAngle: 1.3,       // rad: chassis resting on floor
+        arenaRadius: 2.6
+      };
+      PHYS.eqLength = PHYS.g / PHYS.gravGain; // equivalent pendulum length
+
+      const FIXED_DT = 1 / 240;
+      const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+      function resetRobotState(initialTiltRad = 0.025) {
+        state.pitch = initialTiltRad;
+        state.pitchVel = 0.0;
+        state.wheelAngleL = 0.0;
+        state.wheelAngleR = 0.0;
+        state.wheelVelL = 0.0;
+        state.wheelVelR = 0.0;
+        state.posX = 0.0;
+        state.posZ = 0.0;
+        state.velX = 0.0;
+        state.accX = 0.0;
+        state.yaw = 0.0;
+        state.yawRate = 0.0;
+        state.integral = 0.0;
+        state.prevError = 0.0;
+        state.pidOutput = 0.0;
+        state.motorCmd = 0.0;
+        state.pwmPercent = 0.0;
+        state.rpmL = 0.0;
+        state.rpmR = 0.0;
+        state.driveThrottle = 0.0;
+        state.driveTurn = 0.0;
+        state.fallen = false;
+        state.emergencyStop = false;
+        state.running = true;
+        state.statusText = 'BALANCING';
+      }
+
+      function applyPushImpulse(impulseStrength = 1.0) {
+        if (state.emergencyStop || state.fallen) return;
+        // Kicks chassis pitch rate (rad/s) to test balance recovery
+        state.pitchVel += impulseStrength;
+        audio.playImpulseSound();
+      }
+
+      // Push all tuning values to the sliders/labels
+      function syncControlsFromState() {
+        const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+        const txt = (id, v) => { const el = document.getElementById(id); if (el) el.textContent = v; };
+        set('slider-kp', state.kp); set('slider-ki', state.ki); set('slider-kd', state.kd);
+        set('slider-target-angle', state.targetPitchDeg);
+        set('slider-speed', state.speedGain);
+        set('slider-voltage', state.batteryVoltage);
+        set('slider-disturbance', state.disturbanceForce);
+        set('slider-explode', Math.round(state.explodeAmount * 100));
+        txt('label-kp', state.kp.toFixed(1));
+        txt('label-ki', state.ki.toFixed(1));
+        txt('label-kd', state.kd.toFixed(1));
+        txt('label-target-angle', `${state.targetPitchDeg.toFixed(1)}°`);
+        txt('label-speed', `${state.speedGain.toFixed(1)}x`);
+        txt('label-voltage', `${state.batteryVoltage.toFixed(1)}V`);
+        txt('label-disturbance', `${state.disturbanceForce.toFixed(1)} N`);
+        txt('label-explode', `${Math.round(state.explodeAmount * 100)}%`);
+      }
+
+      function applyNominalTuning(kp, ki, kd, volts) {
+        state.kp = kp; state.ki = ki; state.kd = kd;
+        state.targetPitchDeg = 0.0;
+        state.speedGain = 1.0;
+        state.batteryVoltage = volts;
+        state.disturbanceForce = 0.0;
+        syncControlsFromState();
+      }
+
+      // Tuned gains + resets + steady forward walk command (button toggles walking)
+      let tunedWalkActive = false;
+      function applyPerfectlyTunedWalk() {
+        stopShowreel();
+        resetRobotState(0.01);
+        applyNominalTuning(40.0, 5.0, 9.0, 12.0);
+        tunedWalkActive = true;
+        state.driveThrottle = 0.6;
+        state.driveTurn = 0.3; // gentle arc keeps the robot inside the arena
+        audio.playStartupBeep();
+        audio.playWalkChirp();
+      }
+
+      function updateShowreel(dt) {
+        if (!state.demoActive) return;
+        state.demoElapsed += dt;
+        const t = state.demoElapsed;
+
+        state.driveThrottle = 0;
+        state.driveTurn = 0;
+
+        let phaseName = 'Startup & Self-Balance';
+        if (t < 2.2) {
+          phaseName = '1/5 Startup & Upright Stabilization';
+          state.targetPitchDeg = 0;
+        } else if (t < 4.8) {
+          phaseName = '2/5 Forward Motion (Pitch-Compensated)';
+          state.driveThrottle = 0.65;
+        } else if (t < 7.2) {
+          phaseName = '3/5 Reverse Motion';
+          state.driveThrottle = -0.65;
+        } else if (t < 9.4) {
+          phaseName = '4/5 Differential Turning';
+          state.driveTurn = Math.sin((t - 7.2) * Math.PI) * 0.85;
+        } else if (t < 11.0) {
+          phaseName = '5/5 External Disturbance Recovery';
+          if (!state.demoImpulseFired) {
+            state.demoImpulseFired = true;
+            state.pitchVel += 1.0;
+            audio.playImpulseSound();
+          }
+        } else if (t < 12.0) {
+          phaseName = 'Steady-State Equilibrium Lock';
+        } else {
+          stopShowreel();
+          return;
+        }
+
+        const banner = document.getElementById('demo-banner');
+        const phaseEl = document.getElementById('demo-phase-label');
+        const timerEl = document.getElementById('demo-timer');
+        const barEl = document.getElementById('demo-progress-bar');
+        if (banner) banner.classList.remove('hidden');
+        if (phaseEl) phaseEl.textContent = phaseName;
+        if (timerEl) timerEl.textContent = `${Math.min(t, 12).toFixed(1)}s / 12.0s`;
+        if (barEl) barEl.style.width = `${Math.min(100, (t / state.demoDuration) * 100)}%`;
+      }
+
+      function startShowreel() {
+        tunedWalkActive = false;
+        resetRobotState(0.08);
+        applyNominalTuning(40.0, 5.0, 9.0, 12.0);
+        state.simTime = 0;
+        state.demoActive = true;
+        state.demoElapsed = 0;
+        state.demoImpulseFired = false;
+        document.getElementById('demo-btn-text').textContent = 'Stop Showreel';
+        audio.playStartupBeep();
+      }
+
+      function stopShowreel() {
+        const wasActive = state.demoActive;
+        state.demoActive = false;
+        state.demoElapsed = 0;
+        if (wasActive) {
+          state.driveThrottle = 0;
+          state.driveTurn = 0;
+        }
+        document.getElementById('demo-banner').classList.add('hidden');
+        document.getElementById('demo-btn-text').textContent = '12s Showreel';
+      }
+
+      function readDriveInputs() {
+        let throttle = state.driveThrottle;
+        let turn = state.driveTurn;
+        if (state.keyState.fwd) throttle += 1;
+        if (state.keyState.rev) throttle -= 1;
+        if (state.keyState.left) turn -= 1;
+        if (state.keyState.right) turn += 1;
+        return {
+          throttle: clamp(throttle, -1, 1) * state.speedGain,
+          turn: clamp(turn, -1, 1) * state.speedGain
+        };
+      }
+
+      // Chassis lying on / falling toward the floor with motors unpowered
+      function stepPassive(dt) {
+        state.pwmPercent = 0;
+        state.pidOutput = 0;
+        state.motorCmd = 0;
+        state.accX = -PHYS.rollingFriction * 3 * state.velX;
+        state.velX += state.accX * dt;
+        state.yawRate *= Math.pow(0.2, dt);
+        const th = state.pitch;
+        const acc = PHYS.gravGain * Math.sin(th) - (state.accX / PHYS.eqLength) * Math.cos(th)
+          - 0.8 * state.pitchVel;
+        state.pitchVel += acc * dt;
+        state.pitch += state.pitchVel * dt;
+        if (Math.abs(state.pitch) > PHYS.groundAngle) {
+          state.pitch = Math.sign(state.pitch) * PHYS.groundAngle;
+          state.pitchVel = 0;
+        }
+        if (Math.abs(state.pitch) > PHYS.fallAngle) state.fallen = true;
+        integrateKinematics(dt);
+      }
+
+      function integrateKinematics(dt) {
+        state.yaw += state.yawRate * dt;
+        state.posZ += Math.cos(state.yaw) * state.velX * dt;
+        state.posX += Math.sin(state.yaw) * state.velX * dt;
+
+        const dist = Math.hypot(state.posX, state.posZ);
+        if (dist > PHYS.arenaRadius) {
+          const k = PHYS.arenaRadius / dist;
+          state.posX *= k;
+          state.posZ *= k;
+          state.velX *= 0.9;
+        }
+
+        // Wheel speeds from body speed and yaw rate (left wheel is on robot's left, +X)
+        const half = PHYS.trackWidth * 0.5;
+        state.wheelVelL = (state.velX - state.yawRate * half) / PHYS.wheelRadius;
+        state.wheelVelR = (state.velX + state.yawRate * half) / PHYS.wheelRadius;
+        state.wheelAngleL += state.wheelVelL * dt;
+        state.wheelAngleR += state.wheelVelR * dt;
+        state.rpmL = (state.wheelVelL * 60) / (2 * Math.PI);
+        state.rpmR = (state.wheelVelR * 60) / (2 * Math.PI);
+      }
+
+      function stepPhysicsAndPID(dt, inputs) {
+        const { throttle, turn } = inputs;
+
+        if (!state.running) {
+          state.statusText = 'PAUSED';
+          return;
+        }
+
+        if (state.emergencyStop) {
+          state.statusText = 'E-STOP';
+          stepPassive(dt);
+          return;
+        }
+
+        if (state.fallen || Math.abs(state.pitch) > PHYS.fallAngle) {
+          if (!state.fallen) {
+            state.fallen = true;
+            audio.playFallSound();
+          }
+          state.statusText = 'FALLEN — RESET';
+          state.integral = 0;
+          stepPassive(dt);
+          return;
+        }
+
+        state.simTime += dt;
+
+        // Outer velocity loop: lean toward the commanded speed
+        const vCmd = throttle * PHYS.maxSpeed;
+        const leanDeg = clamp(PHYS.velLoopGain * (vCmd - state.velX), -PHYS.maxLeanDeg, PHYS.maxLeanDeg);
+        const effectiveTargetDeg = state.targetPitchDeg + leanDeg;
+        state.effTargetDeg = effectiveTargetDeg;
+        const targetRad = (effectiveTargetDeg * Math.PI) / 180;
+
+        // Positive error = leaning forward past setpoint -> wheels must drive forward
+        const error = state.pitch - targetRad;
+        const pTerm = state.kp * error;
+        const dTerm = state.kd * state.pitchVel;
+
+        // Integral with anti-windup (freeze while output saturated)
+        const unsat = pTerm + state.ki * state.integral + dTerm;
+        if (Math.abs(unsat) < 24.0 || Math.sign(unsat) !== Math.sign(error)) {
+          state.integral = clamp(state.integral + error * dt, -1.0, 1.0);
+        }
+        const iTerm = state.ki * state.integral;
+
+        const rawPid = pTerm + iTerm + dTerm;
+        state.lastP = pTerm;
+        state.lastI = iTerm;
+        state.lastD = dTerm;
+        state.pidOutput = rawPid;
+
+        // Normalize to [-1..1] duty and apply motor/driver lag (~25 ms)
+        const duty = clamp(rawPid / 24.0, -1, 1);
+        state.motorCmd += (duty - state.motorCmd) * (1 - Math.exp(-dt / 0.025));
+        state.pwmPercent = state.motorCmd * 100;
+
+        // Motor authority scales with battery voltage
+        const voltageScale = clamp(state.batteryVoltage / 11.4, 0.5, 1.15);
+
+        // Axle acceleration produced by the wheels
+        const accel = PHYS.axleAccelMax * voltageScale * state.motorCmd - PHYS.rollingFriction * state.velX;
+        state.accX = accel;
+
+        // Inverted pendulum: gravity tips it over, axle acceleration pulls the base back under it
+        const th = state.pitch;
+        const disturbanceAcc = (state.disturbanceForce * 0.025) / PHYS.pendulumInertia;
+        const pitchAcc = PHYS.gravGain * Math.sin(th) - (accel / PHYS.eqLength) * Math.cos(th)
+          + disturbanceAcc - PHYS.pitchDamping * state.pitchVel;
+        state.pitchVel += pitchAcc * dt;
+        state.pitch += state.pitchVel * dt;
+        state.velX = clamp(state.velX + accel * dt, -1.2, 1.2);
+
+        // Yaw (differential drive): positive yaw = counter-clockwise from above, so "right" = negative
+        const yawCmd = -turn * PHYS.maxYawRate;
+        state.yawRate += (yawCmd - state.yawRate) * (1 - Math.exp(-dt / 0.12));
+        integrateKinematics(dt);
+
+        // Status classification
+        const absErrDeg = Math.abs(error) * (180 / Math.PI);
+        if (Math.abs(state.disturbanceForce) > 0.5) {
+          state.statusText = 'DISTURBANCE RECOVER';
+        } else if (Math.abs(throttle) > 0.05 || Math.abs(turn) > 0.05) {
+          state.statusText = Math.abs(turn) > 0.05 ? 'DIFFERENTIAL TURN' : 'WALKING BALANCED';
+        } else if (absErrDeg < 2.5 && Math.abs(state.pitchVel) < 0.35) {
+          state.statusText = 'BALANCING';
+        } else {
+          state.statusText = 'STABILIZING';
+        }
+      }
+
+      function recordHistory() {
+        const pitchDeg = (state.pitch * 180) / Math.PI;
+        state.pitchHist.push(pitchDeg);
+        state.targetHist.push(state.effTargetDeg);
+        state.motorHist.push(state.pwmPercent * 0.25);
+        while (state.pitchHist.length > state.historyLen) state.pitchHist.shift();
+        while (state.targetHist.length > state.historyLen) state.targetHist.shift();
+        while (state.motorHist.length > state.historyLen) state.motorHist.shift();
+      }
+
+      // =========================================================================
+      // 4. THREE.JS STUDIO SCENE & 100% PROCEDURAL ROBOT ASSEMBLY
+      // =========================================================================
+      const canvas = document.getElementById('sim-canvas');
+      const renderer = new THREE.WebGLRenderer({
+        canvas,
+        antialias: true,
+        powerPreference: 'high-performance'
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.12;
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x070b14);
+      scene.fog = new THREE.FogExp2(0x070b14, 0.075);
+
+      const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.02, 50);
+
+      // Studio Lighting: Key, Rim, Fill, Hemisphere & Ground Shadows
+      const hemiLight = new THREE.HemisphereLight(0x93c5fd, 0x0f172a, 0.75);
+      scene.add(hemiLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.45);
+      keyLight.position.set(1.8, 2.8, 2.2);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.width = 2048;
+      keyLight.shadow.mapSize.height = 2048;
+      keyLight.shadow.camera.near = 0.5;
+      keyLight.shadow.camera.far = 10;
+      const d = 1.6;
+      keyLight.shadow.camera.left = -d;
+      keyLight.shadow.camera.right = d;
+      keyLight.shadow.camera.top = d;
+      keyLight.shadow.camera.bottom = -d;
+      keyLight.shadow.bias = -0.0005;
+      scene.add(keyLight);
+
+      const rimLight = new THREE.DirectionalLight(0x38bdf8, 0.85);
+      rimLight.position.set(-2.2, 1.6, -1.8);
+      scene.add(rimLight);
+
+      const warmAccentLight = new THREE.PointLight(0xf59e0b, 0.5, 4);
+      warmAccentLight.position.set(0.8, 0.6, -0.8);
+      scene.add(warmAccentLight);
+
+      // Studio Floor & Technical Grid
+      const floorGeo = new THREE.CircleGeometry(6.5, 64);
+      const floorMat = new THREE.MeshStandardMaterial({
+        color: 0x0b1220,
+        roughness: 0.42,
+        metalness: 0.25
+      });
+      const floorMesh = new THREE.Mesh(floorGeo, floorMat);
+      floorMesh.rotation.x = -Math.PI / 2;
+      floorMesh.receiveShadow = true;
+      scene.add(floorMesh);
+
+      const gridHelper = new THREE.GridHelper(6.0, 24, 0x1e3a5f, 0x111c30);
+      gridHelper.position.y = 0.001;
+      scene.add(gridHelper);
+
+      // Subtle calibration ring on studio floor
+      const ringGeo = new THREE.RingGeometry(0.42, 0.435, 64);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.28
+      });
+      const ringMesh = new THREE.Mesh(ringGeo, ringMat);
+      ringMesh.rotation.x = -Math.PI / 2;
+      ringMesh.position.y = 0.002;
+      scene.add(ringMesh);
+
+      // Procedural Materials Library
+      const mats = {
+        tireRubber: new THREE.MeshStandardMaterial({
+          color: 0x181c24,
+          roughness: 0.85,
+          metalness: 0.08
+        }),
+        wheelRim: new THREE.MeshStandardMaterial({
+          color: 0x94a3b8,
+          roughness: 0.28,
+          metalness: 0.88
+        }),
+        motorBrass: new THREE.MeshStandardMaterial({
+          color: 0xd97706,
+          roughness: 0.35,
+          metalness: 0.82
+        }),
+        motorSteel: new THREE.MeshStandardMaterial({
+          color: 0x64748b,
+          roughness: 0.32,
+          metalness: 0.86
+        }),
+        bracketAnodized: new THREE.MeshStandardMaterial({
+          color: 0x0284c7,
+          roughness: 0.36,
+          metalness: 0.72
+        }),
+        chassisCarbon: new THREE.MeshStandardMaterial({
+          color: 0x1e293b,
+          roughness: 0.45,
+          metalness: 0.45
+        }),
+        batteryWrap: new THREE.MeshStandardMaterial({
+          color: 0x1d4ed8,
+          roughness: 0.4,
+          metalness: 0.15
+        }),
+        pcbGreen: new THREE.MeshStandardMaterial({
+          color: 0x15803d,
+          roughness: 0.45,
+          metalness: 0.2
+        }),
+        pcbBlue: new THREE.MeshStandardMaterial({
+          color: 0x0369a1,
+          roughness: 0.42,
+          metalness: 0.2
+        }),
+        icChip: new THREE.MeshStandardMaterial({
+          color: 0x0f172a,
+          roughness: 0.5,
+          metalness: 0.25
+        }),
+        heatsink: new THREE.MeshStandardMaterial({
+          color: 0xcbd5e1,
+          roughness: 0.25,
+          metalness: 0.92
+        }),
+        wireRed: new THREE.MeshStandardMaterial({
+          color: 0xef4444,
+          roughness: 0.5,
+          metalness: 0.1
+        }),
+        wireBlack: new THREE.MeshStandardMaterial({
+          color: 0x334155,
+          roughness: 0.55,
+          metalness: 0.1
+        }),
+        wireYellow: new THREE.MeshStandardMaterial({
+          color: 0xeab308,
+          roughness: 0.5,
+          metalness: 0.1
+        }),
+        ledGreen: new THREE.MeshStandardMaterial({
+          color: 0x22c55e,
+          emissive: 0x22c55e,
+          emissiveIntensity: 1.6,
+          roughness: 0.2
+        }),
+        ledBlue: new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          emissive: 0x38bdf8,
+          emissiveIntensity: 1.5,
+          roughness: 0.2
+        }),
+        ledRed: new THREE.MeshStandardMaterial({
+          color: 0xf43f5e,
+          emissive: 0xf43f5e,
+          emissiveIntensity: 1.3,
+          roughness: 0.2
+        })
+      };
+
+      // Extra materials for electronics detail
+      Object.assign(mats, {
+        labelRed: new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.5, metalness: 0.1 }),
+        gold: new THREE.MeshStandardMaterial({ color: 0xfbbf24, roughness: 0.3, metalness: 0.95 }),
+        copper: new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.35, metalness: 0.9 }),
+        blackPlastic: new THREE.MeshStandardMaterial({ color: 0x0b0f17, roughness: 0.6, metalness: 0.1 }),
+        whitePlastic: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.55, metalness: 0.05 }),
+        yellowPlastic: new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.5, metalness: 0.05 }),
+        espBlack: new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.5, metalness: 0.25 }),
+        buckBlue: new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.45, metalness: 0.2 }),
+        terminalBlue: new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.5, metalness: 0.1 }),
+        capBody: new THREE.MeshStandardMaterial({ color: 0x1f2937, roughness: 0.45, metalness: 0.4 }),
+        capStripe: new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.5, metalness: 0.2 }),
+        magnet: new THREE.MeshStandardMaterial({ color: 0xa8a29e, roughness: 0.3, metalness: 0.9 }),
+        wireWhite: new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.5, metalness: 0.1 }),
+        wireGreen: new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.5, metalness: 0.1 }),
+        wireBlue: new THREE.MeshStandardMaterial({ color: 0x3b82f6, roughness: 0.5, metalness: 0.1 }),
+        wireOrange: new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.5, metalness: 0.1 }),
+        deckPlate: new THREE.MeshStandardMaterial({ color: 0x273449, roughness: 0.4, metalness: 0.5 }),
+        tireMat: new THREE.MeshStandardMaterial({ color: 0x181c24, roughness: 0.85, metalness: 0.08, side: THREE.DoubleSide })
+      });
+
+      const allPartMeshes = [];
+
+      // Tag meshes for raycasting. Each mesh owns its material clone so highlight/x-ray never bleed between parts.
+      function registerPartMesh(mesh, partKey) {
+        mesh.material = mesh.material.clone();
+        mesh.userData.partKey = partKey;
+        const m = mesh.material;
+        mesh.userData.baseEmissive = m.emissive ? m.emissive.getHex() : 0;
+        mesh.userData.baseEmissiveIntensity = m.emissiveIntensity !== undefined ? m.emissiveIntensity : 1;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        allPartMeshes.push(mesh);
+        return mesh;
+      }
+
+      const V3 = (x, y, z) => new THREE.Vector3(x, y, z);
+      const bx = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+      const cylX = (r, len, seg = 20) => { const g = new THREE.CylinderGeometry(r, r, len, seg); g.rotateZ(Math.PI / 2); return g; };
+      const cylY = (r, len, seg = 20) => new THREE.CylinderGeometry(r, r, len, seg);
+      function part(key, geo, mat, parent, x, y, z) {
+        const m = registerPartMesh(new THREE.Mesh(geo, mat), key);
+        m.position.set(x, y, z);
+        parent.add(m);
+        return m;
+      }
+
+      // Root Robot Assembly
+      const robotRoot = new THREE.Group();
+      scene.add(robotRoot);
+      const axleGroup = new THREE.Group();            // sits at wheel-centre height
+      axleGroup.position.y = PHYS.wheelRadius;
+      robotRoot.add(axleGroup);
+      const chassisPendulumGroup = new THREE.Group(); // pivots about the axle (pitch)
+      axleGroup.add(chassisPendulumGroup);
+
+      // ---- Explode system: every sub-assembly is a node that slides along its fastening axis ----
+      const explodeDefs = [];
+      const guideMat = new THREE.LineDashedMaterial({
+        color: 0x38bdf8, dashSize: 0.005, gapSize: 0.004, transparent: true, opacity: 0.75
+      });
+      function makeNode(parent, x, y, z, vec, delay = 0) {
+        const g = new THREE.Group();
+        g.position.set(x, y, z);
+        parent.add(g);
+        const def = { node: g, rest: g.position.clone(), vec: vec.clone(), delay, line: null };
+        const geo = new THREE.BufferGeometry().setFromPoints([def.rest, def.rest.clone().add(def.vec)]);
+        const line = new THREE.Line(geo, guideMat);
+        line.computeLineDistances();
+        line.visible = false;
+        parent.add(line);
+        def.line = line;
+        explodeDefs.push(def);
+        return g;
+      }
+
+      // ---------------- WHEELS (left = +X, right = -X as seen by the robot) ----------------
+      const wheelOffsetX = PHYS.trackWidth * 0.5;
+      const tireProfile = [
+        [0.033, -0.013], [0.0425, -0.013], [0.045, -0.0105], [0.045, 0.0105], [0.0425, 0.013], [0.033, 0.013]
+      ].map(([r, y]) => new THREE.Vector2(r, y));
+      const tireGeo = new THREE.LatheGeometry(tireProfile, 40);
+      tireGeo.rotateZ(Math.PI / 2);
+      const rimShape = new THREE.Shape();
+      rimShape.absarc(0, 0, 0.034, 0, Math.PI * 2, false);
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2;
+        const hole = new THREE.Path();
+        hole.absarc(Math.cos(a) * 0.0215, Math.sin(a) * 0.0215, 0.0075, 0, Math.PI * 2, true);
+        rimShape.holes.push(hole);
+      }
+      const rimGeo = new THREE.ExtrudeGeometry(rimShape, { depth: 0.022, bevelEnabled: false, curveSegments: 20 });
+      rimGeo.translate(0, 0, -0.011);
+      rimGeo.rotateY(Math.PI / 2);
+      const lugGeo = new THREE.BoxGeometry(0.028, 0.0035, 0.007);
+
+      function buildWheel(side) {
+        const outer = makeNode(axleGroup, side * wheelOffsetX, 0, 0, V3(side * 0.095, 0, 0), 0.0);
+        const pivot = new THREE.Group();
+        outer.add(pivot);
+        part('wheels', tireGeo, mats.tireMat, pivot, 0, 0, 0);
+        for (let i = 0; i < 28; i++) {
+          const a = (i / 28) * Math.PI * 2;
+          const lug = part('wheels', lugGeo, mats.tireRubber, pivot, 0, Math.cos(a) * (PHYS.wheelRadius + 0.0008), Math.sin(a) * (PHYS.wheelRadius + 0.0008));
+          lug.rotation.x = a; // box thin axis (Y) aligned with radial direction
+        }
+        part('wheels', rimGeo, mats.wheelRim, pivot, 0, 0, 0);
+        part('wheels', cylX(0.012, 0.03, 20), mats.bracketAnodized, pivot, 0, 0, 0); // hub / hex coupler
+        // Retaining bolt + washer on outer face (non-rotating, symmetric)
+        const bolt = makeNode(outer, side * 0.0175, 0, 0, V3(side * 0.05, 0, 0), 0.0);
+        part('hardware', cylX(0.0045, 0.004, 6), mats.motorSteel, bolt, 0, 0, 0);
+        part('hardware', cylX(0.0075, 0.001, 20), mats.motorSteel, bolt, side * -0.0025, 0, 0);
+        return pivot;
+      }
+      const wheelLeftPivot = buildWheel(1);
+      const wheelRightPivot = buildWheel(-1);
+
+      // ---------------- MOTORS: gearbox + DC can + Hall encoder ----------------
+      const motorNodes = [];
+      function buildMotor(side) {
+        const m = makeNode(chassisPendulumGroup, side * 0.0715, 0, 0, V3(side * 0.05, 0, 0), 0.06);
+        part('motors', cylX(0.0185, 0.026, 24), mats.motorBrass, m, 0, 0, 0);            // gearbox
+        part('motors', cylX(0.003, 0.034, 12), mats.motorSteel, m, side * 0.0167, 0, 0);   // D-shaft toward wheel
+        part('motors', cylX(0.0175, 0.042, 24), mats.motorSteel, m, -side * 0.034, 0, 0);  // DC can
+        part('motors', cylX(0.0178, 0.002, 24), mats.copper, m, -side * 0.0555, 0, 0);     // end cap
+        // Brush terminals on the rear cap
+        part('motors', bx(0.003, 0.0015, 0.005), mats.gold, m, -side * 0.0575, 0.0085, 0.006);
+        part('motors', bx(0.003, 0.0015, 0.005), mats.gold, m, -side * 0.0575, 0.0085, -0.006);
+        // Quadrature encoder: magnet disc + Hall PCB on extended rear shaft
+        part('motors', cylX(0.0015, 0.014, 8), mats.motorSteel, m, -side * 0.0625, 0, 0);
+        part('motors', cylX(0.0085, 0.0025, 20), mats.magnet, m, -side * 0.0655, 0, 0);
+        part('motors', bx(0.0016, 0.022, 0.016), mats.pcbGreen, m, -side * 0.0705, 0.0, 0);
+        part('motors', bx(0.0016, 0.004, 0.004), mats.icChip, m, -side * 0.0725, 0.006, 0.003);
+        part('motors', bx(0.0016, 0.004, 0.004), mats.icChip, m, -side * 0.0725, -0.002, -0.004);
+        part('motors', bx(0.0025, 0.0025, 0.012), mats.gold, m, -side * 0.0735, -0.01, 0);  // 6-pin header
+        // Mounting screws on gearbox face
+        [[0.0125, 0.0], [-0.0125, 0.0]].forEach(([y, z]) => {
+          part('hardware', cylX(0.0018, 0.004, 8), mats.motorSteel, m, -side * 0.0, y, z + 0.0);
+        });
+        motorNodes.push({ node: m, side });
+        return m;
+      }
+      const motorLeftNode = buildMotor(1);
+      const motorRightNode = buildMotor(-1);
+
+      // ---------------- L-BRACKETS (motor mount -> lower deck) ----------------
+      function buildBracket(side) {
+        const b = makeNode(chassisPendulumGroup, side * 0.0555, 0.0, 0, V3(side * 0.025, 0, 0), 0.03);
+        part('brackets', bx(0.006, 0.056, 0.058), mats.bracketAnodized, b, 0, 0.0, 0);                    // vertical plate
+        part('brackets', bx(0.02, 0.004, 0.058), mats.bracketAnodized, b, -side * 0.007, 0.0245, 0);   // top flange
+        [0.017, -0.017].forEach((z) => {
+          part('hardware', cylY(0.002, 0.008, 8), mats.motorSteel, b, -side * 0.012, 0.0265, z);     // flange screws
+        });
+      }
+      buildBracket(1);
+      buildBracket(-1);
+
+      // ---------------- CHASSIS: lower / mid / upper decks + standoffs ----------------
+      const DECK_W = 0.105, DECK_D = 0.13, DECK_T = 0.003;
+      function deck(y, vec, delay, withHoles = true) {
+        const n = makeNode(chassisPendulumGroup, 0, y, 0, vec, delay);
+        part('chassis', bx(DECK_W, DECK_T, DECK_D), mats.deckPlate, n, 0, 0, 0);
+        // lightening slot (visual only: darker inset strip)
+        part('chassis', bx(0.04, DECK_T + 0.0004, 0.012), mats.chassisCarbon, n, 0, 0, 0.0);
+        return n;
+      }
+      const lowerDeck = deck(0.03, V3(0, 0, 0), 0.0);
+      const midDeck = deck(0.0725, V3(0, 0.07, 0), 0.2);
+      const upperDeck = deck(0.115, V3(0, 0.125, 0), 0.35);
+
+      const standoffXZ = [[-0.04, -0.045], [0.04, -0.045], [-0.04, 0.045], [0.04, 0.045]];
+      const standoffGeo = new THREE.CylinderGeometry(0.0033, 0.0033, 0.039, 6);
+      const standoffLow = makeNode(chassisPendulumGroup, 0, 0.0525, 0, V3(0, 0.045, 0), 0.1);
+      const standoffHigh = makeNode(chassisPendulumGroup, 0, 0.0945, 0, V3(0, 0.0975, 0), 0.25);
+      standoffXZ.forEach(([x, z]) => {
+        part('hardware', standoffGeo, mats.motorBrass, standoffLow, x, 0, z);
+        part('hardware', standoffGeo, mats.motorBrass, standoffHigh, x, 0, z);
+      });
+      // Pan-head screws through the upper deck
+      const topScrews = makeNode(chassisPendulumGroup, 0, 0.1185, 0, V3(0, 0.23, 0), 0.0);
+      standoffXZ.forEach(([x, z]) => {
+        part('hardware', cylY(0.0045, 0.0025, 12), mats.motorSteel, topScrews, x, 0.0012, z);
+      });
+
+      // ---------------- POWER: 3S LiPo, XT60, switch, buck regulator, bulk capacitor ----------------
+      const battery = makeNode(chassisPendulumGroup, 0, 0.0505, -0.048, V3(0, 0.05, -0.05), 0.15);
+      part('battery', bx(0.07, 0.034, 0.03), mats.batteryWrap, battery, 0, 0, 0);
+      part('battery', bx(0.071, 0.012, 0.0302), mats.labelRed, battery, 0, 0.004, 0);                   // label band
+      part('battery', bx(0.076, 0.0375, 0.005), mats.chassisCarbon, battery, 0, 0, 0.0);               // velcro strap
+      part('battery', bx(0.012, 0.007, 0.004), mats.whitePlastic, battery, -0.026, 0.0, 0.0165);       // JST-XH balance plug
+      part('battery', bx(0.007, 0.006, 0.0035), mats.gold, battery, -0.026, 0.0, 0.0182);
+
+      const xt60 = makeNode(chassisPendulumGroup, 0.03, 0.039, 0.056, V3(0.03, 0.045, 0.04), 0.05);
+      part('power', bx(0.016, 0.0095, 0.011), mats.yellowPlastic, xt60, 0, 0, 0);
+      part('power', bx(0.004, 0.003, 0.003), mats.gold, xt60, -0.003, 0.0, -0.0055);
+      part('power', bx(0.004, 0.003, 0.003), mats.gold, xt60, 0.003, 0.0, -0.0055);
+
+      const powerSwitch = makeNode(chassisPendulumGroup, -0.03, 0.0385, 0.056, V3(-0.03, 0.045, 0.04), 0.05);
+      part('power', bx(0.0135, 0.008, 0.0195), mats.blackPlastic, powerSwitch, 0, 0, 0);
+      const rocker = part('power', bx(0.011, 0.003, 0.012), mats.ledRed, powerSwitch, 0, 0.0055, 0);
+      rocker.rotation.z = 0.15;
+
+      const buck = makeNode(chassisPendulumGroup, 0, 0.0343, -0.0165, V3(0, 0.075, 0.0), 0.1);
+      part('power', bx(0.028, 0.0015, 0.027), mats.buckBlue, buck, 0, 0, 0);                            // LM2596-style module
+      part('power', bx(0.011, 0.007, 0.011), mats.icChip, buck, 0.006, 0.0042, 0.004);                  // inductor
+      part('power', cylY(0.0045, 0.0085, 16), mats.capBody, buck, -0.007, 0.0047, -0.007);              // electrolytic cap
+      part('power', bx(0.007, 0.0018, 0.006), mats.icChip, buck, -0.007, 0.0017, 0.008);                // regulator IC
+      part('power', bx(0.005, 0.005, 0.005), mats.heatsink, buck, 0.009, 0.0033, -0.009);               // trim-pot
+      part('power', bx(0.004, 0.0015, 0.0045), mats.terminalBlue, buck, -0.0125, 0.0015, 0.0);
+
+      const bulkCap = makeNode(chassisPendulumGroup, 0.03, 0.0455, -0.0125, V3(0.05, 0.06, 0), 0.1);
+      part('power', cylY(0.0065, 0.024, 20), mats.capBody, bulkCap, 0, 0, 0);                           // 1000uF 25V
+      part('power', cylY(0.0067, 0.018, 20), mats.capStripe, bulkCap, 0, -0.001, 0).scale.set(1, 0.4, 1);
+
+      // ---------------- MOTOR DRIVER (TB6612FNG breakout) ----------------
+      const driver = makeNode(chassisPendulumGroup, 0, 0.0348, 0.028, V3(0, 0.05, 0.05), 0.12);
+      part('driver', bx(0.04, 0.002, 0.034), mats.pcbBlue, driver, 0, 0, 0);
+      part('driver', bx(0.0085, 0.0025, 0.0125), mats.icChip, driver, 0, 0.0022, 0.0);                   // TB6612FNG SSOP24
+      part('driver', bx(0.0105, 0.008, 0.009), mats.terminalBlue, driver, -0.013, 0.005, -0.0125);     // screw terminals
+      part('driver', bx(0.0105, 0.008, 0.009), mats.terminalBlue, driver, 0.0, 0.005, -0.0125);
+      part('driver', bx(0.0105, 0.008, 0.009), mats.terminalBlue, driver, 0.013, 0.005, -0.0125);
+      part('driver', bx(0.036, 0.0025, 0.0025), mats.blackPlastic, driver, 0, 0.002, 0.0145);           // header strip
+      for (let i = 0; i < 8; i++) {
+        part('driver', bx(0.0006, 0.005, 0.0006), mats.gold, driver, -0.0155 + i * 0.0044, 0.0035, 0.0145);
+      }
+      part('driver', cylY(0.0028, 0.0055, 12), mats.capBody, driver, 0.0145, 0.0038, 0.005);             // decoupling caps
+      part('driver', cylY(0.0028, 0.0055, 12), mats.capBody, driver, -0.0145, 0.0038, 0.005);
+      part('driver', bx(0.0025, 0.001, 0.0016), mats.ledBlue, driver, 0.0, 0.0015, 0.008);              // status LED
+
+      // ---------------- IMU: MPU-6050 (GY-521) on mid deck ----------------
+      const imu = makeNode(chassisPendulumGroup, 0, 0.0765, 0.018, V3(0, 0.10, 0.015), 0.25);
+      part('imu', bx(0.021, 0.0016, 0.0155), mats.pcbBlue, imu, 0, 0, 0);
+      part('imu', bx(0.004, 0.001, 0.004), mats.icChip, imu, 0.0, 0.0013, 0.0);                          // MPU-6050 QFN
+      part('imu', bx(0.0035, 0.0012, 0.0045), mats.icChip, imu, 0.006, 0.0014, 0.003);                   // 3.3V LDO
+      part('imu', bx(0.002, 0.001, 0.001), mats.whitePlastic, imu, -0.006, 0.0013, 0.004);              // 0402 passives
+      part('imu', bx(0.002, 0.001, 0.001), mats.whitePlastic, imu, -0.006, 0.0013, -0.004);
+      part('imu', bx(0.0025, 0.0009, 0.0015), mats.ledRed, imu, 0.0075, 0.0013, -0.005);                // power LED
+      part('imu', bx(0.0205, 0.0025, 0.0025), mats.blackPlastic, imu, 0, 0.002, -0.0065);              // 8-pin header
+      for (let i = 0; i < 8; i++) part('imu', bx(0.0006, 0.005, 0.0006), mats.gold, imu, -0.0088 + i * 0.0025, 0.0042, -0.0065);
+      part('imu', cylY(0.0011, 0.0018, 10), mats.gold, imu, -0.0095, 0, 0.0065);                        // mount holes
+      part('imu', cylY(0.0011, 0.0018, 10), mats.gold, imu, 0.0095, 0, 0.0065);
+
+      // ---------------- MCU: ESP32 DevKit on upper deck (on spacers) ----------------
+      const mcu = makeNode(chassisPendulumGroup, 0, 0.1225, 0, V3(0, 0.19, 0), 0.4);
+      part('controller', bx(0.0255, 0.0016, 0.051), mats.espBlack, mcu, 0, 0, 0);
+      part('controller', bx(0.0155, 0.0032, 0.0185), mats.heatsink, mcu, 0, 0.0024, 0.0065);            // ESP-WROOM shield can
+      part('controller', bx(0.0155, 0.0006, 0.0075), mats.gold, mcu, 0, 0.0009, 0.0225);                 // PCB antenna
+      part('controller', bx(0.0085, 0.0032, 0.0075), mats.heatsink, mcu, 0, 0.0024, -0.0235);            // USB connector
+      part('controller', bx(0.0035, 0.002, 0.0035), mats.whitePlastic, mcu, 0.0085, 0.0018, -0.0115);   // EN button
+      part('controller', bx(0.0035, 0.002, 0.0035), mats.whitePlastic, mcu, -0.0085, 0.0018, -0.0115);  // BOOT button
+      part('controller', bx(0.004, 0.0012, 0.003), mats.icChip, mcu, 0.0, 0.0014, -0.0125);            // CP2102 USB-UART
+      part('controller', bx(0.0025, 0.002, 0.0025), mats.ledBlue, mcu, 0.0095, 0.0014, -0.0175);        // user LED
+      part('controller', bx(0.0025, 0.0012, 0.0017), mats.ledGreen, mcu, -0.0095, 0.0013, -0.0175);     // power LED
+      [-0.0118, 0.0118].forEach((x) => {
+        part('controller', bx(0.0025, 0.0085, 0.046), mats.blackPlastic, mcu, x, -0.0045, -0.0005);     // pin headers (down)
+        for (let i = 0; i < 19; i++) part('controller', bx(0.0006, 0.002, 0.0006), mats.gold, mcu, x, 0.0016, -0.0215 + i * 0.0023);
+      });
+      standoffXZ.forEach(([x, z]) => {
+        part('controller', cylY(0.0022, 0.004, 10), mats.whitePlastic, mcu, x * 0.28, -0.0028, z * 0.5); // nylon spacers
+      });
+
+      // ---------------- WIRING HARNESS (rebuilt whenever parts move) ----------------
+      const wireDefs = [];
+      const wireMeshes = [];
+      function defWire(nodeA, la, nodeB, lb, mat, radius, bow) {
+        wireDefs.push({ nodeA, la: V3(...la), nodeB, lb: V3(...lb), mat, radius, bow: V3(...bow) });
+      }
+      const MLN = { node: motorLeftNode }, MRN = { node: motorRightNode };
+      // Battery -> XT60 -> switch -> driver VM / buck IN
+      defWire(battery, [0.008, 0.004, 0.0155], xt60, [-0.0035, 0, -0.0055], mats.wireRed, 0.0021, [0, 0.012, 0]);
+      defWire(battery, [-0.008, 0.004, 0.0155], driver, [-0.013, 0.008, -0.0125], mats.wireBlack, 0.0021, [0, 0.012, 0]);
+      defWire(xt60, [-0.003, 0, 0.0055], powerSwitch, [0.004, 0, 0.0], mats.wireRed, 0.0021, [0, 0.008, 0.01]);
+      defWire(powerSwitch, [-0.004, 0, -0.0098], driver, [0.0, 0.008, -0.0125], mats.wireRed, 0.0021, [0, 0.014, 0]);
+      defWire(powerSwitch, [0.0, 0, -0.0098], buck, [-0.0125, 0.002, 0.0], mats.wireRed, 0.0016, [0, 0.014, 0]);
+      defWire(driver, [0.013, 0.008, -0.0125], buck, [-0.0125, 0.002, 0.003], mats.wireBlack, 0.0016, [0, 0.012, 0]);
+      // Buck 5V rail -> ESP32 VIN/GND
+      defWire(buck, [0.0105, 0.002, -0.013], mcu, [0.0118, 0.0, 0.0215], mats.wireRed, 0.0015, [0.02, 0.0, 0]);
+      defWire(buck, [0.0105, 0.002, 0.012], mcu, [0.0118, 0.0, 0.0192], mats.wireBlack, 0.0015, [0.02, 0.0, 0]);
+      // Motor power leads (driver -> brush terminals)
+      defWire(driver, [-0.017, 0.003, 0.0], MLN.node, [-0.0575, 0.0085, 0.006], mats.wireYellow, 0.0014, [0.01, 0.014, 0.0]);
+      defWire(driver, [-0.017, 0.003, 0.004], MLN.node, [-0.0575, 0.0085, -0.006], mats.wireBlack, 0.0014, [0.01, 0.01, 0.0]);
+      defWire(driver, [0.017, 0.003, 0.0], MRN.node, [0.0575, 0.0085, 0.006], mats.wireWhite, 0.0014, [-0.01, 0.014, 0.0]);
+      defWire(driver, [0.017, 0.003, 0.004], MRN.node, [0.0575, 0.0085, -0.006], mats.wireBlack, 0.0014, [-0.01, 0.01, 0.0]);
+      // Encoder signals -> ESP32 GPIO
+      defWire(MLN.node, [-0.0735, -0.01, 0.0], mcu, [0.0118, 0.0, 0.0], mats.wireBlue, 0.0012, [0.0, 0.02, 0.0]);
+      defWire(MRN.node, [0.0735, -0.01, 0.0], mcu, [-0.0118, 0.0, 0.0], mats.wireGreen, 0.0012, [0.0, 0.02, 0.0]);
+      // Driver PWM / direction inputs <- ESP32
+      defWire(driver, [-0.0155, 0.004, 0.0145], mcu, [-0.0118, 0.0, -0.01], mats.wireOrange, 0.0012, [0.0, 0.012, 0.0]);
+      defWire(driver, [0.0155, 0.004, 0.0145], mcu, [0.0118, 0.0, -0.01], mats.wireWhite, 0.0012, [0.0, 0.012, 0.0]);
+      // IMU I2C harness -> ESP32 (3V3, GND, SDA, SCL)
+      defWire(imu, [-0.0088, 0.006, -0.0065], mcu, [-0.0118, 0.0, 0.0124], mats.wireRed, 0.0011, [-0.012, 0.01, 0]);
+      defWire(imu, [-0.0063, 0.006, -0.0065], mcu, [-0.0118, 0.0, 0.0147], mats.wireBlack, 0.0011, [-0.012, 0.01, 0]);
+      defWire(imu, [-0.0013, 0.006, -0.0065], mcu, [-0.0118, 0.0, 0.0170], mats.wireGreen, 0.0011, [-0.012, 0.01, 0]);
+      defWire(imu, [0.0012, 0.006, -0.0065], mcu, [-0.0118, 0.0, 0.0193], mats.wireYellow, 0.0011, [-0.012, 0.01, 0]);
+
+      function rebuildWires() {
+        wireMeshes.forEach((m) => { m.parent.remove(m); m.geometry.dispose(); const i = allPartMeshes.indexOf(m); if (i >= 0) allPartMeshes.splice(i, 1); });
+        wireMeshes.length = 0;
+        wireDefs.forEach((w) => {
+          const a = w.nodeA.position.clone().add(w.la);
+          const b = w.nodeB.position.clone().add(w.lb);
+          if (a.distanceTo(b) < 0.002) return;
+          const mid = a.clone().add(b).multiplyScalar(0.5).add(w.bow);
+          const curve = new THREE.CatmullRomCurve3([a, mid, b]);
+          const geo = new THREE.TubeGeometry(curve, 24, w.radius, 6, false);
+          const mesh = registerPartMesh(new THREE.Mesh(geo, w.mat), 'wiring');
+          chassisPendulumGroup.add(mesh);
+          wireMeshes.push(mesh);
+        });
+      }
+
+      // =========================================================================
+      // 5. EXPLODED VIEW, X-RAY MODE & COMPONENT SELECTION HIGHLIGHTING
+      // =========================================================================
+      function applyExplodedTransform(amount) {
+        for (let i = 0; i < explodeDefs.length; i++) {
+          const d = explodeDefs[i];
+          const t = Math.max(0, Math.min(1, (amount - d.delay) / (1 - d.delay)));
+          const e = t * t * (3 - 2 * t); // smoothstep, staged by layer
+          d.node.position.copy(d.rest).addScaledVector(d.vec, e);
+          d.line.visible = amount > 0.02;
+        }
+        rebuildWires();
+        applyMaterialModes();
+      }
+      rebuildWires();
+
+      function applyMaterialModes() {
+        for (let i = 0; i < allPartMeshes.length; i++) {
+          const mesh = allPartMeshes[i];
+          const mat = mesh.material;
+          const key = mesh.userData.partKey;
+          const isSelected = state.selectedPartKey && key === state.selectedPartKey;
+          const isHovered = state.hoveredPartKey && key === state.hoveredPartKey;
+
+          if (state.xrayMode) {
+            mat.transparent = true;
+            mat.opacity = isSelected ? 0.9 : 0.2;
+            mat.depthWrite = !!isSelected;
+          } else {
+            mat.transparent = false;
+            mat.opacity = 1.0;
+            mat.depthWrite = true;
+          }
+
+          if (mat.emissive) {
+            if (isSelected) {
+              mat.emissive.setHex(0x38bdf8);
+              mat.emissiveIntensity = 0.55;
+            } else if (isHovered) {
+              mat.emissive.setHex(0x0ea5e9);
+              mat.emissiveIntensity = 0.25;
+            } else {
+              mat.emissive.setHex(mesh.userData.baseEmissive);
+              mat.emissiveIntensity = mesh.userData.baseEmissiveIntensity;
+            }
+          }
+        }
+      }
+
+      function selectComponent(partKey) {
+        state.selectedPartKey = partKey;
+        const nameEl = document.getElementById('part-name');
+        const subEl = document.getElementById('part-subsystem');
+        const descEl = document.getElementById('part-desc');
+
+        if (!partKey || !COMPONENT_INFO[partKey]) {
+          nameEl.textContent = 'Click any 3D part';
+          subEl.textContent = 'READY';
+          descEl.textContent =
+            'Select wheels, DC geared motors, chassis plates, LiPo battery pack, microcontroller, H-bridge motor driver, IMU sensor, or wiring harness to inspect engineering specifications and highlight in 3D.';
+        } else {
+          const info = COMPONENT_INFO[partKey];
+          nameEl.textContent = info.name;
+          subEl.textContent = info.subsystem;
+          descEl.textContent = info.desc;
+        }
+        applyMaterialModes();
+      }
+
+      // =========================================================================
+      // 6. CAMERA PRESETS, ORBIT CONTROLS & RAYCAST PICKING
+      // =========================================================================
+      const CAM_PRESETS = {
+        iso: { pos: new THREE.Vector3(0.46, 0.34, 0.54), target: new THREE.Vector3(0, 0.12, 0) },
+        front: { pos: new THREE.Vector3(0, 0.16, 0.68), target: new THREE.Vector3(0, 0.12, 0) },
+        rear: { pos: new THREE.Vector3(0, 0.18, -0.68), target: new THREE.Vector3(0, 0.12, 0) },
+        left: { pos: new THREE.Vector3(-0.68, 0.16, 0), target: new THREE.Vector3(0, 0.12, 0) },
+        right: { pos: new THREE.Vector3(0.68, 0.16, 0), target: new THREE.Vector3(0, 0.12, 0) },
+        top: { pos: new THREE.Vector3(0.001, 0.78, 0.08), target: new THREE.Vector3(0, 0.1, 0) }
+      };
+
+      const orbitTarget = new THREE.Vector3(0, 0.12, 0);
+      const desiredCamPos = CAM_PRESETS.iso.pos.clone();
+      const desiredTarget = CAM_PRESETS.iso.target.clone();
+      camera.position.copy(desiredCamPos);
+      camera.lookAt(orbitTarget);
+
+      function setCameraPreset(presetName) {
+        const p = CAM_PRESETS[presetName];
+        if (!p) return;
+        state.camPreset = presetName;
+        const follow = V3(state.posX, 0, state.posZ);
+        desiredTarget.copy(p.target).add(follow).y += state.explodeAmount * 0.12;
+        desiredCamPos.copy(p.pos).add(follow).sub(desiredTarget).multiplyScalar(1 + 0.6 * state.explodeAmount).add(desiredTarget);
+        state.camTransitionActive = true;
+        audio.playCameraSwoosh();
+
+        document.querySelectorAll('.cam-btn').forEach((btn) => {
+          const active = btn.dataset.cam === presetName;
+          btn.className = active
+            ? 'cam-btn px-2 py-1.5 rounded-lg bg-sky-500/20 text-sky-200 border border-sky-400/40 font-mono text-[11px] transition'
+            : 'cam-btn px-2 py-1.5 rounded-lg bg-slate-800/85 hover:bg-slate-700 text-slate-300 border border-slate-700/60 font-mono text-[11px] transition';
+        });
+      }
+
+      // Pointer Orbit + Zoom + Click Raycasting
+      const raycaster = new THREE.Raycaster();
+      const pointerNDC = new THREE.Vector2();
+      const tooltipEl = document.getElementById('part-tooltip');
+      const tooltipLabelEl = document.getElementById('tooltip-label');
+
+      let isDragging = false;
+      let dragMoved = false;
+      let prevPointerX = 0;
+      let prevPointerY = 0;
+
+      function updateRaycaster(clientX, clientY) {
+        const rect = canvas.getBoundingClientRect();
+        pointerNDC.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        pointerNDC.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(pointerNDC, camera);
+        const hits = raycaster.intersectObjects(allPartMeshes, false);
+        return hits.length > 0 ? hits[0].object.userData.partKey : null;
+      }
+
+      canvas.addEventListener('pointerdown', (e) => {
+        audio.ensureInit();
+        isDragging = true;
+        dragMoved = false;
+        prevPointerX = e.clientX;
+        prevPointerY = e.clientY;
+        state.camTransitionActive = false;
+      });
+
+      window.addEventListener('pointermove', (e) => {
+        if (isDragging) {
+          const dx = e.clientX - prevPointerX;
+          const dy = e.clientY - prevPointerY;
+          if (Math.abs(dx) + Math.abs(dy) > 3) dragMoved = true;
+          prevPointerX = e.clientX;
+          prevPointerY = e.clientY;
+
+          // Orbit camera around orbitTarget
+          const offset = camera.position.clone().sub(orbitTarget);
+          const spherical = new THREE.Spherical().setFromVector3(offset);
+          spherical.theta -= dx * 0.008;
+          spherical.phi -= dy * 0.008;
+          spherical.phi = Math.max(0.12, Math.min(Math.PI * 0.49, spherical.phi));
+          offset.setFromSpherical(spherical);
+          camera.position.copy(orbitTarget).add(offset);
+          camera.lookAt(orbitTarget);
+          tooltipEl.classList.add('hidden');
+          return;
+        }
+
+        // Hover label when over 3D canvas
+        if (e.target === canvas) {
+          const hitKey = updateRaycaster(e.clientX, e.clientY);
+          if (hitKey !== state.hoveredPartKey) {
+            state.hoveredPartKey = hitKey;
+            applyMaterialModes();
+          }
+          if (hitKey && COMPONENT_INFO[hitKey]) {
+            tooltipLabelEl.textContent = COMPONENT_INFO[hitKey].name;
+            tooltipEl.style.left = `${e.clientX + 14}px`;
+            tooltipEl.style.top = `${e.clientY + 12}px`;
+            tooltipEl.classList.remove('hidden');
+            canvas.style.cursor = 'pointer';
+          } else {
+            tooltipEl.classList.add('hidden');
+            canvas.style.cursor = 'grab';
+          }
+        } else if (state.hoveredPartKey) {
+          state.hoveredPartKey = null;
+          applyMaterialModes();
+          tooltipEl.classList.add('hidden');
+        }
+      });
+
+      window.addEventListener('pointerup', (e) => {
+        if (isDragging && !dragMoved && e.target === canvas) {
+          const hitKey = updateRaycaster(e.clientX, e.clientY);
+          if (hitKey) {
+            selectComponent(hitKey);
+            audio.playSelect();
+          } else if (state.selectedPartKey) {
+            selectComponent(null);
+            audio.playClick();
+          }
+        }
+        isDragging = false;
+      });
+
+      canvas.addEventListener(
+        'wheel',
+        (e) => {
+          e.preventDefault();
+          state.camTransitionActive = false;
+          const offset = camera.position.clone().sub(orbitTarget);
+          const dist = offset.length();
+          const nextDist = Math.max(0.24, Math.min(2.6, dist * (1 + e.deltaY * 0.001)));
+          offset.setLength(nextDist);
+          camera.position.copy(orbitTarget).add(offset);
+          camera.lookAt(orbitTarget);
+        },
+        { passive: false }
+      );
+
+      // =========================================================================
+      // 7. 2D OSCILLOSCOPE & IMU ATTITUDE INDICATOR CANVASES
+      // =========================================================================
+      const scopeCanvas = document.getElementById('scope-canvas');
+      const scopeCtx = scopeCanvas.getContext('2d');
+      const imuCanvas = document.getElementById('imu-canvas');
+      const imuCtx = imuCanvas.getContext('2d');
+
+      function drawOscilloscope() {
+        const dpr = window.devicePixelRatio || 1;
+        const w = scopeCanvas.clientWidth;
+        const h = scopeCanvas.clientHeight;
+        if (scopeCanvas.width !== Math.floor(w * dpr) || scopeCanvas.height !== Math.floor(h * dpr)) {
+          scopeCanvas.width = Math.floor(w * dpr);
+          scopeCanvas.height = Math.floor(h * dpr);
+        }
+        scopeCtx.save();
+        scopeCtx.scale(dpr, dpr);
+        scopeCtx.clearRect(0, 0, w, h);
+
+        // Zero axis line
+        const midY = h * 0.5;
+        scopeCtx.strokeStyle = 'rgba(148, 163, 184, 0.16)';
+        scopeCtx.lineWidth = 1;
+        scopeCtx.beginPath();
+        scopeCtx.moveTo(0, midY);
+        scopeCtx.lineTo(w, midY);
+        scopeCtx.stroke();
+
+        const maxDeg = 25;
+        const plotSeries = (arr, color, lineWidth = 1.6) => {
+          if (arr.length < 2) return;
+          scopeCtx.strokeStyle = color;
+          scopeCtx.lineWidth = lineWidth;
+          scopeCtx.beginPath();
+          for (let i = 0; i < arr.length; i++) {
+            const x = (i / (arr.length - 1)) * w;
+            const clamped = Math.max(-maxDeg, Math.min(maxDeg, arr[i]));
+            const y = midY - (clamped / maxDeg) * (h * 0.44);
+            if (i === 0) scopeCtx.moveTo(x, y);
+            else scopeCtx.lineTo(x, y);
+          }
+          scopeCtx.stroke();
+        };
+
+        plotSeries(state.targetHist, '#fb7185', 1.2);
+        plotSeries(state.motorHist, '#34d399', 1.3);
+        plotSeries(state.pitchHist, '#38bdf8', 1.8);
+
+        scopeCtx.restore();
+      }
+
+      function drawImuIndicator() {
+        const dpr = window.devicePixelRatio || 1;
+        const size = imuCanvas.clientWidth;
+        if (imuCanvas.width !== Math.floor(size * dpr) || imuCanvas.height !== Math.floor(size * dpr)) {
+          imuCanvas.width = Math.floor(size * dpr);
+          imuCanvas.height = Math.floor(size * dpr);
+        }
+        imuCtx.save();
+        imuCtx.scale(dpr, dpr);
+        imuCtx.clearRect(0, 0, size, size);
+
+        const cx = size * 0.5;
+        const cy = size * 0.5;
+        const r = size * 0.42;
+
+        // Outer dial ring
+        imuCtx.strokeStyle = 'rgba(56, 189, 248, 0.35)';
+        imuCtx.lineWidth = 1.5;
+        imuCtx.beginPath();
+        imuCtx.arc(cx, cy, r, 0, Math.PI * 2);
+        imuCtx.stroke();
+
+        // Upright reference ticks
+        imuCtx.strokeStyle = 'rgba(148, 163, 184, 0.25)';
+        imuCtx.beginPath();
+        imuCtx.moveTo(cx, cy - r);
+        imuCtx.lineTo(cx, cy + r);
+        imuCtx.stroke();
+
+        // Tilted pendulum vector representing estimated pitch
+        imuCtx.save();
+        imuCtx.translate(cx, cy);
+        imuCtx.rotate(state.pitch);
+        imuCtx.strokeStyle = '#38bdf8';
+        imuCtx.lineWidth = 3;
+        imuCtx.beginPath();
+        imuCtx.moveTo(0, r * 0.75);
+        imuCtx.lineTo(0, -r * 0.78);
+        imuCtx.stroke();
+
+        imuCtx.fillStyle = '#f59e0b';
+        imuCtx.beginPath();
+        imuCtx.arc(0, -r * 0.78, 4, 0, Math.PI * 2);
+        imuCtx.fill();
+        imuCtx.restore();
+
+        imuCtx.restore();
+      }
+
+      // =========================================================================
+      // 8. UI CONTROLS BINDING & REAL-TIME DASHBOARD UPDATES
+      // =========================================================================
+      function bindControls() {
+        document.getElementById('btn-start').addEventListener('click', () => {
+          if (state.fallen) resetRobotState(0.04);
+          state.emergencyStop = false;
+          state.running = true;
+          audio.playStartupBeep();
+        });
+
+        document.getElementById('btn-stop').addEventListener('click', () => {
+          state.running = false;
+          audio.playPauseBeep();
+        });
+
+        document.getElementById('btn-reset').addEventListener('click', () => {
+          stopShowreel();
+          tunedWalkActive = false;
+          document.getElementById('btn-walk-tuned').textContent = '🚶 Perfectly Tuned to Walk';
+          resetRobotState(0.04);
+          audio.playResetSound();
+        });
+
+        document.getElementById('btn-estop').addEventListener('click', () => {
+          stopShowreel();
+          state.emergencyStop = true;
+          state.running = true;
+          tunedWalkActive = false;
+          state.driveThrottle = 0;
+          state.driveTurn = 0;
+          audio.playWarningBeep();
+        });
+
+        // Holdable drive buttons (mouse + touch)
+        const bindHoldButton = (id, keyName) => {
+          const btn = document.getElementById(id);
+          const onPress = (e) => {
+            e.preventDefault();
+            audio.ensureInit();
+            audio.playClick();
+            state.keyState[keyName] = true;
+          };
+          const onRelease = () => {
+            state.keyState[keyName] = false;
+          };
+          btn.addEventListener('pointerdown', onPress);
+          window.addEventListener('pointerup', onRelease);
+          window.addEventListener('pointercancel', onRelease);
+          btn.addEventListener('contextmenu', (e) => e.preventDefault());
+        };
+        bindHoldButton('btn-fwd', 'fwd');
+        bindHoldButton('btn-rev', 'rev');
+        bindHoldButton('btn-left', 'left');
+        bindHoldButton('btn-right', 'right');
+
+        document.getElementById('btn-push').addEventListener('click', () => {
+          applyPushImpulse(1.0);
+        });
+
+        document.getElementById('btn-walk-tuned').addEventListener('click', () => {
+          if (tunedWalkActive) {
+            tunedWalkActive = false;
+            state.driveThrottle = 0;
+            state.driveTurn = 0;
+            audio.playClick();
+          } else {
+            applyPerfectlyTunedWalk();
+          }
+          document.getElementById('btn-walk-tuned').textContent = tunedWalkActive ? '⏹ Stop Walking' : '🚶 Perfectly Tuned to Walk';
+        });
+
+        document.getElementById('btn-demo').addEventListener('click', () => {
+          if (state.demoActive) stopShowreel();
+          else startShowreel();
+        });
+
+        document.getElementById('btn-audio').addEventListener('click', (e) => {
+          const enabled = audio.toggle();
+          e.currentTarget.textContent = enabled ? '🔊 Audio ON' : '🔇 Audio OFF';
+        });
+
+        // Sliders
+        const kpSlider = document.getElementById('slider-kp');
+        const kiSlider = document.getElementById('slider-ki');
+        const kdSlider = document.getElementById('slider-kd');
+        const targetSlider = document.getElementById('slider-target-angle');
+        const speedSlider = document.getElementById('slider-speed');
+        const voltSlider = document.getElementById('slider-voltage');
+        const distSlider = document.getElementById('slider-disturbance');
+        const expSlider = document.getElementById('slider-explode');
+        let lastExplode = 0;
+        let lastExplodeSound = 0;
+
+        const syncSliderLabels = syncControlsFromState;
+
+        kpSlider.addEventListener('input', () => { state.kp = parseFloat(kpSlider.value); syncSliderLabels(); });
+        kiSlider.addEventListener('input', () => { state.ki = parseFloat(kiSlider.value); syncSliderLabels(); });
+        kdSlider.addEventListener('input', () => { state.kd = parseFloat(kdSlider.value); syncSliderLabels(); });
+        targetSlider.addEventListener('input', () => { state.targetPitchDeg = parseFloat(targetSlider.value); syncSliderLabels(); });
+        speedSlider.addEventListener('input', () => { state.speedGain = parseFloat(speedSlider.value); syncSliderLabels(); });
+        voltSlider.addEventListener('input', () => { state.batteryVoltage = parseFloat(voltSlider.value); syncSliderLabels(); });
+        distSlider.addEventListener('input', () => { state.disturbanceForce = parseFloat(distSlider.value); syncSliderLabels(); });
+        expSlider.addEventListener('input', () => {
+          state.explodeAmount = parseFloat(expSlider.value) / 100;
+          syncSliderLabels();
+          const prev = lastExplode;
+          lastExplode = state.explodeAmount;
+          applyExplodedTransform(state.explodeAmount);
+          // keep the taller exploded stack framed
+          const dy = (lastExplode - prev) * 0.12;
+          const k = (1 + 0.6 * lastExplode) / (1 + 0.6 * prev);
+          orbitTarget.y += dy; desiredTarget.y += dy;
+          camera.position.sub(orbitTarget).multiplyScalar(k).add(orbitTarget);
+          desiredCamPos.sub(desiredTarget).multiplyScalar(k).add(desiredTarget);
+          camera.lookAt(orbitTarget);
+          const now = performance.now();
+          if (now - lastExplodeSound > 350 && Math.abs(lastExplode - prev) > 0.002) {
+            lastExplodeSound = now;
+            audio.playExplodeSound(lastExplode > prev);
+          }
+        });
+
+        [kpSlider, kiSlider, kdSlider, targetSlider, speedSlider, voltSlider, distSlider, expSlider].forEach((sl) => {
+          let last = 0;
+          sl.addEventListener('input', () => {
+            const n = performance.now();
+            if (n - last > 70) { last = n; audio.playTone(900 + parseFloat(sl.value) * 4 % 600, 0.015, 'square', 0.012); }
+          });
+          sl.addEventListener('change', () => sl.blur());
+        });
+
+        document.getElementById('btn-pid-defaults').addEventListener('click', () => {
+          audio.playClick();
+          applyNominalTuning(36.0, 4.0, 8.0, 11.4);
+        });
+
+        document.getElementById('btn-xray').addEventListener('click', (e) => {
+          state.xrayMode = !state.xrayMode;
+          audio.playXray(state.xrayMode);
+          e.currentTarget.textContent = state.xrayMode ? 'X-Ray: ON' : 'X-Ray: OFF';
+          applyMaterialModes();
+        });
+
+        document.getElementById('btn-clear-part').addEventListener('click', () => {
+          audio.playClick();
+          selectComponent(null);
+        });
+
+        document.querySelectorAll('.cam-btn').forEach((btn) => {
+          btn.addEventListener('click', () => setCameraPreset(btn.dataset.cam));
+        });
+
+        // Keyboard WASD / Arrow Keys
+        const driveCodes = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
+        window.addEventListener('blur', () => {
+          state.keyState.fwd = state.keyState.rev = state.keyState.left = state.keyState.right = false;
+        });
+        window.addEventListener('keydown', (e) => {
+          const code = e.code;
+          if (driveCodes.includes(code)) {
+            audio.ensureInit();
+            const ae = document.activeElement;
+            if (ae && ae !== document.body && ae.blur) ae.blur(); // stop sliders/buttons stealing arrows & space
+            if (code.startsWith('Arrow')) e.preventDefault();
+          }
+          if (code === 'KeyW' || code === 'ArrowUp') state.keyState.fwd = true;
+          if (code === 'KeyS' || code === 'ArrowDown') state.keyState.rev = true;
+          if (code === 'KeyA' || code === 'ArrowLeft') state.keyState.left = true;
+          if (code === 'KeyD' || code === 'ArrowRight') state.keyState.right = true;
+          if (code === 'Space') {
+            e.preventDefault();
+            if (!e.repeat) applyPushImpulse(1.0);
+          }
+        });
+
+        window.addEventListener('keyup', (e) => {
+          const code = e.code;
+          if (code === 'KeyW' || code === 'ArrowUp') state.keyState.fwd = false;
+          if (code === 'KeyS' || code === 'ArrowDown') state.keyState.rev = false;
+          if (code === 'KeyA' || code === 'ArrowLeft') state.keyState.left = false;
+          if (code === 'KeyD' || code === 'ArrowRight') state.keyState.right = false;
+        });
+
+        syncSliderLabels();
+      }
+
+      function updateDashboardUI() {
+        const pitchDeg = (state.pitch * 180) / Math.PI;
+        const errDeg = state.effTargetDeg - pitchDeg;
+
+        document.getElementById('sim-time-readout').textContent = `t = ${state.simTime.toFixed(2)}s`;
+        document.getElementById('val-pitch').textContent = `${pitchDeg >= 0 ? '+' : ''}${pitchDeg.toFixed(2)}°`;
+        document.getElementById('val-target-pitch').textContent = `${state.effTargetDeg >= 0 ? '+' : ''}${state.effTargetDeg.toFixed(2)}°`;
+        document.getElementById('val-ang-vel').textContent = `${state.pitchVel.toFixed(2)} rad/s`;
+        document.getElementById('val-pid-out').textContent = `${state.pidOutput.toFixed(2)}`;
+        document.getElementById('val-rpm').textContent = `${Math.round(state.rpmL)} / ${Math.round(state.rpmR)} RPM`;
+        document.getElementById('val-pwm-batt').textContent = `${Math.round(state.pwmPercent)}% • ${state.batteryVoltage.toFixed(1)}V`;
+
+        document.getElementById('val-err').textContent = `${errDeg.toFixed(2)}°`;
+        document.getElementById('val-pid-sum').textContent = `Σ = ${state.pidOutput.toFixed(2)}`;
+        document.getElementById('val-p-term').textContent = state.lastP.toFixed(1);
+        document.getElementById('val-i-term').textContent = state.lastI.toFixed(1);
+        document.getElementById('val-d-term').textContent = state.lastD.toFixed(1);
+
+        // IMU simulated readings
+        const ax = (Math.sin(state.pitch) * PHYS.g + state.accX * Math.cos(state.pitch)).toFixed(1);
+        const ay = (Math.cos(state.pitch) * PHYS.g).toFixed(1);
+        const az = (state.yawRate * state.velX * 2).toFixed(1);
+        const gyroPitchDeg = ((state.pitchVel * 180) / Math.PI).toFixed(1);
+        const gyroYawDeg = ((state.yawRate * 180) / Math.PI).toFixed(1);
+        document.getElementById('imu-accel').textContent = `${ax}, ${ay}, ${az}`;
+        document.getElementById('imu-gyro').textContent = `${gyroPitchDeg}°/s, ${gyroYawDeg}°/s`;
+        document.getElementById('imu-fused').textContent = `${pitchDeg.toFixed(2)}°`;
+
+        // Status badge styling
+        const badge = document.getElementById('status-badge');
+        badge.textContent = state.statusText;
+        if (state.emergencyStop || state.fallen) {
+          badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40';
+        } else if (!state.running) {
+          badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        } else {
+          badge.className = 'px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/35';
+        }
+
+        drawOscilloscope();
+        drawImuIndicator();
+      }
+
+      // =========================================================================
+      // 9. RESIZE & MAIN REAL-TIME RENDER LOOP
+      // =========================================================================
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      bindControls();
+      window.__sim = { state, PHYS, resetRobotState, stepPhysicsAndPID, readDriveInputs, applyPerfectlyTunedWalk, startShowreel, applyPushImpulse, FIXED_DT, setExplode: (a) => applyExplodedTransform(a) };
+
+      let lastFrameTime = performance.now();
+      let uiAccumulator = 0;
+      let physAccumulator = 0;
+      let lastFollowX = 0;
+      let lastFollowZ = 0;
+
+      function animate(now) {
+        requestAnimationFrame(animate);
+
+        const rawDt = (now - lastFrameTime) / 1000;
+        lastFrameTime = now;
+        const dt = Math.min(0.05, Math.max(0.0005, rawDt));
+
+        if (state.running) updateShowreel(dt);
+        const inputs = readDriveInputs();
+
+        // Fixed-step physics (240 Hz) for deterministic, stable integration
+        physAccumulator += dt;
+        let steps = 0;
+        while (physAccumulator >= FIXED_DT && steps < 12) {
+          stepPhysicsAndPID(FIXED_DT, inputs);
+          physAccumulator -= FIXED_DT;
+          steps++;
+        }
+        if (steps === 12) physAccumulator = 0;
+        if (state.running) recordHistory();
+
+        // Motor / driver sounds
+        const active = state.running && !state.emergencyStop && !state.fallen;
+        audio.updateMotorSound(Math.abs(state.velX) / PHYS.maxSpeed + Math.abs(state.yawRate) / 6, active, Math.abs(state.motorCmd));
+        if (active && Math.abs(state.pitch) > 0.12) audio.playCorrectionTick();
+
+        // Sync 3D Robot transforms with physics state
+        robotRoot.position.set(state.posX, 0, state.posZ);
+        robotRoot.rotation.y = state.yaw;
+        chassisPendulumGroup.rotation.x = state.pitch;
+        wheelLeftPivot.rotation.x = state.wheelAngleL;
+        wheelRightPivot.rotation.x = state.wheelAngleR;
+
+        // Smooth camera preset interpolation
+        if (state.camTransitionActive) {
+          camera.position.lerp(desiredCamPos, Math.min(1, dt * 6));
+          orbitTarget.lerp(desiredTarget, Math.min(1, dt * 6));
+          camera.lookAt(orbitTarget);
+          if (camera.position.distanceTo(desiredCamPos) < 0.003) {
+            state.camTransitionActive = false;
+          }
+        }
+
+        // Camera tracks the robot as it drives
+        const fdx = state.posX - lastFollowX;
+        const fdz = state.posZ - lastFollowZ;
+        lastFollowX = state.posX;
+        lastFollowZ = state.posZ;
+        camera.position.x += fdx; camera.position.z += fdz;
+        orbitTarget.x += fdx; orbitTarget.z += fdz;
+        desiredCamPos.x += fdx; desiredCamPos.z += fdz;
+        desiredTarget.x += fdx; desiredTarget.z += fdz;
+
+        // Keep directional shadow frustum centered near robot
+        keyLight.position.set(state.posX + 1.8, 2.8, state.posZ + 2.2);
+        keyLight.target.position.set(state.posX, 0.1, state.posZ);
+        keyLight.target.updateMatrixWorld();
+
+        renderer.render(scene, camera);
+
+        uiAccumulator += dt;
+        if (uiAccumulator >= 0.033) {
+          uiAccumulator = 0;
+          updateDashboardUI();
+        }
+      }
+
+      requestAnimationFrame(animate);
+    })();
+  </script>
+</body>
+</html>

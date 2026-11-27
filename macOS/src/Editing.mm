@@ -20,6 +20,9 @@
 #include "platform.hpp"
 #include "tables.hpp"
 #include "equation.hpp"
+@interface FPWindowController (EditingPick)
+- (void)pickObjects:(std::vector<int>)objs page:(int)page;
+@end
 
 using form::Field;
 using form::Fields;
@@ -68,9 +71,6 @@ struct Selection {
     pageobj::GroupHit group;
 };
 Selection g_sel;
-@interface FPWindowController (EditingPick)
-- (void)pickObjects:(std::vector<int>)objs page:(int)page;
-@end
 std::wstring g_picturePath;            // the picture to put on the page (Picture tool)
 double g_pictureWidth = 0;             // its width on the page in points (0: its own size)
 int g_cropPicPage = -1, g_cropPicObj = -1;   // a picture being cropped (the crop tool then crops it, not the page)

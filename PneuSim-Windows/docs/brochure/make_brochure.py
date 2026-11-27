@@ -16,7 +16,7 @@ pdfmetrics.registerFontFamily('LS',normal='LS',bold='LSB',italic='LSI',boldItali
 
 TEAL=colors.HexColor('#007684'); DARK=colors.HexColor('#1e262e'); GREY=colors.HexColor('#64707a'); LIGHT=colors.HexColor('#e6f2f4'); ORANGE=colors.HexColor('#d9822b')
 W,H=A4; M=16*mm
-S='../screenshots/current/'
+S='img/'
 OUT=sys.argv[1]
 
 body=ParagraphStyle('b',fontName='LS',fontSize=9.4,leading=13,textColor=DARK)
@@ -43,13 +43,13 @@ def deco(c,doc):
     # footer
     c.setStrokeColor(colors.HexColor('#c8d3d8')); c.setLineWidth(0.6); c.line(M,14*mm,W-M,14*mm)
     c.setFillColor(GREY); c.setFont('LS',8)
-    c.drawString(M,9.5*mm,'© 2026 Akshaya Simha  ·  akshsimha@gmail.com')
-    c.drawCentredString(W/2,9.5*mm,'PneuSim 3.5 "Mistral"')
+    c.drawString(M,9.5*mm,'\u00a9 2026 PneuSim. All rights reserved.')
+    c.drawCentredString(W/2+10*mm,9.5*mm,'Pneumatic  \u00b7  Electro-pneumatic  \u00b7  Hydraulic')
     c.setFillColor(TEAL); c.setFont('LSB',9); c.drawRightString(W-M,9.5*mm,'Page %d of 4'%doc.page)
     c.restoreState()
 
 doc=BaseDocTemplate(OUT,pagesize=A4,leftMargin=M,rightMargin=M,topMargin=19*mm,bottomMargin=19*mm,
-  title='PneuSim product brochure',author='Akshaya Simha',subject='PneuSim 3.5 brochure')
+  title='PneuSim product brochure',author='PneuSim',subject='PneuSim product brochure')
 fw=W-2*M
 doc.addPageTemplates([PageTemplate(id='p',frames=[Frame(M,18*mm,fw,H-18*mm-19*mm,leftPadding=0,rightPadding=0,topPadding=0,bottomPadding=0)],onPage=deco)])
 
@@ -58,13 +58,24 @@ def img(name,width):
     iw,ih=ImageReader(S+name).getSize()
     return Image(S+name,width=width,height=width*ih/iw)
 
+def legend(items,cols=2,width=None):
+    width=width or fw
+    cells=[Paragraph('<font color="#d9822b"><b>%d</b></font>&nbsp;&nbsp;%s'%(i+1,t),cell) for i,t in enumerate(items)]
+    rows=[]
+    n=(len(cells)+cols-1)//cols
+    for r in range(n):
+        rows.append([cells[r+n*c] if r+n*c<len(cells) else '' for c in range(cols)])
+    t=Table(rows,colWidths=[width/cols]*cols)
+    t.setStyle(TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('TOPPADDING',(0,0),(-1,-1),1.5),('BOTTOMPADDING',(0,0),(-1,-1),1.5)]))
+    return t
+
 def box(flow,bg=LIGHT):
     t=Table([[flow]],colWidths=[fw]); t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),bg),('LEFTPADDING',(0,0),(-1,-1),9),('RIGHTPADDING',(0,0),(-1,-1),9),('TOPPADDING',(0,0),(-1,-1),7),('BOTTOMPADDING',(0,0),(-1,-1),7)])); return t
 
 st=[]
 # ---------- PAGE 1
 tt=Table([[Paragraph('<font color="white" size="25"><b>See your circuit work<br/>before you build it.</b></font>',ParagraphStyle('t',fontName='LSB',leading=30)),
-           Paragraph('<font color="white" size="10.5">Draw pneumatic, electro-pneumatic and hydraulic circuits, press Start, and watch pressure, motion and signals live. Check it, have it explained in plain English, and document it, all in one Windows program.</font>',ParagraphStyle('t2',fontName='LS',leading=14.5))]],colWidths=[fw*0.50,fw*0.50])
+           Paragraph('<font color="white" size="10">Draw pneumatic, electro-pneumatic and hydraulic circuits, press Start, and watch pressure, motion and signals live. Check it, have it explained in plain English, and document it, all in one Windows program.</font>',ParagraphStyle('t2',fontName='LS',leading=14.5))]],colWidths=[fw*0.58,fw*0.42])
 tt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),TEAL),('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),12),('RIGHTPADDING',(0,0),(-1,-1),12),('TOPPADDING',(0,0),(-1,-1),10),('BOTTOMPADDING',(0,0),(-1,-1),10)]))
 st+= [tt,Spacer(1,8)]
 st+= [P('1  About the software',h1),
@@ -72,12 +83,10 @@ st+= [P('1  About the software',h1),
  Spacer(1,3),
  P('It is made for <b>engineers, technicians, designers and maintenance teams</b>, and for anyone learning fluid power. Component names are plain English with the standard name in brackets, for example <i>3/2 valve, push button, NC</i>, so you do not need to be a specialist to start. Symbols are drawn by PneuSim following ISO 1219 / IEC 60617 conventions.'),
  Spacer(1,6)]
-nums=[[P('<b>3</b>',big),P('<b>13</b>',big),P('<b>6</b>',big),P('<b>8</b>',big)],
-      [P('circuit types:<br/>air, electro-pneumatic, hydraulic',bigl),P('built-in worked<br/>examples',bigl),P('export formats: PDF, SVG,<br/>DXF, PNG, CSV, GIF',bigl),P('analysis panels below<br/>the workspace',bigl)]]
-nt=Table(nums,colWidths=[fw/4]*4); nt.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,-1),LIGHT),('TOPPADDING',(0,0),(-1,0),8),('BOTTOMPADDING',(0,1),(-1,1),8),('LINEAFTER',(0,0),(2,-1),0.6,colors.white)]))
-st+=[nt,Spacer(1,7),
- img('home-light.png',fw*0.92),
- P('PneuSim: ribbon with all commands, workspace, page and file tabs, and the displacement-step diagram below.',small),
+st+=[Spacer(1,2),
+ img('shot16.png',fw),
+ P('Figure 1: the PneuSim window (dark theme) with a small circuit and its GRAFCET sequence chart.',ParagraphStyle('cap',parent=small,fontName='LSI')),
+ legend(['Quick-access buttons and the File tab (New, Open, Save, Export, Settings)','Ribbon tabs: components and tools by topic','Ribbon commands: edit, run, view, pages, quick parts','Search box: finds any command or component','File tabs: several circuits open at once','Workspace: place, connect and run the circuit','Properties panel: all settings of the selected part','Page tabs: several pages in one circuit','Bottom tabs: step diagram, GRAFCET, plotter, check, explain, inspector, fault finding','GRAFCET chart generated from the circuit']),
  Spacer(1,5),
  P('How it works in four steps',h2),
  Table([[P('<b>1  Draw</b><br/>Click a component, click in the workspace, drag port to port. Lines route themselves.',cell),
@@ -153,13 +162,9 @@ st+=[P('3  Advantages over competitive software',h1),
  P('Circuit simulators differ widely. These are the points where PneuSim is designed to save you time and effort.',body),Spacer(1,4),ct,
  P('* General comparison of typical approaches. Features of individual products vary by product, edition and version; check any product you compare against. PneuSim names no competitor and claims no certification.',small),
  Spacer(1,6),
- Table([[img('view-dark-grafcet.png',fw*0.5),
-   [P('Built for people who need answers, not menus',h2),
-    B('One window: draw, run, check, explain and document'),
-    B('Everything shown live: no waiting for a result file'),
-    B('Plain English throughout, with standard names in brackets'),
-    B('Your files stay on your PC; nothing is uploaded'),
-    B('Dark and AMOLED themes for long sessions')]]],colWidths=[fw*0.52,fw*0.48],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0)])),
+ Table([[img('shot15.png',fw*0.56),
+   [P('Figure 2: View tab, workspace and GRAFCET panel',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
+    legend(['View tab: zoom, pan, grid, live value labels, dark mode','Show and hide the bottom panels','Collapse the ribbon for more room','Workspace with the circuit','GRAFCET chart made from your circuit','Generate it again after a change, or copy it as text'],cols=1,width=fw*0.40)]]],colWidths=[fw*0.58,fw*0.42],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
  PageBreak()]
 # ---------- PAGE 4
 st+=[P('4  Why students should study this',h1),
@@ -187,8 +192,13 @@ st+=[wtab,Spacer(1,7),
  Table([[P('<b>Windows</b>',cell),P('Windows 7 SP1 or later (Windows 10 or 11 recommended); .NET Framework 4.7.2',cell),
          P('<b>Computer</b>',cell),P('2 GB memory (4 GB recommended), 50 MB disk, 1366 x 768 screen or larger',cell)]],colWidths=[fw*0.11,fw*0.39,fw*0.11,fw*0.39],
    style=TableStyle([('BOX',(0,0),(-1,-1),0.6,colors.HexColor('#c8d3d8')),('VALIGN',(0,0),(-1,-1),'TOP'),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)])),
- Spacer(1,8),
+ Spacer(1,6),
+ P('A real circuit',h2),
+ Table([[img('shot17.png',fw*0.50),
+   [P('Figure 3: pneumatic counterbalance circuit (example 13)',ParagraphStyle('cap',parent=small,fontName='LSI')),Spacer(1,3),
+    legend(['Cylinder carrying a vertical load','Counterbalance valve: holds the load','5/3 valve, closed centre: hold, raise, lower','Push button LOWER (S1); RAISE (S2) on the right','Air supply with service unit','Pressure gauge','Notes: text placed on the drawing'],cols=1,width=fw*0.44)]]],colWidths=[fw*0.54,fw*0.46],style=TableStyle([('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),0),('LEFTPADDING',(1,0),(1,0),12)])),
+ Spacer(1,6),
  box([P('<font size="13" color="#007684"><b>Ready to try it?</b></font>',body),Spacer(1,2),
-      P('Ask for an installer or a demonstration: <b>akshsimha@gmail.com</b>. Start with the built-in examples, press F1 for the Quick Guide, and have your first circuit running in minutes.',body),Spacer(1,3),
-      P('PneuSim was designed and developed by Akshaya Simha. Symbols follow ISO 1219 / IEC 60617 drawing conventions and are drawn by PneuSim; the software is not certified or approved by any standards body.',small)])]
+      P('Ask your PneuSim supplier for the installer or a live demonstration. Start with the built-in examples, press F1 for the Quick Guide, and have your first circuit running in minutes.',body),Spacer(1,3),
+      P('Symbols are drawn by PneuSim following ISO 1219 / IEC 60617 drawing conventions; the software is not certified or approved by any standards body.',small)])]
 doc.build(st)

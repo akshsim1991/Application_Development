@@ -40,7 +40,8 @@ android {
         applicationId = "com.featherpdf.android"
         minSdk = 24
         targetSdk = 35
-        versionCode = parts[0] * 10000 + parts[1] * 100 + parts[2]
+        // the version is the release date (2026.11.27; a second release that day 2026.11.27.1): 202611270, 202611271
+        versionCode = parts[0] * 100000 + parts[1] * 1000 + parts[2] * 10 + parts.getOrElse(3) { 0 }
         versionName = featherVersion
         manifestPlaceholders["codename"] = featherCodename   // the release's name, read by the About box
         externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_shared") } }

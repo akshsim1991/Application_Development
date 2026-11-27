@@ -2,7 +2,10 @@
 
 Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
-## 2.28.1 (27 November 2026)
+## 2026.11.27 "Focus" (27 November 2026)
+
+From now on the version is the date of the release (year.month.day).
+
 
 Windows, macOS and Android (the iPhone app stays at 2.28.0):
 

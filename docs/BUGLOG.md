@@ -1791,7 +1791,7 @@ redrawn icons. All five downloads match latest.json.
 **Published:** 2.28.0 "Galaxy" for iPhone and iPad only (25 November); Windows, macOS and Android stay at 2.27.1 (the
 release version in latest.json too). Every download matches latest.json; altstore.json lists 2.28.0.
 
-### B-137 Move or resize: no Ctrl/Shift+click and no box to pick several things - Medium (Windows, macOS)
+### B-137 (2026.11.27) Move or resize: no Ctrl/Shift+click and no box to pick several things - Medium (Windows, macOS)
 - **Found:** the user: in the Move option, Ctrl or Shift could not add to the selection, and drawing a rectangle should
   pick the whole text and the other texts, to move, resize or delete them together.
 - **Root cause:** a click always replaced the selection with the group under the pointer, and a drag started anywhere

@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.16)
-project(FeatherPDF VERSION 2.28.1 LANGUAGES CXX)
-# Each minor version (2.15, 2.16, ...) has a name of its own, shown with the number in About and the status bar.
-set(FEATHER_CODENAME "Galaxy")
+project(FeatherPDF VERSION 2026.11.27 LANGUAGES CXX)
+# The version is the release date: 2026.11.27 (a second release the same day: 2026.11.27.1). A release that adds
+# features has a name of its own (a Ford car), shown with the number in About and the status bar; a fix keeps the name.
+set(FEATHER_CODENAME "Focus")
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)

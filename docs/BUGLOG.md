@@ -1790,3 +1790,18 @@ redrawn icons. All five downloads match latest.json.
 
 **Published:** 2.28.0 "Galaxy" for iPhone and iPad only (25 November); Windows, macOS and Android stay at 2.27.1 (the
 release version in latest.json too). Every download matches latest.json; altstore.json lists 2.28.0.
+
+### B-137 Move or resize: no Ctrl/Shift+click and no box to pick several things - Medium (Windows, macOS)
+- **Found:** the user: in the Move option, Ctrl or Shift could not add to the selection, and drawing a rectangle should
+  pick the whole text and the other texts, to move, resize or delete them together.
+- **Root cause:** a click always replaced the selection with the group under the pointer, and a drag started anywhere
+  but on the selection did nothing, although moving, resizing, deleting, turning and flipping already work on any list
+  of page objects.
+- **Fix:** pageobj::groupsIn finds every paragraph, picture, table and shape a box touches, each whole (a page-sized
+  background only when the box holds it all), and boundsOf the frame round them. Windows: with the Move tool a drag
+  from outside the selection (or with Ctrl or Shift) draws the box, told apart from a click on release; Ctrl or Shift
+  with a click adds the group clicked or takes it out; one frame round the selection. Mac: the same with ⌘ or Shift.
+- **Tests:** the Windows UI check drives the real app on a Windows runner: the Move tool from the command palette,
+  the heading clicked and a paragraph Ctrl+clicked, Delete, save: both gone, the rest kept; then a box drawn over the
+  chart, Delete, save: the chart's labels gone, the text beside it kept. The Mac UI check draws a box with the Move
+  tool and checks that several objects are picked.

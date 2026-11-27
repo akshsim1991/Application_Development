@@ -2,6 +2,19 @@
 
 Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
+## 2.28.1 (27 November 2026)
+
+Windows, macOS and Android (the iPhone app stays at 2.28.0):
+
+- New (Windows and macOS): picking several things at once with Move or resize. Ctrl+click or Shift+click (on the Mac,
+  ⌘-click or Shift-click) adds a paragraph, picture, table or shape to the selection, or takes it out again. Or draw a
+  box from an empty place on the page: everything it touches is picked, each whole (a paragraph touched anywhere is
+  picked entire). One frame goes round them all: drag to move them, drag a corner to resize them, Delete to delete
+  them; turning and flipping work on all of them too.
+- Updates (Android): the app now looks only at its own version in the version file, so an update meant for other
+  devices is no longer offered to it. (This one is offered once because the Android app installed before it does not
+  know about per-device versions yet.)
+
 ## 2.28.0 "Galaxy" (25 November 2026)
 
 iPhone and iPad only: Windows, macOS and Android stay at 2.27.1 and are not offered an update. From now on each app

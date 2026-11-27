@@ -38,6 +38,12 @@ def window():
     u.EnumWindows(each, 0)
     return found
 
+def close_app(proc):
+    for h, _ in window(): u.PostMessageW(h, 0x0010, 0, 0)   # WM_CLOSE
+    try: proc.wait(timeout=15)
+    except Exception: proc.kill()
+    time.sleep(1)
+
 def click(x, y, shift=False):
     u.SetCursorPos(x, y); time.sleep(0.3)
     if shift: u.keybd_event(0x10, 0, 0, 0)
@@ -84,7 +90,7 @@ if len(btns) == 2:
     shot("05-saved")
     rot = [int(p.obj.get("/Rotate", 0)) % 360 for p in pikepdf.open(pdf).pages]
     check(f"the saved pages are turned as asked: {rot}", rot == [0, 270, 270])
-app.kill()
+close_app(app)
 
 # ---- the Move tool: Ctrl+click adds to the selection; a box drawn picks everything it touches, each whole ----
 def key(*codes):
@@ -126,12 +132,14 @@ for scenario in ("ctrl", "box"):
     time.sleep(4)
     h = window()[0][0] if window() else None
     if h: u.ShowWindow(h, 3); u.SetForegroundWindow(h); time.sleep(3)
-    to = page_map(shot(f"10-{scenario}-open"))
-    check(f"{scenario}: the page is found on the screen", to is not None)
-    if not to: app.kill(); continue
+    shot(f"10-{scenario}-open")
     key(0x11, 0x4B)                       # Ctrl+K: the command palette
     typed("Move or resize"); time.sleep(0.5); key(0x0D)
-    time.sleep(1.5)
+    time.sleep(2)
+    # (the Move tool shows the editing row, which moves and zooms the page: where it is, found now)
+    to = page_map(shot(f"10-{scenario}-tool", log=True))
+    check(f"{scenario}: the page is found on the screen", to is not None)
+    if not to: close_app(app); continue
     if scenario == "ctrl":
         click(*to(110, 765))                  # the heading
         u.SetCursorPos(*to(160, 703)); time.sleep(0.3)
@@ -148,7 +156,7 @@ for scenario in ("ctrl", "box"):
     key(0x2E); time.sleep(1.5)            # Delete
     key(0x11, 0x53); time.sleep(3)        # Ctrl+S
     shot(f"13-{scenario}-deleted")
-    app.kill(); time.sleep(1)
+    close_app(app)
     t = text_of(work)
     if scenario == "ctrl":
         check("Ctrl+click: the heading and the paragraph clicked are deleted together, the rest kept",

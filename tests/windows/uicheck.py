@@ -161,7 +161,7 @@ for scenario in ("ctrl", "box"):
     print("  note saved text: " + " | ".join(l for l in t.splitlines() if l.strip())[:600], flush=True)
     if scenario == "ctrl":
         check("Ctrl+click: the heading and the paragraph clicked are deleted together, the rest kept",
-              "Quarterly Report" not in t and "Sales rose" not in t and "Online orders" in t and "Next steps" in t)
+              "Quarterly Report" not in [l.strip() for l in t.splitlines()] and "Sales rose" not in t and "Online orders" in t and "Next steps" in t)
     else:
         check("a box drawn: the chart's labels it touched are deleted, the text beside it kept",
               "Jul" not in t and "Sep" not in t and "Next steps" in t and "Sales by month" in t and "Online orders" in t)

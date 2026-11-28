@@ -2,6 +2,23 @@
 
 Free forever. Windows, macOS, Android, iPhone and iPad. Newest first.
 
+## 2026.11.28 "Escape" (28 November 2026)
+
+Windows and macOS (Android stays at 2026.11.27, the iPhone at 2.28.0):
+
+- Rotating is the same on both: Ctrl+R / Ctrl+L (on the Mac ⌘R / ⌘L) turn the page you are looking at; with Shift
+  (Ctrl+Shift+R, ⌘⇧R...) every page. (Ctrl+R on Windows used to turn every page.)
+- New toolbar buttons on Windows: thumbnails and bookmarks (shows or hides the sidebar), Print, one click for the whole
+  page or the width again, Night colours (and back), Full screen (Esc comes back).
+- New on the Mac's toolbar: Fit, Night, Full Screen, Print and Share (Mail, Messages, AirDrop and more; a document with
+  unsaved changes is shared as it is now).
+- New on the Mac: Word, Excel and PowerPoint files made into PDFs, from the Finder (right-click > Quick Actions /
+  Services > Convert to PDF with Feather PDF) or File > Convert to PDF. It uses Microsoft Word, Excel or PowerPoint when
+  the Mac has them, else LibreOffice, else Pages, Numbers or Keynote; Word, RTF and OpenDocument text documents are made
+  into PDFs even without any of them. macOS asks once whether Feather PDF may ask Office (or Pages...) to do it.
+- New on the Mac: Delete header and footer shows the page with what was found outlined (headers blue, footers orange),
+  before and after, page by page; untick what should stay; what will be deleted and the warnings; then Delete.
+
 ## 2026.11.27 "Focus" (27 November 2026)
 
 From now on the version is the date of the release (year.month.day).

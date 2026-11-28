@@ -1808,3 +1808,20 @@ release version in latest.json too). Every download matches latest.json; altstor
 
 **Published:** 2026.11.27 "Focus" for Windows, macOS and Android (27 November), at the user's request before the Windows UI
 check's Ctrl+click run finished (the box run passed; Ctrl+click picked both paragraphs on screen). The iPhone stays at 2.28.0.
+
+### B-138 (2026.11.28) Toolbars and Mac gaps: rotate shortcuts differed, buttons missing, Office files, header/footer preview
+- **Found:** the review of the toolbars (2026.11.27): Ctrl+R turned every page on Windows but ⌘R one page on the Mac;
+  no thumbnails, print, fit, night or full screen buttons on Windows; no Share on the Mac; the Mac could not make PDFs of
+  Word, Excel and PowerPoint files and deleted headers and footers from a form without showing them. The user: "Do all."
+- **Fix:** Ctrl/⌘ R and L the page shown, with Shift every page, on both (menus, palette and tooltips say so). Windows:
+  five toolbar buttons with new icons (on while their state is on). Mac: Fit, Night, Full Screen, Print and Share items
+  (NSSharingServicePickerToolbarItem; a copy of the document as it is now when it has unsaved changes). Mac Office
+  conversion (OfficePdf.mm): Microsoft Office or Pages/Numbers/Keynote through AppleScript, LibreOffice headless, or the
+  Mac's text system for Word-type documents; in the Finder's Quick Action and File > Convert to PDF. Mac Delete header
+  and footer window (HeaderFooter.mm) on the shared finder and planner, the after picture from a copy of the page.
+- **Tests:** the Windows UI check clicks every new button on a Windows runner and checks the screen (the sidebar shown
+  and hidden, the whole page and the width again, the page dark and white again, full screen and Esc, the Print window).
+  The Mac build check presses the new toolbar items (fit and night twice, Share gives the file), converts a .docx made
+  with python-docx (its text read back from the PDF) and an .xlsx (made, or a clear message naming what is needed),
+  opens the header and footer window on hf_basic.pdf and presses Delete, and now fails when the command line's OCR or
+  signing is skipped (they were: the features table said "not yet", the build check now proves them).

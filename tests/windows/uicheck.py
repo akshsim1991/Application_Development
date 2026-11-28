@@ -167,6 +167,9 @@ for scenario in ("ctrl", "box"):
               "Jul" not in t and "Sep" not in t and "Next steps" in t and "Sales by month" in t and "Online orders" in t)
 
 # ---- the toolbar's other buttons: thumbnails and bookmarks, print, fit, night colours, full screen ----
+def away():   # the pointer moved off the toolbar, so no tooltip covers the page being measured
+    u.SetCursorPos(500, u.GetSystemMetrics(1) - 60); time.sleep(1.2)
+
 def pixel(img, xy):
     return img.convert("RGB").getpixel(xy)
 
@@ -199,23 +202,30 @@ if len(btns) == 2 and box0:
     sidebar, printer = (26, by), (147, by)
     fit, night, full = (lx - 49, by), (rx + 49, by), (rx + 85, by)
     click(*sidebar); time.sleep(1.5)
+    away()
     box1 = page_box(shot("21-sidebar", log=True))
     check(f"the thumbnails button shows the sidebar: the page moves right ({box0[0]} -> {box1[0] if box1 else None})", box1 is not None and box1[0] > box0[0] + 40)
     click(*sidebar); time.sleep(1.5)
+    away()
     box2 = page_box(shot("22-sidebar-hidden", log=True))
     check(f"and hides it again ({box2})", box2 is not None and abs(box2[0] - box0[0]) < 12)
     click(*fit); time.sleep(1.5)
+    away()
     box3 = page_box(shot("23-fit-page", log=True))
     check(f"the fit button shows the whole page: narrower ({box0[1]-box0[0]} -> {box3[1]-box3[0] if box3 else None})", box3 is not None and (box3[1] - box3[0]) < (box0[1] - box0[0]) * 0.9)
     click(*fit); time.sleep(1.5)
+    away()
     box4 = page_box(shot("24-fit-width", log=True))
     check(f"and the width again ({box4})", box4 is not None and abs((box4[1] - box4[0]) - (box0[1] - box0[0])) < 12)
     probe = ((box0[0] + box0[1]) // 2, box0[2] + 420)   # white paper below the text
+    away()
     before = pixel(shot("25-normal"), probe)
     click(*night); time.sleep(2)
+    away()
     after = pixel(shot("26-night", log=True), probe)
     check(f"the night button darkens the page ({before} -> {after})", sum(before) > 600 and sum(after) < 300)
     click(*night); time.sleep(2)
+    away()
     back = pixel(shot("27-normal-again"), probe)
     check(f"and back to normal ({back})", sum(back) > 600)
     click(*full); time.sleep(2.5)

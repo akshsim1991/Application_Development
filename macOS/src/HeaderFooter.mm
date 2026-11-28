@@ -4,6 +4,7 @@
 // undoable change. The finding and the removing are the shared engine's (shared/headfoot.cpp).
 #import "WindowController.h"
 #import "Render.h"
+#import "PageView.h"
 #import "Form.h"
 #import "Trace.h"
 #include "headfoot.hpp"

@@ -394,7 +394,9 @@ using form::ns;
         [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:pdf display:YES
                                                                      completionHandler:^(NSDocument*, BOOL, NSError* e) { if (e) [NSApp presentError:e]; }];
     }
-    if (!problems.empty()) form::message(nil, problems, true);
+    if (problems.empty()) return;
+    if (getenv("FEATHER_UI_CHECK")) { FPTrace(@"convert problems: %s", platform::utf8(problems).c_str()); return; }   // (the build check: no one to press OK)
+    form::message(nil, problems, true);
 }
 
 + (void)chooseAndConvert {

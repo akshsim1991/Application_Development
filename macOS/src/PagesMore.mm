@@ -1,5 +1,6 @@
 // More of the Pages and File menus: move, crop (by an amount or by drawing a box), merge, split, new PDF from pictures
 // or from a text / Markdown file, and copying a page as a picture. As the Windows app does them.
+#import "OfficePdf.h"
 #import "WindowController.h"
 #import "FPDocument.h"
 #import "Form.h"
@@ -376,6 +377,16 @@ using form::ns;
     std::wstring problems;
     for (NSURL* u in urls) {
         std::wstring written;
+        if ([FPOfficePdf kindOf:u] != FPOfficeNone) {   // Word, Excel, PowerPoint (and the like): through a program that reads them
+            NSURL* pdf = [NSURL fileURLWithPath:[NSString stringWithUTF8String:platform::utf8(topdf::outputPath(platform::wide(u.fileSystemRepresentation))).c_str()]];
+            NSString* program = nil; NSString* why = nil;
+            const BOOL ok = [FPOfficePdf convert:u to:pdf program:&program error:&why];
+            FPTrace(@"convert %@: %d %@ (%@)", u.lastPathComponent, ok, ok ? pdf.path : why, program ?: @"-");
+            if (!ok) { problems += L"\u201c" + form::ws(u.lastPathComponent) + L"\u201d could not be converted to PDF. " + form::ws(why ?: @"") + L"\n\n"; continue; }
+            [[NSDocumentController sharedDocumentController] openDocumentWithContentsOfURL:pdf display:YES
+                                                                         completionHandler:^(NSDocument*, BOOL, NSError* e) { if (e) [NSApp presentError:e]; }];
+            continue;
+        }
         const topdf::Result r = topdf::convert(platform::wide(u.fileSystemRepresentation), written);
         FPTrace(@"convert %@: %d %s", u.lastPathComponent, r.ok, platform::utf8(written).c_str());
         if (!r.ok) { problems += L"\u201c" + form::ws(u.lastPathComponent) + L"\u201d could not be converted to PDF. " + r.error + L"\n\n"; continue; }
@@ -384,6 +395,19 @@ using form::ns;
                                                                      completionHandler:^(NSDocument*, BOOL, NSError* e) { if (e) [NSApp presentError:e]; }];
     }
     if (!problems.empty()) form::message(nil, problems, true);
+}
+
++ (void)chooseAndConvert {
+    NSOpenPanel* p = [NSOpenPanel openPanel];
+    p.allowsMultipleSelection = YES;
+    p.title = @"Choose files to make into PDFs: pictures, text, Word, Excel or PowerPoint files";
+    NSMutableArray<UTType*>* types = [NSMutableArray array];
+    for (NSString* e in @[ @"png", @"jpg", @"jpeg", @"bmp", @"gif", @"tif", @"tiff", @"heic", @"txt", @"md", @"markdown", @"doc", @"docx", @"docm", @"rtf", @"odt",
+                           @"pages", @"xls", @"xlsx", @"xlsm", @"ods", @"numbers", @"ppt", @"pptx", @"pptm", @"odp", @"key" ])
+        if (UTType* t = [UTType typeWithFilenameExtension:e]) [types addObject:t];
+    p.allowedContentTypes = types;
+    if ([p runModal] != NSModalResponseOK) return;
+    [self convertFiles:p.URLs];
 }
 
 + (void)fromTextFile {

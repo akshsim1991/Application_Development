@@ -10,4 +10,6 @@
 + (void)combineOpen;
 // Convert to PDF (the Finder's Services / Quick Actions menu): each file made into a PDF next to it and opened.
 + (void)convertFiles:(NSArray<NSURL*>*)urls;
+/** File > Convert to PDF: pictures, text and Markdown, Word, Excel and PowerPoint files chosen, each made a PDF next to it. */
++ (void)chooseAndConvert;
 @end

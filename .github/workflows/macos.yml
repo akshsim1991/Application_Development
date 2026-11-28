@@ -38,7 +38,7 @@ jobs:
       - name: The command line features work as on Windows
         run: |
           python3 -m pip install --quiet --only-binary=:all: reportlab pillow numpy pikepdf python-docx openpyxl pdfminer.six cryptography fonttools
-          bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
+          FEATHER_STRICT=1 bash tests/engine/cli_check.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF" jpeg
 
       - name: Real PDFs from other programs are edited correctly (Google Docs, LaTeX, htmldoc, TCPDF)
         run: bash tests/engine/realworld.sh "$PWD/build-mac/Feather PDF.app/Contents/MacOS/Feather PDF"
@@ -79,6 +79,8 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-rotate" FEATHER_UI_ACTION=uiRotateToolbar: FEATHER_UI_WAIT=6 "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-box" FEATHER_UI_ACTION=uiBoxSelect: FEATHER_UI_WAIT=6 "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-bar" FEATHER_UI_ACTION=uiToolbarButtons: FEATHER_UI_WAIT=6 "$app" "$in/hf_basic.pdf"
+          mkdir -p ui-samples && cp "$in/hf_basic.pdf" ui-samples/hf.pdf
+          run env FEATHER_UI_CHECK="$PWD/ui-hf" FEATHER_UI_ACTION=deleteHeaderFooter: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=8 "$app" "$PWD/ui-samples/hf.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-print" FEATHER_UI_ACTION=printDocument: FEATHER_UI_WAIT=8 "$app" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-sbs" FEATHER_UI_ACTION=sideBySideWithTab: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$in/qp.pdf" "$in/hf_basic.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-ocrrun" FEATHER_UI_ACTION=recogniseText: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=40 "$app" "$PWD/ui-samples/scan.pdf"
@@ -86,6 +88,13 @@ jobs:
           run env FEATHER_UI_CHECK="$PWD/ui-combine" FEATHER_UI_ACTION=combinePdfs: FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/book.pdf" "$PWD/ui-samples/appendix.pdf"
           python3 -c "from PIL import Image;Image.new('RGB',(800,600),(30,120,200)).save('ui-samples/photo.png')"
           run env FEATHER_UI_CHECK="$PWD/ui-convert" FEATHER_UI_CONVERT="$PWD/ui-samples/photo.png" FEATHER_UI_WAIT=6 "$app"
+          python3 -c "
+          import docx, openpyxl
+          d = docx.Document(); d.add_heading('Quarterly Report', 1); d.add_paragraph('Sales rose in the third quarter, and costs stayed where they were.')
+          t = d.add_table(rows=2, cols=2); t.cell(0, 0).text = 'Item'; t.cell(1, 0).text = 'Pens'; d.save('ui-samples/report.docx')
+          w = openpyxl.Workbook(); w.active['A1'] = 'Month'; w.active['B1'] = 'Sales'; w.active['A2'] = 'July'; w.active['B2'] = 42; w.save('ui-samples/book.xlsx')"
+          run env FEATHER_UI_CHECK="$PWD/ui-docx" FEATHER_UI_CONVERT="$PWD/ui-samples/report.docx" FEATHER_UI_WAIT=8 "$app"
+          run env FEATHER_UI_CHECK="$PWD/ui-xlsx" FEATHER_UI_CONVERT="$PWD/ui-samples/book.xlsx" FEATHER_UI_WAIT=8 "$app"
           run env FEATHER_UI_CHECK="$PWD/ui-merge" FEATHER_UI_ACTION=mergeFiles: FEATHER_UI_MERGE="$PWD/ui-samples/appendix.pdf" FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/book.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-split" FEATHER_UI_ACTION=splitDocument: FEATHER_UI_SPLIT=3 FEATHER_UI_SPLIT_TO="$PWD/ui-samples/part" FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=7 "$app" "$PWD/ui-samples/book.pdf"
           run env FEATHER_UI_CHECK="$PWD/ui-compare" FEATHER_UI_ACTION=compareDocuments: FEATHER_UI_COMPARE="$PWD/ui-samples/version2.pdf" FEATHER_UI_PRESS=1 FEATHER_UI_WAIT=8 "$app" "$PWD/ui-samples/version1.pdf"
@@ -107,7 +116,7 @@ jobs:
           grep -q "Page 1 of 1" ui-dark/report.txt
           grep -q "Page 1 of 1" ui-blackboard/report.txt
           [ -f ui-props/sheet.png ] && [ -f ui-fonts/sheet.png ]
-          for d in ui-bar ui-box ui-rotate ui-start ui ui-dark ui-blackboard ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-editmode ui-print ui-sensitive ui-find ui-interleave ui-merge ui-combine ui-convert ui-split ui-compare ui-layers ui-attach ui-repair ui-web ui-history ui-access ui-review ui-read ui-formcalc; do
+          for d in ui-hf ui-bar ui-box ui-rotate ui-start ui ui-dark ui-blackboard ui-props ui-fonts ui-marks ui-thumbs ui-rulers ui-ocr ui-ocrrun ui-sbs ui-edpara ui-edline ui-editmode ui-print ui-sensitive ui-find ui-interleave ui-merge ui-combine ui-convert ui-split ui-compare ui-layers ui-attach ui-repair ui-web ui-history ui-access ui-review ui-read ui-formcalc; do
             for f in window sheet; do
               [ -f $d/$f.png ] || continue
               sips -s format jpeg -s formatOptions 50 $d/$f.png --out $d/$f.jpg >/dev/null
@@ -125,6 +134,8 @@ jobs:
           grep "box select\|objects picked" ui-box/trace.txt
           grep -Eq "box select: ([2-9]|[1-9][0-9]+) objects" ui-box/trace.txt   # a box with the Move tool picks several, each whole
           grep "toolbar items" ui-bar/trace.txt
+          grep "header and footer" ui-hf/trace.txt
+          grep -Eq "header and footer window: [1-9][0-9]* found, [1-9][0-9]* objects" ui-hf/trace.txt && grep -Eq "header and footer deleted: [1-9][0-9]* objects" ui-hf/trace.txt   # the preview, then Delete
           grep -Eq "toolbar items: .*fit night fullscreen print share.*; fit width 1 -> 0 -> 1; colours 0 -> 1 \(button 1\) -> 0; share gives 1" ui-bar/trace.txt   # fit, night, full screen, print, share
           grep -Eq "rotate toolbar: items .*\brotate\b.*; pages 842x595( 595x842){5}" ui-rotate/trace.txt   # the toolbar's rotate turns the page shown
           grep -q "thumbnails selected: 6" ui-thumbs/trace.txt   # Select All Pages selects every page
@@ -143,6 +154,12 @@ jobs:
           cat ui-combine/trace.txt ui-convert/trace.txt
           grep -Eq "combine: [2-9] documents, (1[1-9]|[2-9][0-9]) pages" ui-combine/trace.txt   # the open documents (book and appendix, and any the Mac reopened) combined into a new one
           grep -q "convert photo.png: 1" ui-convert/trace.txt && [ -f ui-samples/photo.pdf ] && python3 -c "import pikepdf;assert len(pikepdf.open('ui-samples/photo.pdf').pages)==1"   # Finder's Convert to PDF
+          cat ui-docx/trace.txt ui-xlsx/trace.txt | grep "convert"
+          grep -q "convert report.docx: 1" ui-docx/trace.txt && python3 -c "
+          from pdfminer.high_level import extract_text
+          t = extract_text('ui-samples/report.pdf'); print(t[:300])
+          assert 'Quarterly Report' in t and 'Sales rose in the third quarter' in t and 'Pens' in t"   # a Word file made a PDF (no Office on the runner: the Mac's text system)
+          grep -Eq "convert book.xlsx: (1|0 .*(LibreOffice|Numbers))" ui-xlsx/trace.txt   # an Excel file: made, or a clear word on what is needed
           grep -q "split: 3 file(s)" ui-split/trace.txt && [ -f "ui-samples/part-2 Chapter Two.pdf" ] && python3 tests/outline_dump.py "ui-samples/part-2 Chapter Two.pdf" | grep -q "^3 Chapter Two->1;   Section 5.1->2$"   # at the chapters, bookmarks kept
           grep -q "find cat\*: 7" ui-find/trace.txt && grep -q "find: at 4 in a comment 1" ui-find/trace.txt   # whole words, wildcards, comments
           grep -q "sensitive: found 10" ui-sensitive/trace.txt && grep -q "sensitive: marked 10 items" ui-sensitive/trace.txt   # both forms, every item marked

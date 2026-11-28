@@ -222,6 +222,7 @@ static NSMutableDictionary<NSNumber*, NSTimer*>* g_timers;   // form field timer
 
 - (IBAction)newPdfFromPictures:(id)sender { [FPNewPdf fromPictures]; }
 - (IBAction)newPdfFromText:(id)sender { [FPNewPdf fromTextFile]; }
+- (IBAction)convertFilesToPdf:(id)sender { [FPNewPdf chooseAndConvert]; }
 - (IBAction)combinePdfs:(id)sender { [FPNewPdf combineOpen]; }
 
 // The Finder's Services (Quick Actions) menu: "Convert to PDF with Feather PDF" on pictures and text files (Info.plist,
@@ -324,6 +325,7 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"New Window\u2026", @selector(newWindow:), @"n", NSEventModifierFlagCommand | NSEventModifierFlagShift);
     add(m, @"Combine Open PDFs\u2026", @selector(combinePdfs:), nil);
+    add(m, @"Convert to PDF\u2026", @selector(convertFilesToPdf:), nil);   // pictures, text, Word, Excel, PowerPoint
     FPAddWorkspacesMenu(m);
     add(m, @"Close", @selector(performClose:), @"w");
     add(m, @"Open Directory Having This File", @selector(showFileInFolder:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagOption);

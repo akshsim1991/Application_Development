@@ -29,6 +29,8 @@ add_executable(FeatherPDFMac MACOSX_BUNDLE
   src/Annotate.mm
   src/Forms.mm
   src/PagesMore.mm
+  src/OfficePdf.mm
+  src/HeaderFooter.mm
   src/Reading.mm
   src/Attachments.mm
   src/Repair.mm

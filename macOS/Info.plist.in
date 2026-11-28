@@ -16,6 +16,7 @@
     <key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
     <key>NSHighResolutionCapable</key><true/>
     <key>NSPrincipalClass</key><string>NSApplication</string>
+    <key>NSAppleEventsUsageDescription</key><string>To make PDFs of Word, Excel and PowerPoint files, Feather PDF asks Microsoft Office (or Pages, Numbers and Keynote) to save them as PDF.</string>
     <key>NSHumanReadableCopyright</key><string>Free to use and share, always.</string>
     <key>CFBundleDocumentTypes</key>
     <array>
@@ -38,6 +39,12 @@
             <array>
                 <string>public.png</string><string>public.jpeg</string><string>com.microsoft.bmp</string><string>com.compuserve.gif</string>
                 <string>public.tiff</string><string>public.heic</string><string>public.plain-text</string><string>net.daringfireball.markdown</string>
+                <string>org.openxmlformats.wordprocessingml.document</string><string>com.microsoft.word.doc</string><string>public.rtf</string>
+                <string>org.oasis-open.opendocument.text</string><string>com.apple.iwork.pages.sffpages</string>
+                <string>org.openxmlformats.spreadsheetml.sheet</string><string>com.microsoft.excel.xls</string>
+                <string>org.oasis-open.opendocument.spreadsheet</string><string>com.apple.iwork.numbers.sffnumbers</string>
+                <string>org.openxmlformats.presentationml.presentation</string><string>com.microsoft.powerpoint.ppt</string>
+                <string>org.oasis-open.opendocument.presentation</string><string>com.apple.iwork.keynote.sffkey</string>
             </array>
         </dict>
     </array>

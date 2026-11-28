@@ -61,6 +61,10 @@ std::wstring baseName(Document& d) {
 @interface FPWindowController (Tools)
 @end
 
+@interface FPWindowController (HeaderFooterWindow)
+- (void)showHeaderFooterWindow;
+@end
+
 @implementation FPWindowController (Tools)
 
 - (void)notice:(const std::wstring&)text { form::message(self.window, text); }
@@ -176,40 +180,8 @@ std::wstring baseName(Document& d) {
     });
 }
 
-// Delete header and footer. The Windows app's window shows the page with what was found outlined; the Mac version asks
-// the same questions in a form for now and reports what it found and removed.
-- (IBAction)deleteHeaderFooter:(id)sender {
-    Document* d = self.pdf;
-    if (!d) return;
-    Fields f(4);
-    f[0] = {Field::Note, L"", {}, L"Finds what repeats at the top and bottom of the pages (running titles, dates, page numbers, rules, logos) and removes it for good."};
-    f[1] = {Field::Choice, L"Delete:", {L"Header", L"Footer", L"Header and footer", L"Page numbers only"}, L"", 2};
-    f[2] = {Field::Choice, L"Pages:", {L"All pages", L"This page", L"Odd pages", L"Even pages", L"These pages:"}, L"", 0};
-    f[3] = {Field::Text, L"Pages (for \"These pages\"):", {}, L""};
-    const int current = [self.pageView currentPage];
-    form::show(self.window, L"Delete header and footer", f, L"Delete", [d, current](const Fields& v) -> std::wstring {
-        std::wstring why;
-        if (headfoot::choosePages(*d, v[2].choice, current, v[3].text, &why).empty()) return why.empty() ? L"No pages are chosen." : why;
-        return L"";
-    }, [self, d, current](const Fields& v) {
-        headfoot::Detection det = headfoot::detect(*d);
-        headfoot::selectFor(det, v[1].choice);
-        std::wstring why;
-        const std::vector<int> pages = headfoot::choosePages(*d, v[2].choice, current, v[3].text, &why);
-        std::wstring found;
-        for (const auto& e : det.elements)
-            if (e.selected) found += L"  - " + std::wstring(e.band == headfoot::Band::Header ? L"Header: " : L"Footer: ") + e.label + L"\n";
-        const headfoot::Plan plan = headfoot::plan(*d, det, pages);
-        if (plan.objects == 0 && plan.areas == 0) {
-            [self notice:d->pageCount() < 2 ? L"With one page nothing can be seen to repeat, so no header or footer was found. Nothing was changed."
-                                            : L"No repeating header or footer of that kind was found on those pages. Nothing was changed."];
-            return;
-        }
-        if (!headfoot::apply(*d, plan, &why)) { [self warn:L"Nothing was deleted. " + why]; return; }
-        [self afterChange];
-        [self notice:L"Deleted on " + std::to_wstring(plan.pages.size()) + L" page(s):\n" + found + L"\nUndo (⌘Z) brings them back."];
-    });
-}
+// Delete header and footer: the window with the page and what was found outlined, as on Windows (HeaderFooter.mm).
+- (IBAction)deleteHeaderFooter:(id)sender { [self showHeaderFooterWindow]; }
 
 // ---- pages ----
 

@@ -36,7 +36,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 23 | Reading | Clickable links | Yes | Yes | added, being checked |
 | 24 | Reading | Dark and dimmed page colours | Yes | Yes |  |
 | 25 | Reading | Themes (7) for menus, dialogs, scroll bars | Yes | Yes | 7 themes; Mac controls keep the system look, the theme colours the pages' surround and sidebar |
-| 26 | Reading | Colourful toolbar icons | Yes | Yes | single buttons; grouped page / zoom buttons not yet |
+| 26 | Reading | Colourful toolbar icons | Yes | Yes | single buttons and the grouped ones (pages, zoom, rotate) |
 | 27 | Reading | Status bar (page, page size, tool, saved state) | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 28 | Reading | Side by side view of two documents | Yes | Yes | one window, two views, linked scrolling, swap |
 | 29 | Reading | Command palette (Ctrl+K) | Yes | Yes | new in this build; built and checked, to be tried by hand |
@@ -91,7 +91,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 78 | Pages | Remove blank pages | Yes | Yes |  |
 | 79 | Pages | Remove duplicate pages | Yes | Yes |  |
 | 80 | Pages | Headers and footers (add) | Yes | Yes |  |
-| 81 | Pages | Delete header and footer | Yes | Yes | a form; Windows' preview window not yet |
+| 81 | Pages | Delete header and footer | Yes | Yes | the window with the page, what was found outlined, before / after (new in 2026.11) |
 | 82 | Pages | Background colour | Yes | Yes |  |
 | 83 | Pages | Watermark | Yes | Yes |  |
 | 84 | Pages | Page numbers | Yes | Yes |  |
@@ -120,7 +120,7 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 107 | Tools | Search all PDFs in a folder | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 108 | Tools | Print (preview, pages per sheet, greyscale, two-sided) | Yes | Yes | new in this build; built and checked, to be tried by hand |
 | 109 | Tools | Set as the default PDF app | Yes | Yes | File > Set as Default PDF App |
-| 110 | Tools | Command line (export, compress, protect, redact, forms, PDF/A...) | Yes | Yes | sign, OCR, batch, search not yet |
+| 110 | Tools | Command line (export, compress, protect, redact, forms, PDF/A...) | Yes | Yes | all of them, sign, OCR, batch and folder search included (the Mac build check runs each) |
 | 111 | Tools | Auto-update: Help > Update to new version, check at start, update now or later | Yes | Yes | new on both (Windows: being checked here; Mac: being checked); needs the public releases repository |
 | 112 | Reading | Separate windows: Open in new window (tab menu), a tab dragged off the tab row, New window | Yes | Yes | Mac: macOS window tabs (Window > Merge All Windows joins them again) |
 | 113 | Reading | Setting: each file opened in its own window | Yes | Yes |  |
@@ -140,5 +140,5 @@ engine underneath). This list is updated with every Mac batch until every row sa
 | 127 | Reading | Saved workspaces (tabs, pages and zoom) | Yes | Yes | new in 2.16.0: checked by the engine tests and in the Mac build check; to be tried by hand on a Mac |
 | 128 | Reading | Blackboard page colours: pure black page, white text; inverted, or with the original colours of pictures, coloured text and highlights | Yes | Yes | new in 2.17.0: checked by the engine tests (pixels), the Windows app and the Mac build check; to be tried by hand on a Mac |
 | 129 | Pages | Combine PDFs: the open documents (ticked, in tab order) into one new PDF, with bookmarks | Yes | Yes | new in 2.18.0: tried in the Windows app; checked in the Mac build check; to be tried by hand on a Mac |
-| 130 | Tools | Convert to PDF from the file manager (File Explorer's right-click menu; the Finder's Quick Actions / Services): pictures, text, Markdown; on Windows also PowerPoint, Word and Excel files through the office program on the PC (the Mac: not yet) | Yes | Yes | new in 2.18.0: the installer's menu entry tried under Wine; the Mac service checked in the Mac build check, to be tried by hand in a real Finder |
+| 130 | Tools | Convert to PDF from the file manager (File Explorer's right-click menu; the Finder's Quick Actions / Services): pictures, text, Markdown; on Windows also PowerPoint, Word and Excel files through the office program on the PC (the Mac: through Microsoft Office, LibreOffice, or Pages / Numbers / Keynote, and Word files also without them; new in 2026.11) | Yes | Yes | new in 2.18.0: the installer's menu entry tried under Wine; the Mac service checked in the Mac build check, to be tried by hand in a real Finder |
 | 131 | Editing | Edit PDF in one click: every paragraph and picture outlined, a click in text edits it in place (caret at the click), a click on a picture moves or resizes it; a second toolbar row with the other editing tools and Done | Yes | Yes | new in 2.20.0: tried in the Windows app under Wine; checked in the Mac build check; to be tried by hand on a Mac |

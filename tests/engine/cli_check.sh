@@ -316,7 +316,7 @@ check "looks in subfolders"         "grep -q 'sub/img.pdf|1|' '$W/srch3.txt'"
 
 echo "text recognition (OCR)"
 "$prog" --ocr "$W/scan.pdf" "$W/scan_ocr.pdf" eng </dev/null >/dev/null 2>"$W/ocr.err"; rc=$?
-if [ $rc -eq 5 ]; then echo "  skip OCR engine not in this build"; else
+if [ $rc -eq 5 ] && [ -n "${FEATHER_STRICT:-}" ]; then bad "OCR by command line (exit 5: $(cat "$W/ocr.err"))"; elif [ $rc -eq 5 ]; then echo "  skip OCR engine not in this build"; else
 [ $rc -eq 0 ] || echo "  (exit code $rc: $(cat "$W/ocr.err"))"
 check "words recognised"            "text '$W/scan_ocr.pdf' | tr -s ' \\n' ' ' | grep -qi 'supplier shall deliver'"; echo "  (the text found: $(text "$W/scan_ocr.pdf" | tr -s ' \n' ' ' | head -c 300))"
 fi
@@ -358,7 +358,7 @@ open(sys.argv[1] + "/t.p12", "wb").write(pkcs12.serialize_key_and_certificates(b
 PY
 then
   "$prog" --sign "$W/rich.pdf" "$W/signed.pdf" "$W/t.p12" pw - visible </dev/null >/dev/null 2>"$W/sign.err"; rc=$?
-  if [ $rc -eq 5 ] && grep -q "not available" "$W/sign.err"; then echo "  skip signing not in this build"; else
+  if [ $rc -eq 5 ] && [ -n "${FEATHER_STRICT:-}" ]; then bad "signing by command line (exit 5: $(cat "$W/sign.err"))"; elif [ $rc -eq 5 ] && grep -q "not available" "$W/sign.err"; then echo "  skip signing not in this build"; else
   [ $rc -eq 0 ] || echo "  (exit code $rc: $(cat "$W/sign.err" "$W/signed.pdf.error.txt" 2>/dev/null))"
   check "signed copy written"         "[ -s '$W/signed.pdf' ]"
   run --checksig "$W/signed.pdf" "$W/sig.txt"

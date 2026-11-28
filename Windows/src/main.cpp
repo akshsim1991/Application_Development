@@ -94,6 +94,7 @@ constexpr UINT kMsgSpeech = WM_APP + 8;           // the voice reading aloud has
 struct Button { std::wstring label; RECT rc; int id; bool enabled; int icon = 0; bool caption = false; };
 enum Cmd { C_EDITPDF = 120, C_COMMENT, C_GEOM, C_SBS, C_ZOOMMENU, C_SAVE = 100, C_UNDO, C_REDO, C_ANNOT, C_OPEN = 1, C_PREV, C_NEXT, C_ZOOMOUT, C_ZOOMIN, C_FITW, C_FITP, C_NEWTAB, C_ACTUAL, C_FIND, C_PANEL, C_GOTO, C_MENU,
            C_ROTL = 130, C_ROTR,   // the toolbar's rotate buttons: the page shown (with Shift, every page)
+           C_SIDEBAR = 132, C_PRINT, C_FIT, C_FULL, C_NIGHT,   // more toolbar buttons
            C_CAPMIN = 140, C_CAPMAX, C_CAPCLOSE,
            // the edit row, under the toolbar while Edit PDF is on
            C_ER_EDIT = 160, C_ER_ADDTEXT, C_ER_PICTURE, C_ER_TABLE, C_ER_REPLACE, C_ER_REDACT, C_ER_MORE, C_ER_DONE, C_ER_EQUATION,
@@ -207,7 +208,7 @@ void sanitizeDialog(); void pdfaDialog(); void showFonts(Document& d); void sear
 void startStamp(const std::wstring& text, COLORREF col); void pictureAction(int cmd); void addPictureItems(HMENU m);
 void refreshLinks(Document& d); std::wstring signaturePathFwd();
 void doFindReplace(); void addDocumentTab(std::unique_ptr<Document> doc); void tableInsert(); void tableEdit(); void tableDelete(); void addBookmarkHere(); void doGreyscale();
-void startLink(); void insertEquation(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns);
+void startLink(); void insertEquation(); void signatureAction(int cmd); void startCopyArea(); void setPageLayout(int layout); void rotateView(int turns); void rotateShown(int turns);
 // The zoom a document opens at when no place is remembered for it (Settings > PDF Viewing > Default zoom).
 const double kDefaultZooms[] = {0, 0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0};
 void applyDefaultZoom() {
@@ -3808,9 +3809,9 @@ void showToolsMenu(const RECT& anchor) {
     padd(P_MERGE, L"Merge PDFs into the end of this document...");
     padd(P_NEWPDF, L"New PDF from pictures...");
     AppendMenuW(pg, MF_SEPARATOR, 0, nullptr);
-    padd(P_ROT_R, L"Rotate this page right");
-    padd(P_ROT_L, L"Rotate this page left");
-    padd(P_ROT_ALL, L"Rotate all pages right");
+    padd(P_ROT_R, L"Rotate this page right\tCtrl+R");
+    padd(P_ROT_L, L"Rotate this page left\tCtrl+L");
+    padd(P_ROT_ALL, L"Rotate all pages right\tCtrl+Shift+R");
     padd(P_MOVE, L"Move pages...", d->pageCount() > 1);
     padd(P_REVERSE, L"Reverse the page order", d->pageCount() > 1);
     padd(P_INTERLEAVE, L"Two-sided scan: put fronts and backs in order...");
@@ -3956,10 +3957,29 @@ void runCommand(int id) {
         case C_SAVE: saveActive(); break;
         case C_UNDO: undoRedo(false); break;
         case C_REDO: undoRedo(true); break;
+        case C_SIDEBAR:   // the thumbnails and bookmarks, shown or hidden (as they were last)
+            if (!d) break;
+            if (app.sidebarVisible) { app.sidebarVisible = false; showControls(); app.viewer.fitWidth(); }
+            else showSidebar(app.sidebar.mode());
+            refresh();
+            break;
+        case C_PRINT: if (d) printDocument(); break;
+        case C_FIT: if (d) { if (d->fitWidth) app.viewer.fitPage(); else app.viewer.fitWidth(); refresh(); } break;
+        case C_FULL: if (d) setFullscreen(true, false); break;
+        case C_NIGHT: {   // night colours, or the colours chosen before (Settings: page colours)
+            if (!d) break;
+            static Viewer::Colours dark = Viewer::Colours::Dark;
+            Viewer::Colours c = app.viewer.colours();
+            if (c != Viewer::Colours::Normal) { dark = c; c = Viewer::Colours::Normal; } else c = dark;
+            app.viewer.setColours(c); app.viewer2.setColours(c);
+            saveSettings();
+            refresh();
+            break;
+        }
         case C_ROTL: case C_ROTR:   // the page shown; with Shift, every page (as Ctrl+L and Ctrl+R)
             if (!d) break;
             if (GetKeyState(VK_SHIFT) < 0) rotateView(id == C_ROTR ? 1 : -1);
-            else if (d->rotatePages({app.viewer.currentPage()}, id == C_ROTR ? 1 : -1)) afterPagesChanged();
+            else rotateShown(id == C_ROTR ? 1 : -1);
             break;
     }
 }
@@ -4763,6 +4783,12 @@ void setPageLayout(int layout) {
     app.viewer.setLayout(app.layout, app.cover);
     if (app.sbs) app.viewer2.setLayout(app.layout, app.cover);
     saveSettings();
+}
+
+// The page shown, a quarter turn (Ctrl+R right, Ctrl+L left; with Shift every page: rotateView), as on the Mac.
+void rotateShown(int turns) {
+    Document* d = activeDoc();
+    if (d && d->rotatePages({app.viewer.currentPage()}, turns)) afterPagesChanged();
 }
 
 void rotateView(int turns) {
@@ -6500,8 +6526,10 @@ void commandPalette() {
         add(L"Page layout: continuous", [] { setPageLayout(1); });
         add(L"Page layout: two pages", [] { setPageLayout(2); });
         add(L"Page layout: show the cover page on its own (two pages)", [] { setPageLayout(3); });
-        add(L"Rotate view left", [] { rotateView(-1); });
-        add(L"Rotate view right", [] { rotateView(1); });
+        add(L"Rotate this page left (Ctrl+L)", [] { rotateShown(-1); });
+        add(L"Rotate this page right (Ctrl+R)", [] { rotateShown(1); });
+        add(L"Rotate every page left (Ctrl+Shift+L)", [] { rotateView(-1); });
+        add(L"Rotate every page right (Ctrl+Shift+R)", [] { rotateView(1); });
         add(L"Full screen", [] { setFullscreen(true, false); });
         add(L"Presentation", [] { setFullscreen(true, true); });
         add(L"Bookmarks panel", [] { showSidebar(Sidebar::Mode::Bookmarks); });
@@ -6621,7 +6649,7 @@ void commandPalette() {
 
 // ---- the header: the tab row (which is also the title bar) and the toolbar; the status bar at the bottom ----
 enum Icon { I_NONE, I_OPEN, I_SAVE, I_UNDO, I_REDO, I_EDIT, I_ANNOT, I_COMMENT, I_GEOM, I_SBS, I_PREV, I_NEXT, I_ZOUT, I_ZIN, I_SEARCH, I_MORE,
-            I_FILE, I_DROP, I_PLUS, I_CHEVRON, I_ROTL, I_ROTR };   // same numbering as icons::
+            I_FILE, I_DROP, I_PLUS, I_CHEVRON, I_ROTL, I_ROTR, I_SIDEBAR, I_PRINT, I_FITW, I_FITP, I_FULL, I_NIGHT };   // same numbering as icons::
 
 std::vector<int> g_separators;   // x of the thin lines between toolbar groups
 
@@ -6644,6 +6672,8 @@ bool highlighted(int id) {
         case C_ER_REDACT: return app.tool == T::Redact;
         case C_ER_DONE: return true;   // the way out, always marked
     }
+    if (id == C_SIDEBAR) return app.sidebarVisible;
+    if (id == C_NIGHT) return app.viewer.colours() != Viewer::Colours::Normal;
     return (id != 0 && id == activeGroup()) || (id == C_SBS && app.sbs);
 }
 
@@ -6688,8 +6718,13 @@ std::wstring tipFor(int id) {
         case C_ZOOMOUT: return L"Zoom out";
         case C_ZOOMIN: return L"Zoom in";
         case C_ZOOMMENU: return L"Zoom presets, fit width, fit page";
-        case C_ROTL: return L"Rotate this page left (Shift+click: every page; Ctrl+L)";
-        case C_ROTR: return L"Rotate this page right (Shift+click: every page; Ctrl+R)";
+        case C_SIDEBAR: return app.sidebarVisible ? L"Hide the thumbnails and bookmarks (Ctrl+B)" : L"Show the page thumbnails and bookmarks (Ctrl+B)";
+        case C_PRINT: return L"Print (Ctrl+P)";
+        case C_FIT: { const Document* d = activeDoc(); return d && d->fitWidth ? L"Fit the whole page (Ctrl+0)" : L"Fit the width (Ctrl+2)"; }
+        case C_FULL: return L"Full screen (F11; Esc comes back)";
+        case C_NIGHT: return app.viewer.colours() == Viewer::Colours::Normal ? L"Night colours: easier on the eyes in the dark" : L"Normal page colours";
+        case C_ROTL: return L"Rotate this page left (Ctrl+L). Shift+click or Ctrl+Shift+L: every page";
+        case C_ROTR: return L"Rotate this page right (Ctrl+R). Shift+click or Ctrl+Shift+R: every page";
         case C_FIND: return L"Find in the document (Ctrl+F)";
         case C_ER_EDIT: return L"Click any outlined text to change it there, or a picture to move or resize it (Ctrl+E)";
         case C_ER_ADDTEXT: return L"Click where new text should start";
@@ -6832,15 +6867,18 @@ void layoutHeader(HDC dc, int width) {
     auto groupW = [&](const wchar_t* label, bool compact) { return compact ? px(40) : px(10) + px(20) + px(6) + textWidth(dc, app.font, label) + px(12); };
     const std::wstring ofText = d ? L"of " + std::to_wstring(d->pageCount()) : L"";
     const int ofW = std::max(textWidth(dc, app.font, L"of 999"), textWidth(dc, app.font, ofText)) + px(10);
-    const int rightW = px(32) + px(50) + ofW + px(32) + sep + px(32) + px(84) + px(32) + sep + 2 * iconW + sep + iconW + px(42) + px(10);
-    int leftW = px(8) + 4 * iconW + 2 * sep;
+    const int rightW = px(32) + px(50) + ofW + px(32) + sep + px(32) + px(84) + px(32) + iconW + sep + 2 * iconW + sep + 2 * iconW + sep + iconW + px(42) + px(10);
+    int leftW = px(8) + 6 * iconW + 3 * sep;
     for (const auto& g : groups) leftW += groupW(g.label, false) + px(2);
     app.compact = leftW + rightW + px(16) > width;
     x = px(8);
     auto icon = [&](int id, int ic, bool enabled) { app.buttons.push_back({L"", {x, top, x + iconW, bottom}, id, enabled, ic}); x += iconW; };
     auto separator = [&] { g_separators.push_back(x + sep / 2); x += sep; };
+    icon(C_SIDEBAR, I_SIDEBAR, d != nullptr);
+    separator();
     icon(C_OPEN, I_OPEN, true);
     icon(C_SAVE, I_SAVE, d && d->dirty());
+    icon(C_PRINT, I_PRINT, d != nullptr);
     separator();
     icon(C_UNDO, I_UNDO, d && d->canUndo());
     icon(C_REDO, I_REDO, d && d->canRedo());
@@ -6855,9 +6893,13 @@ void layoutHeader(HDC dc, int width) {
     rx -= px(42); app.buttons.push_back({L"", {rx, top, rx + px(42), bottom}, C_MENU, true, I_MORE});
     rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_FIND, d != nullptr, I_SEARCH});
     rx -= sep; g_separators.push_back(rx + sep / 2);
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_FULL, d != nullptr, I_FULL});
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_NIGHT, d != nullptr, I_NIGHT});
+    rx -= sep; g_separators.push_back(rx + sep / 2);
     rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_ROTR, d != nullptr, I_ROTR});
     rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_ROTL, d != nullptr, I_ROTL});
     rx -= sep; g_separators.push_back(rx + sep / 2);
+    rx -= iconW; app.buttons.push_back({L"", {rx, top, rx + iconW, bottom}, C_FIT, d != nullptr, d && d->fitWidth ? I_FITP : I_FITW});
     rx -= px(32); app.buttons.push_back({L"", {rx, top, rx + px(32), bottom}, C_ZOOMIN, d != nullptr, I_ZIN});
     rx -= px(84);
     app.zoomRect = {rx, top + px(3), rx + px(84), bottom - px(3)};
@@ -6951,6 +6993,11 @@ COLORREF iconColour(int icon, COLORREF bg) {
         case icons::ZoomIn: case icons::ZoomOut: c = RGB(0x54, 0x63, 0xD6); break;
         case icons::Search: c = RGB(0x1F, 0x6F, 0xEB); break;
         case icons::RotateLeft: case icons::RotateRight: c = RGB(0xD9, 0x77, 0x06); break;
+        case icons::Sidebar: c = RGB(0x1F, 0x6F, 0xEB); break;
+        case icons::Print: c = RGB(0x5B, 0x6B, 0x7D); break;
+        case icons::FitWidth: case icons::FitPage: c = RGB(0x54, 0x63, 0xD6); break;
+        case icons::FullScreen: c = RGB(0x0F, 0x9D, 0x8A); break;
+        case icons::Night: c = RGB(0x7C, 0x3A, 0xED); break;
         default: return pal().text;   // arrows, More: in the text colour
     }
     if (pal().dark) c = mixColour(c, RGB(0xFF, 0xFF, 0xFF), 0.3);   // lighter on dark toolbars
@@ -7696,8 +7743,8 @@ LRESULT CALLBACK wndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 switch (w) {
                     case 'O': runCommand(C_OPEN); return 0;
                     case 'N': launchWindow({}); return 0;   // a new window of its own
-                    case 'L': rotateView(-1); return 0;
-                    case 'R': rotateView(1); return 0;
+                    case 'L': if (shift) rotateView(-1); else rotateShown(-1); return 0;   // the page shown (Shift: every page)
+                    case 'R': if (shift) rotateView(1); else rotateShown(1); return 0;
                     case 'E': if (d) setTool(app.tool == Viewer::Tool::EditAll ? Viewer::Tool::None : Viewer::Tool::EditAll); return 0;
                     case 'Q': PostMessageW(app.wnd, WM_CLOSE, 0, 0); return 0;
                     case 'P': printDocument(); return 0;   // Ctrl+Shift+P (the old print preview) opens the same window

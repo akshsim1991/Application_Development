@@ -19,6 +19,11 @@ static NSToolbarItemIdentifier const kSidebarItem = @"sidebar";
 static NSToolbarItemIdentifier const kFindItem = @"find";
 static NSToolbarItemIdentifier const kEditItem = @"editpdf";
 static NSToolbarItemIdentifier const kRotateItem = @"rotate";
+static NSToolbarItemIdentifier const kFitItem = @"fit";
+static NSToolbarItemIdentifier const kNightItem = @"night";
+static NSToolbarItemIdentifier const kFullItem = @"fullscreen";
+static NSToolbarItemIdentifier const kPrintItem = @"print";
+static NSToolbarItemIdentifier const kShareItem = @"share";
 extern BOOL FPInlineEditing();   // Editing.mm: a paragraph is being typed in
 
 @interface FPWindowController (EditingCalls)   // Editing.mm
@@ -28,6 +33,8 @@ extern BOOL FPInlineEditing();   // Editing.mm: a paragraph is being typed in
 @interface FPWindowController (ToolsCalls)   // Tools.mm
 - (IBAction)rotateRight:(id)sender;
 - (IBAction)rotateLeft:(id)sender;
+- (IBAction)rotateAllRight:(id)sender;
+- (IBAction)rotateAllLeft:(id)sender;
 @end
 static NSToolbarItemIdentifier const kPageItem = @"page";
 static NSToolbarItemIdentifier const kZoomItem = @"zoom";
@@ -45,6 +52,9 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
 @interface FPWindowController () <FPSidebarDelegate, NSSplitViewDelegate>
 @end
 
+@interface FPWindowController () <NSSharingServicePickerToolbarItemDelegate>
+@end
+
 @implementation FPWindowController {
     FPPageView* _view;
     FPSidebar* _sidebar;
@@ -57,6 +67,8 @@ NSString* const FPSidebarShownKey = @"sidebarShown";
     std::wstring _searched;
     std::vector<int> _back, _forward;   // pages to go back and forward to
     NSTextField* _pageField;
+    NSButton* _fitButton;     // the toolbar's Fit (whole page, or the width again)
+    NSButton* _nightButton;   // the toolbar's Night colours
     NSTextField* _pageCount;
     NSComboBox* _zoomMenu;
     NSView* _editBar;                  // under the toolbar while editing: the editing tools, one click each, and Done
@@ -273,11 +285,11 @@ static BOOL editBarTool(FPTool t) {   // the tools of Edit PDF: the bar stays wh
 // ---- the toolbar ----
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarDefaultItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kRotateItem, kZoomItem, kFindItem ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, NSToolbarFlexibleSpaceItemIdentifier, kRotateItem, kZoomItem, kFitItem, kNightItem, kFullItem, kPrintItem, kShareItem, kFindItem ];
 }
 
 - (NSArray<NSToolbarItemIdentifier>*)toolbarAllowedItemIdentifiers:(NSToolbar*)toolbar {
-    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, kRotateItem, kZoomItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
+    return @[ kSidebarItem, kEditItem, kPagesItem, kPageItem, kRotateItem, kZoomItem, kFitItem, kNightItem, kFullItem, kPrintItem, kShareItem, kFindItem, NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
 static NSImage* symbol(NSString* name, NSString* description) {
@@ -286,7 +298,31 @@ static NSImage* symbol(NSString* name, NSString* description) {
 }
 
 - (NSToolbarItem*)toolbar:(NSToolbar*)toolbar itemForItemIdentifier:(NSToolbarItemIdentifier)ident willBeInsertedIntoToolbar:(BOOL)flag {
+    if ([ident isEqualToString:kShareItem]) {   // Share: Mail, Messages, AirDrop... (the document as it is now)
+        NSSharingServicePickerToolbarItem* share = [[NSSharingServicePickerToolbarItem alloc] initWithItemIdentifier:ident];
+        share.delegate = self;
+        share.label = @"Share";
+        share.toolTip = @"Share this PDF: Mail, Messages, AirDrop and more";
+        return share;
+    }
     NSToolbarItem* item = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
+    auto button = [&](NSString* sym, NSString* label, SEL action, NSString* tip) {
+        NSButton* b = [NSButton buttonWithImage:symbol(sym, label) target:self action:action];
+        b.bezelStyle = NSBezelStyleTexturedRounded;
+        b.toolTip = tip;
+        item.view = b;
+        item.label = label;
+        return b;
+    };
+    if ([ident isEqualToString:kFitItem]) { _fitButton = button(@"arrow.up.and.down.square", @"Fit", @selector(fitToggle:), @"Fit the whole page (⌘0)"); [self viewChanged:nil]; return item; }
+    if ([ident isEqualToString:kNightItem]) {
+        _nightButton = button(@"moon", @"Night", @selector(nightToggle:), @"Night colours: easier on the eyes in the dark");
+        [_nightButton setButtonType:NSButtonTypePushOnPushOff];
+        _nightButton.state = savedColours() != pagecolours::Mode::Normal ? NSControlStateValueOn : NSControlStateValueOff;
+        return item;
+    }
+    if ([ident isEqualToString:kFullItem]) { button(@"arrow.up.left.and.arrow.down.right", @"Full Screen", @selector(toggleFullScreen:), @"Full screen (⌃⌘F; Esc comes back)"); return item; }
+    if ([ident isEqualToString:kPrintItem]) { button(@"printer", @"Print", @selector(printDocument:), @"Print (⌘P)"); return item; }
     if ([ident isEqualToString:kFindItem]) {
         _find = [[NSSearchField alloc] initWithFrame:NSMakeRect(0, 0, 200, 24)];
         _find.placeholderString = @"Find";
@@ -341,8 +377,8 @@ static NSImage* symbol(NSString* name, NSString* description) {
                                                                   trackingMode:NSSegmentSwitchTrackingMomentary
                                                                         target:self
                                                                         action:@selector(rotateClicked:)];
-        [s setToolTip:@"Rotate this page left (⌘L; Shift-click: every page)" forSegment:0];
-        [s setToolTip:@"Rotate this page right (⌘R; Shift-click: every page)" forSegment:1];
+        [s setToolTip:@"Rotate this page left (⌘L). Shift-click or ⌘⇧L: every page" forSegment:0];
+        [s setToolTip:@"Rotate this page right (⌘R). Shift-click or ⌘⇧R: every page" forSegment:1];
         item.view = s;
         item.label = @"Rotate";
     } else if ([ident isEqualToString:kZoomItem]) {
@@ -379,11 +415,7 @@ static NSImage* symbol(NSString* name, NSString* description) {
 - (void)rotateClicked:(NSSegmentedControl*)s {
     const BOOL right = s.selectedSegment == 1;
     if (!(NSEvent.modifierFlags & NSEventModifierFlagShift)) { if (right) [self rotateRight:nil]; else [self rotateLeft:nil]; return; }
-    Document* d = self.pdf;   // Shift: every page
-    if (!d) return;
-    std::vector<int> all(static_cast<size_t>(d->pageCount()));
-    for (int i = 0; i < d->pageCount(); ++i) all[static_cast<size_t>(i)] = i;
-    if (d->rotatePages(all, right ? 1 : 3)) [self afterChange];
+    if (right) [self rotateAllRight:nil]; else [self rotateAllLeft:nil];   // Shift: every page
 }
 
 - (IBAction)uiRotateToolbar:(id)sender {   // the build check: the toolbar's rotate right pressed, as a click would
@@ -399,6 +431,57 @@ static NSImage* symbol(NSString* name, NSString* description) {
     NSMutableArray* ids = [NSMutableArray array];
     for (NSToolbarItem* item in self.window.toolbar.items) [ids addObject:item.itemIdentifier];
     FPTrace(@"rotate toolbar: items %@; pages %@", [ids componentsJoinedByString:@" "], [sizes componentsJoinedByString:@" "]);
+}
+
+// One click: the whole page, or the width again.
+- (void)fitToggle:(id)sender {
+    if (_view.fitWidth) [self fitPage:nil]; else [self fitWidth:nil];
+    [self viewChanged:nil];
+}
+
+// Night colours, or the colours chosen before (Settings: page colours); every window follows.
+- (void)nightToggle:(id)sender {
+    NSUserDefaults* u = NSUserDefaults.standardUserDefaults;
+    const NSInteger now = [u integerForKey:FPPageColoursKey];
+    if (now != 0) [u setInteger:now forKey:@"lastDarkColours"];
+    const NSInteger dark = [u objectForKey:@"lastDarkColours"] ? [u integerForKey:@"lastDarkColours"] : 1;
+    [u setInteger:now != 0 ? 0 : dark forKey:FPPageColoursKey];
+    [[NSNotificationCenter defaultCenter] postNotificationName:FPPageColoursChanged object:nil];
+}
+
+- (void)toggleFullScreen:(id)sender { [self.window toggleFullScreen:sender]; }
+
+// Share: the file itself when it has no unsaved changes, else a copy of it as it is now.
+- (NSArray*)itemsForSharingServicePickerToolbarItem:(NSSharingServicePickerToolbarItem*)item {
+    NSDocument* doc = (NSDocument*)self.document;
+    Document* d = self.pdf;
+    if (!d) return @[];
+    if (doc.fileURL && !d->dirty()) return @[ doc.fileURL ];
+    std::vector<unsigned char> bytes;
+    if (!d->bytesToSave(bytes)) return doc.fileURL ? @[ doc.fileURL ] : @[];
+    NSString* dir = [NSTemporaryDirectory() stringByAppendingPathComponent:[NSUUID UUID].UUIDString];
+    [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSString* name = doc.fileURL.lastPathComponent ?: [(doc.displayName ?: @"Document") stringByAppendingString:@".pdf"];
+    NSString* path = [dir stringByAppendingPathComponent:name];
+    [[NSData dataWithBytes:bytes.data() length:bytes.size()] writeToFile:path atomically:YES];
+    return @[ [NSURL fileURLWithPath:path] ];
+}
+
+- (IBAction)uiToolbarButtons:(id)sender {   // the build check: the toolbar's new items there, fit and night pressed twice
+    NSMutableArray* ids = [NSMutableArray array];
+    for (NSToolbarItem* item in self.window.toolbar.items) [ids addObject:item.itemIdentifier];
+    const BOOL fit0 = _view.fitWidth;
+    [self fitToggle:nil]; const BOOL fit1 = _view.fitWidth;
+    [self fitToggle:nil]; const BOOL fit2 = _view.fitWidth;
+    const NSInteger c0 = [NSUserDefaults.standardUserDefaults integerForKey:FPPageColoursKey];
+    [self nightToggle:nil]; const NSInteger c1 = [NSUserDefaults.standardUserDefaults integerForKey:FPPageColoursKey];
+    const BOOL on = _nightButton.state == NSControlStateValueOn;
+    [self nightToggle:nil]; const NSInteger c2 = [NSUserDefaults.standardUserDefaults integerForKey:FPPageColoursKey];
+    NSToolbarItem* share = nil;
+    for (NSToolbarItem* item in self.window.toolbar.items) if ([item.itemIdentifier isEqualToString:kShareItem]) share = item;
+    const NSUInteger shared = share ? [self itemsForSharingServicePickerToolbarItem:(NSSharingServicePickerToolbarItem*)share].count : 0;
+    FPTrace(@"toolbar items: %@; fit width %d -> %d -> %d; colours %ld -> %ld (button %d) -> %ld; share gives %lu",
+            [ids componentsJoinedByString:@" "], fit0, fit1, fit2, (long)c0, (long)c1, on, (long)c2, (unsigned long)shared);
 }
 
 - (void)zoomClicked:(NSSegmentedControl*)s {
@@ -448,6 +531,10 @@ static NSImage* symbol(NSString* name, NSString* description) {
         _status.stringValue = [NSString stringWithFormat:@"Page %d of %d  \u00B7  %d \u00D7 %d mm%@%@  \u00B7  %@", page, count, mw, mh, name, tool,
                                                          d->dirty() ? @"Unsaved changes" : @"All changes saved"];
     }
+    if (_fitButton) {   // what a click does: the whole page, or the width again
+        _fitButton.image = symbol(_view.fitWidth ? @"arrow.up.and.down.square" : @"arrow.left.and.right.square", @"Fit");
+        _fitButton.toolTip = _view.fitWidth ? @"Fit the whole page (⌘0)" : @"Fit the width";
+    }
     if (@available(macOS 11.0, *))
         self.window.subtitle = count ? [NSString stringWithFormat:@"Page %d of %d · %d %%", page, count, percent] : @"";
 }
@@ -482,7 +569,9 @@ static NSImage* symbol(NSString* name, NSString* description) {
     // colourful toolbar icons, as on Windows: each its own colour; off, the text colour
     NSDictionary<NSToolbarItemIdentifier, NSColor*>* tints = @{@"sidebar" : NSColor.systemBlueColor, @"pages" : NSColor.systemGreenColor,
                                                                @"zoom" : NSColor.systemOrangeColor, @"find" : NSColor.systemPurpleColor,
-                                                               @"rotate" : NSColor.systemTealColor};
+                                                               @"rotate" : NSColor.systemTealColor, @"fit" : NSColor.systemIndigoColor,
+                                                               @"night" : NSColor.systemPurpleColor, @"fullscreen" : NSColor.systemGreenColor,
+                                                               @"print" : NSColor.systemGrayColor};
     for (NSToolbarItem* item in self.window.toolbar.items) {
         NSColor* tint = FPColourIcons() ? tints[item.itemIdentifier] : nil;
         for (NSView* v in [item.view isKindOfClass:[NSStackView class]] ? ((NSStackView*)item.view).views : @[ item.view ?: [NSView new] ])
@@ -764,6 +853,7 @@ static NSString* const kFindOptions[] = {@"findMatchCase", @"findWholeWord", @"f
 }
 
 - (void)coloursChanged:(NSNotification*)n {
+    _nightButton.state = savedColours() != pagecolours::Mode::Normal ? NSControlStateValueOn : NSControlStateValueOff;
     _view.colours = savedColours();
     _sidebar.colours = savedColours();
     _view.enclosingScrollView.backgroundColor = FPThemeSurround();   // black around Blackboard pages

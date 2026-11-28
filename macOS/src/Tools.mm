@@ -224,6 +224,17 @@ std::wstring baseName(Document& d) {
     if (d && d->rotatePages({[self.pageView currentPage]}, 3)) [self afterChange];
 }
 
+// ⌘⇧R and ⌘⇧L: every page (⌘R and ⌘L the page shown), as on Windows
+- (IBAction)rotateAllRight:(id)sender { [self rotateEveryPage:1]; }
+- (IBAction)rotateAllLeft:(id)sender { [self rotateEveryPage:3]; }
+- (void)rotateEveryPage:(int)turns {
+    Document* d = self.pdf;
+    if (!d) return;
+    std::vector<int> all(static_cast<size_t>(d->pageCount()));
+    for (int i = 0; i < d->pageCount(); ++i) all[static_cast<size_t>(i)] = i;
+    if (d->rotatePages(all, turns)) [self afterChange];
+}
+
 - (IBAction)rotatePages:(id)sender {
     Document* d = self.pdf;
     if (!d) return;

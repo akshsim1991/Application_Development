@@ -11,7 +11,7 @@ dialogs), not its source code. Status: **done** · **partial** (exists but diffe
 | Zoom drop-down (50 % ... 400 %, fit width / page, actual size) | yes | done |
 | Main "..." menu (open, new from pictures, recent, save, export, compare, side by side, print, reload, read aloud, sign, copy, select all, copy page / area, navigation, panels, page layout, rotate, fit, full screen, page colours, theme, command palette, default viewer, About, exit) | yes | done |
 | Page layout: single / continuous / two pages, cover page | yes | done |
-| Rotate view left / right (Ctrl+L / Ctrl+R) | rotates the pages (an undoable change that Save keeps) | partial |
+| Rotate left / right (Ctrl+L / Ctrl+R the page shown, with Shift every page; the same on the Mac with ⌘) | rotates the pages (an undoable change that Save keeps) | partial |
 | Back / Forward (Alt+Left / Alt+Right) | yes | done |
 | Reload from disk | yes (asks first when there are unsaved changes) | partial: no automatic "file changed" notice |
 | Command palette (Ctrl+K) | yes, about 70 commands | done |

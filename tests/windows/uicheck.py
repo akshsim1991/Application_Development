@@ -166,5 +166,78 @@ for scenario in ("ctrl", "box"):
         check("a box drawn: the chart's labels it touched are deleted, the text beside it kept",
               "Jul" not in t and "Sep" not in t and "Next steps" in t and "Sales by month" in t and "Online orders" in t)
 
+# ---- the toolbar's other buttons: thumbnails and bookmarks, print, fit, night colours, full screen ----
+def pixel(img, xy):
+    return img.convert("RGB").getpixel(xy)
+
+def page_box(img):
+    """The red band's left and right ends on the screen (the page's width)."""
+    w, h = img.size
+    px = img.convert("RGB").load()
+    red = lambda c: c[0] > 150 and c[1] < 90 and c[2] < 90
+    for y in range(80, min(h, 500)):
+        xs = [x for x in range(0, w, 2) if red(px[x, y])]
+        if len(xs) > w // 12: return min(xs), max(xs), y
+    return None
+
+work = os.path.join(out, "buttons.pdf")
+shutil.copy(pdf, work)
+app = subprocess.Popen([exe, work])
+for _ in range(60):
+    time.sleep(1)
+    if window(): break
+time.sleep(4)
+h = window()[0][0] if window() else None
+if h: u.ShowWindow(h, 3); u.SetForegroundWindow(h); time.sleep(3)
+img = shot("20-buttons", log=True)
+btns = orange_buttons(img)
+box0 = page_box(img)
+check(f"buttons: the rotate buttons and the page are found ({btns}, {box0})", len(btns) == 2 and box0 is not None)
+if len(btns) == 2 and box0:
+    (lx, by), (rx, _) = btns
+    # (positions from the toolbar's layout: 36-pixel icons, 13-pixel separators)
+    sidebar, printer = (26, by), (147, by)
+    fit, night, full = (lx - 49, by), (rx + 49, by), (rx + 85, by)
+    click(*sidebar); time.sleep(1.5)
+    box1 = page_box(shot("21-sidebar", log=True))
+    check(f"the thumbnails button shows the sidebar: the page moves right ({box0[0]} -> {box1[0] if box1 else None})", box1 is not None and box1[0] > box0[0] + 40)
+    click(*sidebar); time.sleep(1.5)
+    box2 = page_box(shot("22-sidebar-hidden"))
+    check("and hides it again", box2 is not None and abs(box2[0] - box0[0]) < 12)
+    click(*fit); time.sleep(1.5)
+    box3 = page_box(shot("23-fit-page", log=True))
+    check(f"the fit button shows the whole page: narrower ({box0[1]-box0[0]} -> {box3[1]-box3[0] if box3 else None})", box3 is not None and (box3[1] - box3[0]) < (box0[1] - box0[0]) * 0.9)
+    click(*fit); time.sleep(1.5)
+    box4 = page_box(shot("24-fit-width"))
+    check("and the width again", box4 is not None and abs((box4[1] - box4[0]) - (box0[1] - box0[0])) < 12)
+    probe = ((box0[0] + box0[1]) // 2, box0[2] + 420)   # white paper below the text
+    before = pixel(shot("25-normal"), probe)
+    click(*night); time.sleep(2)
+    after = pixel(shot("26-night", log=True), probe)
+    check(f"the night button darkens the page ({before} -> {after})", sum(before) > 600 and sum(after) < 300)
+    click(*night); time.sleep(2)
+    back = pixel(shot("27-normal-again"), probe)
+    check(f"and back to normal ({back})", sum(back) > 600)
+    click(*full); time.sleep(2.5)
+    fs = shot("28-full-screen", log=True)
+    check("the full screen button hides the toolbar", len(orange_buttons(fs)) == 0)
+    key(0x1B); time.sleep(2)
+    check("Esc brings it back", len(orange_buttons(shot("29-full-screen-off"))) == 2)
+    before_titles = {t for _, t in window()}
+    click(*printer); time.sleep(4)
+    shot("30-print", log=True)
+    found = []
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hh, _):
+        n = u.GetWindowTextLengthW(hh)
+        b = ctypes.create_unicode_buffer(n + 1); u.GetWindowTextW(hh, b, n + 1)
+        if u.IsWindowVisible(hh) and "print" in b.value.lower(): found.append((hh, b.value))
+        return True
+    u.EnumWindows(each, 0)
+    check(f"the print button opens the print window ({[t for _, t in found]})", len(found) > 0)
+    for hh, _ in found: u.PostMessageW(hh, 0x0010, 0, 0)
+    time.sleep(2)
+close_app(app)
+
 print("ALL PASSED" if fails == 0 else f"{fails} FAILED", flush=True)
 sys.exit(1 if fails else 0)

@@ -246,6 +246,44 @@ void paint(Graphics& g, int icon, COLORREF colour) {
             g.DrawLine(&pen, 5.5f, 8.0f, 10.0f, 12.5f);
             g.DrawLine(&pen, 10.0f, 12.5f, 14.5f, 8.0f);
             break;
+        case Sidebar:   // a window with a panel on the left, its rows
+            g.DrawRectangle(&pen, 2.5f, 4.0f, 15.0f, 12.0f);
+            g.DrawLine(&pen, 7.5f, 4.0f, 7.5f, 16.0f);
+            g.DrawLine(&pen, 4.2f, 7.0f, 5.8f, 7.0f);
+            g.DrawLine(&pen, 4.2f, 9.8f, 5.8f, 9.8f);
+            g.DrawLine(&pen, 4.2f, 12.6f, 5.8f, 12.6f);
+            break;
+        case Print:   // a printer: the paper going in at the top and out at the bottom
+            g.DrawRectangle(&pen, 6.0f, 2.5f, 8.0f, 5.0f);
+            g.DrawRectangle(&pen, 2.5f, 7.5f, 15.0f, 6.5f);
+            g.DrawRectangle(&pen, 6.0f, 11.5f, 8.0f, 6.0f);
+            g.FillEllipse(&fill, 14.0f, 9.0f, 1.6f, 1.6f);
+            break;
+        case FitWidth:   // a page as wide as the window: arrows to its sides
+            g.DrawRectangle(&pen, 2.5f, 4.5f, 15.0f, 11.0f);
+            g.DrawLine(&pen, 5.0f, 10.0f, 15.0f, 10.0f);
+            g.DrawLine(&pen, 5.0f, 10.0f, 7.2f, 7.8f); g.DrawLine(&pen, 5.0f, 10.0f, 7.2f, 12.2f);
+            g.DrawLine(&pen, 15.0f, 10.0f, 12.8f, 7.8f); g.DrawLine(&pen, 15.0f, 10.0f, 12.8f, 12.2f);
+            break;
+        case FitPage:   // the whole page: arrows to its top and bottom
+            g.DrawRectangle(&pen, 5.0f, 2.5f, 10.0f, 15.0f);
+            g.DrawLine(&pen, 10.0f, 5.0f, 10.0f, 15.0f);
+            g.DrawLine(&pen, 10.0f, 5.0f, 7.8f, 7.2f); g.DrawLine(&pen, 10.0f, 5.0f, 12.2f, 7.2f);
+            g.DrawLine(&pen, 10.0f, 15.0f, 7.8f, 12.8f); g.DrawLine(&pen, 10.0f, 15.0f, 12.2f, 12.8f);
+            break;
+        case FullScreen:   // four corners pointing out
+            g.DrawLine(&pen, 3.0f, 7.5f, 3.0f, 3.0f); g.DrawLine(&pen, 3.0f, 3.0f, 7.5f, 3.0f);
+            g.DrawLine(&pen, 12.5f, 3.0f, 17.0f, 3.0f); g.DrawLine(&pen, 17.0f, 3.0f, 17.0f, 7.5f);
+            g.DrawLine(&pen, 3.0f, 12.5f, 3.0f, 17.0f); g.DrawLine(&pen, 3.0f, 17.0f, 7.5f, 17.0f);
+            g.DrawLine(&pen, 17.0f, 12.5f, 17.0f, 17.0f); g.DrawLine(&pen, 17.0f, 17.0f, 12.5f, 17.0f);
+            break;
+        case Night:   // a crescent moon: the outer circle's arc, then the inner one's back
+            p.StartFigure();
+            p.AddArc(3.5f, 3.5f, 13.0f, 13.0f, 13.2f, 251.2f);
+            p.AddArc(8.5f, 1.0f, 11.0f, 11.0f, 212.7f, -147.8f);
+            p.CloseFigure();
+            g.DrawPath(&pen, &p);
+            break;
         case RotateLeft: case RotateRight: {   // a small page in a turning arrow (clockwise); left is right mirrored
             if (icon == RotateLeft) { g.TranslateTransform(20, 0); g.ScaleTransform(-1, 1); }
             g.DrawRectangle(&pen, 7.5f, 7.5f, 5.0f, 6.0f);

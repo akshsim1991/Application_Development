@@ -451,6 +451,8 @@ static NSMenu* submenu(NSMenu* bar, NSString* title) {
     m = submenu(bar, @"Pages");
     add(m, @"Rotate Right", @selector(rotateRight:), @"r");
     add(m, @"Rotate Left", @selector(rotateLeft:), @"l");
+    add(m, @"Rotate Every Page Right", @selector(rotateAllRight:), @"r", NSEventModifierFlagCommand | NSEventModifierFlagShift);
+    add(m, @"Rotate Every Page Left", @selector(rotateAllLeft:), @"l", NSEventModifierFlagCommand | NSEventModifierFlagShift);
     add(m, @"Rotate Pages\u2026", @selector(rotatePages:), nil);
     [m addItem:[NSMenuItem separatorItem]];
     add(m, @"Insert Blank Page", @selector(insertBlankPage:), nil);

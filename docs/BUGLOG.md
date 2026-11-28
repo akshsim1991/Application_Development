@@ -1825,3 +1825,7 @@ check's Ctrl+click run finished (the box run passed; Ctrl+click picked both para
   with python-docx (its text read back from the PDF) and an .xlsx (made, or a clear message naming what is needed),
   opens the header and footer window on hf_basic.pdf and presses Delete, and now fails when the command line's OCR or
   signing is skipped (they were: the features table said "not yet", the build check now proves them).
+
+**Published:** 2026.11.28 "Escape" for Windows and macOS (28 November): the Windows UI check (every new button) and the
+Mac build check (toolbar, Office conversion, header and footer window, strict command line) passed. Android stays at
+2026.11.27 and the iPhone at 2.28.0. Every download matches latest.json.
